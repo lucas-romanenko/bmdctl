@@ -354,3 +354,80 @@ with a store function (where `save_field_data` puts the result);
   bmdwire's tests make about parsed packets, including the three live
   captures in `internal/fixtures/audio/`.
 
+
+## Commands (`atem/cmd_*.go`, `atem/command.go`, `atem/rate.go`)
+
+One file per SURFACE.md §1 table, 82 command types in all: one per
+atemwire Send class. Each implements `Command` (`Opcode`, `Encode`,
+`EchoKey`, `Unverified`, `Destructive`) and, except the four that take no
+arguments, `Validator`.
+
+- **Names** are the Send class names without "Command" (`ProgramInput`,
+  `DkeyGain`, `KeyPropertiesDVE`), so atemwire's code and docs stay a grep
+  away. Index fields are named for what they index (`ME`, `Keyer`, `DSK`,
+  `Aux`, `Generator`, `Player`, `Multiviewer`, `SuperSource`); everything
+  else keeps the Send field's name, Go-cased.
+- **Display units in, wire units out.** A field takes the unit of the
+  atemwire operation that sets it, and `Encode` applies that operation's
+  conversion, clamp and rounding: percent ×10 or ×100 clamped, 0-1 ×10000,
+  dB ×100 through `_db_to_wire`, DVE positions clamped to i32 only,
+  stinger clip and gain unclamped, and so on, each documented on the
+  field. Fields no operation sets (`DVESettings.LogoRate`,
+  `KeyPropertiesDVE.BorderBevelEnabled`, `InputProperties.PortType`, the
+  legacy audio, SuperSource, lock and transfer commands) take wire units, as
+  the Send class does. Rates are frames: `ParseRate` and `DisplayFPS` port
+  `parse_rate` and `display_fps` for callers holding "seconds:frames"
+  strings, including the silent fallback to one second for a malformed
+  string.
+- **Rounding is Python's.** `round()` is half to even (`math.RoundToEven`),
+  `int()` truncates, NaN and the infinities raise wherever Python's
+  `round()` or `int()` would, and the one helper that runs `min`/`max` on
+  a float first (`_percent_to_unit`, colour generator saturation and luma)
+  keeps Python's argument-order behaviour with NaN (it gives 100%).
+- **Optional fields are pointers.** A nil field is a field atemwire's
+  operation wasn't given: not written, its mask bit not set. `Set(v)`
+  makes the pointer. Required fields are plain values; their Go types
+  (uint8, uint16, ...) are the wire types, so the out-of-range values
+  struct.pack would reject can't be expressed.
+- **One build per command.** Each type's `build` writes the payload
+  through a small writer that records the first value that won't fit or
+  can't be converted. `Encode` returns the bytes; `Validate` returns that
+  error. `Session.Send` calls `Validate` first, so a command atemwire would
+  raise on (struct.error, OverflowError, a ValueError for a bad argument
+  combination) is refused instead of encoded wrongly. Where atemwire's
+  operation silently sends nothing (an empty next-transition selection),
+  `Validate` returns an error too: a command value can't mean "send
+  nothing".
+- **Operations folded in.** Where an operation picks values for the
+  caller, the command does what the operation does: `FadeToBlackEnable`
+  has no M/E because `set_ftb_disabled` always targets M/E 1 (§5.4 item
+  5); `SetTimeOfDay` with a zero time means now; `MediaplayerSelect` and
+  `StreamingServiceSet` refuse the argument combinations their
+  constructors raise on. Read-modify-write operations (`toggle_usk`,
+  `toggle_dsk`, `toggle_transition_*`, `set_transition_rate`) need state
+  and are not commands; the CLI can build them from `State` later.
+- **Unverified** are the 20 classes atemwire restored from upstream pyatem
+  without re-verifying them (`CTPr`, `CTPs`, the four legacy audio, `CCmd`,
+  `CMvI`, `CMvP`, `CSBP`, `CSSc`, `CRMS`, `RcTM`, `CRSS`, `STAB`, `StrR`,
+  `AiVM`, `SRsv`, `SRcl`, `SToD`) and `CKMs` ("not Wireshark-validated").
+  `CXMS` is not: atemwire live-validated it. **Destructive** are
+  `VideoMode`, `SaveStartupState`, `ClearStartupState` and `ClearStill`.
+- **Echo keys** come from SURFACE.md §2's "written by" column, in the
+  parsers' key format (strip ids for Fairlight, `"<source>.0"` for the
+  legacy audio input). Commands §2.7 lists as having no state of their own
+  (`DCut`, `DAut`, `FtbA`, `DDsA`, `RFlK`, `Capt`, `MSlp`, `SFLN`, `SALN`,
+  `SRsv`, `SRcl`, `SToD`, `TiRq`, and the lock and transfer commands)
+  return "". `SFKF`'s echo is the stored keyframe (`KKFP`) for A and B and
+  the fly state (`KeFS`) for the two keyframes the wire format doesn't
+  document; `MAct`'s depends on the action. Echo keys are a Go addition and
+  unverified on hardware like everything §4.4 says about confirmation.
+- **Narrower than atemwire on purpose:** `HyperdeckSettings` takes only
+  dotted-quad IPv4 (atemwire's `inet_aton` also takes `"10.1"`-style
+  shorthand); `CameraControl` string data must be a string or `[]byte`
+  (atemwire's `bytes(v)` of an integer would send that many zero bytes).
+- **Verification.** `internal/fixtures/oracle/send.json` records 5,966 calls
+  of bmdwire v1.3.0's operations and Send classes and what each sent,
+  raised or declined; `TestCommandsMatchAtemwire` builds the matching Go
+  command for each and checks `Encode` byte for byte or that `Validate`
+  fails. Every command type has cases. `cmd_test.go` ports the byte
+  assertions of bmdwire's own tests one for one.

@@ -104,6 +104,7 @@ rerun it against a bmdwire checkout at tag `v1.3.0` to regenerate:
 ```
 cd internal/fixtures/oracle
 python3 -I gen_recv.py ../../../../bmdwire recv.json
+python3 -I gen_send.py ../../../../bmdwire send.json
 ```
 
 The scripts use a fixed random seed, so the output only changes if bmdwire
@@ -112,3 +113,4 @@ or the script does. The C extension is stubbed; nothing here uses it.
 | file | bytes | origin | notes |
 |---|---|---|---|
 | `recv.json` | 319236 | `gen_recv.py`, driving bmdwire v1.3.0's `AtemProtocol.save_field_data` | 1,062 payloads over all 92 state packets and four raw-stored codes: random bytes at, under and over each parser's length, and well-formed variable-length packets. Each case records whether atemwire raised, consumed the packet, stored it raw or parsed it, and then its mixerstate key, index path and attributes. `TestParsersMatchAtemwire` replays them all |
+| `send.json` | 1508486 | `gen_send.py`, calling bmdwire v1.3.0's operations (and, for the fields no operation sets, its Send classes) on a fake connection | 5,966 calls over all 82 commands, with value pools that probe rounding ties, clamps, NaN and infinities, and every enum name the operations accept. Each case records the bytes atemwire sent, or that it raised or chose to send nothing, and the Go command (type and field values in the operation's units) that must do the same. `TestCommandsMatchAtemwire` replays them all |
