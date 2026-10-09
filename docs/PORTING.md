@@ -52,3 +52,18 @@ it. When you make a new decision, add it here in the same commit.
   suite, so it carries atemwire's licence as well.
 - Everything else (the CLI, the other device packages, `internal/table`,
   `internal/fakeatem`) is MIT, as bmdwire's non-ATEM packages are.
+
+## Fixtures (`internal/fixtures`)
+
+- The fixtures are bmdwire v1.3.0's own test data, copied raw: every packet
+  and bytecode literal in `atemwire/tests/*.py`, the profile XML golden and
+  the two `build_full_state` snapshots. Where a test builds a byte string
+  from an expression, the file holds what the expression evaluates to. The
+  README there names the test file and test for each, and whether the test
+  calls it a live capture.
+- bmdwire's tests contain only three recorded state packets (`MOCP`,
+  `AMLP`, `AMBP`); the other tests build payloads with `struct.pack` inside
+  the test. Those are not fixtures; the Go tests port them as code.
+- The package embeds the directory and exposes `fixtures.Bytes(t, path)`.
+  A test fails if any file is empty or missing from the README.
+- Fixtures are LGPL-3.0-only, like the tests they came from.
