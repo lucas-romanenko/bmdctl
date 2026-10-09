@@ -1,0 +1,4 @@
+/dist/
+/bmdctl
+*.test
+*.out
