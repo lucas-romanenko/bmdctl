@@ -10,11 +10,16 @@ protocols directly: no Blackmagic software, SDK or driver is involved.
 
 ## Status
 
-Early. Work has started on the ATEM package's wire layer: the UDP
-transport, a session that tracks the switcher's state, the state packets
-it parses and the commands it can encode. The CLI does not talk to a
-switcher yet. Stills and macro transfers, profiles and the other devices
-come later.
+Early. The ATEM package has its wire layer: the UDP transport, a session
+that tracks the switcher's state, every state packet atemwire parses and
+every command it can send. The CLI does not talk to a switcher yet: it
+can print the bytes a command would send. Stills and macro transfers,
+profiles and the other devices come later.
+
+```
+$ bmdctl atem --dry-run transition wipe --me 0 --width 50 --pattern CircleIris
+001c0000435457700006000007001388000000000000000000000000
+```
 
 | package     | ports                           | licence        |
 |-------------|---------------------------------|----------------|
@@ -42,6 +47,7 @@ OpenAtem contributors. See `atem/NOTICE`.
 go build ./...
 go vet ./...
 go test ./...
+go run ./cmd/bmdctl version
 ```
 
 Go 1.27. The device packages use only the standard library.
@@ -52,6 +58,8 @@ Go 1.27. The device packages use only the standard library.
   v1.3.0. It is the specification for the `atem` package.
 - `docs/PORTING.md`: every decision the port makes, and every place it
   differs from bmdwire.
+- `docs/COMMANDS.md`: every command the CLI knows, generated from the
+  command table.
 
 ## Not affiliated with Blackmagic Design
 

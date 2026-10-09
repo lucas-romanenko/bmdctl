@@ -15,6 +15,12 @@ go build ./... && go vet ./... && go test ./...
 All three must be green after every commit. Nothing in the default build
 or test run touches the network beyond loopback.
 
+`docs/COMMANDS.md` is generated from the command table; after changing a
+table entry, regenerate it with
+`go test ./cmd/bmdctl -run TestCommandsDoc -update`. The oracles in
+`internal/fixtures/oracle/` are regenerated with the scripts beside them
+(see the README there) against `../bmdwire` at `v1.3.0`.
+
 ## The hardware rule
 
 No test, example or command in this repo may contact a real switcher unless

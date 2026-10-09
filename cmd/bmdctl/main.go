@@ -1,14 +1,26 @@
 // SPDX-License-Identifier: MIT
 
 // Command bmdctl controls Blackmagic Design devices from the command line.
+//
+//	bmdctl version
+//	bmdctl atem --help
+//	bmdctl atem --dry-run transition wipe --me 0 --width 50
+//
+// Its device commands are built from the command table (internal/table);
+// docs/COMMANDS.md lists them all.
 package main
 
 import (
-	"fmt"
 	"os"
 )
 
+// Set by GoReleaser through -ldflags.
+var (
+	version = ""
+	commit  = ""
+	date    = ""
+)
+
 func main() {
-	fmt.Fprintln(os.Stderr, "bmdctl: no commands yet")
-	os.Exit(2)
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
