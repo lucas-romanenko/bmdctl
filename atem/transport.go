@@ -116,7 +116,10 @@ type packet struct {
 	handshake bool
 }
 
-var errMalformed = errors.New("atem: malformed datagram")
+var (
+	errMalformed   = errors.New("atem: malformed datagram")
+	errAlreadyOpen = errors.New("atem: trying to open a connection that's already open")
+)
 
 // parsePacket mirrors Packet.from_bytes: the length in the header must
 // equal the datagram's length.
@@ -219,6 +222,7 @@ type transport struct {
 	// packet last went out through sendLow: the two things that wake
 	// atemwire's select() and so restart its 5 s timeout.
 	lastActivity time.Time
+	silence      time.Duration // silenceTimeout; tests shorten it
 
 	retransmitWindow int
 	parkWindow       int
@@ -239,6 +243,7 @@ func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *tra
 		sessionKnown:     true,
 		parked:           make(map[uint16]packet),
 		retransmitBuf:    make(map[uint16]*packet),
+		silence:          silenceTimeout,
 		retransmitWindow: defaultRetransmitWindow,
 		parkWindow:       defaultDeliveryParkWindow,
 		maxBurst:         defaultRetransmitMaxBurst,
@@ -249,7 +254,7 @@ func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *tra
 // UdpProtocol.connect, which refuses to run unless the state is closed.
 func (t *transport) connect() error {
 	if t.state != stateClosed {
-		return errors.New("atem: trying to open a connection that's already open")
+		return errAlreadyOpen
 	}
 	t.localSeq = -1
 	t.remoteSeq = 0
@@ -272,9 +277,10 @@ func (t *transport) connect() error {
 	return nil
 }
 
-// silent reports whether nothing has gone in or out for silenceTimeout.
+// silent reports whether nothing has gone in or out for the silence
+// timeout.
 func (t *transport) silent() bool {
-	return t.now().Sub(t.lastActivity) >= silenceTimeout
+	return t.now().Sub(t.lastActivity) >= t.silence
 }
 
 // timeout is the UDP thread's select() timeout: drop the session and

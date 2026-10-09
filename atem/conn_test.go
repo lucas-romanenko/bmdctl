@@ -27,6 +27,7 @@ type fakeConn struct {
 type fakeWrite struct {
 	b  []byte
 	to net.Addr
+	at time.Time
 }
 
 type fakeDatagram struct {
@@ -62,7 +63,7 @@ func (c *fakeConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 	if c.writeErr != nil {
 		return 0, c.writeErr
 	}
-	c.writes = append(c.writes, fakeWrite{append([]byte(nil), p...), addr})
+	c.writes = append(c.writes, fakeWrite{append([]byte(nil), p...), addr, time.Now()})
 	select {
 	case c.wrote <- struct{}{}:
 	default:
@@ -103,9 +104,9 @@ func (c *fakeConn) reset() {
 	c.writes = nil
 }
 
-// datagram builds a switcher datagram the way the Python tests' _raw and
+// rawDatagram builds a switcher datagram the way the Python tests' _raw and
 // make_request_raw helpers do.
-func datagram(session, seq uint16, flags uint8, data []byte) []byte {
+func rawDatagram(session, seq uint16, flags uint8, data []byte) []byte {
 	b := make([]byte, headerLen+len(data))
 	binary.BigEndian.PutUint16(b[0:], uint16(flags)<<11|uint16(len(b)))
 	binary.BigEndian.PutUint16(b[2:], session)

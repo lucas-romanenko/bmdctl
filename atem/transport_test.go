@@ -114,7 +114,7 @@ func inorderTransport(t *testing.T) *transport {
 func feed(t *testing.T, tr *transport, seq uint16, flags uint8) []uint16 {
 	t.Helper()
 	data := fixtures.Bytes(t, "transport/CTst-command.bin")
-	got, err := tr.receive(datagram(0x8001, seq, flags, data), switcherAddr)
+	got, err := tr.receive(rawDatagram(0x8001, seq, flags, data), switcherAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestConnectSendsSYN(t *testing.T) {
 
 // --- test_transport_datagram_guard.py ------------------------------------
 
-func validFrame() []byte { return datagram(0x1234, 0, flagReliable, nil) }
+func validFrame() []byte { return rawDatagram(0x1234, 0, flagReliable, nil) }
 
 func TestForeignPeerDatagramIsDropped(t *testing.T) { // test_foreign_peer_datagram_is_dropped
 	tr, c := newTestTransport(t)
@@ -424,7 +424,7 @@ func TestVolleyIsCappedPerRequest(t *testing.T) { // test_volley_is_capped_per_r
 // requestRaw is make_request_raw: a 12-byte REQUEST_RETRANSMISSION control
 // packet with the requested sequence spliced into header bytes 6-7.
 func requestRaw(requestSeq uint16) []byte {
-	b := datagram(0x8001, 0, flagRequestRetransmission, nil)
+	b := rawDatagram(0x8001, 0, flagRequestRetransmission, nil)
 	binary.BigEndian.PutUint16(b[6:], requestSeq)
 	return b
 }
@@ -541,7 +541,7 @@ func TestConnectionReadyKeepsThePacket(t *testing.T) { // test_connection_ready_
 	tr.enableACK = true
 	tr.hadTraffic = true
 	lkob := fixtures.Bytes(t, "transport/LKOB-command.bin")
-	p, err := parsePacket(datagram(0x8001, 19, flagReliable, lkob))
+	p, err := parsePacket(rawDatagram(0x8001, 19, flagReliable, lkob))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -582,7 +582,7 @@ func receiveLow(t *testing.T, state transportState) (*transport, []packet) {
 	t.Helper()
 	tr, c := newTestTransport(t)
 	tr.state = state
-	if _, err := tr.receive(datagram(0x8001, 1, flagReliable, fixtures.Bytes(t, "transport/LKOB-command.bin")), switcherAddr); err != nil {
+	if _, err := tr.receive(rawDatagram(0x8001, 1, flagReliable, fixtures.Bytes(t, "transport/LKOB-command.bin")), switcherAddr); err != nil {
 		t.Fatal(err)
 	}
 	return tr, c.sent()
@@ -614,7 +614,7 @@ func TestHandshake(t *testing.T) {
 	}
 	c.reset()
 	// The switcher accepts under the temporary id ...
-	got, err := tr.receive(datagram(helloSession, 0, flagSYN, []byte{helloAccepted, 0, 0, 0, 0, 0, 0, 0}), switcherAddr)
+	got, err := tr.receive(rawDatagram(helloSession, 0, flagSYN, []byte{helloAccepted, 0, 0, 0, 0, 0, 0, 0}), switcherAddr)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("%v %v", got, err)
 	}
@@ -634,7 +634,7 @@ func TestHandshake(t *testing.T) {
 	// ... and the first dump packet carries the real one, which every ACK
 	// then uses.
 	c.reset()
-	if _, err := tr.receive(datagram(0x8123, 1, flagReliable, fixtures.Bytes(t, "transport/LKOB-command.bin")), switcherAddr); err != nil {
+	if _, err := tr.receive(rawDatagram(0x8123, 1, flagReliable, fixtures.Bytes(t, "transport/LKOB-command.bin")), switcherAddr); err != nil {
 		t.Fatal(err)
 	}
 	if !tr.sessionKnown || tr.sessionID != 0x8123 {
@@ -651,7 +651,7 @@ func TestHandshakeRefusedStaysSYNSent(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.reset()
-	got, _ := tr.receive(datagram(helloSession, 0, flagSYN, []byte{0x03, 0, 0, 0, 0, 0, 0, 0}), switcherAddr)
+	got, _ := tr.receive(rawDatagram(helloSession, 0, flagSYN, []byte{0x03, 0, 0, 0, 0, 0, 0, 0}), switcherAddr)
 	if _, err := tr.handle(got[0]); err != nil {
 		t.Fatal(err)
 	}

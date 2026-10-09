@@ -132,3 +132,110 @@ keepalive and no client retransmit timer, as in atemwire.
   `net.PacketConn`, using the `transport/` fixtures where the Python tests
   use those literals. Python tests with no counterpart say why in a comment
   where they would be.
+
+## Session (`atem/session.go`, `atem/protocol.go`)
+
+The session is what bmdwire v1.3.0 spreads over `ATEMConnection` (worker
+thread, send queue, readiness flags), `AtemProtocol` (`loop`, `mixerstate`,
+events) and `ready.wait_ready`. The pool (`acquire_connection`, ref counts,
+the 2 s grace timer) is not part of it; it belongs with hosts, later.
+
+API: `Dial(ctx, addr) (*Session, error)`; `Send(cmd) error`;
+`SendAndWait(ctx, cmd) (Change, error)`; `State() State`;
+`Subscribe() (<-chan Change, func())`; `Ready() <-chan struct{}`;
+`Connected() bool`; `Close() error`. `Dialer{Conn, Logger}` carries the
+two settings `Dial` needs a struct for.
+
+- **One owner goroutine, one reader goroutine.** The owner holds the
+  transport, the state, the outbox, the waiters and the subscribers, and
+  does every socket write; nothing else touches them, so there is no mutex.
+  The reader only calls `ReadFrom` and passes each datagram on: a blocking
+  read can't share a `select` with the request channel, and polling with
+  short read deadlines (atemwire's worker pumps every 10 ms) adds latency
+  and wake-ups for nothing. atemwire has two threads per session as well,
+  but the split differs: its UDP thread also ACKs and resends; here the
+  owner does, so ACKs follow the state the owner has actually processed.
+- **Requests are closures on an unbuffered channel.** Once a send to it
+  succeeds the owner is running the closure, so a request can't be lost
+  between acceptance and execution, and every request sees the state
+  between two whole datagrams. `State` returns a deep copy, so callers can't
+  race the owner.
+- **Dial** is `ATEMConnection.connect` plus `wait_ready`: it returns when
+  the dump is complete (`InCm`, then the next packet: atemwire's
+  `ConnectionReady`) and the video mode has arrived. Without a context
+  deadline it gives up after `CONNECT_TIMEOUT`, 15 s. On failure it says
+  goodbye if the handshake got that far and closes the socket. It resolves
+  `host` or `host:port` (default 9910) to IPv4 once and binds an
+  unconnected ephemeral UDP socket with a 16 MiB receive buffer, as
+  atemwire does.
+- **Connected and Ready mirror `is_connected` and `is_ready`** (bmdwire
+  v1.3.0, `edb5fa0`). `Connected` is true from Dial's return until `Close`
+  or a fatal error, and stays true while the transport re-handshakes after
+  a silence. `Ready` returns a channel closed at the end of each state dump;
+  a disconnect swaps in a new open channel until the next dump completes.
+  After `Close` it returns a channel that never closes, matching
+  `is_ready == False`; callers wait on it with a context.
+- **Events are `Change` values.** atemwire raises `connected`,
+  `disconnected`, `change` and `change:<key>[:<index>]` to callbacks on its
+  worker thread. Here one channel carries `ChangeState` (a packet stored),
+  `ChangeReady` and `ChangeDisconnected`. `Change.Key` is the opcode followed
+  by every index of the packet (`PrgI:0`, `KeOn:0:1`), not atemwire's
+  pretty key and first index only, so an echo for keyer 1 can't satisfy a
+  wait on keyer 0. Packets stored bare or raw have the opcode alone as key.
+- **Subscribers never block the owner.** A full subscriber channel (1024)
+  is closed and dropped rather than skipped silently or waited on: waiting
+  would stall the ACKs and make the switcher resend. Every receiver gets its
+  own copy of `Change.Value`.
+- **Send** validates and encodes, rejects a command over 1200 bytes (where
+  atemwire logs and drops it), queues it and returns; like atemwire's
+  `send()` it doesn't wait for the wire. As in atemwire, `Send` works while
+  the transport re-handshakes (`is_connected` stays true); such a command
+  is most likely lost, as it is in atemwire.
+- **Packing and pacing.** atemwire's worker drains its whole queue, packs
+  the commands into packets of at most 1200 bytes and sleeps 10 ms between
+  packets of one drain. The owner applies the same two rules without
+  sleeping: a packet leaves at once if none left in the last 10 ms;
+  otherwise it waits for the 10 ms mark and takes everything queued
+  meanwhile, up to 1200 bytes. A lone command still goes out immediately.
+  The difference: atemwire puts no gap between packets of *different*
+  drains, so a caller sending in a tight loop can microburst; here no two
+  command packets are ever closer than 10 ms. atemwire skips the spacing
+  while a file transfer is running; transfers are a later phase.
+- **SendAndWait** has no atemwire counterpart; atemwire's caller subscribes
+  to `change:<key>` and waits (§4.4). The waiter is registered and the
+  command queued in one owner step, so the echo can't be missed. It fails
+  with `ErrNoEcho` for a command without an echo (§2.7) without sending,
+  with `ErrNotReady` between a disconnect and the next dump without
+  sending (a waiter there would be satisfied by the new dump, which says
+  nothing about the command), and with `ErrDisconnected` if the session
+  drops while it waits. On context cancellation the waiter is removed. An
+  echo means a state packet with that key arrived after the command was
+  queued; like atemwire, nothing ties it to this command in particular.
+- **TiRq** is sent once per completed dump, straight to the transport and
+  not through the outbox, as atemwire's `send_commands` call in `loop()`
+  is.
+- **Disconnects.** After 5 s of silence the transport re-SYNs and, if any
+  data had arrived (`AtemProtocol.connected`), the session empties the
+  state, reopens `Ready`, fails waiters and publishes `ChangeDisconnected`.
+  A zero-length command header (atemwire's `ConnectionError`) does the
+  same, then says goodbye and handshakes again.
+- **Bad packets.** A packet whose commands can't be decoded (a truncated
+  header, a non-UTF-8 code, and from step 5 a parser error) loses its
+  remaining commands and the session carries on: an exception escaping
+  atemwire's `loop()` does exactly that. This includes SURFACE.md §5.4
+  item 3: an unknown `VidM` mode loses the rest of its packet and Dial
+  waits for a video mode that never comes. Fixing it is a deliberate
+  change for later, not part of the port.
+- **Fatal errors** (a non-transient write error, any read error) end the
+  session: `Connected` goes false, subscriber channels close and every
+  method returns an error matching `ErrClosed` that also wraps the cause.
+  atemwire's `on_died` callback and pool eviction have no counterpart; the
+  caller dials again. On Windows an ICMP port-unreachable can surface as a
+  read error (WSAECONNRESET) and end the session, as it ends atemwire's UDP
+  thread.
+- **Close** says goodbye, closes the socket, fails pending waiters with
+  `ErrClosed` and closes subscriber channels. `release_locks_now` comes with
+  transfers.
+- **Not yet:** typed state (step 4) and parsers (step 5), so `State` holds
+  every packet raw at this step; `last_run_macro_index` arrives with the
+  `MRPr` parser; transfers, locks and the pool later.
