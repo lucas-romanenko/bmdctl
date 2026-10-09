@@ -487,6 +487,9 @@ var timeRequest = []byte{0, 8, 0, 0, 'T', 'i', 'R', 'q'}
 func (s *Session) onData(data []byte) {
 	s.protoConnected = true
 	err := decodeFields(data, func(code string, payload []byte) error {
+		if code == "LKOB" {
+			return s.onLockObtained(payload)
+		}
 		c, err := s.state.store(code, payload)
 		if err != nil || c == nil {
 			return err
@@ -506,6 +509,22 @@ func (s *Session) onData(data []byte) {
 		// packet is lost, the session carries on.
 		s.log.Error("atem: packet dropped part way", "err", err)
 	}
+}
+
+// onLockObtained: the switcher granted a store lock. Nothing in this
+// session requests locks yet (transfers are a later phase), and atemwire
+// answers a grant with nothing queued by releasing it at once
+// (_transfer_trigger with an empty queue), so this does too.
+func (s *Session) onLockObtained(payload []byte) error {
+	f, err := parseLKOB(payload)
+	if err != nil {
+		return err
+	}
+	release := []byte{0, 12, 0, 0, 'L', 'O', 'C', 'K', byte(f.Store >> 8), byte(f.Store), 0, 0}
+	if err := s.t.sendReliable(release); err != nil {
+		s.fatal = err
+	}
+	return nil
 }
 
 // resync is atemwire's answer to a zero-length command header: report a
@@ -540,7 +559,11 @@ func (s *Session) onSilence() {
 // disconnected is atemwire's "disconnected" event and what follows it:
 // the state is emptied and nothing is ready until the next dump completes.
 func (s *Session) disconnected() {
+	// The last-run macro latch lives on ATEMConnection, not in mixerstate,
+	// so it survives.
+	last := s.state.Macros.LastRun
 	s.state = newState()
+	s.state.Macros.LastRun = last
 	s.initialized = false
 	if s.readyClosed {
 		s.readyClosed = false

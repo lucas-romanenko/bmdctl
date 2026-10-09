@@ -172,10 +172,17 @@ func TestDialHandshakeDumpReady(t *testing.T) {
 		t.Fatal("Ready not closed after Dial")
 	}
 	st := s.State()
-	for _, code := range []string{"_ver", "VidM", "PrgI", "InCm"} {
-		if _, ok := st.Raw[code]; !ok {
-			t.Errorf("%s not in state", code)
-		}
+	if st.Identity.Firmware == nil || st.Identity.Firmware.Version != "2.30" {
+		t.Errorf("firmware %+v", st.Identity.Firmware)
+	}
+	if st.VideoMode.Mode == nil || st.VideoMode.Mode.Label() != "1080p50" {
+		t.Errorf("video mode %+v", st.VideoMode.Mode)
+	}
+	if len(st.MEs) != 1 || st.MEs[0].Program == nil || st.MEs[0].Program.Source != 1 {
+		t.Errorf("MEs %+v", st.MEs)
+	}
+	if _, ok := st.Raw["InCm"]; !ok {
+		t.Error("InCm not stored raw")
 	}
 	// The dump's ready triggers one TiRq, atemwire's only time request.
 	sw.expect("TiRq", carries("TiRq"))
@@ -307,7 +314,7 @@ func TestSendAndWaitReturnsTheEcho(t *testing.T) {
 	done := make(chan dialResult, 1)
 	var change Change
 	go func() {
-		c, err := s.SendAndWait(context.Background(), testCmd{op: "CPgI", payload: []byte{0, 0, 0, 5}, echo: "PrgI"})
+		c, err := s.SendAndWait(context.Background(), testCmd{op: "CPgI", payload: []byte{0, 0, 0, 5}, echo: "PrgI:0"})
 		change = c
 		done <- dialResult{err: err}
 	}()
@@ -316,8 +323,11 @@ func TestSendAndWaitReturnsTheEcho(t *testing.T) {
 	if r := <-done; r.err != nil {
 		t.Fatal(r.err)
 	}
-	if change.Kind != ChangeState || change.Key != "PrgI" || !bytes.Equal(change.Value.([]byte), []byte{0, 0, 0, 5}) {
+	if f, ok := change.Value.(*ProgramBusInputField); change.Kind != ChangeState || change.Key != "PrgI:0" || !ok || f.Source != 5 {
 		t.Fatalf("change %+v", change)
+	}
+	if s.State().MEs[0].Program.Source != 5 {
+		t.Fatal("state not updated")
 	}
 }
 
@@ -328,7 +338,7 @@ func TestSendAndWaitErrors(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, err := s.SendAndWait(ctx, testCmd{op: "CPgI", echo: "PrgI"}); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := s.SendAndWait(ctx, testCmd{op: "CPgI", echo: "PrgI:0"}); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("timeout: %v", err)
 	}
 	sw.expect("CPgI", carries("CPgI")) // it was still sent
@@ -349,11 +359,12 @@ func TestSubscribe(t *testing.T) {
 	sw.reliable(cmdBytes("PrvI", []byte{0, 0, 0, 2, 0, 0, 0, 0}))
 	select {
 	case c := <-ch:
-		if c.Kind != ChangeState || c.Opcode != "PrvI" || c.Key != "PrvI" {
+		f, ok := c.Value.(*PreviewBusInputField)
+		if c.Kind != ChangeState || c.Opcode != "PrvI" || c.Key != "PrvI:0" || !ok || f.Source != 2 {
 			t.Fatalf("change %+v", c)
 		}
-		c.Value.([]byte)[3] = 99 // the copy is ours to change
-		if s.State().Raw["PrvI"][3] != 2 {
+		f.Source = 99 // the copy is ours to change
+		if s.State().MEs[0].Preview.Source != 2 {
 			t.Fatal("a subscriber reached into the state")
 		}
 	case <-time.After(2 * time.Second):
@@ -409,7 +420,7 @@ func TestSilenceDisconnectsAndRecovers(t *testing.T) {
 	ch, _ := s.Subscribe()
 	wait := make(chan error, 1)
 	go func() {
-		_, err := s.SendAndWait(context.Background(), testCmd{op: "CPgI", echo: "PrgI"})
+		_, err := s.SendAndWait(context.Background(), testCmd{op: "CPgI", echo: "PrgI:0"})
 		wait <- err
 	}()
 	sw.expect("SYN after silence", isSYN(helloConnect))
@@ -427,10 +438,10 @@ func TestSilenceDisconnectsAndRecovers(t *testing.T) {
 	if !s.Connected() {
 		t.Fatal("Connected went false during a re-handshake")
 	}
-	if len(s.State().Raw) != 0 {
+	if st := s.State(); len(st.Raw) != 0 || st.MEs != nil || st.VideoMode.Mode != nil {
 		t.Fatal("state not emptied")
 	}
-	if _, err := s.SendAndWait(context.Background(), testCmd{op: "CPgI", echo: "PrgI"}); !errors.Is(err, ErrNotReady) {
+	if _, err := s.SendAndWait(context.Background(), testCmd{op: "CPgI", echo: "PrgI:0"}); !errors.Is(err, ErrNotReady) {
 		t.Fatalf("SendAndWait during the gap: %v", err)
 	}
 	// The SYN above was answered by nobody; answer the next one.
@@ -441,7 +452,7 @@ func TestSilenceDisconnectsAndRecovers(t *testing.T) {
 	if !closedWithin(s.Ready(), 2*time.Second) {
 		t.Fatal("not ready after the new dump")
 	}
-	if _, ok := s.State().Raw["PrgI"]; !ok {
+	if st := s.State(); len(st.MEs) != 1 || st.MEs[0].Program == nil {
 		t.Fatal("state not refilled")
 	}
 }
@@ -451,7 +462,7 @@ func TestSilenceDisconnectsAndRecovers(t *testing.T) {
 func TestCorruptionForcesAReconnect(t *testing.T) {
 	s, sw := dialed(t, 0)
 	ch, _ := s.Subscribe()
-	sw.reliable(cmdBytes("PrvI", []byte{0, 0, 0, 2}), make([]byte, 8))
+	sw.reliable(cmdBytes("Xxxx", []byte{0, 0, 0, 2}), make([]byte, 8))
 	sw.expect("goodbye", isSYN(helloClosing))
 	sw.expect("SYN", isSYN(helloConnect))
 	for c := range ch {
@@ -464,24 +475,89 @@ func TestCorruptionForcesAReconnect(t *testing.T) {
 	}
 }
 
-// A truncated command header loses the rest of its packet only.
-func TestTruncatedPacketKeepsWhatCameBefore(t *testing.T) {
-	s, sw := dialed(t, 0)
-	sw.reliable(cmdBytes("PrvI", []byte{0, 0, 0, 2}), []byte{0, 12, 0})
-	sw.reliable(cmdBytes("AuxS", []byte{0, 0, 0, 3}))
+// waitState polls State until ok returns true.
+func waitState(t *testing.T, s *Session, ok func(State) bool) State {
+	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		st := s.State()
-		if _, ok := st.Raw["AuxS"]; ok {
-			if _, ok := st.Raw["PrvI"]; !ok {
-				t.Fatal("the field before the truncation was lost")
-			}
-			return
+		if ok(st) {
+			return st
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the next packet was not processed")
+			t.Fatal("state never got there")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// A truncated command header loses the rest of its packet only.
+func TestTruncatedPacketKeepsWhatCameBefore(t *testing.T) {
+	s, sw := dialed(t, 0)
+	sw.reliable(cmdBytes("Aaaa", []byte{1}), []byte{0, 12, 0})
+	sw.reliable(cmdBytes("Bbbb", []byte{2}))
+	st := waitState(t, s, func(st State) bool { _, ok := st.Raw["Bbbb"]; return ok })
+	if _, ok := st.Raw["Aaaa"]; !ok {
+		t.Fatal("the field before the truncation was lost")
+	}
+}
+
+// A packet a parser rejects loses the rest of its packet, as an exception
+// out of an atemwire Recv constructor does, and the session carries on.
+// Here a 4-byte PrvI (it needs 5) takes the AuxS after it down with it.
+func TestParseErrorLosesTheRestOfThePacket(t *testing.T) {
+	s, sw := dialed(t, 0)
+	sw.reliable(cmdBytes("PrvI", []byte{0, 0, 0, 2}), cmdBytes("AuxS", []byte{0, 0, 0, 3}))
+	sw.reliable(cmdBytes("Bbbb", []byte{2}))
+	st := waitState(t, s, func(st State) bool { _, ok := st.Raw["Bbbb"]; return ok })
+	if st.MEs[0].Preview != nil || st.Aux != nil {
+		t.Fatalf("stored past the parse error: %+v %+v", st.MEs[0].Preview, st.Aux)
+	}
+	if !s.Connected() {
+		t.Fatal("a bad packet ended the session")
+	}
+}
+
+// With no transfer engine queued, atemwire answers a lock grant by
+// releasing the lock at once (_transfer_trigger with an empty queue).
+func TestUnexpectedLockGrantIsReleased(t *testing.T) {
+	_, sw := dialed(t, 0)
+	sw.reliable(cmdBytes("LKOB", []byte{0, 0, 0, 0}))
+	p := sw.expect("LOCK release", carries("LOCK"))
+	if !bytes.Equal(p.data, cmdBytes("LOCK", []byte{0, 0, 0, 0})) {
+		t.Fatalf("release %x", p.data)
+	}
+}
+
+// The last-run macro latch (test_macro_slot_0_latches_as_last_run): slot 0
+// latches, idle keeps the latch, another slot replaces it, and a reconnect
+// keeps it.
+func TestLastRunMacroLatch(t *testing.T) {
+	s, sw := dialed(t, 150*time.Millisecond)
+	if s.State().Macros.LastRun != -1 {
+		t.Fatal("latched before any macro ran")
+	}
+	mrpr := func(running bool, index uint16) {
+		var f byte
+		if running {
+			f = 1
+		}
+		sw.reliable(cmdBytes("MRPr", []byte{f, 0, byte(index >> 8), byte(index)}))
+	}
+	mrpr(true, 0)
+	waitState(t, s, func(st State) bool { return st.Macros.LastRun == 0 })
+	mrpr(false, 0xFFFF)
+	waitState(t, s, func(st State) bool { return st.Macros.PlayStatus != nil && st.Macros.PlayStatus.Index == 0xFFFF })
+	if s.State().Macros.LastRun != 0 {
+		t.Fatal("idle cleared the latch")
+	}
+	mrpr(true, 4)
+	waitState(t, s, func(st State) bool { return st.Macros.LastRun == 4 })
+	// Go silent: the disconnect empties the state but not the latch.
+	sw.expect("SYN after silence", isSYN(helloConnect))
+	waitState(t, s, func(st State) bool { return st.Macros.PlayStatus == nil })
+	if s.State().Macros.LastRun != 4 {
+		t.Fatal("the reconnect cleared the latch")
 	}
 }
 

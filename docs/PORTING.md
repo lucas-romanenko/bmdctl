@@ -296,4 +296,61 @@ two settings `Dial` needs a struct for.
   fills every field of a `State` and checks that the copy shares no
   pointer, slice or map with the original.
 - `Macros.LastRun` is `ATEMConnection.last_run_macro_index`: -1 until a
-  macro is seen running. It is filled in with the `MRPr` parser (step 5).
+  macro is seen running (see Parsers).
+
+## Parsers (`atem/parse_*.go`, `atem/protocol.go`)
+
+One file per SURFACE.md §2 table: `parse_mixeffect.go` (§2.2),
+`parse_keyers.go` (§2.3), `parse_audio.go` (§2.4), `parse_system.go`
+(§2.5). Each entry pairs a parse function (atemwire's Recv constructor)
+with a store function (where `save_field_data` puts the result);
+`State.store` dispatches on the opcode.
+
+- **Lengths behave like Python's `struct`.** A class atemwire unpacks with
+  `struct.unpack` must be exactly its size; one it reads with
+  `unpack_from` or the declarative fields must be at least as long as its
+  furthest field. Anything else is an error, which loses the rest of the
+  packet (see the session's "Bad packets"). The few hand-written parsers
+  that tolerate short payloads (`FEna`, `KeFS`) do here too, except that
+  `KeFS` under two bytes errors, because atemwire's `KEY_FORMAT '>BB'`
+  raises there before storing.
+- **Strings** are cut at the first NUL and decoded as Python's
+  `decode('utf-8', 'replace')` does, one U+FFFD per maximal invalid
+  subpart (not per byte, as Go's own helpers would). Names atemwire keeps
+  as bytes (`MPfe`, `MPrp`) stay undecoded.
+- **Quirks copied on purpose:** an `MPfe` of exactly 23 bytes is an error
+  (Python's `struct` raises on a zero-length Pascal string); an unknown
+  `VidM` mode, or a `_VMC` bitfield with bit 30 or 31 set, is an error
+  (atemwire's `ValueError`, §5.4 item 3); `*XFC` is an error once parsed
+  (atemwire's `KeyError` looking up a transfer queue that doesn't exist);
+  `CCdP` with data type 5 or an unknown type yields empty data; `LKST`
+  reporting a lock taken is dropped unstored. All of these are what bmdwire
+  v1.3.0 does.
+- **Keys.** `Change.Key` is the opcode and the indices atemwire's
+  `KEY_FORMAT` reads, with the strip id in place of the first index for
+  every packet that carries one (`FASP`, `AEBP`, `AICP`, `AILP`, `AIXP`
+  and also `AMIP`, so `State.Audio.Inputs` is keyed `"<source>.0"`, as
+  atemwire's `mixerstate['audio-input']` is).
+- **Consumed packets.** `LKOB`, `FTCD`, `FTDC`, `FTDa` and `FTDE` are parsed
+  and dropped: their consumer, the transfer engine, is a later phase.
+  `LKOB` is the one with a side effect: with nothing queued, atemwire's
+  `_transfer_trigger` releases a granted lock at once, so the session
+  sends `LOCK(store, false)` when one arrives.
+- **The last-run latch.** Storing an `MRPr` with the running bit set and an
+  index other than 0xFFFF sets `State.Macros.LastRun` (bmdwire v1.3.0
+  `a9f3646`: slot 0 counts). A disconnect empties the state but keeps the
+  latch, as `ATEMConnection.last_run_macro_index` survives one.
+- **Floats.** Values atemwire computes in floating point are computed the
+  same way (same operations, same order), so they match bit for bit,
+  except the classic mixer's meters (`AMLv`), where Go's `math.Log10` and
+  CPython's libm `log10` can differ in the last place.
+- **Verification.** `internal/fixtures/oracle/recv.json` holds 1,062
+  payloads fed to bmdwire v1.3.0's real `save_field_data` and what it did
+  with each. `TestParsersMatchAtemwire` replays every case: same error or
+  not, same consumed/raw/stored outcome, same key, same attribute values
+  (floats to 1e-12), and the value sits in the `State` tree under the
+  field tagged with its opcode at the indices the key names. Every parser
+  has cases. `parse_test.go` also ports, one for one, the assertions
+  bmdwire's tests make about parsed packets, including the three live
+  captures in `internal/fixtures/audio/`.
+

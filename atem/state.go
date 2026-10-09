@@ -170,11 +170,14 @@ type FairlightStrip struct {
 	Expander   *FairlightExpanderPropertiesField    `atem:"AIXP" json:"expander"`
 }
 
-// Audio is the classic (pre-Fairlight) audio mixer: audio-input (per
-// source), audio-mixer-master-properties, audio-mixer-monitor-properties,
+// Audio is the classic (pre-Fairlight) audio mixer: audio-input,
+// audio-mixer-master-properties, audio-mixer-monitor-properties,
 // audio-mixer-tally and audio-meter-levels.
 type Audio struct {
-	Inputs  map[uint16]*AudioInputField       `atem:"AMIP" json:"inputs"`
+	// Inputs is keyed by strip id ("<source>.0"), not by source:
+	// AudioInputField carries a strip_id, and atemwire keys every packet
+	// that does by it.
+	Inputs  map[string]*AudioInputField       `atem:"AMIP" json:"inputs"`
 	Master  *AudioMixerMasterPropertiesField  `atem:"AMMO" json:"master"`
 	Monitor *AudioMixerMonitorPropertiesField `atem:"AMmO" json:"monitor"`
 	Tally   *AudioMixerTallyField             `atem:"AMTl" json:"tally"`
@@ -1379,7 +1382,7 @@ func newState() State {
 			Strips:        make(map[string]*FairlightStrip),
 			Inputs:        make(map[uint16]*FairlightAudioInputField),
 		},
-		Audio: Audio{Inputs: make(map[uint16]*AudioInputField)},
+		Audio: Audio{Inputs: make(map[string]*AudioInputField)},
 		Raw:   make(map[string][]byte),
 	}
 }
