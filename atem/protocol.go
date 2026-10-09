@@ -64,8 +64,8 @@ func (s *State) store(code string, payload []byte) (*Change, error) {
 
 // cloneValue copies a Change value so a receiver can't reach the state.
 func cloneValue(v any) any {
-	if b, ok := v.([]byte); ok {
-		return bytes.Clone(b)
+	if v == nil {
+		return nil
 	}
-	return v
+	return deepCopy(v)
 }

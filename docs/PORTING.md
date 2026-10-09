@@ -239,3 +239,61 @@ two settings `Dial` needs a struct for.
 - **Not yet:** typed state (step 4) and parsers (step 5), so `State` holds
   every packet raw at this step; `last_run_macro_index` arrives with the
   `MRPr` parser; transfers, locks and the pool later.
+
+## State (`atem/state.go`, `atem/clone.go`)
+
+- **One Go type per state packet**, holding the attributes atemwire's Recv
+  class sets, with the same names (Go-cased; the JSON name is atemwire's
+  attribute name) and the same values and units. Scaled attributes stay
+  scaled as atemwire scales them (`ColV` hue in degrees, `KeDV` border hue
+  ÷ 10 and saturation ÷ 1000, meters in dB); everything else is the wire
+  integer. Each type's comment names its opcode and its mixerstate key.
+- **Names.** A packet type keeps its Recv class name, "Field" suffix
+  included (`ProgramBusInputField`), with DVE, EQ, SDI and VU as Go
+  initialisms. Commands take the Send class names without "Command"
+  (`ProgramInput` for `CPgI`), which is what makes room for both: dropping
+  "Field" would collide with about twenty commands (`InputProperties`,
+  `VideoMode`, `KeyOnAir`, ...). Grouping types have plain names (`ME`,
+  `USK`, `DSK`, `Transition`, `FTB`, `Fairlight`, `Video`, `Clock`, ...).
+- **The tree.** `State` groups the packets the way their indices do:
+  `MEs[me]` holds program, preview, `Transition`, `FTB`, `_MeC` and
+  `USKs[keyer]` (with `Keyframes[keyframe]`); `DSKs[dsk]`, `Aux[aux]`,
+  `ColorGenerators`, `MediaPlayers`, `Multiviewers[mv].Windows[window]`
+  and `SuperSources[ss].Boxes[box]` are slices that grow to the highest
+  index seen. Packets indexed by a u16 or a string are maps: `Inputs`,
+  `HyperDecks`, `MediaPool.Files`, `Macros.Properties`, `Audio.Inputs`,
+  `Fairlight.Inputs`, `Fairlight.Strips` (keyed by atemwire's strip id,
+  `"<source>.<subchannel>"`, each strip holding `FASP`, its EQ bands and
+  dynamics), and `CameraControl[dest][cat][param]`. Bare packets are
+  single pointers; the last one wins, including `FMLv` and `RTMD`, as in
+  atemwire. A nil pointer is a packet that hasn't arrived.
+- **Tags.** Every field that holds packets is tagged `atem:"OPCODE"`; a
+  test checks that the 85 stored opcodes (92 parsed, less the six the
+  transfer engine consumes and `InCm`) each appear exactly once and that
+  every JSON name is snake_case.
+- **Raw.** `State.Raw` holds what atemwire stores as bytes under the
+  4-character code: the 27 known-but-unparsed codes (§5.1), `InCm`, and any
+  unknown code. Last packet wins.
+- **Consumed packets** (`LKOB`, `FTCD`, `FTDC`, `FTDa`, `FTDE`, `*XFC`)
+  have types but no place in the tree, as atemwire never stores them.
+  `LKST` is stored only when it reports a release, as atemwire does.
+- **Where Python's type doesn't carry over:** names and descriptions that
+  atemwire keeps as `bytes` (`MPfe`, `MPrp`) are Go strings holding the
+  same bytes, undecoded (JSON shows invalid UTF-8 as U+FFFD); `None` is a
+  nil pointer (`RMSu` disks, `RTMS` time available); tuples are arrays
+  (`[4]float64` meters) or `TallyLamps{Program, Preview}`; `CCdP` data is
+  `[]any` of bool, int64 or float64; the MD5 in `MPfe` is an `MD5` that
+  encodes as hex. `KACC`'s `Y`, `Cb`, `Cr` are `SampleY`, `SampleCb`,
+  `SampleCr` (JSON `sample_y`...), because `Y` and the cursor's `y` would
+  collide.
+- **Methods** ported with the types: `VideoModeField.Label`, `FrameSize`,
+  `Pixels` (atemwire's `get_label`, `get_resolution`, `get_pixels`),
+  `TimeField.TotalSeconds`, `AudioInputField.PlugName`, and the three
+  `get_rgb` methods through a port of `colorsys.hls_to_rgb`, checked
+  bit for bit against Python 3.12.
+- **Copies.** `deepCopy` (reflection, `clone.go`) copies the tree with
+  nothing shared; `State()` and every `Change.Value` go through it. A test
+  fills every field of a `State` and checks that the copy shares no
+  pointer, slice or map with the original.
+- `Macros.LastRun` is `ATEMConnection.last_run_macro_index`: -1 until a
+  macro is seen running. It is filled in with the `MRPr` parser (step 5).
