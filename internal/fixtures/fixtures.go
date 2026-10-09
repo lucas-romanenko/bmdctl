@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-//go:embed audio macro oracle/*.json profile snapshot transport
+//go:embed audio dump/*.bin macro oracle/*.json profile snapshot transport
 var files embed.FS
 
 // FS returns every fixture, keyed by its path relative to this directory

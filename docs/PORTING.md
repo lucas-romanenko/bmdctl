@@ -476,3 +476,96 @@ arguments, `Validator`.
 - **Not yet:** source names (atemwire has no public source table, only
   the macro codec's private one), read-modify-write operations (toggles,
   `set_transition_rate`), reading state from the CLI, and sending.
+
+## Fake switcher (`internal/fakeatem`, `internal/fixtures/dump`)
+
+- **It is the session's socket.** A `fakeatem.Switcher` implements
+  `net.PacketConn`; tests pass it as `atem.Dialer.Conn` and dial
+  `fakeatem.Address` (192.0.2.10, TEST-NET-1). The session's whole stack
+  runs for real against it: handshake, ACKs, in-order delivery, parsers,
+  state. MIT, like the rest of `internal/` except the fixtures.
+- **What it does.** It accepts a SYN (hello 0x02 under 0x1337), gives the
+  session a fresh id when the handshake ACK arrives, replays the dump in
+  reliable packets of up to 1400 bytes, then sends one empty reliable packet
+  (the post-dump ping that makes the session ready). It ACKs each of the
+  session's reliable packets, resends its own unACKed packets after 60 ms
+  flagged as retransmissions, pings every 500 ms, asks for a retransmission
+  (header bytes 6-7) when the session's sequence skips, and ACKs duplicates
+  without redoing them. `echoes.go` answers a set of common commands
+  (`CPgI`, `CPvI`, `DCut`, `DAut`, `CAuS`, `CTMx`, `CKOn`, `CDsL`, `CDsT`,
+  `CDsR`, `FtbC`, `CClV`, `CInL`) with the state packet a switcher would
+  send; anything else is ACKed and changes nothing. It is not a switcher
+  model and makes no claim about switcher timing.
+- **Controls.** `DropToClient(n)` drops the next n reliable packets (their
+  resends get through); `DropSequences(...)` drops chosen sequence numbers
+  of the next session; `DropFromClient(n)` ignores the next n datagrams
+  from the session; `DelayACKs(d)` ACKs late; `Silence(true)` cuts the
+  cable: nothing in or out, and the switcher forgets the session, as a real
+  one does when its packets go unacknowledged. `Commands()` and
+  `Handshakes()` let tests look inside.
+- **The dump** (`internal/fixtures/dump/initial-dump.bin`) is synthetic:
+  bmdwire's tests contain no recorded one. `gen_dump.py` builds 88
+  commands from the values of bmdwire's `build_full_state`
+  characterization fixture (plus identity, topology, multiviewer and
+  timecode), each packed to atemwire's Recv layout, and checks every one
+  against bmdwire v1.3.0's `save_field_data` before writing the file.
+- **Tests** (`fakeatem_test.go`): the end-to-end test (Dial,
+  `SendAndWait(ProgramInput{ME: 0, Source: 5})`, `State()` shows source
+  5), the dump replayed into typed state with a TiRq after it, a lost dump
+  packet recovered through the stalled ACK, a lost command recovered
+  through the switcher's retransmission request, delayed ACKs, and silence
+  followed by a re-handshake and a fresh dump (about 10 s; skipped with
+  `-short`).
+
+## Traps inherited from atemwire
+
+Behaviour the port reproduces because bmdwire v1.3.0 has it, found while
+porting and not listed in SURFACE.md §5.4. Each is a candidate for a
+deliberate fix later, recorded here as such when it is made.
+
+- **The first dump packet is not recoverable.** The transport takes the
+  first reliable packet it sees as its sequence baseline (`_rx_established`,
+  `_deliver_next`). If the switcher's first packet after the handshake is
+  lost, the second becomes the baseline, the ACK covers both, and a late
+  copy of the first is dropped as already delivered: its fields never
+  arrive. If they include the video mode, connecting times out.
+  `TestLosingTheFirstDumpPacketLosesItForGood` pins it.
+- **Stale packets during a re-handshake.** Packets from the previous
+  session that arrive after the re-SYN reset the 5 s silence timer, so the
+  transport doesn't re-SYN again while they keep coming, and the first
+  reliable one sets the delivery cursor, so the new session's packets
+  (starting again at 1) look like duplicates. The first effect stalled
+  the fake switcher's reconnect test until the fake learned to forget a
+  silenced session; the second follows from the same code, read rather
+  than observed. The Python logic is the same line for line.
+- **A lost command is recovered only by a later one.** With no client
+  retransmit timer (by design, SURFACE.md §4.2), a reliable packet the
+  switcher never sees is resent only when a later packet shows the switcher
+  the gap. `SendAndWait` on that command times out.
+- **Parse errors lose the rest of the packet** (session section), including
+  a 23-byte `MPfe`, `*XFC` on UDP, a `KeFS` under two bytes, and a `_VMC`
+  bitfield naming mode 30 or 31.
+
+## SURFACE.md and the code
+
+Where `docs/SURFACE-atem.md` and bmdwire v1.3.0's code disagree, the port
+follows the code.
+
+- **Version.** SURFACE.md says it describes 1.2.0 (`028ac26`); the port
+  follows v1.3.0 (`cea58c2`), which has every fix §5.4 marks as made after
+  1.2.0.
+- **§1 conventions, source names.** The private table also maps 4030 to
+  `CleanFeed1` (alongside 7001); SURFACE.md's list leaves 4030 out.
+- **§2.4 `audio-input` (`AMIP`)** is listed as indexed by source; atemwire
+  keys it by strip id, `"<source>.0"`, because the class carries a
+  `strip_id` and `save_field_data` puts that in place of the first index.
+- **§2.5 `lock-state` (`LKST`)** is listed as stored bare; only releases
+  are stored. A packet reporting a lock taken is dropped before storage,
+  with no events.
+- **§2.5 `transfer-complete` (`*XFC`)** is listed as consumed (TCP proxy
+  only); on UDP its handler looks up a transfer queue that doesn't exist and
+  raises `KeyError`, losing the rest of the packet.
+- **§4.2 "after 5 s with no packets"**: the timeout is `select()` on the
+  socket and the outbound queue, so it is 5 s with no datagram in (from
+  anyone) and no packet out. A client that keeps sending to a dead switcher
+  never times out.
