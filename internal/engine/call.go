@@ -174,11 +174,11 @@ func (c *call) runLocal() (any, bool, error) {
 	if err != nil {
 		return nil, false, usageErr(err)
 	}
-	run := c.e.ops[c.entry.Path]
-	if run == nil {
+	o, ok := c.e.ops[c.entry.Path]
+	if !ok {
 		return nil, false, codeErr(CodeUsage, "%s %s has no implementation", c.req.Device, c.req.Path)
 	}
-	return run(c)
+	return o.run(c)
 }
 
 // RunLocal runs a local operation in this process, without an engine:
@@ -199,18 +199,20 @@ func (s funcSink) file(f FileFrame) error {
 }
 func (funcSink) response(Response) error { return nil }
 
-// operations are the engine's table entries that aren't one wire
-// command, with their implementations.
+// operation is one of the engine's table entries that isn't one wire
+// command, with its implementation.
 type operation struct {
 	entry table.Entry
 	run   op
+	// noDial: the operation takes the host as given and opens no session.
+	noDial bool
 }
 
-// atemOperations maps each ATEM operation's path to its implementation.
-func atemOperations() map[string]op {
-	m := map[string]op{}
+// atemOperations maps each ATEM operation's path to its definition.
+func atemOperations() map[string]operation {
+	m := map[string]operation{}
 	for _, o := range operations() {
-		m[o.entry.Path] = o.run
+		m[o.entry.Path] = o
 	}
 	return m
 }
@@ -228,5 +230,7 @@ func RegisterOperations(r *table.Registry) error {
 
 // operations lists every operation, group by group.
 func operations() []operation {
-	return nil
+	var ops []operation
+	ops = append(ops, sessionOperations()...)
+	return ops
 }

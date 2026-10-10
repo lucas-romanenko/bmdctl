@@ -1028,6 +1028,40 @@ lives until 10 minutes pass without a request, unless pinned.
   every session, which says goodbye to each switcher; it waits up to 5 s
   for requests to end.
 
+## Operations (`internal/engine/ops_*.go`)
+
+The commands that aren't one wire command. Each is a table entry with
+`Operation` set and a function in the engine; the CLI only formats what
+comes back. Numbers in results follow the flags: M/Es from 1, everything
+else (keyers, DSKs, aux, slots) from 0.
+
+- **Group a, the session** (`ops_session.go`).
+  - `status` reads the state through atemwire's readers: per M/E program
+    and preview with input names, the transition (style, rate as
+    seconds:frames, next layers, position, preview), fade to black and
+    each keyer; each DSK, aux output, the macro player and recorder, and
+    recording and streaming when the switcher has them. Streaming's
+    `StRS` is named as SURFACE.md §2.5 observed it (on air is 4, not a
+    bit).
+  - `connect` opens the session and pins it (`--pin false` only opens
+    it); `disconnect` closes it, pinned or not, and never dials one.
+  - `info` is identity and size: product and model, the name set in ATEM
+    Setup, the firmware's protocol version, the video mode with its
+    resolution and display rate, counts from `_top`, `_MeC` and `_mpl`,
+    and whether the audio mixer is Fairlight or classic.
+  - `state` prints the `State` tree as JSON, under atemwire's attribute
+    names; `--path` follows dotted keys (list indices and map keys are
+    numbers; a key that isn't there exactly is matched ignoring case),
+    and an unknown key lists the ones there are. Humans get one
+    `dotted.key value` line per leaf.
+  - `watch` subscribes and streams each `Change`: `{kind, opcode, key,
+    value, time}`, kind `state`, `ready` or `disconnected`. Its first
+    frame is `{kind: "watching"}`, sent once the subscription exists, so
+    a script knows from then on nothing is missed. `--filter` keeps keys
+    starting with any of its prefixes, `--count` stops after that many.
+    A stream that ends normally sends no final response; the CLI exits 0
+    on `--count` or Ctrl-C, 2 if the session closes.
+
 ## Fake switcher (`internal/fakeatem`, `internal/fixtures/dump`)
 
 - **It is the session's socket.** A `fakeatem.Switcher` implements
