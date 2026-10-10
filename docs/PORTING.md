@@ -1622,8 +1622,8 @@ has a test that fails on bmdwire's behaviour: against the fake switcher
   this session holds none is another client's. atemwire's reactions to a
   release (forget our lock, re-request for queued work) stay release-only.
   `TestAnotherClientsLockIsVisible`, `TestLockState`.
-- **A Fairlight strip op with no `sourceId` encodes the stereo one**
-  (bmdwire issue not yet filed). For a missing or empty `sourceId`,
+- **bmdwire#16: a Fairlight strip op with no `sourceId` encodes the
+  stereo one.** For a missing or empty `sourceId`,
   `_resolve_source_id` (`atemwire/macrotransfer/fairlight.py:455-457`)
   returns 0xFFFFFFFFFFFF0000 (-65536), although its comment says the
   stereo value, -65280, which is 0xFFFFFFFFFFFF0100. Every live capture
@@ -1633,8 +1633,8 @@ has a test that fails on bmdwire's behaviour: against the fake switcher
   "Macro codec"). `TestMissingSourceIDIsStereo`,
   `TestStereoSourceIDRoundTrips`. `TestEncodeMatchesAtemwire` rewrites
   bmdwire's bytes for the 42 oracle cases this changes.
-- **A silenced Fairlight gain decodes as `-327.68`** (bmdwire issue not
-  yet filed). A silenced fader is recorded as -327.68 dB in Q16.16,
+- **bmdwire#17: a silenced Fairlight gain decodes as `-327.68`.** A
+  silenced fader is recorded as -327.68 dB in Q16.16,
   -21474836 (bytes `ec 51 b8 fe`). `_fmt_scalar` (`_helpers.py:90-97`)
   prints six decimals, `-327.679993`; bmdwire's `docs/PROFILE_FORMAT.md`
   (lines 802-804) says ATEM Software Control writes `-327.68`. Here
