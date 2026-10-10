@@ -22,6 +22,44 @@ func init() {
 	humanFormats["macro upload"] = formatTransfer
 	humanFormats["macro decode"] = formatMacroDecode
 	humanFormats["macro encode"] = formatMacroEncode
+	humanFormats["profile save"] = formatProfile
+	humanFormats["profile restore"] = formatProfile
+	humanFormats["profile images"] = formatProfile
+}
+
+// formatProfile is a line for the profile, then one per error, section
+// skipped and image.
+func formatProfile(p *printer, r engine.Response, raw json.RawMessage) []string {
+	var pr engine.ProfileResult
+	json.Unmarshal(raw, &pr)
+	var lines []string
+	switch p.e.Path {
+	case "profile save":
+		file := p.params["file"]
+		lines = append(lines, fmt.Sprintf("saved %s: %s %s, %d bytes", file, pr.Product, pr.VideoMode, pr.Bytes))
+	case "profile restore":
+		status := p.c.colour(green, pr.Summary)
+		if len(pr.Errors) > 0 {
+			status = p.c.colour(red, pr.Summary)
+		}
+		lines = append(lines, fmt.Sprintf("restored %s (%s): %s", p.params["file"], strings.TrimSpace(pr.Product+" "+pr.VideoMode), status))
+	}
+	var rows [][]string
+	for _, e := range pr.Errors {
+		rows = append(rows, []string{p.c.colour(red, "error"), e})
+	}
+	for _, s := range pr.Skipped {
+		rows = append(rows, []string{"skipped", s})
+	}
+	for _, im := range pr.Images {
+		what := fmt.Sprintf("still %d", im.Slot)
+		if im.Error != "" {
+			rows = append(rows, []string{p.c.colour(yellow, "image"), what, im.Name, im.Error})
+		} else {
+			rows = append(rows, []string{"image", what, im.Name, im.Path})
+		}
+	}
+	return append(lines, p.table(rows)...)
 }
 
 func formatMacroList(p *printer, _ engine.Response, raw json.RawMessage) []string {

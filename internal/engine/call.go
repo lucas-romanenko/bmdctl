@@ -276,5 +276,6 @@ func operations() []operation {
 	ops = append(ops, audioOperations()...)
 	ops = append(ops, mediaOperations()...)
 	ops = append(ops, macroOperations()...)
+	ops = append(ops, profileOperations()...)
 	return ops
 }
