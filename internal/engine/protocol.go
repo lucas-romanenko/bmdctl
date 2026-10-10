@@ -41,6 +41,11 @@ type Request struct {
 	FPS int `json:"fps,omitempty"`
 	// TimeoutMS bounds the wait for the switcher's echo; 0 means 5 s.
 	TimeoutMS int64 `json:"timeout_ms,omitempty"`
+	// Build is the build of the client sending it. A background engine of
+	// another build answers CodeStale to a device request and stops, for
+	// the client to start one of its own; requests to the engine itself
+	// (status, stop) are answered whatever the build.
+	Build string `json:"build,omitempty"`
 }
 
 // Error codes, each with its own exit status in the CLI.
@@ -50,6 +55,10 @@ const (
 	CodeNoEcho      = "no_echo"     // sent, not confirmed in time: exit 3
 	CodeRejected    = "rejected"    // the switcher refused it: exit 4
 	CodeDestructive = "destructive" // needs Yes: exit 5
+	// CodeStale: the engine runs another build than the client's and is
+	// stopping; the client starts a new one and retries, once. Exit 2 if
+	// it persists.
+	CodeStale = "stale"
 )
 
 // Response is the engine's answer: {ok, confirmed, result, took_ms} on

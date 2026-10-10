@@ -13,6 +13,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+	"sync"
 	"text/tabwriter"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
@@ -35,7 +36,7 @@ const (
 // exitCode maps an engine error code to the process's exit status.
 func exitCode(code string) int {
 	switch code {
-	case engine.CodeUnreachable, engine.CodeEngine:
+	case engine.CodeUnreachable, engine.CodeEngine, engine.CodeStale:
 		return exitUnreachable
 	case engine.CodeNoEcho:
 		return exitNoEcho
@@ -57,6 +58,9 @@ type cli struct {
 	reg            *table.Registry
 	// spawn starts a background engine (engine.Spawn); tests replace it.
 	spawn func(exe string, args, env []string) error
+	// build is this binary's build (buildID), sent with every request
+	// and run by the engine it starts; tests replace it.
+	build func() string
 	// serve runs the engine in this process, for "bmdctl engine";
 	// tests replace its dialler.
 	engineConfig func(engine.Config) engine.Config
@@ -84,7 +88,7 @@ func newCLI(stdout, stderr io.Writer) *cli {
 	}
 	var d net.Dialer
 	return &cli{stdin: os.Stdin, stdout: stdout, stderr: stderr, env: os.Getenv, environ: os.Environ,
-		reg: reg, spawn: engine.Spawn, engineConfig: func(c engine.Config) engine.Config { return c },
+		reg: reg, spawn: engine.Spawn, build: sync.OnceValue(buildID), engineConfig: func(c engine.Config) engine.Config { return c },
 		ctx: context.Background(), dialATEM: atem.Dial,
 		dialTCP: func(ctx context.Context, addr string) (net.Conn, error) { return d.DialContext(ctx, "tcp", addr) }}
 }

@@ -31,9 +31,9 @@ var refGlobalFlags = []refItem{
 
 var refBuiltins = []refItem{
 	{"bmdctl version", "Print bmdctl's version."},
-	{"bmdctl engine [--log-level L]", "Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running."},
+	{"bmdctl engine [--log-level L]", "Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running, and restarts one it started from another build of bmdctl; one run with bmdctl engine answers every build."},
 	{"bmdctl engine stop", "Stop the running engine; its sessions say goodbye to their switchers."},
-	{"bmdctl engine status", "Show the engine's version, pid, socket, log and sessions."},
+	{"bmdctl engine status", "Show the engine's version, build, pid, socket, log and sessions."},
 	{"bmdctl hosts [list]", "List the named hosts."},
 	{"bmdctl hosts add NAME ADDRESS [--device D]", "Name a device: atem (the default), hyperdeck, videohub or ultimatte."},
 	{"bmdctl hosts rm NAME", "Forget a host."},

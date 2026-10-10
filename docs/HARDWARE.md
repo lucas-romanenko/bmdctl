@@ -27,3 +27,28 @@ of it. The rules for hardware tests (which switchers, read-only unless
     value, for scripts.
 - **Not yet verified on hardware:** every command that changes the
   switcher, transfers (stills, macros), profiles, and the meter stream.
+
+## 2026-10-10: second run, writes
+
+- **Commit:** `8de68ca`.
+- **Switcher:** the report didn't restate it; the first run's was an
+  ATEM 1 M/E Constellation HD, protocol 2.30, 1080p25.
+- **Run:** the first commands that change the switcher, through the
+  engine: `preview` and `cut`, with `watch` running beside them. A still
+  upload (`media upload`) was not attempted.
+- **Result:** `preview` and `cut` worked (`preview` is confirmed by its
+  echo; `cut` has none). `watch`'s human form was verified live.
+- **Changed because of it** (the commit that added this section):
+  - A background engine kept serving after the bmdctl binary was
+    replaced. Every request now carries the client's build (the Go
+    build ID); a background engine of another build answers `stale` and
+    stops, and the command starts an engine of its own build and
+    retries once.
+  - `watch` printed `tally-index` and `fairlight-tally` changes that the
+    tally line already covers: they are left out unless `--all`.
+  - `inputs` lists each source (id, short name, long name, port type);
+    it was `input list`, which still works. A source name no input has
+    points at it.
+- **Not yet verified on hardware:** every other command that changes
+  the switcher, transfers (stills, macros), profiles, and the meter
+  stream.

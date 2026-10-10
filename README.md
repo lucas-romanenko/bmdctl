@@ -40,8 +40,10 @@ a completion script, and `bmdctl doctor` checks the setup.
 
 ### The engine under systemd or Docker
 
-Any command starts the engine in the background. To run it yourself,
-`bmdctl engine` runs it in the foreground and logs to stderr. In a
+Any command starts the engine in the background, and restarts it after
+bmdctl is rebuilt or upgraded. To run it yourself, `bmdctl engine` runs
+it in the foreground and logs to stderr; that one answers whichever
+build of bmdctl sends to it, and is restarted by you. In a
 container, put the socket on a volume the host shares (a switcher is
 reached over UDP, so use the host's network):
 

@@ -33,9 +33,9 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 ### Built-in commands
 
 - `bmdctl version`: Print bmdctl's version.
-- `bmdctl engine [--log-level L]`: Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running.
+- `bmdctl engine [--log-level L]`: Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running, and restarts one it started from another build of bmdctl; one run with bmdctl engine answers every build.
 - `bmdctl engine stop`: Stop the running engine; its sessions say goodbye to their switchers.
-- `bmdctl engine status`: Show the engine's version, pid, socket, log and sessions.
+- `bmdctl engine status`: Show the engine's version, build, pid, socket, log and sessions.
 - `bmdctl hosts [list]`: List the named hosts.
 - `bmdctl hosts add NAME ADDRESS [--device D]`: Name a device: atem (the default), hyperdeck, videohub or ultimatte.
 - `bmdctl hosts rm NAME`: Forget a host.
@@ -535,10 +535,6 @@ Give at least one flag. Echo: `RXMS:<slot>`.
 
 Show the switcher's model, firmware, video mode and what it has.
 
-### `bmdctl atem input list`
-
-List the switcher's sources: ids, names and port types.
-
 ### `bmdctl atem input rename <source>`
 
 Rename an input.
@@ -551,6 +547,10 @@ Give at least one flag. Echo: `InPr:<source>`.
 | `--long-name` | string, up to 20 bytes | optional | long name |
 | `--short-name` | string, up to 4 bytes | optional | short name |
 | `--port-type` | uint, 0-65535 | optional | external port type (no atemwire operation sets it) |
+
+### `bmdctl atem inputs`
+
+List the switcher's sources, one per line: id, short name, long name and port type.
 
 ### `bmdctl atem macro action <action>`
 
@@ -1373,4 +1373,4 @@ Runs until interrupted.
 |---|---|---|---|
 | `--filter` | list | optional | only keys starting with one of these: PrgI,KeOn:0 |
 | `--count` | uint | optional | stop after this many changes |
-| `--all` | bool | default false | include the clock's Time packets, left out unless --filter names them |
+| `--all` | bool | default false | include the clock's Time packets and the index and Fairlight tallies, left out unless --filter names them |

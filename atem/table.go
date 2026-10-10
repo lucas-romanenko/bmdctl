@@ -101,7 +101,7 @@ func (r Resolver) Source(s string) (uint64, error) {
 		if len(r.State.Inputs) == 0 {
 			return 0, fmt.Errorf("no input names known: give the source id")
 		}
-		return 0, fmt.Errorf("no input is named %q", s)
+		return 0, fmt.Errorf("no input is named %q (bmdctl inputs lists them)", s)
 	case 1:
 		return uint64(ids[0]), nil
 	}

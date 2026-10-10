@@ -74,9 +74,10 @@ func TestWatchLines(t *testing.T) {
 	}
 }
 
-// Through the engine, against the fake switcher: the clock is left out
-// unless --all, program changes show the source they leave, injected
-// tally and transitions render, and --json still prints the frames.
+// Through the engine, against the fake switcher: the clock and the index
+// and Fairlight tallies are left out unless --all, program changes show
+// the source they leave, injected tally and transitions render, and
+// --json still prints the frames.
 func TestWatchHuman(t *testing.T) {
 	b := newBench(t)
 	b.must(with("info")...) // the session, and its fake switcher
@@ -103,7 +104,9 @@ func TestWatchHuman(t *testing.T) {
 	trps := make([]byte, 8)
 	trps[1], trps[2] = 1, 20
 	binary.BigEndian.PutUint16(trps[4:], 2500)
-	sw.Send(tally, fakeatem.Command("TrPs", trps))
+	// The tally line covers the index and Fairlight tallies: left out.
+	tlin, fmtl := fakeatem.Command("TlIn", []byte{0, 2, 1, 0}), fakeatem.Command("FMTl", []byte{0, 0})
+	sw.Send(tlin, fmtl, tally, fakeatem.Command("TrPs", trps))
 	b.must(with("usk", "2", "on-air", "on")...)
 	for _, want := range []string{"program  ME1  CAM2 → CAM1", "tally  CAM1 pgm", "transition  ME1  dip  running 0.0s",
 		`key-on-air:0:1  {"index":0,"keyer":1,"enabled":true}`} {
@@ -114,11 +117,17 @@ func TestWatchHuman(t *testing.T) {
 	if code := <-done; code != 0 {
 		t.Errorf("exit %d", code)
 	}
-	// --all keeps the clock.
-	w, done = watch("--count", "1", "--all")
+	// --all keeps the clock and the tallies.
+	w, done = watch("--count", "3", "--all")
 	b.must(with("time-request")...)
 	if l := w.next(t); !strings.Contains(l, `time  {"hours":10,"minutes":20,"seconds":30,"frames":5,"dropframe":false}`) {
 		t.Errorf("--all: %q", l)
+	}
+	sw.Send(tlin, fmtl)
+	for _, want := range []string{"tally-index  {", "fairlight-tally  {"} {
+		if l := w.next(t); !strings.Contains(l, want) {
+			t.Errorf("--all: %q, want %q", l, want)
+		}
 	}
 	<-done
 	// --json is the engine's frames, the opcode key and all.

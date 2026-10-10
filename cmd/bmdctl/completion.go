@@ -303,7 +303,7 @@ func (c *cli) ask(g globals, path string, params map[string]string, v any) bool 
 	defer conn.Close()
 	ctx, cancel := context.WithTimeout(c.ctx, time.Second)
 	defer cancel()
-	resp, err := engine.Call(ctx, conn, engine.Request{Device: "atem", Host: t.Address, Path: path, Params: params},
+	resp, err := engine.Call(ctx, conn, engine.Request{Device: "atem", Host: t.Address, Path: path, Params: params, Build: c.build()},
 		func([]byte, *engine.FileFrame, *engine.Response) error { return nil })
 	if err != nil || !resp.OK {
 		return false
@@ -390,7 +390,7 @@ func (c *cli) liveIndexes(e *table.Entry, p table.Param, g globals, tokens []str
 // engine.
 func (c *cli) liveSources(g globals) []string {
 	var ins []engine.InputEntry
-	if !c.ask(g, "input list", nil, &ins) {
+	if !c.ask(g, "inputs", nil, &ins) {
 		return nil
 	}
 	var out []string

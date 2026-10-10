@@ -3,12 +3,15 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/lucas-romanenko/bmdctl/internal/engine"
 )
 
 // Group c, end to end against the fake switcher: the upstream and
-// downstream keyers, aux, input rename and list, colour generators.
+// downstream keyers, aux, input rename and inputs, colour generators.
 func TestKeyerCommands(t *testing.T) {
 	b := newBench(t)
 	for _, c := range []struct {
@@ -58,21 +61,34 @@ func TestKeyerCommands(t *testing.T) {
 	if out := b.must(with("state", "--path", "dsks.0.properties.tie")...); out != "true\n" {
 		t.Errorf("tie after gain: %q", out)
 	}
-	// The rename shows in the names: the old one is gone, the new one
-	// works, and input list shows it.
-	if code, _, _ := b.run(with("program", "Camera 2")...); code != exitUsage {
-		t.Errorf("old name still resolves: %d", code)
+	// The rename shows in the names: the old one is gone, pointing at
+	// inputs, the new one works, and inputs shows it.
+	if code, _, errOut := b.run(with("program", "Camera 2")...); code != exitUsage ||
+		!strings.Contains(errOut, `no input is named "Camera 2" (bmdctl inputs lists them)`) {
+		t.Errorf("old name still resolves: %d %q", code, errOut)
 	}
 	b.must(with("program", "stage left")...)
 	if got := b.lastSent(t, "CPgI"); got != "00000002" {
 		t.Errorf("new name: %s", got)
 	}
-	out := b.must(with("input", "list")...)
-	for _, want := range []string{"1      Camera 1            CAM1  external", "2      Stage Left          STGL  external",
-		"1000   Color Bars          Bars  bars", "10010  ME 1 Program        PGM   m/e output"} {
+	// One source per line: id, short name, long name, port type.
+	out := b.must(with("inputs")...)
+	for _, want := range []string{"1      CAM1  Camera 1            external\n", "2      STGL  Stage Left          external\n",
+		"1000   Bars  Color Bars          bars\n", "10010  PGM   ME 1 Program        m/e output\n"} {
 		if !strings.Contains(out, want) {
-			t.Errorf("input list lacks %q:\n%s", want, out)
+			t.Errorf("inputs lacks %q:\n%s", want, out)
 		}
+	}
+	var ins struct {
+		Result []engine.InputEntry `json:"result"`
+	}
+	if json.Unmarshal([]byte(b.must(with("inputs", "--json")...)), &ins); len(ins.Result) != 8 ||
+		ins.Result[1].Source != 2 || ins.Result[1].Short != "STGL" || ins.Result[1].Long != "Stage Left" || ins.Result[1].Type != "external" {
+		t.Errorf("inputs --json: %+v", ins.Result)
+	}
+	// input list, its name before, still works.
+	if old := b.must(with("input", "list")...); old != out {
+		t.Errorf("input list:\n%s", old)
 	}
 	// Toggles read the state: keyer 0 and DSK 0 start on air.
 	for _, want := range []string{"00000000", "00000100", "00000000"} {

@@ -118,20 +118,35 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 	return code
 }
 
-// send sends a request to the engine and prints its replies.
+// errStale ends a call answered by an engine of another build.
+var errStale = errors.New("the engine runs another build")
+
+// send sends a request to the engine and prints its replies. An engine
+// started from another build answers "stale" and stops; the request then
+// goes, once, to a new engine of this build.
 func (c *cli) send(g globals, e *table.Entry, req engine.Request, out *printer, label string) int {
-	conn, err := c.connectEngine()
-	if err != nil {
-		return c.fail(codeFor(err), "bmdctl %s: %v", label, err)
-	}
-	defer conn.Close()
-	_, err = engine.Call(c.ctx, conn, req, func(line []byte, f *engine.FileFrame, r *engine.Response) error {
-		if f != nil {
-			return out.file(*f)
+	req.Build = c.build()
+	err := errStale
+	for tries := 0; errors.Is(err, errStale); tries++ {
+		if tries > 0 {
+			c.waitEngineGone()
 		}
-		out.response(line, *r)
-		return nil
-	})
+		var conn io.ReadWriteCloser
+		if conn, err = c.connectEngine(); err != nil {
+			return c.fail(codeFor(err), "bmdctl %s: %v", label, err)
+		}
+		_, err = engine.Call(c.ctx, conn, req, func(line []byte, f *engine.FileFrame, r *engine.Response) error {
+			if f != nil {
+				return out.file(*f)
+			}
+			if r.Code == engine.CodeStale && tries == 0 {
+				return errStale
+			}
+			out.response(line, *r)
+			return nil
+		})
+		conn.Close()
+	}
 	switch {
 	case err != nil && c.ctx.Err() != nil && e.Stream:
 		return out.code() // interrupted: a stream's normal end

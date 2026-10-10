@@ -168,27 +168,31 @@ func (r *Registry) Entries(device string) []Entry {
 	return es
 }
 
-// Alias makes word, as the first word of a command line, stand for the
-// first word to wherever the line names none of word's own commands: a
-// second name the parser reads and help, completion's lists and
-// COMMANDS.md leave out.
-func (r *Registry) Alias(device, word, to string) error {
-	if !slices.ContainsFunc(r.Entries(device), func(e Entry) bool { return e.Words()[0] == to }) {
-		return fmt.Errorf("table: %s alias %s: no command starts %s", device, word, to)
+// Alias makes words, at the start of a command line, stand for the words
+// to wherever the line names no command as typed: a second name the
+// parser reads and help, completion's lists and COMMANDS.md leave out
+// (fairlight for audio, input list for inputs).
+func (r *Registry) Alias(device, words, to string) error {
+	tw := strings.Fields(to)
+	if !slices.ContainsFunc(r.Entries(device), func(e Entry) bool {
+		w := e.Words()
+		return len(w) >= len(tw) && slices.Equal(w[:len(tw)], tw)
+	}) {
+		return fmt.Errorf("table: %s alias %s: no command starts %s", device, words, to)
 	}
 	if r.aliases == nil {
 		r.aliases = map[string]string{}
 	}
-	r.aliases[device+" "+word] = to
+	r.aliases[device+" "+strings.Join(strings.Fields(words), " ")] = strings.Join(tw, " ")
 	return nil
 }
 
-// Unalias returns words with an alias for a first word replaced by the
-// word it stands for, and whether it was one.
+// Unalias returns words with the longest alias they start with replaced
+// by the words it stands for, and whether they started with one.
 func (r *Registry) Unalias(device string, words []string) ([]string, bool) {
-	if len(words) > 0 {
-		if to, ok := r.aliases[device+" "+words[0]]; ok {
-			return append([]string{to}, words[1:]...), true
+	for n := len(words); n > 0; n-- {
+		if to, ok := r.aliases[device+" "+strings.Join(words[:n], " ")]; ok {
+			return append(strings.Fields(to), words[n:]...), true
 		}
 	}
 	return words, false
