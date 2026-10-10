@@ -39,7 +39,7 @@ func TestKeyerCommands(t *testing.T) {
 		{[]string{"dsk", "auto", "--dsk", "2"}, "DDsA", "01000000", false},
 		{[]string{"aux", "2", "Color 1"}, "CAuS", "010107d1", true},
 		{[]string{"input", "rename", "Camera 2", "--long-name", "Stage Left", "--short-name", "STGL"}, "CInL", "", true},
-		{[]string{"color", "1", "--hue", "120"}, "CClV", "0101" + "04b0" + "0000" + "0000", true},
+		{[]string{"color", "2", "--hue", "120"}, "CClV", "0101" + "04b0" + "0000" + "0000", true},
 	} {
 		out, got := b.mustSend(t, c.code, with(c.args...)...)
 		if c.hex != "" && got != c.hex {

@@ -43,6 +43,7 @@ func (c *cli) runDevice(g globals, device string, words, tokens []string) int {
 		return exitOK
 	}
 	if err == nil {
+		c.noticeOldForm(e, raw, tokens)
 		err = precheck(e, raw, g)
 	}
 	if err != nil {
@@ -54,6 +55,21 @@ func (c *cli) runDevice(g globals, device string, words, tokens []string) int {
 	req := engine.Request{Device: device, Path: e.Path, Params: raw, Yes: g.yes, FPS: g.fps,
 		TimeoutMS: g.timeout.Milliseconds()}
 	return c.request(g, e, req)
+}
+
+// noticeOldForm says, once per invocation, that a line gives a positional
+// argument in the --name form, and how the line is written now.
+func (c *cli) noticeOldForm(e *table.Entry, raw map[string]string, tokens []string) {
+	flags, line := e.Deprecated(raw, tokens)
+	if len(flags) == 0 || c.noticed {
+		return
+	}
+	c.noticed = true
+	names, verb := flags[0], "is"
+	if n := len(flags); n > 1 {
+		names, verb = strings.Join(flags[:n-1], ", ")+" and "+flags[n-1], "are"
+	}
+	fmt.Fprintf(c.stderr, "bmdctl: %s %s deprecated, use: %s\n", names, verb, line)
 }
 
 // request sends a device command to the engine (or runs a local one) and

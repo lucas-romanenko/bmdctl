@@ -10,10 +10,12 @@ import (
 )
 
 // Index is a position the atem package counts from 0 (an M/E, a keyer, a
-// DSK, an aux output, a media or macro slot, a media player), as people
-// count it: from 1, as ATEM Software Control and the panels do. Its value
-// is the package's; typed on the command line, in JSON and in text it is
-// one more. This type is the only place the one is added or taken away.
+// DSK, an aux output, a media or macro slot, a media player, a colour
+// generator, a multiviewer or its window, a SuperSource or its box, a
+// HyperDeck slot, an EQ band), as people count it: from 1, as ATEM
+// Software Control and the panels do. Its value is the package's; typed
+// on the command line, in JSON and in text it is one more. This type is
+// the only place the one is added or taken away.
 type Index int
 
 // String is the index counted from 1.

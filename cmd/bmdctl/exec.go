@@ -148,6 +148,7 @@ func (c *cli) checkLine(args []string) error {
 		return nil
 	}
 	if err == nil {
+		c.noticeOldForm(e, raw, tokens)
 		err = precheck(e, raw, g)
 	}
 	if err != nil {

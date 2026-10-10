@@ -312,9 +312,11 @@ func (c *cli) ask(g globals, path string, params map[string]string, v any) bool 
 }
 
 // liveIndexes are the values an index parameter can take on the target
-// switcher, counted from 1, from a running engine: as many M/Es, keyers,
-// DSKs, aux outputs, media players and still or clip slots as it has, and
-// the macro slots it holds (with their names where a name will do).
+// switcher, counted from 1: every ATEM's two colour generators, four
+// SuperSource boxes and six EQ bands, and from a running engine as many
+// M/Es, keyers, DSKs, aux outputs, media players, still or clip slots,
+// SuperSources, multiviewers and HyperDeck slots as it has, and the macro
+// slots it holds (with their names where a name will do).
 func (c *cli) liveIndexes(e *table.Entry, p table.Param, g globals, tokens []string) []string {
 	upTo := func(n int) []string {
 		var out []string
@@ -322,6 +324,10 @@ func (c *cli) liveIndexes(e *table.Entry, p table.Param, g globals, tokens []str
 			out = append(out, table.Index(i).String())
 		}
 		return out
+	}
+	switch p.Name {
+	case "generator", "box", "band":
+		return upTo(int(*p.Max) + 1)
 	}
 	if strings.HasPrefix(e.Path, "macro ") && p.Name == "slot" {
 		var ml engine.MacroList
@@ -366,7 +372,14 @@ func (c *cli) liveIndexes(e *table.Entry, p table.Param, g globals, tokens []str
 	case "player":
 		return upTo(info.MediaPlayers)
 	case "slot", "still":
+		if e.Path == "hyperdeck-slot" {
+			return upTo(info.HyperDecks)
+		}
 		return upTo(info.Stills)
+	case "supersource":
+		return upTo(info.SuperSources)
+	case "multiviewer":
+		return upTo(info.Multiviewers)
 	case "clip":
 		return upTo(info.Clips)
 	}

@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,7 +30,7 @@ func TestPositionalExamples(t *testing.T) {
 		{"usk 1 fill cam2", "CKeF", "00000002"},
 		{"aux 2 mp1", "CAuS", "01010bc2"},
 		{"transition rate 1:00", "CTDp", "01001e0000000000"}, // NTSC: one second is 30 frames
-		{"color 1 --hue 180 --sat 50", "CClV", "030107080 1f40000"},
+		{"color 1 --hue 180 --sat 50", "CClV", "0300070801f40000"},
 		{"macro run 3", "MAct", "00020000"},
 	} {
 		if _, got := b.mustSend(t, c.code, with(strings.Fields(c.line)...)...); got != strings.ReplaceAll(c.hex, " ", "") {
@@ -58,7 +59,7 @@ func TestPositionalExamples(t *testing.T) {
 }
 
 // The --name form of a positional argument still works, for this
-// release, and nothing shows it.
+// release, with a notice on stderr, and nothing shows it.
 func TestOldFlagForm(t *testing.T) {
 	for old, now := range map[string]string{
 		"program --source 5":                                  "program 5",
@@ -72,13 +73,25 @@ func TestOldFlagForm(t *testing.T) {
 		"camera --destination 2 --category 8 --parameter 1":   "camera 2 8 1",
 		"macro action --action stop":                          "macro action stop",
 		"dsk on-air --on-air --dsk 2":                         "dsk on-air on --dsk 2",
-		"fairlight eq --source 1 --channel -1 --band 0 --q 2": "fairlight eq 1 0 --q 2",
+		"fairlight eq --source 1 --channel -1 --band 1 --q 2": "fairlight eq 1 1 --channel -1 --q 2",
 	} {
 		_, o1, e1 := runCLI(append([]string{"--dry-run"}, strings.Fields(old)...)...)
 		_, o2, e2 := runCLI(append([]string{"--dry-run"}, strings.Fields(now)...)...)
 		if o1 == "" || o1 != o2 {
 			t.Errorf("%q gives %q %q, %q gives %q %q", old, o1, e1, now, o2, e2)
 		}
+		// One line before whatever else the command says, naming the line
+		// as it is written now.
+		notice, rest, _ := strings.Cut(e1, "\n")
+		if !strings.HasPrefix(notice, "bmdctl: --") || !strings.HasSuffix(notice, " deprecated, use: "+now) || rest != e2 {
+			t.Errorf("%q: stderr %q, want the notice then %q", old, e1, e2)
+		}
+	}
+	if _, _, errOut := runCLI("--dry-run", "program", "--source", "5"); errOut != "bmdctl: --source is deprecated, use: program 5\n" {
+		t.Errorf("notice %q", errOut)
+	}
+	if _, _, errOut := runCLI("--dry-run", "usk", "on-air", "--keyer", "2", "--on-air"); errOut != "bmdctl: --keyer and --on-air are deprecated, use: usk 2 on-air on\n" {
+		t.Errorf("notice %q", errOut)
 	}
 	// Help, COMMANDS.md and completion show the arguments positionally.
 	_, help, _ := runCLI("program", "--help")
@@ -96,5 +109,49 @@ func TestOldFlagForm(t *testing.T) {
 	}
 	if strings.Contains(md, "| `--source` | source, 0-65535 | required |") {
 		t.Error("COMMANDS.md shows --source")
+	}
+}
+
+// The notice is printed once per invocation, however many of exec's lines
+// use the old form.
+func TestOldFlagFormOnce(t *testing.T) {
+	b := newBench(t)
+	script := filepath.Join(t.TempDir(), "cue.txt")
+	os.WriteFile(script, []byte("program --source 1\npreview --source 2\ncut\n"), 0o644)
+	code, out, errOut := b.run(with("exec", script)...)
+	if code != 0 || strings.Count(out, "\n") != 3 || errOut != "bmdctl: --source is deprecated, use: program 1\n" {
+		t.Errorf("exec: %d %q %q", code, out, errOut)
+	}
+}
+
+// audio is a hidden second name for fairlight, wherever it names none of
+// the classic mixer's commands.
+func TestAudioAlias(t *testing.T) {
+	_, o1, e1 := runCLI("--dry-run", "audio", "strip", "1", "--volume", "-10")
+	_, o2, _ := runCLI("--dry-run", "fairlight", "strip", "1", "--volume", "-10")
+	if o1 == "" || o1 != o2 || e1 != "" {
+		t.Errorf("audio strip: %q %q, fairlight strip: %q", o1, e1, o2)
+	}
+	if _, help, _ := runCLI("audio", "eq", "--help"); !strings.HasPrefix(help, "usage: bmdctl [atem] fairlight eq <source> <band>") {
+		t.Errorf("audio eq --help:\n%s", help)
+	}
+	// The classic mixer's commands keep the word.
+	if _, help, _ := runCLI("audio", "master", "--help"); !strings.HasPrefix(help, "usage: bmdctl [atem] audio master") {
+		t.Errorf("audio master --help:\n%s", help)
+	}
+	// Nothing lists it.
+	_, group, _ := runCLI("audio", "--help")
+	_, top, _ := runCLI("--help")
+	reg, _ := engine.NewRegistry()
+	if strings.Contains(group, "  strip <source>") {
+		t.Errorf("audio --help shows fairlight's commands:\n%s", group)
+	}
+	for what, text := range map[string]string{"--help": top, "COMMANDS.md": commandsDoc(reg)} {
+		if strings.Contains(text, "audio strip") {
+			t.Errorf("%s shows the alias", what)
+		}
+	}
+	if code, _, errOut := runCLI("--dry-run", "audio", "bogus"); code != exitUsage || !strings.Contains(errOut, `unknown command "audio bogus"`) {
+		t.Errorf("audio bogus: %d %q", code, errOut)
 	}
 }

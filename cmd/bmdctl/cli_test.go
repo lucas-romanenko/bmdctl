@@ -119,7 +119,7 @@ func TestDryRun(t *testing.T) {
 		{[]string{"transition", "preview", "true", "--me", "2"}, "000c000043545072" + "01010000"},
 		{[]string{"transition", "preview", "on", "--me", "2"}, "000c000043545072" + "01010000"},
 		{[]string{"tbar", "20000"}, "000c000043545073" + "00002710"},
-		{[]string{"multiviewer", "input", "7", "3010", "--multiviewer", "1"}, "000c0000434d7649" + "01070bc2"},
+		{[]string{"multiviewer", "input", "7", "3010", "--multiviewer", "1"}, "000c0000434d7649" + "00060bc2"},
 		{[]string{"auto-video-mode", "true"}, "000c00004169564d" + "01000000"},
 		{[]string{"streaming", "audio-bitrate", "128000", "128000"}, "0010000053544142" + "0001f4000001f400"},
 		{[]string{"time-of-day", "--time", "2026-09-11T12:00:00Z"}, "0010000053546f44" + "6aa3ed4000000000"},
@@ -135,8 +135,8 @@ func TestDryRun(t *testing.T) {
 		{[]string{"media", "player", "2", "--still", "6"}, "001000004d505353" + "0301010500000000"},
 		{[]string{"macro", "action", "run", "--slot", "4"}, "000c00004d416374" + "00030000"},
 		{[]string{"macro", "action", "stop"}, "000c00004d416374" + "ffff0100"},
-		{[]string{"fairlight", "eq", "1", "0", "--channel", "-1", "--q", "2", "-q"}, ""},
-		{[]string{"supersource", "box", "0", "--y", "-200", "-y"}, "0020000043534250" + "00080000000000000000ff38000000000000000000000000"},
+		{[]string{"fairlight", "eq", "1", "1", "--channel", "-1", "--q", "2", "-q"}, ""},
+		{[]string{"supersource", "box", "1", "--y", "-200", "-y"}, "0020000043534250" + "00080000000000000000ff38000000000000000000000000"},
 	} {
 		for _, dev := range [][]string{{"atem"}, nil} {
 			args := append(append(dev, "--dry-run"), c.args...)

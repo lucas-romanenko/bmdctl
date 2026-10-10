@@ -27,7 +27,13 @@ func RegisterCommands(r *table.Registry) error {
 	for _, s := range commandSpecs() {
 		entries = append(entries, s.entry())
 	}
-	return r.Add(entries...)
+	if err := r.Add(entries...); err != nil {
+		return err
+	}
+	// audio strip and the rest for fairlight's; audio master and the
+	// classic mixer's other commands keep theirs. Not in bmdwire v1.3.0
+	// (docs/PORTING.md).
+	return r.Alias("atem", "audio", "fairlight")
 }
 
 // Resolver resolves the table's rates and sources against a switcher's
@@ -273,13 +279,17 @@ func names(p fp, n map[string]uint64) fp { p.Names = n; return p }
 
 func oneBased(p fp) fp { p.OneBased = true; return p }
 
+// upTo bounds an index to the field values 0 to hi, typed 1 to hi+1.
+func upTo(p fp, hi float64) fp { p.Min, p.Max = table.Bounds(0, hi); return oneBased(p) }
+
 var (
 	pME          = oneBased(def("me", "ME", table.Uint, "1", "M/E"))
 	pKeyer       = oneBased(req("keyer", "Keyer", table.Uint, "", "upstream keyer"))
 	pDSK         = oneBased(def("dsk", "DSK", table.Uint, "1", "downstream keyer"))
 	pSource      = req("source", "Source", table.Source, "", "source id or input name")
-	pMultiviewer = def("multiviewer", "Multiviewer", table.Uint, "0", "multiviewer, 0-based")
-	pSuperSource = def("supersource", "SuperSource", table.Uint, "0", "SuperSource, 0-based")
+	pMultiviewer = oneBased(def("multiviewer", "Multiviewer", table.Uint, "1", "multiviewer"))
+	pSuperSource = oneBased(def("supersource", "SuperSource", table.Uint, "1", "SuperSource"))
+	pBand        = upTo(req("band", "Band", table.Uint, "", "EQ band"), 5)
 )
 
 const (
@@ -512,7 +522,7 @@ func commandSpecs() []spec {
 
 		// §1.7 color-gen
 		{path: "color", summary: "Set a colour generator.", cmd: ColorGenerator{}, echo: "ColV:<generator>",
-			params: []fp{req("generator", "Generator", table.Uint, "", "colour generator, 0 or 1"),
+			params: []fp{upTo(req("generator", "Generator", table.Uint, "", "colour generator"), 1),
 				opt("hue", "Hue", table.Float, "degrees, not clamped", "hue"),
 				opt("saturation", "Saturation", table.Float, unitPercent, "saturation"),
 				opt("luma", "Luma", table.Float, unitPercent, "luma")}},
@@ -556,7 +566,7 @@ func commandSpecs() []spec {
 				names(opt("mix", "State", table.Enum, "", "mix option"), mixOptions))},
 		{path: "fairlight eq", summary: "Set one EQ band of a Fairlight strip.", cmd: FairlightEQBandProperties{},
 			echo: "AEBP:<source>.<channel>:<band>",
-			params: append(stripParams(), req("band", "Band", table.Uint, "", "band, 0-5"),
+			params: append(stripParams(), pBand,
 				opt("enabled", "Enabled", table.Bool, "", "band on"),
 				names(opt("shape", "Shape", table.Enum, "", "filter shape"), eqShapes),
 				names(opt("range", "FrequencyRange", table.Enum, "", "frequency range"), eqRanges),
@@ -565,7 +575,7 @@ func commandSpecs() []spec {
 				opt("q", "Q", table.Float, "clamped to 0.30-10.30", "Q"))},
 		{path: "fairlight master-eq", summary: "Set one EQ band of the Fairlight master bus.", cmd: FairlightMasterEQBandProperties{},
 			echo: "AMBP:<band>",
-			params: []fp{req("band", "Band", table.Uint, "", "band, 0-5"), opt("enabled", "Enabled", table.Bool, "", "band on"),
+			params: []fp{pBand, opt("enabled", "Enabled", table.Bool, "", "band on"),
 				names(opt("shape", "Shape", table.Enum, "", "filter shape"), eqShapes),
 				names(opt("range", "FrequencyRange", table.Enum, "", "frequency range"), eqRanges),
 				opt("frequency", "Frequency", table.Int, "Hz, clamped to 30-21700", "frequency"),
@@ -638,13 +648,13 @@ func commandSpecs() []spec {
 
 		// §1.13 hyperdeck
 		{path: "hyperdeck-slot", summary: "Bind a HyperDeck slot to an address and an input.", cmd: HyperdeckSettings{}, echo: "RXMS:<slot>",
-			params: []fp{req("slot", "Slot", table.Uint, "", "HyperDeck slot, 0-9"),
+			params: []fp{upTo(req("slot", "Slot", table.Uint, "", "HyperDeck slot"), 9),
 				opt("address", "NetworkAddress", table.String, "", "deck IPv4 address; 0.0.0.0 clears the slot"),
 				opt("input", "SwitcherInput", table.Source, "", "switcher input the deck feeds")}},
 
 		// §1.14 multiviewer
 		{path: "multiviewer input", summary: "Route a source to a multiviewer window.", cmd: MultiviewInput{}, echo: "MvIn:<multiviewer>:<window>",
-			params: []fp{pMultiviewer, req("window", "Window", table.Uint, "", "window"), pSource}},
+			params: []fp{pMultiviewer, oneBased(req("window", "Window", table.Uint, "", "window")), pSource}},
 		{path: "multiviewer properties", summary: "Set a multiviewer's layout and program/preview swap.", cmd: MultiviewProperties{},
 			echo: "MvPr:<multiviewer>",
 			params: []fp{pMultiviewer, opt("layout", "Layout", table.Uint, "4-bit field: bit N splits quadrant N", "layout"),
@@ -652,7 +662,7 @@ func commandSpecs() []spec {
 
 		// §1.15 supersource
 		{path: "supersource box", summary: "Set a SuperSource box.", cmd: SupersourceBoxProperties{}, echo: "SSBP:<supersource>:<box>",
-			params: []fp{pSuperSource, req("box", "Box", table.Uint, "", "box, 0-3"), opt("enabled", "Enabled", table.Bool, "", "box on"),
+			params: []fp{pSuperSource, upTo(req("box", "Box", table.Uint, "", "box"), 3), opt("enabled", "Enabled", table.Bool, "", "box on"),
 				opt("source", "Source", table.Source, "", "source"), opt("x", "X", table.Int, "-4800-4800", "x"),
 				opt("y", "Y", table.Int, "-3400-3400", "y"), opt("size", "Size", table.Uint, "70-1000", "size"),
 				opt("masked", "Masked", table.Bool, "", "crop on"), opt("top", "Top", table.Uint, "0-18000", "crop top"),
