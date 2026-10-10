@@ -52,3 +52,40 @@ of it. The rules for hardware tests (which switchers, read-only unless
 - **Not yet verified on hardware:** every other command that changes
   the switcher, transfers (stills, macros), profiles, and the meter
   stream.
+
+## 2026-10-10: third run, stills
+
+- **Commit:** `1bf974a`.
+- **Switcher:** the same ATEM 1 M/E Constellation HD as the first run
+  (protocol 2.30, 1080p25; the report didn't restate them, and the
+  frames were 1920×1080).
+- **Run:** the still transfers, through the engine, on slot 10 (as
+  typed, counting from 1): `media upload 10` of a 1280×640 RGBA PNG
+  (three flat colours, so PNG premultiply applied), `media download 10`,
+  then `media clear 10 --yes`, with `media list` after it.
+- **Result:** all three worked.
+  - The upload was confirmed in 1085 ms. The fit scaled the picture
+    1.5× to 1920×960 with 60-row bars above and below. The switcher
+    reported the slot as "test" (the file's name), with an MD5 hash of
+    `ccd26a6e6c0b11f5f68d25758953607a`, the same hash bmdctl computes
+    over the frame it sent.
+  - The download was confirmed in 573 ms, a 1920×1080 RGBA PNG. Red
+    (214,39,24) came back as (214,39,23), green (47,208,122) as
+    (46,208,121), and the transparent bar's corner pixel with alpha 12.
+    Afterwards, the downloaded PNG (`back.png`) was compared with
+    `FitFrame`, `RGBAToYCbCrA` (premultiplied) and `YCbCrAToRGBA` run
+    locally on the source (`test.png`). All 8,294,400 bytes are equal,
+    so the switcher stored and returned the frame unchanged. The colour
+    shifts and the alpha of 12 come from the conversion, which matches
+    atemwire's C byte for byte, not from the switcher.
+  - The clear was confirmed in 14 ms (exit 0: `media clear confirmed
+    14 ms slot 10, was "test"`), and `media list` showed slot 10 empty
+    afterwards.
+- **Changed because of it** (the commit that added this section): no
+  code. `docs/PORTING.md` now records still upload, download and clear,
+  the image fit, and the Y'CbCr and RLE conversion as verified on
+  hardware.
+- **Not yet verified on hardware:** a still that isn't premultiplied
+  (JPEG, GIF or `--premultiply=false`), a fit that shrinks the image
+  or adds bars at the sides, macro transfers, profiles, the meter
+  stream, and every other command that changes the switcher.

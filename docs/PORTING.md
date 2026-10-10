@@ -590,6 +590,13 @@ does.
   the time. `imaging_test.go` ports `test_imaging_alpha.py` and
   `test_mediaconvert_hardening.py` one for one; `test_input_buffers_are_released`
   has no counterpart, because Go has no `Py_buffer`.
+- **Verified on hardware** (the third run, docs/HARDWARE.md): `FitFrame`,
+  premultiplied `RGBAToYCbCrA`, `RLEEncode`, `RLEDecode` and
+  `YCbCrAToRGBA`. A 1280×640 PNG was uploaded to a Constellation at
+  1080p25 and downloaded again. The switcher's MD5 equalled the frame's,
+  and the downloaded RGBA equals the same steps run locally, byte for
+  byte. Not yet seen on a switcher: conversion without premultiply, and
+  a fit that shrinks the image or adds bars at the sides.
 
 ## Transfers (`atem/transfer.go`)
 
@@ -699,7 +706,11 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   for a slot to go off air and its MPfe hash check after the upload are not
   ported. `ClearStill` returns when the CSTL is sent, not when MPfe
   confirms it, as `clear_still` does. Slots are ints checked against the
-  wire: u16, or u8 for `ClearStill` (CSTL).
+  wire: u16, or u8 for `ClearStill` (CSTL). Still upload and download are
+  verified on hardware (the third run, docs/HARDWARE.md). The upload's
+  name and MD5 came back in the slot's MPfe. The clear is verified too:
+  `media clear`'s wait for that MPfe was confirmed in 14 ms. Macro
+  transfers are not yet verified on hardware.
 - **Tests.** `transfer_test.go` drives the lane directly, as bmdwire's tests
   drive `AtemProtocol`, porting the engine tests of `test_lock_delivery.py`,
   `test_download_still.py`, `test_session_hygiene_atemwire.py` and
