@@ -710,7 +710,8 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   verified on hardware (the third run, docs/HARDWARE.md). The upload's
   name and MD5 came back in the slot's MPfe. The clear is verified too:
   `media clear`'s wait for that MPfe was confirmed in 14 ms. Macro
-  transfers are not yet verified on hardware.
+  download is verified on hardware too (the fourth run: 712 bytes in
+  109 ms). Macro upload is not yet.
 - **Tests.** `transfer_test.go` drives the lane directly, as bmdwire's tests
   drive `AtemProtocol`, porting the engine tests of `test_lock_delivery.py`,
   `test_download_still.py`, `test_session_hygiene_atemwire.py` and
@@ -790,6 +791,9 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   `encoder_test.go` port `test_macro_decoder.py`, `test_macro_encoder.py`
   and the macro halves of `test_wipe_pattern_names.py` and
   `test_input_video_migration.py` one for one, on the `macro/` fixtures.
+- **On hardware** (the fourth run, docs/HARDWARE.md): the 712-byte macro
+  downloaded from a Constellation decodes to 52 ops, Fairlight ones
+  included, and they encode back to the same bytes.
 
 ## Profiles (`atem/profile`)
 
@@ -853,6 +857,10 @@ and a zero value selects nothing.
   through the saver's `stingerSource` hook. `profile_test.go` ports
   bmdwire's profile tests one for one; `e2e_test.go` applies and saves
   through a Session against the fake switcher.
+- **Save is verified on hardware** (the fourth run, docs/HARDWARE.md):
+  `profile save` from a Constellation wrote the XML with its six macros,
+  and the one used still as a PNG beside it. Apply (`profile restore`)
+  is not yet verified on hardware.
 
 ## Command table and CLI (`internal/table`, `atem/table.go`, `cmd/bmdctl`)
 
@@ -1366,7 +1374,10 @@ comes back. Indexes in results count from 1, as the flags do
   display names. Levels are atemwire's dB (Fairlight's hundredths divided
   by 100, the classic mixer's log scale); level and peak are the fader's
   on Fairlight. The fake switcher answers `SFLN` with one burst of
-  fixed levels for each strip it described, and the master.
+  fixed levels for each strip it described, and the master. The
+  Fairlight readout is verified on hardware (the fourth run,
+  docs/HARDWARE.md): a Constellation streamed 14 strips and the master.
+  `classic-audio meters` (`SALN`) is not yet verified.
 - **Group e, media** (`ops_media.go`). `media list` is the still slots
   (`mediaplayer_slot_info`) and what each player shows. Transfers run
   through the session's transfer engine with the library's timeouts,

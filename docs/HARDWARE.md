@@ -89,3 +89,49 @@ of it. The rules for hardware tests (which switchers, read-only unless
   (JPEG, GIF or `--premultiply=false`), a fit that shrinks the image
   or adds bars at the sides, macro transfers, profiles, the meter
   stream, and every other command that changes the switcher.
+
+## 2026-10-10: fourth run, macros, profile save, meters
+
+- **Commit:** `c1c354a`.
+- **Switcher:** the same Constellation as the first run: the saved
+  profile names the ATEM 1 M/E Constellation HD at 1080p25. The report
+  didn't restate the protocol version.
+- **Run:** reads only, through the engine: `macro list`, `macro download
+  1` (as typed: "WIDE CAM", index 0), `profile save` with its media pool
+  images, and `audio meters`. `macro decode` ran locally on the
+  downloaded bytecode.
+- **Result:** all of them worked.
+  - `macro list` showed 6 used slots.
+  - `macro download 1` was confirmed in 109 ms: 712 bytes of bytecode,
+    which `macro decode` turned into 52 ops. Afterwards, encoding those
+    ops again gave the same 712 bytes.
+  - `profile save` wrote 69,802 bytes of XML holding the six macros,
+    and `ATEM Media Pool/slot1_Japanese_bac_background.png` (1920×1080)
+    for the one used still.
+  - `audio meters` streamed levels for 14 strips and the master.
+- **Codec findings** in the decoded macro, both shared with bmdwire
+  v1.3.0:
+  - All 24 Fairlight strip ops carry sourceId bytes `00 01 ff ff ff ff
+    ff ff`: 0xFFFFFFFFFFFF0100, i.e. -65280 (stereo), decoded unsigned
+    as `18446744073709486336`. The report read that number as
+    0xFFFFFFFFFFFF0000 (-65536), but it is 0xFFFFFFFFFFFF0100. The
+    unsigned decode is deliberate in bmdwire (the form it says ATEM
+    Software Control writes) and is kept. The bug is in the encoder: an
+    op with no sourceId gets 0xFFFFFFFFFFFF0000, a value no op in the
+    macro or in bmdwire's live captures carries.
+  - The faders of 12 strips (Camera2 to Camera10, both media players
+    and ExternalTRS) are silenced: bytes `ec 51 b8 fe`, Q16.16
+    -21474836, -327.68 dB. bmdwire, and so bmdctl, decoded that as
+    `-327.679993`, where bmdwire's own docs say ATEM Software Control
+    writes `-327.68`. The profile saved on this run has `-327.679993`
+    in its macros.
+- **Changed because of it** (`3de8b9c`): a Fairlight strip op with no
+  `sourceId` now encodes the stereo one, and a silenced Fairlight gain
+  decodes as `-327.68`. Both are deliberate differences in
+  `docs/PORTING.md`, to be filed against bmdwire. In the commit that
+  added this section, `docs/PORTING.md` records macro download, profile
+  save and the Fairlight meters as verified on hardware.
+- **Not yet verified on hardware:** macro upload, profile restore,
+  `classic-audio meters`, a still that isn't premultiplied, a fit that
+  shrinks the image or adds bars at the sides, and every other command
+  that changes the switcher.
