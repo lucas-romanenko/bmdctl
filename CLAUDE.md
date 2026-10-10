@@ -57,9 +57,10 @@ Everything else runs against `internal/fixtures` or the fake switcher in
   (`feat(atem): …`, `test(fixtures): …`, `docs: …`), and push after every
   commit. The build/vet/test line above is green at each one.
 - **Scope.** Phase 2 added transfers (stills, macros), the macro bytecode
-  codec, profiles and the display-unit readers. A background engine,
-  hosts, HTTP, MCP, CLI commands beyond sending one command, and the other
-  devices are later phases. Don't start them unless asked.
+  codec, profiles and the display-unit readers. Phase 3 added the binary:
+  the background engine, hosts, every command through the engine,
+  `exec`, completion, man pages and `doctor`. HTTP serve, MCP and the
+  other devices are phase 4. Don't start them unless asked.
 
 ## Where things are
 
@@ -74,4 +75,7 @@ Everything else runs against `internal/fixtures` or the fake switcher in
 - `internal/table/`: the command table every device package fills, which the
   CLI and `docs/COMMANDS.md` are generated from.
 - `internal/fakeatem/`: a fake switcher at the `net.PacketConn` level.
+- `internal/engine/`: the background engine (sessions, the socket
+  protocol, the operations that aren't one wire command).
+- `internal/hosts/`: hosts.yml. `internal/paths/`: where files live.
 - `cmd/bmdctl/`: the CLI.

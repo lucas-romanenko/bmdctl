@@ -981,6 +981,29 @@ and a zero value selects nothing.
 - **`docs/COMMANDS.md`** starts with that same CLI reference, then the
   table.
 
+## doctor (`cmd/bmdctl/doctor.go`)
+
+- **What it checks**, one line each, `ok`, `warn`, `fail` or
+  `unreachable`: the engine (running or not; never started by doctor;
+  its version against this CLI's, since an engine left running across an
+  upgrade serves the old code), the socket (where it comes from, its
+  directory's owner, a non-socket file in its place, a socket left by an
+  engine that died, a mode other users can reach), the state directory
+  (writable; the log's size), `hosts.yml` (parses; `File.Check`: names,
+  addresses, device types, a default that isn't a host), `BMDCTL_HOST`
+  and the last host (each a host or an address), and each host's
+  reachability.
+- **Reachability**: an ATEM the engine has a ready session to is
+  reported from that session, not dialled a second time; otherwise doctor
+  dials it itself (`atem.Dial`, 5 s), reports the model and video mode,
+  and closes the session. HyperDeck, Videohub and Ultimatte have no
+  protocol in bmdctl yet, so doctor checks that their TCP port (9993,
+  9990, 9998) accepts a connection. Hosts are checked at once.
+- **Exit status**: 1 if anything is misconfigured (`fail`), else 2 if a
+  host only didn't answer, else 0; warnings don't count. `--json` prints
+  `{ok, result: {checks}}`. Tests replace both diallers, so nothing
+  leaves the machine.
+
 ## Hosts (`internal/hosts`, `cmd/bmdctl/hosts.go`)
 
 - **`hosts.yml`** lives in `$XDG_CONFIG_HOME/bmdctl` (`~/.config`;

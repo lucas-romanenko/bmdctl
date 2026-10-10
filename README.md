@@ -10,19 +10,43 @@ protocols directly: no Blackmagic software, SDK or driver is involved.
 
 ## Status
 
-Early. The ATEM package has its wire layer: the UDP transport, a session
-that tracks the switcher's state, every state packet atemwire parses and
-every command it can send. The library also moves stills and macros to
-and from the switcher, encodes and decodes macros, and saves and applies
-ASC-style profiles. The CLI runs its commands through a background
-engine that keeps a session open to each switcher; the first command
-starts it. The other devices come later.
+Early, and not yet run against a switcher. The ATEM package has its wire
+layer: the UDP transport, a session that tracks the switcher's state,
+every state packet atemwire parses and every command it can send. It
+also moves stills and macros to and from the switcher, encodes and
+decodes macros, and saves and applies ASC-style profiles. The CLI runs
+everything through a background engine that keeps a session open to
+each switcher; the first command starts it. The other devices come
+later.
 
 ```
-$ bmdctl --host 10.0.0.20 program --source "Camera 2"
+$ bmdctl hosts add studio 10.0.0.20
+$ bmdctl hosts default studio
+$ bmdctl program --source "Camera 2"
 program                  confirmed    14 ms  me 1, source 2 (Camera 2)
+$ bmdctl status
+$ bmdctl media upload --slot 0 --file logo.png
+$ bmdctl macro run --slot "Open Show"
+$ bmdctl exec opening-cue.txt
 $ bmdctl --dry-run transition wipe --width 50 --pattern CircleIris
 001c0000435457700006000007001388000000000000000000000000
+```
+
+`docs/COMMANDS.md` lists every command and the CLI's conventions; `bmdctl
+man` prints the same as a manual page, `bmdctl completion bash|zsh|fish`
+a completion script, and `bmdctl doctor` checks the setup.
+
+### The engine under systemd or Docker
+
+Any command starts the engine in the background. To run it yourself,
+`bmdctl engine` runs it in the foreground and logs to stderr. In a
+container, put the socket on a volume the host shares (a switcher is
+reached over UDP, so use the host's network):
+
+```
+docker run --network host -v /run/bmdctl:/run/bmdctl \
+    -e BMDCTL_SOCKET=/run/bmdctl/bmdctl.sock <image> engine
+BMDCTL_SOCKET=/run/bmdctl/bmdctl.sock bmdctl status
 ```
 
 | package     | ports                           | licence        |
