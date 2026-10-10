@@ -877,7 +877,14 @@ and a zero value selects nothing.
     --source 5` is `program 5`, `usk on-air --keyer 2 --on-air` is
     `usk 2 on-air on`. Help, `docs/COMMANDS.md`, the man page and
     completion show only the positional form; an argument given both ways
-    is "given twice". Drop it in the release after this one.
+    is "given twice". A line that uses it prints one line on stderr,
+    `bmdctl: --source is deprecated, use: program 5`, with the line
+    rewritten (`Entry.Deprecated`: the syntax with the values, a bool as
+    on or off, then the line's other flags as typed, quoted for a shell
+    where they need it). It is printed once per invocation: `exec` prints
+    it while checking the script, for the first line that uses the form,
+    and not again. Drop the form, and the notice, in the release after
+    this one.
   - **Messages** name a positional argument as it appears (`source
     "Nobody": no input is named "Nobody"`, `missing <source>: program
     <source>`, `keyer 5: M/E 1 has 4 upstream keyers`) and a flag as
@@ -885,6 +892,16 @@ and a zero value selects nothing.
   - **Fairlight `--channel`** defaults to -1, a stereo strip, where it
     was required: `fairlight strip cam1 --volume -10` reads as said, and
     a split-mono half is `--channel 0` or `1`.
+  - **`audio` is a hidden second name for `fairlight`**, not in bmdwire
+    v1.3.0: `audio strip cam1 --volume -10` is `fairlight strip`. The
+    classic mixer's commands already start with `audio` (`audio input`,
+    `audio master`, `audio monitor`, `audio levels`, and the `audio
+    meters` operation), so the alias stands for `fairlight` only where a
+    line names none of them (`Registry.Alias`; `ParseLine` and `Next`
+    try the line as typed first). `audio master` stays the classic
+    mixer's master: `fairlight master` has to be said. Help, completion's
+    lists and `docs/COMMANDS.md` don't show the alias; once given, its
+    arguments complete and its `--help` is the Fairlight command's.
 - **Two kinds of entry.** A wire command has a `Build` that makes one
   `atem.Command`. An *operation* (phase 3) has none: the engine runs it by
   path (reading state, a transfer, a read-modify-write); a `Local` one
@@ -910,10 +927,17 @@ and a zero value selects nothing.
   atemwire would send a zero mask, which changes nothing. Entries derive
   this from having optional pointer fields.
 - **Indexes count from 1, as ATEM Software Control and the panels count
-  them:** M/Es (`--me`), upstream keyers (`--keyer`), DSKs (`--dsk`), aux
-  outputs (`--aux`), still and clip slots (`--slot`, `--still`,
-  `--clip`), macro slots (`--slot`) and media players (`--player`), on
-  the command line, in `--help` and in results, `--json` included. The
+  them:** M/Es (`--me`), upstream keyers (`<keyer>`), DSKs (`--dsk`), aux
+  outputs (`<aux>`), still and clip slots (`<slot>`, `--still`,
+  `--clip`), macro slots (`<slot>`), media players (`<player>`), colour
+  generators (`color <generator>`), multiviewers and their windows
+  (`--multiviewer`, `<window>`), SuperSources and their boxes
+  (`--supersource`, `<box>`), HyperDeck slots (`hyperdeck-slot <slot>`)
+  and EQ bands (`<band>`), on the command line, in `--help` and in
+  results, `--json` included. Where every ATEM has the same number, the
+  range says so (generators 1-2, boxes 1-4, bands 1-6; HyperDeck slots
+  1-10, atemwire's 0-9) and completion offers them without a switcher;
+  otherwise the range is the field's. The
   atem package counts from 0 and is unchanged; the CLI/engine boundary
   converts, and only `table.Index` (`internal/table/index.go`) adds or
   takes away the one: a one-based parameter is parsed by `ParseIndex`
@@ -921,19 +945,22 @@ and a zero value selects nothing.
   through it (`--keyer`: 1-256), and a result that names an index holds
   an `Index`, whose JSON, `String` and `Format` (any verb, so even `%d`
   can't print the raw value) count from 1. Defaults moved with it
-  (`--dsk 1`, `--me 1`). `macro action --slot`, which atemwire's 65535
+  (`--dsk 1`, `--me 1`, `--multiviewer 1`, `--supersource 1`). `macro action --slot`, which atemwire's 65535
   (whatever is running) used to default, is now optional: left out it
   sends 0xFFFF, and the highest slot it names is 65535 (0xFFFE).
   - **What still counts from 0**, because it is the library's or a file
     format's own: the switcher state `state` prints (`--path mes.0`),
     `watch`'s values and keys (`KeOn:0:1`), a wire command's echo key and
     echoed packet in its result, and the `index` attributes of ATEM
-    Software Control's XML (`macro download`, `profile save`). Indexes
-    outside the list above keep their field's numbering: colour
-    generators, multiviewers and windows, SuperSources and boxes,
-    HyperDeck slots, EQ bands; the stinger's `--player` was already 1-4
-    on the wire. A still without a name is saved as atemwire's
-    `Slot<n>.png`, n from 0.
+    Software Control's XML (`macro download`, `profile save`). No typed
+    argument counts from 0 but `state --path`, which follows the state
+    it reads. Numbers that aren't positions keep theirs: the stinger's
+    `--player` is 1-4 on the wire already, camera control's
+    `<destination>` is the camera's own number (255 for all), its `<category>` and
+    `<parameter>` are Blackmagic's camera control ids (lens is 0, focus
+    0.0), and Fairlight's `--channel` is -1 for a stereo strip and 0 or 1
+    for the halves of a split-mono one. A still without a name is saved
+    as atemwire's `Slot<n>.png`, n from 0.
 - **Sources** (`source` kind: program, preview, aux, keyer and DSK fill
   and key, dip, wipe border, DVE fill and key, multiviewer windows,
   SuperSource, Fairlight and classic audio sources, monitor solo, HyperDeck
@@ -1034,11 +1061,13 @@ and a zero value selects nothing.
   `hosts.yml`, for a source parameter the switcher's input names, and
   for an index the values the switcher has, counted from 1 (as many
   M/Es, keyers on the `--me` given, DSKs, aux outputs, players, stills
-  and clips as `info` reports; the macro slots `macro list` reports, and
-  for a slot that takes a name, the used ones' names too). Those it
-  asks a running engine for (one second at most) and never starts one,
-  so pressing Tab doesn't open a session to a switcher. Matching ignores
-  case.
+  and clips, SuperSources, multiviewers and HyperDeck slots as `info`
+  reports; the macro slots `macro list` reports, and for a slot that
+  takes a name, the used ones' names too). Those it asks a running
+  engine for (one second at most) and never starts one, so pressing Tab
+  doesn't open a session to a switcher. Colour generators, SuperSource
+  boxes and EQ bands, the same on every ATEM, need no engine. Matching
+  ignores case.
 - **The man page** `bmdctl man` prints (or writes to `--dir`) is
   bmdctl(1), rendered like `docs/COMMANDS.md` from the command table
   plus the CLI's own reference (`reference.go`: flags, built-ins,

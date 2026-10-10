@@ -68,6 +68,9 @@ type cli struct {
 	// noRemember: --host doesn't become the last host used (exec's
 	// lines).
 	noRemember bool
+	// noticed: the old --name form's notice has been printed; it is
+	// printed once per invocation, however many lines use the form.
+	noticed bool
 	// dialATEM and dialTCP are doctor's reachability checks; tests
 	// replace them.
 	dialATEM func(ctx context.Context, addr string) (*atem.Session, error)
@@ -201,7 +204,8 @@ func (c *cli) run(args []string) int {
 
 // isCommandWord reports whether word starts one of device's commands.
 func (c *cli) isCommandWord(device, word string) bool {
-	return slices.ContainsFunc(c.reg.Entries(device), func(e table.Entry) bool { return e.Words()[0] == word })
+	alt, _ := c.reg.Unalias(device, []string{word})
+	return slices.ContainsFunc(c.reg.Entries(device), func(e table.Entry) bool { return e.Words()[0] == word || e.Words()[0] == alt[0] })
 }
 
 // fail reports a failure and returns code: on stderr, or with --json

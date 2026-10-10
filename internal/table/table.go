@@ -100,6 +100,7 @@ func (e Entry) Words() []string { return strings.Fields(e.Path) }
 // Registry holds entries.
 type Registry struct {
 	entries []Entry
+	aliases map[string]string // "device word": the first word it stands for
 }
 
 // New returns an empty registry.
@@ -165,6 +166,32 @@ func (r *Registry) Entries(device string) []Entry {
 	}
 	slices.SortFunc(es, func(a, b Entry) int { return strings.Compare(a.Path, b.Path) })
 	return es
+}
+
+// Alias makes word, as the first word of a command line, stand for the
+// first word to wherever the line names none of word's own commands: a
+// second name the parser reads and help, completion's lists and
+// COMMANDS.md leave out.
+func (r *Registry) Alias(device, word, to string) error {
+	if !slices.ContainsFunc(r.Entries(device), func(e Entry) bool { return e.Words()[0] == to }) {
+		return fmt.Errorf("table: %s alias %s: no command starts %s", device, word, to)
+	}
+	if r.aliases == nil {
+		r.aliases = map[string]string{}
+	}
+	r.aliases[device+" "+word] = to
+	return nil
+}
+
+// Unalias returns words with an alias for a first word replaced by the
+// word it stands for, and whether it was one.
+func (r *Registry) Unalias(device string, words []string) ([]string, bool) {
+	if len(words) > 0 {
+		if to, ok := r.aliases[device+" "+words[0]]; ok {
+			return append([]string{to}, words[1:]...), true
+		}
+	}
+	return words, false
 }
 
 // Find returns the entry with exactly this path, or nil.

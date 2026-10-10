@@ -49,7 +49,7 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 
 - Arguments: A command's required arguments follow its words in the order they're said: `program 5`, `usk 1 fill cam3`, `media upload 10 logo.png`. Optional ones are --name flags, which may be shortened to any unambiguous prefix (--sat for --saturation); `[file]` in a syntax may be left out.
 - Devices: A command without a device word goes to the device type of its host, an ATEM for a bare address. `bmdctl atem ...` names the device.
-- Indexes: M/Es, upstream and downstream keyers, aux outputs, media and macro slots and media players count from 1, as ATEM Software Control and the panels count them: on the command line, in --help and in results, --json included. The atem library counts them from 0, and so do the switcher state `state` and `watch` print and the index attributes of ATEM Software Control's XML files. Colour generators, multiviewers and their windows, SuperSources and their boxes, HyperDeck slots and EQ bands keep their fields' numbering.
+- Indexes: M/Es, upstream and downstream keyers, aux outputs, media and macro slots, media players, colour generators, multiviewers and their windows, SuperSources and their boxes, HyperDeck slots and EQ bands count from 1, as ATEM Software Control and the panels count them: on the command line, in --help and in results, --json included. The atem library counts them from 0, and so do the switcher state `state` and `watch` print (and `state --path` reads) and the index attributes of ATEM Software Control's XML files.
 - Sources: A source is an id or one of the switcher's input names, long or short, in any case.
 - Rates: A rate is a frame count or seconds:frames at the switcher's display rate (half the field rate from 48 fps up).
 
@@ -191,7 +191,7 @@ Give at least one flag. Echo: `ColV:<generator>`.
 
 | argument | value | | |
 |---|---|---|---|
-| `<generator>` | uint, 0-255 | required | colour generator, 0 or 1 |
+| `<generator>` | uint, 1-2, counted from 1 | required | colour generator |
 | `--hue` | float, degrees, not clamped | optional | hue |
 | `--saturation` | float, %, clamped to 0-100 | optional | saturation |
 | `--luma` | float, %, clamped to 0-100 | optional | luma |
@@ -348,7 +348,7 @@ Give at least one flag. Echo: `AEBP:<source>.<channel>:<band>`.
 | argument | value | | |
 |---|---|---|---|
 | `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `<band>` | uint, 0-255 | required | band, 0-5 |
+| `<band>` | uint, 1-6, counted from 1 | required | EQ band |
 | `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
 | `--enabled` | bool | optional | band on |
 | `--shape` | enum, 0-255: LowShelf=1 LowPass=2 BandPass=4 Notch=8 HighPass=16 HighShelf=32 | optional | filter shape |
@@ -439,7 +439,7 @@ Give at least one flag. Echo: `AMBP:<band>`.
 
 | argument | value | | |
 |---|---|---|---|
-| `<band>` | uint, 0-255 | required | band, 0-5 |
+| `<band>` | uint, 1-6, counted from 1 | required | EQ band |
 | `--enabled` | bool | optional | band on |
 | `--shape` | enum, 0-255: LowShelf=1 LowPass=2 BandPass=4 Notch=8 HighPass=16 HighShelf=32 | optional | filter shape |
 | `--range` | enum, 0-255: Low=1 MidLow=2 MidHigh=4 High=8 | optional | frequency range |
@@ -519,7 +519,7 @@ Give at least one flag. Echo: `RXMS:<slot>`.
 
 | argument | value | | |
 |---|---|---|---|
-| `<slot>` | uint, 0-65535 | required | HyperDeck slot, 0-9 |
+| `<slot>` | uint, 1-10, counted from 1 | required | HyperDeck slot |
 | `--address` | string | optional | deck IPv4 address; 0.0.0.0 clears the slot |
 | `--input` | source, 0-65535 | optional | switcher input the deck feeds |
 
@@ -728,9 +728,9 @@ Route a source to a multiviewer window.
 
 | argument | value | | |
 |---|---|---|---|
-| `<window>` | uint, 0-255 | required | window |
+| `<window>` | uint, 1-256, counted from 1 | required | window |
 | `<source>` | source, 0-65535 | required | source id or input name |
-| `--multiviewer` | uint, 0-255 | default 0 | multiviewer, 0-based |
+| `--multiviewer` | uint, 1-256, counted from 1 | default 1 | multiviewer |
 
 ### `bmdctl atem multiviewer properties`
 
@@ -740,7 +740,7 @@ Set a multiviewer's layout and program/preview swap.
 
 | argument | value | | |
 |---|---|---|---|
-| `--multiviewer` | uint, 0-255 | default 0 | multiviewer, 0-based |
+| `--multiviewer` | uint, 1-256, counted from 1 | default 1 | multiviewer |
 | `--layout` | uint, 0-255, 4-bit field: bit N splits quadrant N | optional | layout |
 | `--swap` | bool | optional | swap program and preview |
 
@@ -925,8 +925,8 @@ Set a SuperSource box.
 
 | argument | value | | |
 |---|---|---|---|
-| `<box>` | uint, 0-255 | required | box, 0-3 |
-| `--supersource` | uint, 0-255 | default 0 | SuperSource, 0-based |
+| `<box>` | uint, 1-4, counted from 1 | required | box |
+| `--supersource` | uint, 1-256, counted from 1 | default 1 | SuperSource |
 | `--enabled` | bool | optional | box on |
 | `--source` | source, 0-65535 | optional | source |
 | `--x` | int, -32768 to 32767, -4800-4800 | optional | x |
@@ -946,7 +946,7 @@ Set SuperSource's art fill, key and layer.
 
 | argument | value | | |
 |---|---|---|---|
-| `--supersource` | uint, 0-255 | default 0 | SuperSource, 0-based |
+| `--supersource` | uint, 1-256, counted from 1 | default 1 | SuperSource |
 | `--fill-source` | source, 0-65535 | optional | art fill source |
 | `--key-source` | source, 0-65535 | optional | art key source |
 | `--layer` | enum, 0-255: background=0 foreground=1 | optional | art layer |

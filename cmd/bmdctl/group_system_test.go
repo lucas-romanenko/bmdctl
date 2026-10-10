@@ -40,7 +40,7 @@ func TestSystemCommands(t *testing.T) {
 		{[]string{"time-request"}, "TiRq", "", false, ""},
 		{[]string{"auto-video-mode", "on"}, "AiVM", "01000000", true, "atemwire restored it"},
 		{[]string{"camera", "1", "0", "2", "--type", "fixed16", "--data", "0.5"}, "CCmd", "", true, "atemwire restored it"},
-		{[]string{"multiviewer", "input", "3", "CAM2"}, "CMvI", "00030002", true, "atemwire restored it"},
+		{[]string{"multiviewer", "input", "3", "CAM2"}, "CMvI", "00020002", true, "atemwire restored it"},
 		{[]string{"multiviewer", "properties", "--swap"}, "CMvP", "", true, "atemwire restored it"},
 		{[]string{"supersource", "box", "1", "--source", "cam1"}, "CSBP", "", true, "atemwire restored it"},
 		{[]string{"supersource", "properties", "--fill-source", "MP1"}, "CSSc", "", true, "atemwire restored it"},

@@ -21,7 +21,7 @@ func TestAudioCommands(t *testing.T) {
 	}{
 		{[]string{"fairlight", "master", "--volume", "-6"}, "CFMP", "", true},
 		{[]string{"fairlight", "strip", "Camera 1", "--channel", "-1", "--volume", "-10", "--mix", "On"}, "CFSP", "", true},
-		{[]string{"fairlight", "eq", "1", "0", "--channel", "-1", "--gain", "3"}, "CEBP", "", true},
+		{[]string{"fairlight", "eq", "1", "1", "--channel", "-1", "--gain", "3"}, "CEBP", "", true},
 		{[]string{"fairlight", "master-eq", "1", "--enabled"}, "CMBP", "", true},
 		{[]string{"fairlight", "compressor", "1", "--channel", "-1", "--threshold", "-20"}, "CICP", "", true},
 		{[]string{"fairlight", "limiter", "1", "--channel", "-1", "--enabled"}, "CILP", "", true},

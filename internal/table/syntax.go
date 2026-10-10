@@ -7,12 +7,14 @@ package table
 // arguments are positional; optional ones are --name flags, except an
 // optional positional ([file]) where it reads naturally. Every argument
 // may also be given as --name value, the form before positional
-// arguments, which help no longer shows.
+// arguments, which help no longer shows and Deprecated reports.
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // Elem is one element of a command's syntax: a literal word, or a
@@ -202,8 +204,20 @@ func (e *NoCommand) Error() string {
 // the words before the first flag, tokens the rest (flags, their values,
 // and positional arguments given after flags). It returns the entry and
 // its arguments as --name value pairs, however each was given, or a
-// *NoCommand or usage error.
+// *NoCommand or usage error. A line that starts with an alias and names
+// no command as typed is read with the word the alias stands for.
 func (r *Registry) ParseLine(device string, words, tokens []string) (*Entry, map[string]string, error) {
+	e, raw, err := r.parseLine(device, words, tokens)
+	var nc *NoCommand
+	if alt, ok := r.Unalias(device, words); ok && errors.As(err, &nc) {
+		if e, raw, err := r.parseLine(device, alt, tokens); !errors.As(err, &nc) {
+			return e, raw, err
+		}
+	}
+	return e, raw, err
+}
+
+func (r *Registry) parseLine(device string, words, tokens []string) (*Entry, map[string]string, error) {
 	var best *Entry
 	var bound map[string]string
 	bestSkipped, bestLiterals := 0, 0
@@ -266,34 +280,21 @@ func (e *Entry) readTokens(bound map[string]string, tokens []string) (map[string
 		raw[k] = v
 	}
 	var bare []string
-	for i := 0; i < len(tokens); i++ {
-		t := tokens[i]
-		name, isFlag := strings.CutPrefix(t, "--")
-		if !isFlag || name == "" {
-			bare = append(bare, t)
+	for i := 0; i < len(tokens); {
+		if !isFlag(tokens[i]) {
+			bare = append(bare, tokens[i])
+			i++
 			continue
 		}
-		name, value, hasValue := strings.Cut(name, "=")
-		p, err := e.FlagParam(name)
+		p, value, next, err := e.flagAt(tokens, i)
 		if err != nil {
 			return nil, err
-		}
-		if !hasValue {
-			next := i+1 < len(tokens)
-			if p.Kind == Bool && (!next || !IsBoolWord(tokens[i+1])) {
-				value = "true"
-			} else {
-				if !next {
-					return nil, usagef("--%s needs a value", p.Name)
-				}
-				i++
-				value = tokens[i]
-			}
 		}
 		if _, dup := raw[p.Name]; dup {
 			return nil, usagef("%s given twice", e.Label(p.Name))
 		}
 		raw[p.Name] = value
+		i = next
 	}
 	// Values after the flags fill the positional arguments still empty,
 	// in order.
@@ -309,6 +310,94 @@ func (e *Entry) readTokens(bound map[string]string, tokens []string) (map[string
 		return nil, usagef("unexpected %q: %s", bare[0], e.Usage())
 	}
 	return raw, nil
+}
+
+func isFlag(t string) bool { return strings.HasPrefix(t, "--") && t != "--" }
+
+// flagAt reads the flag tokens[i]: its parameter, its value, and where
+// the next token starts. A bool's value may be left out, meaning true.
+func (e *Entry) flagAt(tokens []string, i int) (*Param, string, int, error) {
+	name, value, hasValue := strings.Cut(tokens[i][2:], "=")
+	p, err := e.FlagParam(name)
+	switch {
+	case err != nil:
+		return nil, "", 0, err
+	case hasValue:
+		return p, value, i + 1, nil
+	case p.Kind == Bool && (i+1 == len(tokens) || !IsBoolWord(tokens[i+1])):
+		return p, "true", i + 1, nil
+	case i+1 == len(tokens):
+		return nil, "", 0, usagef("--%s needs a value", p.Name)
+	}
+	return p, tokens[i+1], i + 2, nil
+}
+
+// Deprecated reports the positional arguments tokens give in the --name
+// form, which this release still reads (docs/PORTING.md), and the line as
+// it is written now: the syntax with raw's values, then the other flags
+// as they were typed. It reports nothing for a line already written so.
+func (e *Entry) Deprecated(raw map[string]string, tokens []string) (flags []string, line string) {
+	var rest []string
+	for i := 0; i < len(tokens); {
+		if !isFlag(tokens[i]) {
+			i++ // a positional value after the flags: the syntax places it
+			continue
+		}
+		p, _, next, err := e.flagAt(tokens, i)
+		if err != nil {
+			return nil, ""
+		}
+		if e.Positional(p.Name) {
+			flags = append(flags, "--"+p.Name)
+		} else {
+			for _, t := range tokens[i:next] {
+				rest = append(rest, shellWord(t))
+			}
+		}
+		i = next
+	}
+	if len(flags) == 0 {
+		return nil, ""
+	}
+	var out []string
+	for _, x := range e.Elems() {
+		v, ok := raw[x.Param]
+		switch {
+		case x.Word != "":
+			out = append(out, x.Word)
+		case ok && e.param(x.Param).Kind == Bool:
+			out = append(out, map[bool]string{true: "on", false: "off"}[isTrue(v)])
+		case ok:
+			out = append(out, shellWord(v))
+		}
+	}
+	return flags, strings.Join(append(out, rest...), " ")
+}
+
+func (e *Entry) param(name string) Param {
+	return e.Params[slices.IndexFunc(e.Params, func(p Param) bool { return p.Name == name })]
+}
+
+func isTrue(s string) bool {
+	switch strings.ToLower(s) {
+	case "true", "on", "yes", "1":
+		return true
+	}
+	return false
+}
+
+// shellWord quotes s for a shell if it needs it.
+func shellWord(s string) string {
+	plain := func(r rune) bool {
+		return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("-_.,:/+=@%", r)
+	}
+	switch {
+	case s != "" && strings.IndexFunc(s, func(r rune) bool { return !plain(r) }) < 0:
+		return s
+	case strings.ContainsAny(s, "$`\\\"!"):
+		return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	}
+	return `"` + s + `"`
 }
 
 // IsBoolWord reports whether s is a value a bool takes.
@@ -371,8 +460,17 @@ type NextElem struct {
 
 // Next lists what may follow words in device's commands: literal words
 // and positional arguments, for completion. It also returns the command
-// the words name whole, if any.
+// the words name whole, if any. After an alias, as in ParseLine, the
+// commands the line names as typed come first.
 func (r *Registry) Next(device string, words []string) (next []NextElem, whole *Entry) {
+	next, whole = r.next(device, words)
+	if alt, ok := r.Unalias(device, words); ok && next == nil && whole == nil {
+		return r.next(device, alt)
+	}
+	return next, whole
+}
+
+func (r *Registry) next(device string, words []string) (next []NextElem, whole *Entry) {
 	for _, e := range r.Entries(device) {
 		es := e.Elems()
 		for _, i := range nextAfter(es, words) {

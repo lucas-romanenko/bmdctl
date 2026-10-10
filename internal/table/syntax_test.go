@@ -200,3 +200,82 @@ func TestChildrenAndNext(t *testing.T) {
 		t.Errorf("whole: %v", whole)
 	}
 }
+
+// Deprecated names the arguments a line gives in the --name form and
+// writes the line as it is said now.
+func TestDeprecated(t *testing.T) {
+	r := syntaxRegistry(t)
+	for _, c := range []struct {
+		words, tokens []string
+		flags         []string
+		line          string
+	}{
+		{[]string{"program"}, []string{"--source", "5"}, []string{"--source"}, "program 5"},
+		{[]string{"program"}, []string{"--me", "2", "--source", "3010"}, []string{"--source"}, "program 3010 --me 2"},
+		{[]string{"program"}, []string{"--sou=Camera 2"}, []string{"--source"}, `program "Camera 2"`},
+		{[]string{"program"}, []string{"--source", "it's $5"}, []string{"--source"}, `program 'it'\''s $5'`},
+		{[]string{"usk", "on-air"}, []string{"--keyer", "2", "--on"}, []string{"--keyer", "--on"}, "usk 2 on-air on"},
+		{[]string{"usk", "on-air"}, []string{"--on", "no", "--keyer=2"}, []string{"--on", "--keyer"}, "usk 2 on-air off"},
+		{[]string{"usk", "1", "fill"}, []string{"--me", "2", "--source", "4"}, []string{"--source"}, "usk 1 fill 4 --me 2"},
+		{[]string{"media", "download"}, []string{"--slot", "3"}, []string{"--slot"}, "media download 3"},
+		{[]string{"color"}, []string{"--generator", "1", "--hue", "180", "--sat", "50"}, []string{"--generator"},
+			"color 1 --hue 180 --sat 50"},
+		// Lines already written so report nothing.
+		{[]string{"color", "1"}, []string{"--hue", "180"}, nil, ""},
+		{[]string{"usk", "1", "fill"}, []string{"--me", "2", "4"}, nil, ""},
+	} {
+		e, raw, err := r.ParseLine("dev", c.words, c.tokens)
+		if err != nil {
+			t.Fatalf("%q %q: %v", c.words, c.tokens, err)
+		}
+		if flags, line := e.Deprecated(raw, c.tokens); !reflect.DeepEqual(flags, c.flags) || line != c.line {
+			t.Errorf("%q %q: %q %q, want %q %q", c.words, c.tokens, flags, line, c.flags, c.line)
+		}
+	}
+}
+
+// An alias stands for its word where the line names none of the alias's
+// own commands, and nothing lists it.
+func TestAlias(t *testing.T) {
+	r := syntaxRegistry(t)
+	err := r.Add(
+		Entry{Device: "dev", Path: "audio master", Summary: "Classic.", Build: build, Params: []Param{{Name: "gain", Kind: Float}}},
+		Entry{Device: "dev", Path: "fairlight master", Summary: "Fairlight.", Build: build, Params: []Param{{Name: "gain", Kind: Float}}},
+		Entry{Device: "dev", Path: "fairlight strip", Summary: "Strip.", Build: build,
+			Params: []Param{{Name: "source", Kind: Source, Required: true}, {Name: "gain", Kind: Float}}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Alias("dev", "audio", "fairlight"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Alias("dev", "sound", "nothing"); err == nil {
+		t.Error("an alias for no command")
+	}
+	for line, want := range map[string]string{
+		"audio strip 5 --gain 1": "fairlight strip",
+		"audio master --gain 1":  "audio master",
+		"fairlight master":       "fairlight master",
+	} {
+		words, tokens := splitTest(line)
+		if e, _, err := r.ParseLine("dev", words, tokens); err != nil || e.Path != want {
+			t.Errorf("%q: %v %v, want %s", line, e, err, want)
+		}
+	}
+	var nc *NoCommand
+	if _, _, err := r.ParseLine("dev", []string{"audio", "bogus"}, nil); !errors.As(err, &nc) || !reflect.DeepEqual(nc.Prefix, []string{"audio"}) {
+		t.Errorf("audio bogus: %#v", err)
+	}
+	if next, _ := r.Next("dev", []string{"audio"}); len(next) != 1 || next[0].Word != "master" {
+		t.Errorf("after audio: %v", next)
+	}
+	if next, _ := r.Next("dev", []string{"audio", "strip"}); len(next) != 1 || next[0].Param != "source" {
+		t.Errorf("after audio strip: %v", next)
+	}
+	for _, c := range r.Children("dev", []string{"audio"}) {
+		if c.Usage != "master" {
+			t.Errorf("audio lists %q", c.Usage)
+		}
+	}
+}

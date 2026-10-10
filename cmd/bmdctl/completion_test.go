@@ -97,6 +97,11 @@ func TestComplete(t *testing.T) {
 		{[]string{"macro", "run", ""}, []string{"1", "3", "Half Time", "Open Show"}},
 		{[]string{"macro", "run", "h"}, []string{"Half Time"}},
 		{[]string{"macro", "record", "--slot", ""}, []string{"1", "2", "3"}},
+		{[]string{"multiviewer", "input", "1", "cam1", "--multiviewer", ""}, []string{"1"}},
+		{[]string{"supersource", "properties", "--supersource", ""}, nil}, // it has none
+		{[]string{"hyperdeck-slot", "1"}, []string{"1", "10"}},
+		// The alias completes as the commands it stands for.
+		{[]string{"audio", "strip", "ca"}, []string{"Camera 1", "Camera 2"}},
 	} {
 		if got := complete(append([]string{"--host", "studio"}, c.args...)...); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%q: %q, want %q", c.args, got, c.want)
@@ -109,6 +114,23 @@ func TestComplete(t *testing.T) {
 	}
 	if got := complete("--host", "studio", "usk", "on-air", "--keyer", ""); got != nil {
 		t.Errorf("indexes without an engine: %q", got)
+	}
+	// Every ATEM has two colour generators, four SuperSource boxes and
+	// six EQ bands: no engine needed.
+	for _, c := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"color", ""}, []string{"1", "2"}},
+		{[]string{"supersource", "box", ""}, []string{"1", "2", "3", "4"}},
+		{[]string{"fairlight", "master-eq", ""}, []string{"1", "2", "3", "4", "5", "6"}},
+		{[]string{"fairlight", "eq", "cam1", ""}, []string{"1", "2", "3", "4", "5", "6"}},
+		// The alias is hidden: audio lists the classic mixer's commands.
+		{[]string{"audio", ""}, []string{"input", "levels", "master", "meters", "monitor"}},
+	} {
+		if got := complete(c.args...); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%q: %q, want %q", c.args, got, c.want)
+		}
 	}
 	// __complete prints them one per line.
 	code, out, _ := b.run("__complete", "transition", "m")
