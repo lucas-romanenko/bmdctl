@@ -119,21 +119,8 @@ func TestLostDumpPacketIsRecovered(t *testing.T) {
 	}
 }
 
-// A trap inherited from atemwire: the session takes the first reliable
-// packet it sees as its sequence baseline, so if the first dump packet is
-// lost, the second becomes the baseline, the cumulative ACK covers the
-// first, and its late copy is discarded as a duplicate. Everything in it
-// (here the video mode) never arrives, and Dial waits for the video mode
-// until it gives up. bmdwire v1.3.0 does the same; see docs/PORTING.md.
-func TestLosingTheFirstDumpPacketLosesItForGood(t *testing.T) {
-	sw := newSwitcher(t)
-	sw.DropSequences(1)
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-	if _, err := (&atem.Dialer{Conn: sw}).Dial(ctx, fakeatem.Address); err == nil {
-		t.Fatal("Dial succeeded without the first dump packet")
-	}
-}
+// Losing the dump's first packet, which here carries the video mode, is in
+// atem/fake_test.go (TestLosingTheFirstDumpPacketFailsDialFast).
 
 // A command lost on the way to the switcher is recovered when the next
 // one reveals the gap: the switcher asks for a retransmission and the

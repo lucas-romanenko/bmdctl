@@ -37,7 +37,7 @@ func (sw *Switcher) update(code string, index []byte, f func(p []byte)) []byte {
 	}
 	f(p)
 	sw.state[key] = p
-	return command(code, p)
+	return Command(code, p)
 }
 
 // echo is the switcher's answer to one command: the state packets it

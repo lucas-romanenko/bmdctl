@@ -42,11 +42,12 @@ func (c testCmd) Validate() error   { return c.invalid }
 // switcher plays the far end of a fakeConn: it reads what the session
 // writes and answers with datagrams.
 type switcher struct {
-	t       *testing.T
-	c       *fakeConn
-	read    int    // writes consumed so far
-	seq     uint16 // last reliable sequence sent
-	session uint16
+	t          *testing.T
+	c          *fakeConn
+	read       int    // writes consumed so far
+	seq        uint16 // last reliable sequence sent
+	session    uint16
+	handshakes int
 }
 
 func newSwitcher(t *testing.T, c *fakeConn) *switcher {
@@ -100,6 +101,10 @@ func (sw *switcher) handshake() {
 	sw.expect("SYN", isSYN(helloConnect))
 	sw.c.in <- fakeDatagram{b: rawDatagram(helloSession, 0, flagSYN, []byte{helloAccepted, 0, 0, 0, 0, 0, 0, 0}), from: switcherAddr}
 	sw.expect("handshake ACK", func(p packet) bool { return p.flags == flagACK && p.session == helloSession })
+	// Every handshake gets a new session id, as on a switcher: 0x8001,
+	// 0x8002 ...
+	sw.handshakes++
+	sw.session = 0x8000 | uint16(sw.handshakes)
 	sw.seq = 0
 }
 

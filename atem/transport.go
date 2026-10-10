@@ -55,8 +55,8 @@ const (
 	receivedHistory = 1024
 
 	// silenceTimeout is the select() timeout of atemwire's UDP thread:
-	// this long with no datagram in and no packet out, and the transport
-	// re-handshakes.
+	// this long without a datagram accepted from the switcher, and the
+	// transport re-handshakes (see lastRX).
 	silenceTimeout = 5 * time.Second
 )
 
@@ -199,6 +199,13 @@ type transport struct {
 	sessionID    uint16
 	sessionKnown bool // false where atemwire's session_id is None
 
+	// prevSession is the id of the session before the last connect, while
+	// prevKnown. Its packets are dropped unseen (bmdwire#12): after a
+	// silence the switcher keeps resending the old session's packets for
+	// a while, and they must not reach the new one.
+	prevSession uint16
+	prevKnown   bool
+
 	localSeq      int    // last sequence sent; -1 right after connect
 	remoteSeq     uint16 // sequence of the latest packet received
 	ackNumber     uint16 // contiguous high-water mark we ACK
@@ -218,11 +225,20 @@ type transport struct {
 	received      seqHistory
 	retransmitBuf map[uint16]*packet
 
-	// lastActivity is when a datagram last arrived (from anyone) or a
-	// packet last went out through sendLow: the two things that wake
-	// atemwire's select() and so restart its 5 s timeout.
-	lastActivity time.Time
-	silence      time.Duration // silenceTimeout; tests shorten it
+	// lastRX is when a datagram was last accepted from the switcher (the
+	// right peer, well formed, not stale), or connect last ran. The
+	// silence timeout counts from it. atemwire's select() also wakes on
+	// foreign datagrams and on its own sends, so a client sending to a
+	// dead switcher never times out there (bmdwire#11); here neither
+	// counts.
+	lastRX  time.Time
+	silence time.Duration // silenceTimeout; tests shorten it
+
+	// firstRX is the sequence of the first reliable packet of the session,
+	// the one that set the receive baseline (rxEstablished). A packet the
+	// switcher sent before it can't be recovered; see bmdwire#13 in
+	// docs/PORTING.md.
+	firstRX uint16
 
 	retransmitWindow int
 	parkWindow       int
@@ -256,6 +272,10 @@ func (t *transport) connect() error {
 	if t.state != stateClosed {
 		return errAlreadyOpen
 	}
+	if t.sessionKnown && t.sessionID != helloSession {
+		t.prevSession, t.prevKnown = t.sessionID, true
+	}
+	t.lastRX = t.now()
 	t.localSeq = -1
 	t.remoteSeq = 0
 	t.ackNumber = 0
@@ -277,10 +297,10 @@ func (t *transport) connect() error {
 	return nil
 }
 
-// silent reports whether nothing has gone in or out for the silence
-// timeout.
+// silent reports whether nothing has been accepted from the switcher for
+// the silence timeout.
 func (t *transport) silent() bool {
-	return t.now().Sub(t.lastActivity) >= t.silence
+	return t.now().Sub(t.lastRX) >= t.silence
 }
 
 // timeout is the UDP thread's select() timeout: drop the session and
@@ -299,7 +319,6 @@ func (t *transport) sendReliable(data []byte) error {
 // sendLow is _send_packet_low. A non-nil error is fatal to the session: it
 // is what kills atemwire's UDP thread.
 func (t *transport) sendLow(p *packet) error {
-	t.lastActivity = t.now()
 	if !t.sessionKnown {
 		// atemwire's to_bytes fails on a None session id and the packet
 		// is dropped; it consumes no sequence number.
@@ -356,7 +375,6 @@ func transientSendError(err error) bool {
 // parked), the packet itself, or the packet plus the parked ones it
 // released. A non-nil error is a fatal send error from the ACK.
 func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
-	t.lastActivity = t.now()
 	if !t.fromSwitcher(from) {
 		// The socket is unconnected: anyone on the network can reach it.
 		t.log.Debug("atem: ignoring datagram from foreign peer", "from", from)
@@ -367,6 +385,11 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 		t.log.Warn("atem: ignoring malformed datagram", "from", from, "err", err)
 		return nil, nil
 	}
+	if t.stale(p) {
+		t.log.Debug("atem: ignoring packet from another session", "session", p.session, "seq", p.seq, "state", t.state)
+		return nil, nil
+	}
+	t.lastRX = t.now()
 	if p.flags&flagRequestRetransmission != 0 {
 		// The switcher missed one of ours: go back N from the sequence in
 		// header bytes 6-7.
@@ -434,6 +457,20 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 	return []packet{p}, nil
 }
 
+// stale reports a packet that belongs to no session of ours, which the
+// transport drops before any of its state sees it (bmdwire#12; atemwire
+// checks the session id only in _handshake): one carrying the previous
+// session's id, or, while the handshake is in flight, anything but the
+// switcher's SYN reply under the hello id. After the handshake ACK the
+// session id is taken from the next packet that passes, so a stale one
+// can't be adopted.
+func (t *transport) stale(p packet) bool {
+	if t.prevKnown && p.session == t.prevSession {
+		return true
+	}
+	return t.state == stateSYNSent && (p.flags&flagSYN == 0 || p.session != helloSession)
+}
+
 // fromSwitcher compares hosts only, as atemwire does (address[0] != ip).
 func (t *transport) fromSwitcher(from net.Addr) bool {
 	if u, ok := from.(*net.UDPAddr); ok {
@@ -455,6 +492,7 @@ func (t *transport) updateACK(p packet) {
 		t.ackNumber = t.remoteSeq
 		if p.flags&flagReliable != 0 {
 			t.rxEstablished = true
+			t.firstRX = p.seq
 		}
 		return
 	}
@@ -466,8 +504,8 @@ func (t *transport) updateACK(p packet) {
 // retransmitFrom is _retransmit_from: resend every buffered packet from
 // requestSeq through the latest sent, in order, flagged as
 // retransmissions, with their original sequence numbers. It writes to the
-// socket directly, so resends neither take new sequence numbers nor count
-// as activity. It returns the number resent.
+// socket directly, so resends don't take new sequence numbers. It returns
+// the number resent.
 func (t *transport) retransmitFrom(requestSeq uint16) int {
 	last := t.localSeq
 	span := (last - int(requestSeq)) & seqMask

@@ -208,16 +208,31 @@ func TestTransferPacketsAreConsumed(t *testing.T) {
 	}
 }
 
-// test_lock_delivery.py: a lock release (LKST state 0) is stored; atemwire
-// ignores a lock taken.
+// test_lock_delivery.py stores a lock release (LKST state 0) and drops a
+// lock taken. Here both are stored, per store (bmdwire#15): a release
+// as atemwire does, a lock taken where atemwire stores nothing.
 func TestLockState(t *testing.T) {
 	s, c := storeOne(t, "LKST", []byte{0, 0, 0, 0})
-	if c == nil || c.Key != "LKST" || s.LockState == nil {
+	if c == nil || c.Key != "LKST:0" || s.Locks[0] == nil || s.Locks[0].State {
 		t.Fatalf("release not stored: %+v", c)
 	}
 	s, c = storeOne(t, "LKST", []byte{0, 0, 1, 0})
-	if c != nil || s.LockState != nil {
-		t.Fatalf("lock taken stored: %+v", c)
+	if c == nil || c.Key != "LKST:0" || s.Locks[0] == nil || !s.Locks[0].State {
+		t.Fatalf("lock taken not stored: %+v", c)
+	}
+	if _, err := s.store("LKST", []byte{0xff, 0xff, 1, 0}); err != nil || len(s.Locks) != 2 || !s.Locks[0].State || !s.Locks[0xffff].State {
+		t.Fatalf("stores overwrite each other: %v %+v", err, s.Locks)
+	}
+}
+
+// *XFC is dropped unparsed whatever it holds, where atemwire raises
+// KeyError and loses the rest of the packet (bmdwire#14).
+func TestXFCIsDropped(t *testing.T) {
+	for _, payload := range [][]byte{nil, {0, 0, 0, 3, 1, 0, 0, 0}} {
+		s := newState()
+		if c, err := s.store("*XFC", payload); err != nil || c != nil {
+			t.Fatalf("%x: %+v %v", payload, c, err)
+		}
 	}
 }
 

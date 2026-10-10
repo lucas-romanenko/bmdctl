@@ -55,7 +55,9 @@ type State struct {
 	Topology      *TopologyField                                              `atem:"_top" json:"topology"`
 	Identity      Identity                                                    `json:"identity"`
 	Time          Clock                                                       `json:"time"`
-	LockState     *LockStateField                                             `atem:"LKST" json:"lock_state"`
+	// Locks is every store's lock as the switcher last reported it, taken
+	// or released, keyed by store (see LockStateField).
+	Locks map[uint16]*LockStateField `atem:"LKST" json:"locks"`
 
 	// Raw holds every packet atemwire stores as bytes under its code: the
 	// codes it knows but doesn't parse (SURFACE.md §5.1), InCm, and any
@@ -1316,8 +1318,12 @@ type TimeConfigField struct {
 	Mode uint8 `json:"mode"`
 }
 
-// LockStateField is LKST, mixerstate['lock-state'], bare. Only releases are
-// stored: atemwire ignores a lock-state packet that reports a lock taken.
+// LockStateField is LKST, mixerstate['lock-state']: a store's lock was
+// taken (State true) or released. The switcher broadcasts it to every
+// session and doesn't say who holds the lock: while this session holds
+// none, a lock taken is another client's. atemwire stores releases only,
+// bare, so stores 0 and 0xFFFF overwrite each other there; here both
+// states are stored, per store (bmdwire#15, docs/PORTING.md).
 type LockStateField struct {
 	Store uint16 `json:"store"`
 	State bool   `json:"state"`
@@ -1361,7 +1367,7 @@ type FileTransferErrorField struct {
 }
 
 // TransferCompleteField is *XFC, which only atemwire's (unshipped) TCP
-// proxy transport sends.
+// proxy transport sends. A session drops it unparsed (bmdwire#14).
 type TransferCompleteField struct {
 	Store  uint16 `json:"store"`
 	Slot   uint16 `json:"slot"`
@@ -1383,6 +1389,7 @@ func newState() State {
 			Inputs:        make(map[uint16]*FairlightAudioInputField),
 		},
 		Audio: Audio{Inputs: make(map[string]*AudioInputField)},
+		Locks: make(map[uint16]*LockStateField),
 		Raw:   make(map[string][]byte),
 	}
 }

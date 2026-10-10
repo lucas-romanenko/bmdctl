@@ -146,13 +146,11 @@ var systemParsers = []parser{
 		return "TCCc"
 	}),
 	entry("LKST", "lock-state", parseLKST, func(s *State, f *LockStateField) string {
-		if f.State {
-			// atemwire ignores a lock taken (by anyone): not stored, no
-			// events. Releases are stored.
-			return ""
-		}
-		s.LockState = f
-		return "LKST"
+		// atemwire drops a lock taken and stores a release bare. Both are
+		// stored here, per store, so a caller can see another client
+		// holding a lock (bmdwire#15).
+		s.Locks[f.Store] = f
+		return key("LKST", f.Store)
 	}),
 	// Consumed by atemwire's transfer engine, never stored. The session
 	// handles LKOB itself (see Session.onData).
@@ -161,15 +159,12 @@ var systemParsers = []parser{
 	entry[FileTransferDataCompleteField]("FTDC", "file-transfer-data-complete", parseFTDC, nil),
 	entry[FileTransferDataField]("FTDa", "file-transfer-data", parseFTDa, nil),
 	entry[FileTransferErrorField]("FTDE", "file-transfer-error", parseFTDE, nil),
-	entry[TransferCompleteField]("*XFC", "transfer-complete", func(b []byte) (*TransferCompleteField, error) {
-		f, err := parseXFC(b)
-		if err != nil {
-			return nil, err
-		}
-		// atemwire looks up the store's transfer queue, and with no transfer
-		// queued that is a KeyError: the rest of the packet is lost.
-		return nil, fmt.Errorf("atem: *XFC for store %d with no transfer queued", f.Store)
-	}, nil),
+	// *XFC is the TCP proxy's transfer-complete event; no switcher sends it
+	// over UDP. atemwire's handler looks up the store's transfer queue: with
+	// none it raises KeyError and loses the rest of the packet, with one it
+	// pops a real transfer. Here it is dropped unparsed, whatever it holds,
+	// so it can do neither (bmdwire#14).
+	{code: "*XFC", name: "transfer-complete", parse: func([]byte) (any, error) { return nil, nil }},
 }
 
 // mvWindow returns window w of multiviewer mv, growing the tree to reach it.
@@ -619,11 +614,4 @@ func parseFTDE(b []byte) (*FileTransferErrorField, error) {
 		return nil, err
 	}
 	return &FileTransferErrorField{Transfer: u16(b, 0), Status: b[2]}, nil
-}
-
-func parseXFC(b []byte) (*TransferCompleteField, error) {
-	if err := atLeast("*XFC", b, 5); err != nil {
-		return nil, err
-	}
-	return &TransferCompleteField{Store: u16(b, 0), Slot: u16(b, 2), Upload: flag(b, 4)}, nil
 }

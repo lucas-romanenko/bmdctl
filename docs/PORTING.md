@@ -20,7 +20,9 @@ it. When you make a new decision, add it here in the same commit.
 - **Mirror, don't redesign.** Behaviour, masks, clamps, units and quirks
   follow atemwire, including its known traps (SURFACE.md §5.4), unless a
   section below says otherwise. A deliberate difference is recorded here
-  with its reason; an undocumented difference is a bug.
+  with its reason; an undocumented difference is a bug. Bugs fixed on
+  purpose rather than copied are listed under "Deliberate differences",
+  each with its bmdwire issue.
 
 ## Repository rules
 
@@ -91,13 +93,11 @@ keepalive and no client retransmit timer, as in atemwire.
 - **ACKs go out immediately.** atemwire queues an ACK for its UDP thread to
   send on its next `select()` wake-up; here it is written while the
   datagram is processed. Same ACK number, same order relative to the data.
-- **"5 s of silence" means what atemwire's `select()` means:** no datagram
-  in from anyone (a foreign or malformed one counts) and no packet out
-  through the normal send path, for 5 s. Resends and the goodbye bypass
-  that path in atemwire, so they don't count here either. A client that
-  keeps sending commands to a dead switcher therefore never times out, as
-  in atemwire. On timeout the transport re-SYNs at once and the session
-  reports a disconnect.
+- **"5 s of silence" is 5 s with no datagram accepted from the switcher**
+  (right peer, well formed, not stale), counted from the last one or from
+  the last SYN. This is a deliberate difference (bmdwire#11, see
+  "Deliberate differences"). On timeout the transport re-SYNs at once and
+  the session reports a disconnect.
 - **ConnectionReady without a stash.** atemwire marks the dump complete
   when `InCm` is stored, then returns a `ConnectionReady` sentinel for the
   next packet and keeps that packet for its next call (the 2026-09-16
@@ -119,6 +119,9 @@ keepalive and no client retransmit timer, as in atemwire.
   `IndexError` out of `loop()`, which loses the packet the same way.
 - **The SYN** carries sequence number 1 (`local_sequence_number` goes from
   -1 to 0 first) and zero in bytes 8-9, exactly as atemwire sends it.
+- **Session ids.** Packets carrying the previous session's id, and while
+  the handshake is in flight anything but the SYN reply, are dropped
+  before any receive state sees them; a deliberate difference (bmdwire#12).
 - **Not ported yet:** the paced bulk send queue (`queue_packet`,
   `queue_trigger`, `batch_size` 5 / 3 ms, `aggressive_drain`, the
   `TransferQueueFlushed` sentinel). Only uploads use it; it arrives with
@@ -278,7 +281,9 @@ two settings `Dial` needs a struct for.
   unknown code. Last packet wins.
 - **Consumed packets** (`LKOB`, `FTCD`, `FTDC`, `FTDa`, `FTDE`, `*XFC`)
   have types but no place in the tree, as atemwire never stores them.
-  `LKST` is stored only when it reports a release, as atemwire does.
+- **Locks.** `State.Locks` holds every `LKST`, lock taken or released,
+  keyed by store, where atemwire stores only releases, bare: a deliberate
+  difference (bmdwire#15).
 - **Where Python's type doesn't carry over:** names and descriptions that
   atemwire keeps as `bytes` (`MPfe`, `MPrp`) are Go strings holding the
   same bytes, undecoded (JSON shows invalid UTF-8 as U+FFFD); `None` is a
@@ -323,11 +328,11 @@ with a store function (where `save_field_data` puts the result);
 - **Quirks copied on purpose:** an `MPfe` of exactly 23 bytes is an error
   (Python's `struct` raises on a zero-length Pascal string); an unknown
   `VidM` mode, or a `_VMC` bitfield with bit 30 or 31 set, is an error
-  (atemwire's `ValueError`, §5.4 item 3); `*XFC` is an error once parsed
-  (atemwire's `KeyError` looking up a transfer queue that doesn't exist);
-  `CCdP` with data type 5 or an unknown type yields empty data; `LKST`
-  reporting a lock taken is dropped unstored. All of these are what bmdwire
-  v1.3.0 does.
+  (atemwire's `ValueError`, §5.4 item 3); `CCdP` with data type 5 or an
+  unknown type yields empty data. All of these are what bmdwire v1.3.0
+  does. Two of its quirks are fixed instead (see "Deliberate
+  differences"): `*XFC` is dropped, not an error (bmdwire#14), and `LKST`
+  is stored taken or released, per store (bmdwire#15).
 - **Keys.** `Change.Key` is the opcode and the indices atemwire's
   `KEY_FORMAT` reads, with the strip id in place of the first index for
   every packet that carries one (`FASP`, `AEBP`, `AICP`, `AILP`, `AIXP`
@@ -352,7 +357,8 @@ with a store function (where `save_field_data` puts the result);
   not, same consumed/raw/stored outcome, same key, same attribute values
   (floats to 1e-12), and the value sits in the `State` tree under the
   field tagged with its opcode at the indices the key names. Every parser
-  has cases. `parse_test.go` also ports, one for one, the assertions
+  has cases. Where bmdctl differs on purpose (`*XFC`, `LKST`), the test
+  rewrites the recorded case to what the port must do (`deliberate`). `parse_test.go` also ports, one for one, the assertions
   bmdwire's tests make about parsed packets, including the three live
   captures in `internal/fixtures/audio/`.
 
@@ -513,8 +519,14 @@ arguments, `Validator`.
   of the next session; `DropFromClient(n)` ignores the next n datagrams
   from the session; `DelayACKs(d)` ACKs late; `Silence(true)` cuts the
   cable: nothing in or out, and the switcher forgets the session, as a real
-  one does when its packets go unacknowledged. `Commands()` and
-  `Handshakes()` let tests look inside.
+  one does when its packets go unacknowledged. `SendStale(n)` sends n
+  packets under the previous session's id around the next handshake, before
+  the SYN reply and again before the new dump; `Send(cmds...)` sends any
+  commands, malformed ones included; `Inject(from, b)` delivers a datagram
+  from any address, silence or not; `HoldLock(store)` and
+  `ReleaseLock(store)` play another client taking and releasing a store
+  lock, broadcast as `LKST`. `Commands()` and `Handshakes()` let tests look
+  inside.
 - **The dump** (`internal/fixtures/dump/initial-dump.bin`) is synthetic:
   bmdwire's tests contain no recorded one. `gen_dump.py` builds 88
   commands from the values of bmdwire's `build_full_state`
@@ -527,7 +539,9 @@ arguments, `Validator`.
   packet recovered through the stalled ACK, a lost command recovered
   through the switcher's retransmission request, delayed ACKs, and silence
   followed by a re-handshake and a fresh dump (about 10 s; skipped with
-  `-short`).
+  `-short`). The tests for the deliberate differences are in
+  `atem/fake_test.go` (package `atem_test`, which can shorten the silence
+  timeout through `export_test.go`).
 
 ## Traps inherited from atemwire
 
@@ -540,23 +554,88 @@ deliberate fix later, recorded here as such when it is made.
   `_deliver_next`). If the switcher's first packet after the handshake is
   lost, the second becomes the baseline, the ACK covers both, and a late
   copy of the first is dropped as already delivered: its fields never
-  arrive. If they include the video mode, connecting times out.
-  `TestLosingTheFirstDumpPacketLosesItForGood` pins it.
-- **Stale packets during a re-handshake.** Packets from the previous
-  session that arrive after the re-SYN reset the 5 s silence timer, so the
-  transport doesn't re-SYN again while they keep coming, and the first
-  reliable one sets the delivery cursor, so the new session's packets
-  (starting again at 1) look like duplicates. The first effect stalled
-  the fake switcher's reconnect test until the fake learned to forget a
-  silenced session; the second follows from the same code, read rather
-  than observed. The Python logic is the same line for line.
+  arrive. The port keeps this, but when it costs the video mode Dial now
+  fails at once instead of timing out (bmdwire#13, "Deliberate
+  differences"); anything else in that packet is still silently missing.
 - **A lost command is recovered only by a later one.** With no client
   retransmit timer (by design, SURFACE.md §4.2), a reliable packet the
   switcher never sees is resent only when a later packet shows the switcher
   the gap. `SendAndWait` on that command times out.
 - **Parse errors lose the rest of the packet** (session section), including
-  a 23-byte `MPfe`, `*XFC` on UDP, a `KeFS` under two bytes, and a `_VMC`
-  bitfield naming mode 30 or 31.
+  a 23-byte `MPfe`, a `KeFS` under two bytes, and a `_VMC` bitfield naming
+  mode 30 or 31.
+
+## Deliberate differences
+
+Bugs in bmdwire v1.3.0 the port fixes instead of copying. Each was filed
+against bmdwire (`github.com/lucas-romanenko/bmdwire/issues/<n>`), and each
+has a test against the fake switcher (`atem/fake_test.go`) that fails on
+bmdwire's behaviour.
+
+- **bmdwire#11: the silence timeout counts accepted inbound packets
+  only.** atemwire's UDP thread times out when `select()` has slept 5 s,
+  and `select()` wakes on any datagram (a foreign or malformed one too) and
+  on every packet it sends, so a client sending to a switcher that has
+  gone silent never times out, keeps `is_ready` over stale state and sends
+  into the void. Here the clock (`transport.lastRX`) restarts only on a
+  datagram from the switcher's address that parses and isn't stale
+  (bmdwire#12), and on each SYN, so every handshake gets a full window.
+  Our own sends, resends and goodbyes never count.
+  `TestSilenceIgnoresOwnSendsAndForeignDatagrams`; at the transport level
+  `TestSilenceTimeoutReconnects`.
+- **bmdwire#12: stale packets during a re-handshake are dropped.** After a
+  silence the switcher goes on resending the old session for a while.
+  atemwire checks the session id only in `_handshake`, so those packets
+  restart the silence window, the first reliable one becomes the new
+  session's ACK baseline and delivery cursor (the new dump, starting again
+  at low sequence numbers, is then dropped as duplicates), and one arriving
+  just after the handshake ACK is adopted as the session id. Here
+  `connect` remembers the previous switcher-assigned id, and `receive`
+  drops, before anything else sees it (sequence history, ACK baseline,
+  cursor, session-id adoption, silence clock), any packet carrying it, and,
+  while in SYN_SENT, anything but a SYN under the hello id. If a switcher
+  ever reused the previous id for the new session (after a reboot,
+  perhaps), the new session's packets would be dropped too, the silence
+  timeout would fire and the next handshake would get another id: a 5 s
+  stall, not a hang. `TestStalePacketsDuringARehandshake` (the fake sends
+  old-session packets before its SYN reply and again before the new dump);
+  `TestTransportDropsStaleSessionPackets` follows the issue's script.
+- **bmdwire#13: a dump without a video mode fails Dial at once.** The
+  issue offers two fixes. (A) expects a new session's first reliable
+  sequence number, so a lost first packet stalls the ACK and is resent
+  like any other. (B) fails fast. A needs that number to be fixed, and
+  nothing in bmdwire v1.3.0 proves it: no test or fixture holds a captured
+  handshake; the ACK-gap tests use 10 as the first reliable sequence, the
+  handshake test 1 after an unreliable 5; the one "first dump packet"
+  with sequence 1 (`test_lock_delivery.py`, `_data_packet(seq=1)`) is a
+  hand-built literal; and the fake switcher's dump starts at 1 only
+  because this port wrote it so. Other clients assume 1, but an assumption
+  that is wrong would make every connect stall on a gap that doesn't
+  exist. So the port takes B: when `InCm` is stored and the state has no
+  video mode, Dial fails at once with `ErrIncompleteDump`, naming the
+  sequence number that arrived first (`transport.firstRX`) and any parse
+  error during the dump (an unknown `VidM` mode, §5.4 item 3, ends here
+  too). atemwire waits out `wait_ready`'s 15 s. After Dial a dump without
+  a video mode is logged as an error and the session carries on, as
+  atemwire's does; a forced re-handshake could loop against a switcher
+  whose `VidM` never parses. The silent loss of whatever else was in a
+  lost first packet remains (see "Traps"). `TestLosingTheFirstDumpPacketFailsDialFast`.
+- **bmdwire#14: `*XFC` is dropped.** It is the OpenSwitcher TCP proxy's
+  transfer-complete event; no switcher sends it over UDP. atemwire's
+  handler indexes the store's transfer queue: with none it raises
+  `KeyError`, losing the rest of the packet; with one it pops a real
+  transfer and may raise `upload-done`. Here the parser entry drops it
+  unparsed whatever its length, so it can never raise and never touch the
+  transfer lane. `TestXFCDoesNotLoseTheRestOfThePacket`, `TestXFCIsDropped`.
+- **bmdwire#15: `LKST` is stored taken and released, per store.** atemwire
+  drops a lock-taken `LKST` and stores releases bare, so stores 0 and
+  0xFFFF overwrite each other and nobody can see that ASC or another
+  client holds the media lock. Here `State.Locks[store]` holds the latest
+  `LKST` for each store and every one is published (`Change.Key`
+  `LKST:<store>`). The packet doesn't name the holder: a lock taken while
+  this session holds none is another client's. atemwire's reactions to a
+  release (forget our lock, re-request for queued work) stay release-only.
+  `TestAnotherClientsLockIsVisible`, `TestLockState`.
 
 ## SURFACE.md and the code
 
@@ -571,13 +650,15 @@ follows the code.
 - **§2.4 `audio-input` (`AMIP`)** is listed as indexed by source; atemwire
   keys it by strip id, `"<source>.0"`, because the class carries a
   `strip_id` and `save_field_data` puts that in place of the first index.
-- **§2.5 `lock-state` (`LKST`)** is listed as stored bare; only releases
-  are stored. A packet reporting a lock taken is dropped before storage,
-  with no events.
+- **§2.5 `lock-state` (`LKST`)** is listed as stored bare; atemwire stores
+  only releases. A packet reporting a lock taken is dropped before storage,
+  with no events. (The port stores both, per store: bmdwire#15.)
 - **§2.5 `transfer-complete` (`*XFC`)** is listed as consumed (TCP proxy
   only); on UDP its handler looks up a transfer queue that doesn't exist and
-  raises `KeyError`, losing the rest of the packet.
+  raises `KeyError`, losing the rest of the packet. (The port drops it:
+  bmdwire#14.)
 - **§4.2 "after 5 s with no packets"**: the timeout is `select()` on the
   socket and the outbound queue, so it is 5 s with no datagram in (from
   anyone) and no packet out. A client that keeps sending to a dead switcher
-  never times out.
+  never times out. (The port counts accepted inbound packets only:
+  bmdwire#11.)

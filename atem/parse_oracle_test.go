@@ -50,6 +50,7 @@ func TestParsersMatchAtemwire(t *testing.T) {
 			t.Fatal(err)
 		}
 		where := fmt.Sprintf("case %d %s %s", i, c.Code, c.Payload)
+		c = deliberate(c, payload)
 		st := newState()
 		ch, err := st.store(c.Code, payload)
 		switch c.Result {
@@ -98,6 +99,29 @@ func TestParsersMatchAtemwire(t *testing.T) {
 		}
 	}
 	t.Logf("%d cases over %d codes", len(oracle.Cases), len(codes))
+}
+
+// deliberate rewrites an oracle case to what Go must do where bmdctl
+// differs from bmdwire v1.3.0 on purpose (docs/PORTING.md, "Deliberate
+// differences").
+func deliberate(c oracleCase, payload []byte) oracleCase {
+	switch c.Code {
+	case "*XFC":
+		// bmdwire#14: dropped unparsed, never an error.
+		c.Result = "consumed"
+	case "LKST":
+		// bmdwire#15: a lock taken is stored as well as a release, keyed
+		// by store.
+		if c.Result == "error" {
+			break
+		}
+		store := uint16(payload[0])<<8 | uint16(payload[1])
+		if c.Result == "consumed" {
+			c.Value = map[string]any{"store": float64(store), "state": payload[2] != 0, "u1": float64(payload[3])}
+		}
+		c.Result, c.Name, c.Key = "stored", "lock-state", fmt.Sprintf("LKST:%d", store)
+	}
+	return c
 }
 
 // byteStrings are string fields holding bytes atemwire leaves undecoded;

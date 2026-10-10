@@ -660,28 +660,42 @@ func TestHandshakeRefusedStaysSYNSent(t *testing.T) {
 	}
 }
 
+// The silence timeout counts from the last datagram accepted from the
+// switcher (bmdwire#11). atemwire's select() also wakes on foreign and
+// malformed datagrams and on its own sends, so there a client sending to a
+// dead switcher never times out.
 func TestSilenceTimeoutReconnects(t *testing.T) {
 	tr, c := newTestTransport(t)
 	now := time.Unix(1000, 0)
 	tr.now = func() time.Time { return now }
 	tr.state = stateEstablished
-	tr.lastActivity = now
+	tr.sessionID = 0x8001
+	tr.lastRX = now
 	now = now.Add(silenceTimeout - time.Millisecond)
 	if tr.silent() {
 		t.Fatal("silent too early")
 	}
-	// Any datagram counts as activity, even one that is then dropped.
-	if _, err := tr.receive(validFrame(), foreignAddr); err != nil {
+	// What the switcher sends restarts the window.
+	if _, err := tr.receive(rawDatagram(0x8001, 1, flagReliable, nil), switcherAddr); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(silenceTimeout - time.Millisecond)
 	if tr.silent() {
-		t.Fatal("a foreign datagram did not count as activity")
+		t.Fatal("a packet from the switcher did not restart the window")
 	}
+	// A foreign datagram, a malformed one and our own sends don't.
+	if _, err := tr.receive(validFrame(), foreignAddr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tr.receive([]byte{1, 2, 3}, switcherAddr); err != nil {
+		t.Fatal(err)
+	}
+	sendReliable(t, tr, cmdBytes("CPgI", []byte{0, 0, 0, 1}))
 	now = now.Add(time.Millisecond)
 	if !tr.silent() {
-		t.Fatal("not silent after 5 s")
+		t.Fatal("not silent 5 s after the switcher's last packet")
 	}
+	c.reset()
 	if err := tr.timeout(); err != nil {
 		t.Fatal(err)
 	}
@@ -689,6 +703,86 @@ func TestSilenceTimeoutReconnects(t *testing.T) {
 		t.Fatalf("state %v sent %+v", tr.state, c.sent())
 	}
 	if tr.silent() {
-		t.Fatal("the re-SYN did not count as activity")
+		t.Fatal("the re-SYN did not get a fresh window")
+	}
+}
+
+// After a re-handshake, packets carrying the previous session's id are
+// dropped before anything sees them, and while the handshake is in flight
+// only the switcher's SYN reply gets through (bmdwire#12). In atemwire the
+// first stale reliable packet becomes the new session's baseline, so the
+// new dump looks like duplicates, and one arriving after the handshake ACK
+// becomes the session id.
+func TestTransportDropsStaleSessionPackets(t *testing.T) {
+	tr, c := newTestTransport(t)
+	now := time.Unix(1000, 0)
+	tr.now = func() time.Time { return now }
+	if err := tr.connect(); err != nil {
+		t.Fatal(err)
+	}
+	feed := func(session, seq uint16, flags uint8, data []byte) []packet {
+		t.Helper()
+		got, err := tr.receive(rawDatagram(session, seq, flags, data), switcherAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range got {
+			if _, err := tr.handle(p); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return got
+	}
+	accept := []byte{helloAccepted, 0, 0, 0, 0, 0, 0, 0}
+	// Session 0x8001, sequences 100-102.
+	feed(helloSession, 0, flagSYN, accept)
+	for seq := uint16(100); seq <= 102; seq++ {
+		feed(0x8001, seq, flagReliable, []byte("data"))
+	}
+	if tr.sessionID != 0x8001 || tr.ackNumber != 102 {
+		t.Fatalf("session %#x ack %d", tr.sessionID, tr.ackNumber)
+	}
+	// Silence: re-SYN.
+	now = now.Add(silenceTimeout)
+	if err := tr.timeout(); err != nil {
+		t.Fatal(err)
+	}
+	rx := tr.lastRX
+	now = now.Add(time.Second)
+	c.reset()
+	// A stale packet while the SYN is out: dropped, nothing touched.
+	if got := feed(0x8001, 103, flagReliable|flagRetransmission, []byte("stale")); got != nil {
+		t.Fatalf("delivered %+v", got)
+	}
+	// So is anything else that isn't the SYN reply.
+	if got := feed(0x8044, 7, flagReliable, []byte("other")); got != nil {
+		t.Fatalf("delivered %+v", got)
+	}
+	if tr.rxEstablished || tr.deliverKnown || tr.lastRX != rx || len(c.sent()) != 0 {
+		t.Fatalf("stale packets touched the receive state: established %v cursor %v rx %v sent %d",
+			tr.rxEstablished, tr.deliverKnown, tr.lastRX != rx, len(c.sent()))
+	}
+	// The SYN reply, then another stale packet before the new id arrives:
+	// not adopted.
+	feed(helloSession, 0, flagSYN, accept)
+	if tr.state != stateEstablished || tr.sessionKnown {
+		t.Fatalf("state %v known %v", tr.state, tr.sessionKnown)
+	}
+	if got := feed(0x8001, 104, flagReliable|flagRetransmission, []byte("stale")); got != nil || tr.sessionKnown {
+		t.Fatalf("stale packet delivered %+v or adopted (%#x)", got, tr.sessionID)
+	}
+	// The new session's packets come through in order, from 1.
+	var seqs []uint16
+	for seq := uint16(1); seq <= 3; seq++ {
+		for _, p := range feed(0x8002, seq, flagReliable, []byte("new")) {
+			seqs = append(seqs, p.seq)
+		}
+	}
+	if !slices.Equal(seqs, []uint16{1, 2, 3}) || tr.sessionID != 0x8002 || tr.ackNumber != 3 {
+		t.Fatalf("delivered %v, session %#x, ack %d", seqs, tr.sessionID, tr.ackNumber)
+	}
+	// And the old session stays dropped.
+	if got := feed(0x8001, 105, flagReliable, []byte("stale")); got != nil {
+		t.Fatalf("delivered %+v", got)
 	}
 }

@@ -47,6 +47,10 @@ var (
 	// ErrDisconnected is returned by SendAndWait when the session drops
 	// before the echo arrives.
 	ErrDisconnected = errors.New("atem: switcher disconnected")
+	// ErrIncompleteDump is returned by Dial when the switcher's state dump
+	// ends without its video mode, which a lost first dump packet causes
+	// (bmdwire#13). The error says which sequence number came first.
+	ErrIncompleteDump = errors.New("atem: the state dump ended without a video mode")
 )
 
 // ChangeKind says what a Change reports.
@@ -166,6 +170,7 @@ type Session struct {
 	waiters        map[string][]*waiter
 	subs           map[*subscription]struct{}
 	fatal          error
+	dumpErr        error // the first parse error since the dump began
 
 	// Shared.
 	reqs      chan func()   // closures the run goroutine executes
@@ -411,7 +416,7 @@ func (s *Session) loop() error {
 		if s.fatal != nil {
 			return s.fatal
 		}
-		silence.Reset(time.Until(s.t.lastActivity.Add(s.t.silence)))
+		silence.Reset(time.Until(s.t.lastRX.Add(s.t.silence)))
 	}
 }
 
@@ -491,6 +496,9 @@ func (s *Session) onData(data []byte) {
 			return s.onLockObtained(payload)
 		}
 		c, err := s.state.store(code, payload)
+		if err != nil && !s.initialized && s.dumpErr == nil {
+			s.dumpErr = fmt.Errorf("%s: %w", code, err)
+		}
 		if err != nil || c == nil {
 			return err
 		}
@@ -498,6 +506,9 @@ func (s *Session) onData(data []byte) {
 		if code == "InCm" {
 			// The end of the state dump: the next packet reports ready.
 			s.t.markNextConnected = true
+			if !s.state.hasVideoMode() {
+				s.incompleteDump()
+			}
 		}
 		return nil
 	})
@@ -509,6 +520,25 @@ func (s *Session) onData(data []byte) {
 		// packet is lost, the session carries on.
 		s.log.Error("atem: packet dropped part way", "err", err)
 	}
+}
+
+// incompleteDump: the state dump ended (InCm) without a video mode. In
+// bmdwire v1.3.0 Dial (wait_ready) then waits out its whole timeout; here
+// it fails at once, saying which sequence number arrived first, since a
+// packet the switcher sent before that one is lost for good: the first
+// reliable packet sets the receive baseline (bmdwire#13, docs/PORTING.md).
+// After Dial the session carries on without a video mode, as atemwire's
+// does, and logs why.
+func (s *Session) incompleteDump() {
+	err := fmt.Errorf("%w: the first dump packet to arrive was sequence %d, and any the switcher sent before it was lost", ErrIncompleteDump, s.t.firstRX)
+	if s.dumpErr != nil {
+		err = fmt.Errorf("%w; a parse error also dropped part of the dump (%w)", err, s.dumpErr)
+	}
+	if !s.dialed {
+		s.fatal = err
+		return
+	}
+	s.log.Error("atem: incomplete state dump", "err", err)
 }
 
 // onLockObtained: the switcher granted a store lock. Nothing in this
@@ -565,6 +595,7 @@ func (s *Session) disconnected() {
 	s.state = newState()
 	s.state.Macros.LastRun = last
 	s.initialized = false
+	s.dumpErr = nil
 	if s.readyClosed {
 		s.readyClosed = false
 		ready := make(chan struct{})

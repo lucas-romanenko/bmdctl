@@ -12,13 +12,16 @@
 // internal/fixtures/dump/initial-dump.bin), ACKs what the session sends,
 // echoes the commands in echoes.go as state packets, pings every
 // PingInterval, resends what the session hasn't ACKed and asks for what
-// it missed. Tests can make it drop packets, delay its ACKs or go silent.
+// it missed. Tests can make it drop packets, delay its ACKs, go silent,
+// send stale packets from an old session, send any command, let another
+// client hold a store lock, and inject datagrams from anywhere.
 //
 // It is not a switcher model: commands without an echo handler are ACKed
 // and otherwise ignored.
 package fakeatem
 
 import (
+	"bytes"
 	"encoding/binary"
 	"net"
 	"slices"
@@ -58,7 +61,7 @@ var (
 type Switcher struct {
 	mu        sync.Mutex
 	dump      []byte
-	out       [][]byte // datagrams waiting for the session's ReadFrom
+	out       []datagram // waiting for the session's ReadFrom
 	wake      chan struct{}
 	closed    chan struct{}
 	closeOnce sync.Once
@@ -79,6 +82,22 @@ type Switcher struct {
 	dropFromClient int
 	ackDelay       time.Duration
 	silent         bool
+	stale          int // packets of the old session to send around the next handshake
+
+	locks map[uint16]holder // store locks that are held
+}
+
+// holder is who holds a store lock.
+type holder uint8
+
+const (
+	heldByOther   holder = iota + 1 // another client
+	heldBySession                   // the session under test
+)
+
+type datagram struct {
+	b    []byte
+	from net.Addr
 }
 
 type sent struct {
@@ -96,6 +115,7 @@ func New(dump []byte) *Switcher {
 		unacked:  map[uint16]*sent{},
 		state:    map[string][]byte{},
 		dropSeqs: map[uint16]bool{},
+		locks:    map[uint16]holder{},
 	}
 	forEachCommand(dump, func(code string, payload []byte) { sw.remember(code, payload) })
 	go sw.tick()
@@ -123,7 +143,7 @@ func (sw *Switcher) Silence(on bool) {
 	defer sw.mu.Unlock()
 	sw.silent = on
 	if on {
-		sw.established = false
+		sw.endSession()
 		sw.unacked = map[uint16]*sent{}
 		sw.out = nil
 	}
@@ -137,6 +157,55 @@ func (sw *Switcher) DropSequences(seqs ...uint16) {
 	defer sw.mu.Unlock()
 	for _, s := range seqs {
 		sw.dropSeqs[s] = true
+	}
+}
+
+// SendStale makes the switcher, around the session's next handshake, send
+// n reliable packets carrying the previous session's id and its next
+// sequence numbers, both before it answers the SYN and again before the new
+// session's first packet: what a real switcher does while it keeps
+// resending an old session it hasn't yet given up on.
+func (sw *Switcher) SendStale(n int) { sw.mu.Lock(); sw.stale = n; sw.mu.Unlock() }
+
+// Send sends cmds (each a whole command, header included; see Command) to
+// the session in one reliable packet. Anything goes, including commands no
+// switcher sends and malformed ones.
+func (sw *Switcher) Send(cmds ...[]byte) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	if sw.established {
+		sw.sendReliable([][]byte{bytes.Join(cmds, nil)})
+	}
+}
+
+// Inject hands the session a datagram as if from addr, which needn't be
+// the switcher. Silence doesn't stop it.
+func (sw *Switcher) Inject(from net.Addr, b []byte) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	sw.out = append(sw.out, datagram{append([]byte(nil), b...), from})
+	sw.wakeUp()
+}
+
+// HoldLock makes another client take store's lock, if it is free: the
+// switcher broadcasts it (LKST) to the session.
+func (sw *Switcher) HoldLock(store uint16) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	if _, held := sw.locks[store]; !held {
+		sw.locks[store] = heldByOther
+		sw.broadcast(lockState(store, true))
+	}
+}
+
+// ReleaseLock makes the other client let go of store's lock, if it holds
+// it: the switcher broadcasts the release.
+func (sw *Switcher) ReleaseLock(store uint16) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	if sw.locks[store] == heldByOther {
+		delete(sw.locks, store)
+		sw.broadcast(lockState(store, false))
 	}
 }
 
@@ -158,10 +227,10 @@ func (sw *Switcher) ReadFrom(p []byte) (int, net.Addr, error) {
 	for {
 		sw.mu.Lock()
 		if len(sw.out) > 0 {
-			b := sw.out[0]
+			d := sw.out[0]
 			sw.out = sw.out[1:]
 			sw.mu.Unlock()
-			return copy(p, b), switcherAddr, nil
+			return copy(p, d.b), d.from, nil
 		}
 		sw.mu.Unlock()
 		select {
@@ -250,13 +319,16 @@ func (sw *Switcher) receive(b []byte) {
 	switch {
 	case p.flags&flagSYN != 0 && len(p.data) > 0 && p.data[0] == 0x01:
 		// A new session: accept it under the temporary id.
+		sw.sendStale()
 		sw.established = false
 		sw.send(packet{flags: flagSYN, session: helloSession, data: []byte{0x02, 0, 0, 0, 0, 0, 0, 0}})
 		return
 	case p.flags&flagSYN != 0 && len(p.data) > 0 && p.data[0] == 0x04:
-		sw.established = false // goodbye
+		sw.endSession() // goodbye
 		return
 	case !sw.established && p.flags&flagACK != 0 && p.session == helloSession:
+		sw.sendStale()
+		sw.stale = 0
 		sw.startSession()
 		return
 	}
@@ -288,11 +360,33 @@ func (sw *Switcher) receive(b []byte) {
 	sw.ackClient(p.seq)
 	var echoes [][]byte
 	forEachCommand(p.data, func(code string, payload []byte) {
-		sw.commands = append(sw.commands, command(code, payload))
+		sw.commands = append(sw.commands, Command(code, payload))
 		echoes = append(echoes, sw.echo(code, payload)...)
 	})
 	if len(echoes) > 0 {
 		sw.sendReliable(echoes)
+	}
+}
+
+// sendStale sends the packets SendStale asked for, under the session id
+// the switcher used last, continuing its sequence numbers.
+func (sw *Switcher) sendStale() {
+	if sw.handshakes == 0 {
+		return
+	}
+	for range sw.stale {
+		sw.seq = (sw.seq + 1) & 0x7FFF
+		sw.send(packet{flags: flagReliable, session: sw.session, seq: sw.seq, data: Command("Stal", []byte{0, 0, 0, 0})})
+	}
+}
+
+// endSession forgets the session: the switcher gives up its locks.
+func (sw *Switcher) endSession() {
+	sw.established = false
+	for store, h := range sw.locks {
+		if h == heldBySession {
+			delete(sw.locks, store)
+		}
 	}
 }
 
@@ -306,7 +400,7 @@ func (sw *Switcher) startSession() {
 	sw.unacked = map[uint16]*sent{}
 	sw.clientKnown = false
 	var cmds [][]byte
-	forEachCommand(sw.dump, func(code string, payload []byte) { cmds = append(cmds, command(code, payload)) })
+	forEachCommand(sw.dump, func(code string, payload []byte) { cmds = append(cmds, Command(code, payload)) })
 	sw.sendReliable(cmds)
 	sw.sendReliable(nil) // the post-dump ping
 }
@@ -364,7 +458,11 @@ func (sw *Switcher) enqueue(b []byte) {
 	if sw.silent {
 		return
 	}
-	sw.out = append(sw.out, b)
+	sw.out = append(sw.out, datagram{b, switcherAddr})
+	sw.wakeUp()
+}
+
+func (sw *Switcher) wakeUp() {
 	select {
 	case sw.wake <- struct{}{}:
 	default:
@@ -421,11 +519,29 @@ func forEachCommand(b []byte, f func(code string, payload []byte)) {
 	}
 }
 
-// command builds one command: header and payload.
-func command(code string, payload []byte) []byte {
+// Command builds one command: the 8-byte header and the payload.
+func Command(code string, payload []byte) []byte {
 	b := make([]byte, 8+len(payload))
 	binary.BigEndian.PutUint16(b, uint16(len(b)))
 	copy(b[4:], code)
 	copy(b[8:], payload)
 	return b
+}
+
+// broadcast sends cmds to the session, if there is one: what a switcher
+// tells every connected client.
+func (sw *Switcher) broadcast(cmds ...[]byte) {
+	if sw.established {
+		sw.sendReliable(cmds)
+	}
+}
+
+// lockState is the LKST the switcher broadcasts when a store's lock is
+// taken or released.
+func lockState(store uint16, taken bool) []byte {
+	p := []byte{byte(store >> 8), byte(store), 0, 0}
+	if taken {
+		p[2] = 1
+	}
+	return Command("LKST", p)
 }
