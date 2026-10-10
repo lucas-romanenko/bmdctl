@@ -41,6 +41,7 @@ var refBuiltins = []refItem{
 	{"bmdctl exec FILE|- [--continue]", "Run one command per line, in order, to one host. Every line is checked before the first is sent; it stops at the first failure unless --continue."},
 	{"bmdctl completion bash|zsh|fish", "Print a shell completion script: commands, flags, host names and, while the engine runs, the switcher's input names."},
 	{"bmdctl man [--dir DIR]", "Print the bmdctl(1) manual page, or write it to DIR/bmdctl.1."},
+	{"bmdctl doctor", "Check the engine, its socket and log, the hosts file and that each host answers, and say what is misconfigured. Exit 1 for a misconfiguration, 2 when a host only didn't answer."},
 }
 
 var refNotes = []refItem{

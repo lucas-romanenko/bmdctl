@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"runtime/debug"
 	"slices"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/hosts"
 	"github.com/lucas-romanenko/bmdctl/internal/paths"
@@ -66,6 +68,10 @@ type cli struct {
 	// noRemember: --host doesn't become the last host used (exec's
 	// lines).
 	noRemember bool
+	// dialATEM and dialTCP are doctor's reachability checks; tests
+	// replace them.
+	dialATEM func(ctx context.Context, addr string) (*atem.Session, error)
+	dialTCP  func(ctx context.Context, addr string) (net.Conn, error)
 }
 
 func newCLI(stdout, stderr io.Writer) *cli {
@@ -73,9 +79,11 @@ func newCLI(stdout, stderr io.Writer) *cli {
 	if err != nil {
 		panic(err) // a malformed table is a programming error
 	}
+	var d net.Dialer
 	return &cli{stdin: os.Stdin, stdout: stdout, stderr: stderr, env: os.Getenv, environ: os.Environ,
 		reg: reg, spawn: engine.Spawn, engineConfig: func(c engine.Config) engine.Config { return c },
-		ctx: context.Background()}
+		ctx: context.Background(), dialATEM: atem.Dial,
+		dialTCP: func(ctx context.Context, addr string) (net.Conn, error) { return d.DialContext(ctx, "tcp", addr) }}
 }
 
 // builtins are the commands that aren't a device's.
@@ -86,6 +94,7 @@ var builtins = []struct{ name, summary string }{
 	{"exec", "run the commands in a file, one per line: exec FILE|-"},
 	{"completion", "print a shell completion script: completion bash|zsh|fish"},
 	{"man", "print the manual page, or write it with --dir"},
+	{"doctor", "check the engine, its socket, the hosts and that each answers"},
 	{"atem", "an ATEM switcher's commands (the default device)"},
 }
 
@@ -167,6 +176,8 @@ func (c *cli) run(args []string) int {
 		return c.completeCommand(args[1:])
 	case "man":
 		return c.manCommand(g, tokens)
+	case "doctor":
+		return c.doctorCommand(g, words[1:], tokens)
 	}
 	// The device: named on the line, else the target host's type, else
 	// an ATEM.

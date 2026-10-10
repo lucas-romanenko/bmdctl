@@ -186,7 +186,7 @@ func (c *cli) complete(args []string) []string {
 			return []string{completeFiles}
 		}
 		return nil
-	case "version", "man", "help":
+	case "version", "man", "doctor", "help":
 		return nil
 	}
 	if e != nil {
