@@ -38,6 +38,11 @@ video mode, clear stills, restore a profile or save startup state.
 Everything else runs against `internal/fixtures` or the fake switcher in
 `internal/fakeatem`.
 
+`docs/HARDWARE.md` records every hardware session. After each one
+(whoever ran it), append a section: date, commit, switcher model,
+protocol version, video mode, what was run, what happened and what
+changed because of it. Never rewrite an earlier section.
+
 ## Rules
 
 - **Mirror bmdwire, don't redesign it.** `docs/SURFACE-atem.md` is the spec
