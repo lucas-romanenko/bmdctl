@@ -44,7 +44,14 @@ func TestComplete(t *testing.T) {
 		{[]string{"transition", ""}, []string{"dip", "dve", "mix", "next", "preview", "rate", "settings", "stinger", "style", "wipe"}},
 		{[]string{"transition", "wipe", "--pattern", "Circ"}, []string{"CircleIris"}},
 		{[]string{"transition", "settings", "--next", "background,k"}, []string{"background,key1", "background,key2", "background,key3", "background,key4"}},
-		{[]string{"usk", "on-air", "--keyer", "0", "--on-air", "t"}, []string{"true"}},
+		{[]string{"usk", "1", "on-air", "t"}, []string{"true"}},
+		{[]string{"usk", "1", "on-air", "o"}, []string{"off", "on"}},
+		{[]string{"usk", "1", "type", "--fly", "f"}, []string{"false"}},
+		{[]string{"usk", "1", "o"}, []string{"on-air"}},
+		{[]string{"pro"}, []string{"profile", "program"}},
+		{[]string{"transition", "style", "w"}, []string{"wipe"}},
+		{[]string{"media", "upload", "1", ""}, []string{completeFiles}},
+		{[]string{"profile", "save", ""}, []string{completeFiles}},
 		{[]string{"media", "upload", "--file", ""}, []string{completeFiles}},
 		{[]string{"exec", ""}, []string{completeFiles}},
 		{[]string{"--host", "s"}, []string{"studio", "spare"}},
@@ -53,22 +60,24 @@ func TestComplete(t *testing.T) {
 		{[]string{"hosts", "add", "x", "1.2.3.4", "--device", "h"}, []string{"hyperdeck"}},
 		{[]string{"completion", ""}, []string{"bash", "zsh", "fish"}},
 		{[]string{"engine", ""}, []string{"stop", "status"}},
-		{[]string{"program", "--source", "1", "x"}, nil},
+		{[]string{"program", "1", "x"}, nil},
 		{[]string{"hyperdeck", ""}, nil},
 	} {
 		if got := complete(c.args...); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%q: %q, want %q", c.args, got, c.want)
 		}
 	}
+	// Flags are the optional arguments; the positional ones' --name form
+	// is accepted but not offered.
 	got := complete("program", "--")
-	if !has(got, "--source", "--me", "--host", "--json", "--yes") || slices.Contains(got, "--keyer") {
+	if !has(got, "--me", "--host", "--json", "--yes") || slices.Contains(got, "--keyer") || slices.Contains(got, "--source") {
 		t.Errorf("program flags: %v", got)
 	}
-	if got := complete("program", "--source", "1", "--"); slices.Contains(got, "--source") {
-		t.Errorf("--source offered twice: %v", got)
+	if got := complete("program", "1", "--me", "1", "--"); slices.Contains(got, "--me") {
+		t.Errorf("--me offered twice: %v", got)
 	}
 	// Input names, live from the running engine, for the host on the line.
-	if got := complete("--host", "studio", "program", "--source", "ca"); !reflect.DeepEqual(got, []string{"Camera 1", "Camera 2"}) {
+	if got := complete("--host", "studio", "program", "ca"); !reflect.DeepEqual(got, []string{"Camera 1", "Camera 2"}) {
 		t.Errorf("live sources: %q", got)
 	}
 	// Indexes, counted from 1, as many as the switcher has.
@@ -80,13 +89,13 @@ func TestComplete(t *testing.T) {
 		{[]string{"usk", "on-air", "--me", "1", "--keyer", "3"}, []string{"3"}},
 		{[]string{"dsk", "tie", "--dsk", ""}, []string{"1", "2"}},
 		{[]string{"aux", "--aux", ""}, []string{"1", "2", "3", "4", "5", "6"}},
-		{[]string{"media", "player", "--player", ""}, []string{"1", "2"}},
-		{[]string{"media", "player", "--player", "1", "--still", "2"}, []string{"2", "20"}},
-		{[]string{"media", "download", "--slot", "1"}, []string{"1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"}},
+		{[]string{"media", "player", ""}, []string{"1", "2"}},
+		{[]string{"media", "player", "1", "--still", "2"}, []string{"2", "20"}},
+		{[]string{"media", "download", "1"}, []string{"1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"}},
 		{[]string{"program", "--me", ""}, []string{"1"}},
 		// A macro by number or name, the ones there are.
-		{[]string{"macro", "run", "--slot", ""}, []string{"1", "Open Show", "3", "Half Time"}},
-		{[]string{"macro", "run", "--slot", "h"}, []string{"Half Time"}},
+		{[]string{"macro", "run", ""}, []string{"1", "3", "Half Time", "Open Show"}},
+		{[]string{"macro", "run", "h"}, []string{"Half Time"}},
 		{[]string{"macro", "record", "--slot", ""}, []string{"1", "2", "3"}},
 	} {
 		if got := complete(append([]string{"--host", "studio"}, c.args...)...); !reflect.DeepEqual(got, c.want) {
@@ -95,7 +104,7 @@ func TestComplete(t *testing.T) {
 	}
 	// No engine: no names, and no engine started.
 	b.engine().Stop()
-	if got := complete("--host", "studio", "program", "--source", ""); got != nil {
+	if got := complete("--host", "studio", "program", ""); got != nil {
 		t.Errorf("sources without an engine: %q", got)
 	}
 	if got := complete("--host", "studio", "usk", "on-air", "--keyer", ""); got != nil {
@@ -136,7 +145,7 @@ func TestManPage(t *testing.T) {
 	}
 	reg, _ := engine.NewRegistry()
 	for _, e := range reg.Entries("atem") {
-		if !strings.Contains(page, ".SS \""+roff(e.Path)+"\"\n") {
+		if !strings.Contains(page, ".SS \""+roff(e.Usage())+"\"\n") {
 			t.Errorf("no section for %s", e.Path)
 		}
 	}

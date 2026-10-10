@@ -54,7 +54,7 @@ func (c *call) checkIndices() error {
 	}
 	if k, ok := idx("keyer"); ok && me < len(c.state.MEs) && c.state.MEs[me].Config != nil {
 		if n := c.state.MEKeyerCount(me); k >= n {
-			return codeErr(CodeUsage, "--keyer %v: M/E %v has %d upstream keyer%s, 1-%d", table.Index(k), table.Index(me), n, plural(n), n)
+			return codeErr(CodeUsage, "%s %v: M/E %v has %d upstream keyer%s, 1-%d", c.entry.Label("keyer"), table.Index(k), table.Index(me), n, plural(n), n)
 		}
 	}
 	if d, ok := idx("dsk"); ok && top != nil && top.DownstreamKeyers > 0 {

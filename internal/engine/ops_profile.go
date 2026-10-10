@@ -259,7 +259,7 @@ func (c *call) downloadImages(param, prefix string) ([]ImageResult, error) {
 func opProfileRestore(c *call) (any, bool, error) {
 	p, err := profile.FromXML(c.req.Files["file"])
 	if err != nil {
-		return nil, false, codeErr(CodeUsage, "--file %s: %v", c.args.Value("file"), err)
+		return nil, false, codeErr(CodeUsage, "%s %s: %v", c.entry.Label("file"), c.args.Value("file"), err)
 	}
 	opts := profile.DefaultApplyOptions()
 	given := func(name string) bool { _, ok := c.req.Params[name]; return ok }

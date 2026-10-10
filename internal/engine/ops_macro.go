@@ -43,6 +43,7 @@ func macroOperations() []operation {
 			Params: []table.Param{pMacroSlot}},
 			run: macroAction(atem.MacroDelete)},
 		{entry: table.Entry{Path: "macro download", Summary: "Download a macro as XML ops, JSON ops or bytecode.",
+			Syntax: "macro download <slot> [file]",
 			Params: []table.Param{pMacroSlot,
 				{Name: "file", Kind: table.OutFile, Help: "where to write it; - is stdout (default: the macro's name, .xml)"},
 				{Name: "format", Kind: table.Enum, Names: macroFormats, Help: "default: from --file's extension, else xml"}}},
@@ -70,7 +71,7 @@ func (c *call) macroSlot() (int, error) {
 	if _, err := strconv.Atoi(s); err == nil {
 		i, err := table.ParseIndex(s)
 		if err != nil || i > 0xFFFE {
-			return 0, codeErr(CodeUsage, "--slot %s: a macro slot is 1-65535", s)
+			return 0, codeErr(CodeUsage, "%s %s: a macro slot is 1-65535", c.entry.Label("slot"), s)
 		}
 		return int(i), nil
 	}
@@ -83,11 +84,11 @@ func (c *call) macroSlot() (int, error) {
 	slices.Sort(slots)
 	switch len(slots) {
 	case 0:
-		return 0, codeErr(CodeUsage, "--slot %q: no macro has that name", s)
+		return 0, codeErr(CodeUsage, "%s %q: no macro has that name", c.entry.Label("slot"), s)
 	case 1:
 		return slots[0], nil
 	}
-	return 0, codeErr(CodeUsage, "--slot %q: macros %v share that name; give the slot", s, slots)
+	return 0, codeErr(CodeUsage, "%s %q: macros %v share that name; give the slot", c.entry.Label("slot"), s, slots)
 }
 
 // MacroEntry is one macro slot.
@@ -252,7 +253,7 @@ func opMacroUpload(c *call) (any, bool, error) {
 	slot := int(c.args.Value("slot").(uint64))
 	m, err := readMacroFile(c.req.Files["file"])
 	if err != nil {
-		return nil, false, codeErr(CodeUsage, "--file %s: %v", c.args.Value("file"), err)
+		return nil, false, codeErr(CodeUsage, "%s %s: %v", c.entry.Label("file"), c.args.Value("file"), err)
 	}
 	if m.Name == "" {
 		file := c.args.Value("file").(string)
@@ -300,10 +301,10 @@ func opMacroDecode(c *call) (any, bool, error) {
 func opMacroEncode(c *call) (any, bool, error) {
 	m, err := readMacroFile(c.req.Files["file"])
 	if err != nil {
-		return nil, false, codeErr(CodeUsage, "--file %s: %v", c.args.Value("file"), err)
+		return nil, false, codeErr(CodeUsage, "%s %s: %v", c.entry.Label("file"), c.args.Value("file"), err)
 	}
 	if m.Ops < 0 {
-		return nil, false, codeErr(CodeUsage, "--file %s is bytecode already", c.args.Value("file"))
+		return nil, false, codeErr(CodeUsage, "%s %s is bytecode already", c.entry.Label("file"), c.args.Value("file"))
 	}
 	if err := c.out.file(FileFrame{Param: "out", Data: m.Bytecode}); err != nil {
 		return nil, false, err

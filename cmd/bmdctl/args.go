@@ -5,12 +5,9 @@ package main
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
 
 // globals are the flags every command line accepts, anywhere on it.
@@ -135,45 +132,4 @@ func parseDuration(s string) (time.Duration, error) {
 		return 0, errors.New("not a positive duration like 2s or 500ms")
 	}
 	return d, nil
-}
-
-// parseParams reads a command's flag tokens: --name value, --name=value,
-// and a bool given alone (--on-air) as true.
-func parseParams(e *table.Entry, tokens []string) (map[string]string, error) {
-	raw := map[string]string{}
-	for i := 0; i < len(tokens); i++ {
-		t := tokens[i]
-		if !strings.HasPrefix(t, "--") || t == "--" {
-			return nil, fmt.Errorf("unexpected %q: parameters are --name value", t)
-		}
-		name, value, hasValue := strings.Cut(t[2:], "=")
-		k := slices.IndexFunc(e.Params, func(p table.Param) bool { return p.Name == name })
-		if k < 0 {
-			return nil, fmt.Errorf("%s has no --%s", e.Path, name)
-		}
-		if !hasValue {
-			if e.Params[k].Kind == table.Bool && (i+1 == len(tokens) || !isBool(tokens[i+1])) {
-				value = "true"
-			} else {
-				if i+1 == len(tokens) {
-					return nil, fmt.Errorf("--%s needs a value", name)
-				}
-				i++
-				value = tokens[i]
-			}
-		}
-		if _, dup := raw[name]; dup {
-			return nil, fmt.Errorf("--%s given twice", name)
-		}
-		raw[name] = value
-	}
-	return raw, nil
-}
-
-func isBool(s string) bool {
-	switch strings.ToLower(s) {
-	case "true", "false", "on", "off", "yes", "no", "1", "0":
-		return true
-	}
-	return false
 }

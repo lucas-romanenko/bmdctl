@@ -23,11 +23,12 @@ later.
 ```
 $ bmdctl hosts add studio 10.0.0.20
 $ bmdctl hosts default studio
-$ bmdctl program --source "Camera 2"
+$ bmdctl program "Camera 2"
 program                  confirmed    14 ms  me 1, source 2 (Camera 2)
 $ bmdctl status
-$ bmdctl media upload --slot 1 --file logo.png
-$ bmdctl macro run --slot "Open Show"
+$ bmdctl usk 1 on-air on --me 2
+$ bmdctl media upload 1 logo.png --name Logo
+$ bmdctl macro run "Open Show"
 $ bmdctl exec opening-cue.txt
 $ bmdctl --dry-run transition wipe --width 50 --pattern CircleIris
 001c0000435457700006000007001388000000000000000000000000

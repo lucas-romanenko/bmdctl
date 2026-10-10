@@ -49,8 +49,8 @@ func TestExec(t *testing.T) {
 		return p
 	}
 	cue := write("cue.txt", `# opening
-program --source "Camera 2"
-bmdctl preview --source CAM1
+program "Camera 2"
+bmdctl preview CAM1
 
 --host other cut
 cut   # back on the show's switcher
@@ -82,12 +82,12 @@ cut   # back on the show's switcher
 
 	// Every line is checked before the first is sent.
 	n := len(b.sent("CPgI"))
-	bad := write("bad.txt", "program --source 1\npreview\ntransition wipe --pattern Spiral\nvideo-mode --mode 1080p50\nexec x\n")
+	bad := write("bad.txt", "program 1\npreview\ntransition wipe --pattern Spiral\nvideo-mode 1080p50\nexec x\n")
 	code, _, errOut = b.run("exec", bad, "--host", "studio")
 	if code != exitUsage || len(b.sent("CPgI")) != n {
 		t.Errorf("bad file ran: %d", code)
 	}
-	for _, want := range []string{"nothing run", "line 2: preview: --source is required", "line 3: transition wipe: --pattern",
+	for _, want := range []string{"nothing run", "line 2: preview: missing <source>: preview <source>", "line 3: transition wipe: --pattern",
 		"line 4: video-mode is destructive", "line 5: exec can't run inside exec"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("errors lack %q:\n%s", want, errOut)
@@ -95,10 +95,10 @@ cut   # back on the show's switcher
 	}
 
 	// It stops at the first failure, with its status, unless --continue.
-	stop := write("stop.txt", "program --source 1\nprogram --source Nobody\nprogram --source 2\n")
+	stop := write("stop.txt", "program 1\nprogram Nobody\nprogram 2\n")
 	n = len(b.sent("CPgI"))
 	code, _, errOut = b.run("exec", stop, "--host", "studio")
-	if code != exitUsage || len(b.sent("CPgI")) != n+1 || !strings.Contains(errOut, `line 2: bmdctl atem program: --source "Nobody"`) {
+	if code != exitUsage || len(b.sent("CPgI")) != n+1 || !strings.Contains(errOut, `line 2: bmdctl atem program: source "Nobody"`) {
 		t.Errorf("stop: %d %d %q", code, len(b.sent("CPgI"))-n, errOut)
 	}
 	code, _, _ = b.run("exec", stop, "--host", "studio", "--continue")

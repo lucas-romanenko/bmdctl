@@ -99,7 +99,7 @@ var builtins = []struct{ name, summary string }{
 }
 
 func (c *cli) usage(w io.Writer) {
-	fmt.Fprint(w, `usage: bmdctl [--host H] [--json|--quiet] [--yes] <command> [--parameter value ...]
+	fmt.Fprint(w, `usage: bmdctl [--host H] [--json|--quiet] [--yes] <command> [arguments] [--flag value ...]
 
 Commands run through a background engine that keeps a session open to
 each switcher; the first command starts it. A command without a device
@@ -193,15 +193,15 @@ func (c *cli) run(args []string) int {
 	if !slices.Contains(c.reg.Devices(), device) {
 		return c.fail(exitUsage, "bmdctl: no %s commands yet; this version controls ATEM switchers", device)
 	}
-	if !named && len(words) > 0 && c.reg.Find(device, words[0]) == nil && !c.isGroup(device, words[0]) {
+	if !named && len(words) > 0 && !c.isCommandWord(device, words[0]) {
 		return c.fail(exitUsage, "bmdctl: unknown command %q (bmdctl --help lists them)", first)
 	}
 	return c.runDevice(g, device, words, tokens)
 }
 
-func (c *cli) isGroup(device, word string) bool {
-	_, prefix, _ := c.reg.Resolve(device, []string{word})
-	return len(prefix) > 0
+// isCommandWord reports whether word starts one of device's commands.
+func (c *cli) isCommandWord(device, word string) bool {
+	return slices.ContainsFunc(c.reg.Entries(device), func(e table.Entry) bool { return e.Words()[0] == word })
 }
 
 // fail reports a failure and returns code: on stderr, or with --json

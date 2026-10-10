@@ -92,7 +92,7 @@ func opTransitionRate(c *call) (any, bool, error) {
 		limit = 0xFFFF
 	}
 	if frames < 0 || frames > limit {
-		return nil, false, codeErr(CodeUsage, "--rate: %d frames does not fit a %s rate (0-%d)", frames, nameOr(styleNames, style), limit)
+		return nil, false, codeErr(CodeUsage, "%s: %d frames does not fit a %s rate (0-%d)", c.entry.Label("rate"), frames, nameOr(styleNames, style), limit)
 	}
 	r8, r16 := uint8(frames), uint16(frames)
 	var cmd atem.Command

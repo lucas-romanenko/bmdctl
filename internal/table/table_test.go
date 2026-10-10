@@ -60,25 +60,6 @@ func TestAddRefusesBadEntries(t *testing.T) {
 	}
 }
 
-func TestResolveAndChildren(t *testing.T) {
-	r := testRegistry(t)
-	if e, _, rest := r.Resolve("dev", []string{"wipe", "set", "extra"}); e == nil || e.Path != "wipe set" || len(rest) != 1 {
-		t.Fatalf("%v %v", e, rest)
-	}
-	if e, prefix, _ := r.Resolve("dev", []string{"wipe"}); e != nil || strings.Join(prefix, " ") != "wipe" {
-		t.Fatalf("group: %v %v", e, prefix)
-	}
-	if e, prefix, _ := r.Resolve("dev", []string{"nope"}); e != nil || prefix != nil {
-		t.Fatalf("unknown: %v %v", e, prefix)
-	}
-	if got := r.Children("dev", nil); len(got) != 2 || got[0][0] != "cut" || got[1][0] != "wipe ..." {
-		t.Fatalf("%v", got)
-	}
-	if got := r.Children("dev", []string{"wipe"}); len(got) != 2 || got[0][0] != "get" {
-		t.Fatalf("%v", got)
-	}
-}
-
 // testResolver reads a rate as 25 frames per character and a source as
 // its length, refusing "nobody".
 type testResolver struct{}
@@ -93,7 +74,7 @@ func (testResolver) Source(s string) (uint64, error) {
 
 func TestParse(t *testing.T) {
 	r := testRegistry(t)
-	e, _, _ := r.Resolve("dev", []string{"wipe", "set"})
+	e := r.Find("dev", "wipe set")
 	var rate testResolver
 	a, err := e.Parse(map[string]string{"width": "12.5", "style": "dip", "layers": "bg,key1", "rate": "1:00",
 		"on": "off", "when": "1789128000", "data": "1,2", "src": "Cam 1"}, rate)
@@ -121,7 +102,7 @@ func TestParse(t *testing.T) {
 			t.Errorf("%v: %v", raw, err)
 		}
 	}
-	cut, _, _ := r.Resolve("dev", []string{"cut"})
+	cut := r.Find("dev", "cut")
 	if _, err := cut.Parse(map[string]string{"me": "4"}, rate); !errors.Is(err, ErrUsage) {
 		t.Errorf("range not checked: %v", err)
 	}

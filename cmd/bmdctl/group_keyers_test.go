@@ -16,30 +16,30 @@ func TestKeyerCommands(t *testing.T) {
 		code, hex string
 		confirmed bool
 	}{
-		{[]string{"usk", "on-air", "--keyer", "2", "--on-air"}, "CKOn", "00010100", true},
-		{[]string{"usk", "fill", "--keyer", "1", "--source", "Media Player 1"}, "CKeF", "00000bc2", true},
-		{[]string{"usk", "key", "--keyer", "1", "--source", "MP1K"}, "CKeC", "00000bc3", true},
-		{[]string{"usk", "type", "--keyer", "3", "--type", "dve", "--fly"}, "CKTp", "0300020301000000", true},
-		{[]string{"usk", "luma", "--keyer", "1", "--clip", "50"}, "CKLm", "0200000001f4000000000000", true},
-		{[]string{"usk", "chroma", "--keyer", "1", "--spill", "0.5"}, "CACK", "0008000000000000000001f400000000000000000000000000000000", true},
-		{[]string{"usk", "chroma-sample", "--keyer", "1", "--cursor"}, "CACC", "0100000100000000000000000000000000000000", true},
-		{[]string{"usk", "pattern", "--keyer", "1", "--pattern", "DiamondIris"}, "CKPt", "01000006000000000000000000000000", true},
-		{[]string{"usk", "mask", "--keyer", "1", "--enabled"}, "CKMs", "010000010000000000000000", true},
-		{[]string{"usk", "dve", "--keyer", "1", "--size-x", "0.5"}, "CKDV", "", true},
-		{[]string{"usk", "keyframe-set", "--keyer", "1", "--keyframe", "a"}, "SFKF", "00000100", true},
-		{[]string{"usk", "keyframe-set", "--keyer", "1", "--keyframe", "full"}, "SFKF", "00000300", true},
-		{[]string{"usk", "keyframe-run", "--keyer", "1", "--to", "b"}, "RFlK", "0000000002000000", false},
-		{[]string{"dsk", "on-air", "--dsk", "2", "--on-air"}, "CDsL", "01010000", true},
-		{[]string{"dsk", "tie", "--tie"}, "CDsT", "00010000", true},
-		{[]string{"dsk", "rate", "--dsk", "2", "--rate", "1:00"}, "CDsR", "01190000", true},
-		{[]string{"dsk", "fill", "--source", "cam1"}, "CDsF", "00000001", true},
-		{[]string{"dsk", "key", "--source", "2"}, "CDsC", "00000002", true},
+		{[]string{"usk", "2", "on-air", "on"}, "CKOn", "00010100", true},
+		{[]string{"usk", "1", "fill", "Media Player 1"}, "CKeF", "00000bc2", true},
+		{[]string{"usk", "1", "key", "MP1K"}, "CKeC", "00000bc3", true},
+		{[]string{"usk", "3", "type", "--type", "dve", "--fly"}, "CKTp", "0300020301000000", true},
+		{[]string{"usk", "1", "luma", "--clip", "50"}, "CKLm", "0200000001f4000000000000", true},
+		{[]string{"usk", "1", "chroma", "--spill", "0.5"}, "CACK", "0008000000000000000001f400000000000000000000000000000000", true},
+		{[]string{"usk", "1", "chroma-sample", "--cursor"}, "CACC", "0100000100000000000000000000000000000000", true},
+		{[]string{"usk", "1", "pattern", "--pattern", "DiamondIris"}, "CKPt", "01000006000000000000000000000000", true},
+		{[]string{"usk", "1", "mask", "--enabled"}, "CKMs", "010000010000000000000000", true},
+		{[]string{"usk", "1", "dve", "--size-x", "0.5"}, "CKDV", "", true},
+		{[]string{"usk", "1", "keyframe-set", "a"}, "SFKF", "00000100", true},
+		{[]string{"usk", "1", "keyframe-set", "full"}, "SFKF", "00000300", true},
+		{[]string{"usk", "1", "keyframe-run", "b"}, "RFlK", "0000000002000000", false},
+		{[]string{"dsk", "on-air", "on", "--dsk", "2"}, "CDsL", "01010000", true},
+		{[]string{"dsk", "tie", "on"}, "CDsT", "00010000", true},
+		{[]string{"dsk", "rate", "1:00", "--dsk", "2"}, "CDsR", "01190000", true},
+		{[]string{"dsk", "fill", "cam1"}, "CDsF", "00000001", true},
+		{[]string{"dsk", "key", "2"}, "CDsC", "00000002", true},
 		{[]string{"dsk", "gain", "--gain", "20"}, "CDsG", "", true},
 		{[]string{"dsk", "mask", "--enabled"}, "CDsM", "", true},
 		{[]string{"dsk", "auto", "--dsk", "2"}, "DDsA", "01000000", false},
-		{[]string{"aux", "--aux", "2", "--source", "Color 1"}, "CAuS", "010107d1", true},
-		{[]string{"input", "rename", "--source", "Camera 2", "--long-name", "Stage Left", "--short-name", "STGL"}, "CInL", "", true},
-		{[]string{"color", "--generator", "1", "--hue", "120"}, "CClV", "0101" + "04b0" + "0000" + "0000", true},
+		{[]string{"aux", "2", "Color 1"}, "CAuS", "010107d1", true},
+		{[]string{"input", "rename", "Camera 2", "--long-name", "Stage Left", "--short-name", "STGL"}, "CInL", "", true},
+		{[]string{"color", "1", "--hue", "120"}, "CClV", "0101" + "04b0" + "0000" + "0000", true},
 	} {
 		out, got := b.mustSend(t, c.code, with(c.args...)...)
 		if c.hex != "" && got != c.hex {
@@ -60,10 +60,10 @@ func TestKeyerCommands(t *testing.T) {
 	}
 	// The rename shows in the names: the old one is gone, the new one
 	// works, and input list shows it.
-	if code, _, _ := b.run(with("program", "--source", "Camera 2")...); code != exitUsage {
+	if code, _, _ := b.run(with("program", "Camera 2")...); code != exitUsage {
 		t.Errorf("old name still resolves: %d", code)
 	}
-	b.must(with("program", "--source", "stage left")...)
+	b.must(with("program", "stage left")...)
 	if got := b.lastSent(t, "CPgI"); got != "00000002" {
 		t.Errorf("new name: %s", got)
 	}
@@ -76,7 +76,7 @@ func TestKeyerCommands(t *testing.T) {
 	}
 	// Toggles read the state: keyer 0 and DSK 0 start on air.
 	for _, want := range []string{"00000000", "00000100", "00000000"} {
-		if _, got := b.mustSend(t, "CKOn", with("usk", "toggle", "--keyer", "1")...); got != want {
+		if _, got := b.mustSend(t, "CKOn", with("usk", "1", "toggle")...); got != want {
 			t.Errorf("usk toggle sent %s, want %s", got, want)
 		}
 	}

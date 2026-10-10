@@ -3,8 +3,10 @@
 Generated from the command table (`internal/table`); do not edit. After
 changing a table, run `go test ./cmd/bmdctl -run TestCommandsDoc -update`.
 
-Each command takes its parameters as `--name value` flags. **Unverified**
-commands have a pinned wire format that nobody has confirmed on a
+A command's required arguments follow its words, in the order they're
+said (`<name>`; `[name]` may be left out); everything optional is a
+`--name value` flag, which may be shortened to any unambiguous prefix.
+**Unverified** commands have a pinned wire format that nobody has confirmed on a
 switcher; **destructive** ones are hard to undo or drop connections. The
 echo is the state the device reports back once it has applied the
 command; a command without one can't be confirmed. Its key names the
@@ -14,7 +16,7 @@ from 0.
 ## The command line
 
 ```
-bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [--parameter value ...]
+bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag value ...]
 ```
 
 ### Flags, accepted anywhere on the line
@@ -45,6 +47,7 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [--parameter value .
 
 ### Conventions
 
+- Arguments: A command's required arguments follow its words in the order they're said: `program 5`, `usk 1 fill cam3`, `media upload 10 logo.png`. Optional ones are --name flags, which may be shortened to any unambiguous prefix (--sat for --saturation); `[file]` in a syntax may be left out.
 - Devices: A command without a device word goes to the device type of its host, an ATEM for a bare address. `bmdctl atem ...` names the device.
 - Indexes: M/Es, upstream and downstream keyers, aux outputs, media and macro slots and media players count from 1, as ATEM Software Control and the panels count them: on the command line, in --help and in results, --json included. The atem library counts them from 0, and so do the switcher state `state` and `watch` print and the index attributes of ATEM Software Control's XML files. Colour generators, multiviewers and their windows, SuperSources and their boxes, HyperDeck slots and EQ bands keep their fields' numbering.
 - Sources: A source is an id or one of the switcher's input names, long or short, in any case.
@@ -75,37 +78,37 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [--parameter value .
 
 ## atem
 
-### `bmdctl atem audio input`
+### `bmdctl atem audio input <source>`
 
 Set a classic audio mixer input.
 
-**Unverified.** Give at least one optional parameter. Echo: `AMIP:<source>.0`.
+**Unverified.** Give at least one flag. Echo: `AMIP:<source>.0`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--source` | source, 0-65535 | required | source id or input name |
+| `<source>` | source, 0-65535 | required | source id or input name |
 | `--balance` | int, -32768 to 32767, ±10000 | optional | balance |
 | `--volume` | uint, 0-65535, 0-65381 | optional | volume |
 | `--on` | bool | optional | mix option on or off (wins over --afv) |
 | `--afv` | bool | optional | audio follows video |
 
-### `bmdctl atem audio levels`
+### `bmdctl atem audio levels <enable>`
 
 Start or stop the classic mixer's meter stream.
 
 **Unverified.** No echo.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--enable` | bool | required | stream meters |
+| `<enable>` | bool | required | stream meters |
 
 ### `bmdctl atem audio master`
 
 Set the classic audio mixer's master.
 
-**Unverified.** Give at least one optional parameter. Echo: `AMMO`.
+**Unverified.** Give at least one flag. Echo: `AMMO`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--volume` | uint, 0-65535, 0-65381 | optional | volume |
 | `--afv` | bool | optional | audio follows video |
@@ -114,7 +117,7 @@ Set the classic audio mixer's master.
 
 Read the audio meters: each strip's and the master's levels in dB, Fairlight or classic.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--for` | float, seconds | default 0.5 | how long to collect levels; the last of each strip's is shown |
 
@@ -122,9 +125,9 @@ Read the audio meters: each strip's and the master's levels in dB, Fairlight or 
 
 Set the classic audio mixer's monitor.
 
-**Unverified.** Give at least one optional parameter. Echo: `AMmO`.
+**Unverified.** Give at least one flag. Echo: `AMmO`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--enabled` | bool | optional | monitor on |
 | `--volume` | uint, 0-65535 | optional | volume |
@@ -140,55 +143,55 @@ Run the M/E's transition with its current style and rate.
 
 No echo.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 
-### `bmdctl atem auto-video-mode`
+### `bmdctl atem auto-video-mode <enable>`
 
 Turn automatic input video mode detection on or off.
 
 **Unverified.** Echo: `AiVM`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--enable` | bool | required | detect the input video mode |
+| `<enable>` | bool | required | detect the input video mode |
 
-### `bmdctl atem aux`
+### `bmdctl atem aux <aux> <source>`
 
 Route a source to an aux output.
 
 Echo: `AuxS:<aux>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--aux` | uint, 1-256, counted from 1 | required | aux output |
-| `--source` | source, 0-65535 | required | source id or input name |
+| `<aux>` | uint, 1-256, counted from 1 | required | aux output |
+| `<source>` | source, 0-65535 | required | source id or input name |
 
-### `bmdctl atem camera`
+### `bmdctl atem camera <destination> <category> <parameter>`
 
 Send one Blackmagic camera control parameter.
 
 **Unverified.** Echo: `CCdP:<destination>:<category>:<parameter>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--destination` | uint, 0-255 | required | camera; 255 for all |
-| `--category` | uint, 0-255 | required | category |
-| `--parameter` | uint, 0-255 | required | parameter |
+| `<destination>` | uint, 0-255 | required | camera; 255 for all |
+| `<category>` | uint, 0-255 | required | category |
+| `<parameter>` | uint, 0-255 | required | parameter |
 | `--relative` | bool | default false | add to the current value |
 | `--type` | enum, 0-255: bool=0 int8=1 int16=2 int32=3 int64=4 string=5 fixed16=128 | default bool | data type |
 | `--data` | list | optional | comma-separated values of the data type |
 
-### `bmdctl atem color`
+### `bmdctl atem color <generator>`
 
 Set a colour generator.
 
-Give at least one optional parameter. Echo: `ColV:<generator>`.
+Give at least one flag. Echo: `ColV:<generator>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--generator` | uint, 0-255 | required | colour generator, 0 or 1 |
+| `<generator>` | uint, 0-255 | required | colour generator, 0 or 1 |
 | `--hue` | float, degrees, not clamped | optional | hue |
 | `--saturation` | float, %, clamped to 0-100 | optional | saturation |
 | `--luma` | float, %, clamped to 0-100 | optional | luma |
@@ -197,7 +200,7 @@ Give at least one optional parameter. Echo: `ColV:<generator>`.
 
 Open a session to the switcher and keep it open until disconnect.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--pin` | bool | default true | keep the session open until disconnect; false lets it close after 10 idle minutes |
 
@@ -207,7 +210,7 @@ Cut program and preview.
 
 No echo.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 
@@ -221,28 +224,28 @@ Run a downstream keyer's auto transition.
 
 No echo.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 
-### `bmdctl atem dsk fill`
+### `bmdctl atem dsk fill <source>`
 
 Set a downstream keyer's fill source.
 
 Echo: `DskB:<dsk>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<source>` | source, 0-65535 | required | source id or input name |
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
-| `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem dsk gain`
 
 Set a downstream keyer's clip, gain, pre-multiply and invert.
 
-Give at least one optional parameter. Echo: `DskP:<dsk>`.
+Give at least one flag. Echo: `DskP:<dsk>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 | `--premultiplied` | bool | optional | pre-multiplied key |
@@ -250,24 +253,24 @@ Give at least one optional parameter. Echo: `DskP:<dsk>`.
 | `--gain` | float, %, clamped to 0-100 | optional | gain |
 | `--invert` | bool | optional | invert the key |
 
-### `bmdctl atem dsk key`
+### `bmdctl atem dsk key <source>`
 
 Set a downstream keyer's key source.
 
 Echo: `DskB:<dsk>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<source>` | source, 0-65535 | required | source id or input name |
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
-| `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem dsk mask`
 
 Set a downstream keyer's mask.
 
-Give at least one optional parameter. Echo: `DskP:<dsk>`.
+Give at least one flag. Echo: `DskP:<dsk>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 | `--enabled` | bool | optional | mask on |
@@ -276,38 +279,38 @@ Give at least one optional parameter. Echo: `DskP:<dsk>`.
 | `--left` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | left edge |
 | `--right` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | right edge |
 
-### `bmdctl atem dsk on-air`
+### `bmdctl atem dsk on-air <on-air>`
 
 Put a downstream keyer on or off air.
 
 Echo: `DskS:<dsk>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<on-air>` | bool | required | on air |
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
-| `--on-air` | bool | required | on air |
 
-### `bmdctl atem dsk rate`
+### `bmdctl atem dsk rate <rate>`
 
 Set a downstream keyer's rate.
 
 Echo: `DskP:<dsk>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<rate>` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
-| `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 
-### `bmdctl atem dsk tie`
+### `bmdctl atem dsk tie <tie>`
 
 Tie a downstream keyer to the next transition.
 
 Echo: `DskP:<dsk>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<tie>` | bool | required | tie |
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
-| `--tie` | bool | required | tie |
 
 ### `bmdctl atem dsk toggle`
 
@@ -315,20 +318,20 @@ Put a downstream keyer on air if it is off, or off if it is on.
 
 Echo: `DskS:<dsk>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 
-### `bmdctl atem fairlight compressor`
+### `bmdctl atem fairlight compressor <source>`
 
 Set a Fairlight strip's compressor.
 
-Give at least one optional parameter. Echo: `AICP:<source>.<channel>`.
+Give at least one flag. Echo: `AICP:<source>.<channel>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--source` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `--channel` | int, -128 to 127 | required | -1 for a stereo strip, 0 or 1 for a split-mono half |
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
 | `--enabled` | bool | optional | compressor on |
 | `--threshold` | float, dB, -60-0 | optional | threshold |
 | `--ratio` | float, 1.2-20 | optional | ratio |
@@ -336,17 +339,17 @@ Give at least one optional parameter. Echo: `AICP:<source>.<channel>`.
 | `--hold` | float, ms, 0-4000 | optional | hold |
 | `--release` | float, ms, 50-4000 | optional | release |
 
-### `bmdctl atem fairlight eq`
+### `bmdctl atem fairlight eq <source> <band>`
 
 Set one EQ band of a Fairlight strip.
 
-Give at least one optional parameter. Echo: `AEBP:<source>.<channel>:<band>`.
+Give at least one flag. Echo: `AEBP:<source>.<channel>:<band>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--source` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `--channel` | int, -128 to 127 | required | -1 for a stereo strip, 0 or 1 for a split-mono half |
-| `--band` | uint, 0-255 | required | band, 0-5 |
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `<band>` | uint, 0-255 | required | band, 0-5 |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
 | `--enabled` | bool | optional | band on |
 | `--shape` | enum, 0-255: LowShelf=1 LowPass=2 BandPass=4 Notch=8 HighPass=16 HighShelf=32 | optional | filter shape |
 | `--range` | enum, 0-255: Low=1 MidLow=2 MidHigh=4 High=8 | optional | frequency range |
@@ -354,16 +357,16 @@ Give at least one optional parameter. Echo: `AEBP:<source>.<channel>:<band>`.
 | `--gain` | float, dB, clamped to ±20 | optional | gain |
 | `--q` | float, clamped to 0.30-10.30 | optional | Q |
 
-### `bmdctl atem fairlight expander`
+### `bmdctl atem fairlight expander <source>`
 
 Set a Fairlight strip's expander or gate.
 
-Give at least one optional parameter. Echo: `AIXP:<source>.<channel>`.
+Give at least one flag. Echo: `AIXP:<source>.<channel>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--source` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `--channel` | int, -128 to 127 | required | -1 for a stereo strip, 0 or 1 for a split-mono half |
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
 | `--enabled` | bool | optional | expander on |
 | `--mode` | enum, 0-255: expander=0 gate=1 | optional | mode |
 | `--threshold` | float, dB, -50-0 | optional | threshold |
@@ -373,26 +376,26 @@ Give at least one optional parameter. Echo: `AIXP:<source>.<channel>`.
 | `--hold` | float, ms, 0-4000 | optional | hold |
 | `--release` | float, ms, 50-4000 | optional | release |
 
-### `bmdctl atem fairlight levels`
+### `bmdctl atem fairlight levels <enable>`
 
 Start or stop the Fairlight meter streams (again after every reconnect).
 
 No echo.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--enable` | bool | required | stream meters |
+| `<enable>` | bool | required | stream meters |
 
-### `bmdctl atem fairlight limiter`
+### `bmdctl atem fairlight limiter <source>`
 
 Set a Fairlight strip's limiter.
 
-Give at least one optional parameter. Echo: `AILP:<source>.<channel>`.
+Give at least one flag. Echo: `AILP:<source>.<channel>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--source` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `--channel` | int, -128 to 127 | required | -1 for a stereo strip, 0 or 1 for a split-mono half |
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
 | `--enabled` | bool | optional | limiter on |
 | `--threshold` | float, dB, -60-0 | optional | threshold |
 | `--attack` | float, ms, 0.7-30 | optional | attack |
@@ -403,9 +406,9 @@ Give at least one optional parameter. Echo: `AILP:<source>.<channel>`.
 
 Set the Fairlight master bus.
 
-Give at least one optional parameter. Echo: `FAMP`.
+Give at least one flag. Echo: `FAMP`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--eq` | bool | optional | EQ on |
 | `--eq-gain` | float, dB, clamped to ±20 | optional | EQ gain |
@@ -417,9 +420,9 @@ Give at least one optional parameter. Echo: `FAMP`.
 
 Set the Fairlight master bus compressor.
 
-Give at least one optional parameter. Echo: `MOCP`.
+Give at least one flag. Echo: `MOCP`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--enabled` | bool | optional | compressor on |
 | `--threshold` | float, dB | optional | threshold |
@@ -428,15 +431,15 @@ Give at least one optional parameter. Echo: `MOCP`.
 | `--hold` | float, ms | optional | hold |
 | `--release` | float, ms | optional | release |
 
-### `bmdctl atem fairlight master-eq`
+### `bmdctl atem fairlight master-eq <band>`
 
 Set one EQ band of the Fairlight master bus.
 
-Give at least one optional parameter. Echo: `AMBP:<band>`.
+Give at least one flag. Echo: `AMBP:<band>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--band` | uint, 0-255 | required | band, 0-5 |
+| `<band>` | uint, 0-255 | required | band, 0-5 |
 | `--enabled` | bool | optional | band on |
 | `--shape` | enum, 0-255: LowShelf=1 LowPass=2 BandPass=4 Notch=8 HighPass=16 HighShelf=32 | optional | filter shape |
 | `--range` | enum, 0-255: Low=1 MidLow=2 MidHigh=4 High=8 | optional | frequency range |
@@ -448,9 +451,9 @@ Give at least one optional parameter. Echo: `AMBP:<band>`.
 
 Set the Fairlight master bus limiter.
 
-Give at least one optional parameter. Echo: `AMLP`.
+Give at least one flag. Echo: `AMLP`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--enabled` | bool | optional | limiter on |
 | `--threshold` | float, dB | optional | threshold |
@@ -458,16 +461,16 @@ Give at least one optional parameter. Echo: `AMLP`.
 | `--hold` | float, ms | optional | hold |
 | `--release` | float, ms | optional | release |
 
-### `bmdctl atem fairlight strip`
+### `bmdctl atem fairlight strip <source>`
 
 Set a Fairlight strip.
 
-Give at least one optional parameter. Echo: `FASP:<source>.<channel>`.
+Give at least one flag. Echo: `FASP:<source>.<channel>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--source` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `--channel` | int, -128 to 127 | required | -1 for a stereo strip, 0 or 1 for a split-mono half |
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
 | `--delay` | uint, 0-255, frames | optional | delay |
 | `--gain` | float, dB, clamped to -100-6 | optional | input gain |
 | `--eq` | bool | optional | EQ on |
@@ -477,26 +480,26 @@ Give at least one optional parameter. Echo: `FASP:<source>.<channel>`.
 | `--volume` | float, dB, clamped to -100-10; -inf is -100 | optional | fader level |
 | `--mix` | enum, 0-255: Off=1 On=2 AudioFollowVideo=4 | optional | mix option |
 
-### `bmdctl atem ftb enable`
+### `bmdctl atem ftb enable <enabled>`
 
 Make fade to black available or not (always M/E 1; see docs/PORTING.md).
 
 Echo: `FEna`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--enabled` | bool | required | available |
+| `<enabled>` | bool | required | available |
 
-### `bmdctl atem ftb rate`
+### `bmdctl atem ftb rate <rate>`
 
 Set the fade-to-black rate.
 
 Echo: `FtbP:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<rate>` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 
 ### `bmdctl atem ftb toggle`
 
@@ -504,19 +507,19 @@ Fade to black, or back.
 
 No echo.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 
-### `bmdctl atem hyperdeck-slot`
+### `bmdctl atem hyperdeck-slot <slot>`
 
 Bind a HyperDeck slot to an address and an input.
 
-Give at least one optional parameter. Echo: `RXMS:<slot>`.
+Give at least one flag. Echo: `RXMS:<slot>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | uint, 0-65535 | required | HyperDeck slot, 0-9 |
+| `<slot>` | uint, 0-65535 | required | HyperDeck slot, 0-9 |
 | `--address` | string | optional | deck IPv4 address; 0.0.0.0 clears the slot |
 | `--input` | source, 0-65535 | optional | switcher input the deck feeds |
 
@@ -528,110 +531,110 @@ Show the switcher's model, firmware, video mode and what it has.
 
 List the switcher's sources: ids, names and port types.
 
-### `bmdctl atem input rename`
+### `bmdctl atem input rename <source>`
 
 Rename an input.
 
-Give at least one optional parameter. Echo: `InPr:<source>`.
+Give at least one flag. Echo: `InPr:<source>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--source` | source, 0-65535 | required | source id or input name |
+| `<source>` | source, 0-65535 | required | source id or input name |
 | `--long-name` | string, up to 20 bytes | optional | long name |
 | `--short-name` | string, up to 4 bytes | optional | short name |
 | `--port-type` | uint, 0-65535 | optional | external port type (no atemwire operation sets it) |
 
-### `bmdctl atem macro action`
+### `bmdctl atem macro action <action>`
 
 Run, stop, continue or delete a macro, or stop recording.
 
 Echo: `MRPr, MRcS or MPrp:<slot>, by action`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<action>` | enum, 0-255: run=0 stop=1 stop-record=2 insert-user-wait=3 continue=4 delete=5 | required | action |
 | `--slot` | uint, 1-65535, counted from 1 | optional | macro slot (default: whatever is running or recording) |
-| `--action` | enum, 0-255: run=0 stop=1 stop-record=2 insert-user-wait=3 continue=4 delete=5 | required | action |
 
-### `bmdctl atem macro decode`
+### `bmdctl atem macro decode <file>`
 
 Turn macro bytecode into XML ops (JSON with --json).
 
 Runs in the CLI; needs no switcher.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--file` | file | required | the bytecode; - reads stdin |
+| `<file>` | file | required | the bytecode; - reads stdin |
 
-### `bmdctl atem macro delete`
+### `bmdctl atem macro delete <slot>`
 
 Delete a macro.
 
 **Destructive.** Echo: `MPrp:<slot>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | string | required | macro slot, or the macro's name |
+| `<slot>` | string | required | macro slot, or the macro's name |
 
-### `bmdctl atem macro download`
+### `bmdctl atem macro download <slot> [file]`
 
 Download a macro as XML ops, JSON ops or bytecode.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | string | required | macro slot, or the macro's name |
-| `--file` | file, written | optional | where to write it; - is stdout (default: the macro's name, .xml) |
+| `<slot>` | string | required | macro slot, or the macro's name |
+| `[file]` | file, written | optional | where to write it; - is stdout (default: the macro's name, .xml) |
 | `--format` | enum: xml=0 json=1 bin=2 | optional | default: from --file's extension, else xml |
 
-### `bmdctl atem macro encode`
+### `bmdctl atem macro encode <file> <out>`
 
 Turn XML or JSON ops into macro bytecode.
 
 Runs in the CLI; needs no switcher.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--file` | file | required | the ops; - reads stdin |
-| `--out` | file, written | required | where to write the bytecode; - is stdout |
+| `<file>` | file | required | the ops; - reads stdin |
+| `<out>` | file, written | required | where to write the bytecode; - is stdout |
 
 ### `bmdctl atem macro list`
 
 List the macros: slot, name, description; and what runs or records.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--all` | bool | default false | include empty slots |
 
-### `bmdctl atem macro record`
+### `bmdctl atem macro record <slot> <name>`
 
 Start recording a macro.
 
 Echo: `MRcS`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | uint, 1-65536, counted from 1 | required | macro slot |
-| `--name` | string | required | name |
+| `<slot>` | uint, 1-65536, counted from 1 | required | macro slot |
+| `<name>` | string | required | name |
 | `--description` | string | optional | description |
 
-### `bmdctl atem macro run`
+### `bmdctl atem macro run <slot>`
 
 Run a macro.
 
 Echo: `MRPr`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | string | required | macro slot, or the macro's name |
+| `<slot>` | string | required | macro slot, or the macro's name |
 
-### `bmdctl atem macro sleep`
+### `bmdctl atem macro sleep <frames>`
 
 Record a wait into the macro being recorded.
 
 No echo.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--frames` | uint, 0-4294967295 | required | frames to wait |
+| `<frames>` | uint, 0-4294967295 | required | frames to wait |
 
 ### `bmdctl atem macro stop`
 
@@ -639,16 +642,16 @@ Stop the macro that is running.
 
 Echo: `MRPr`.
 
-### `bmdctl atem macro upload`
+### `bmdctl atem macro upload <slot> <file>`
 
 Upload a macro from XML ops, JSON ops or bytecode.
 
 Echo: `MPrp:<slot>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | uint, 1-65535, counted from 1 | required | macro slot; replacing a used one needs --yes |
-| `--file` | file | required | the macro; - reads stdin |
+| `<slot>` | uint, 1-65535, counted from 1 | required | macro slot; replacing a used one needs --yes |
+| `<file>` | file | required | the macro; - reads stdin |
 | `--name` | string | optional | the macro's name (default: the file's <Macro name>, else its file name) |
 | `--description` | string | optional | the macro's description (default: the file's) |
 
@@ -658,117 +661,117 @@ Capture program into the next free still slot.
 
 No echo.
 
-### `bmdctl atem media clear`
+### `bmdctl atem media clear <slot>`
 
 Empty a still slot, under the media pool's lock.
 
 **Destructive.** Echo: `MPfe:<slot>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | uint, 1-256, counted from 1 | required | still slot |
+| `<slot>` | uint, 1-256, counted from 1 | required | still slot |
 
-### `bmdctl atem media clear-unlocked`
+### `bmdctl atem media clear-unlocked <slot>`
 
 Clear a still slot without taking the store lock (some models ignore this; media clear takes it).
 
 **Destructive.** Echo: `MPfe:<slot>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | uint, 1-256, counted from 1 | required | still slot |
+| `<slot>` | uint, 1-256, counted from 1 | required | still slot |
 
-### `bmdctl atem media download`
+### `bmdctl atem media download <slot> [file]`
 
 Download a still slot as a PNG.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | uint, 1-65536, counted from 1 | required | still slot |
-| `--file` | file, written | optional | where to write it; - is stdout (default: the slot's name .png) |
+| `<slot>` | uint, 1-65536, counted from 1 | required | still slot |
+| `[file]` | file, written | optional | where to write it; - is stdout (default: the slot's name .png) |
 
 ### `bmdctl atem media list`
 
 List the media pool's stills and what each media player shows.
 
-### `bmdctl atem media player`
+### `bmdctl atem media player <player>`
 
 Point a media player at a still or a clip.
 
-Give at least one optional parameter. Echo: `MPCE:<player>`.
+Give at least one flag. Echo: `MPCE:<player>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--player` | uint, 1-256, counted from 1 | required | media player |
+| `<player>` | uint, 1-256, counted from 1 | required | media player |
 | `--still` | uint, 1-256, counted from 1 | optional | still slot (give this or --clip) |
 | `--clip` | uint, 1-256, counted from 1 | optional | clip slot (give this or --still) |
 
-### `bmdctl atem media upload`
+### `bmdctl atem media upload <slot> <file>`
 
 Upload a PNG, JPEG or GIF to a still slot, fitted to the video mode.
 
 Echo: `MPfe:<slot>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--slot` | uint, 1-65536, counted from 1 | required | still slot; replacing a used one needs --yes |
-| `--file` | file | required | the image; - reads stdin |
+| `<slot>` | uint, 1-65536, counted from 1 | required | still slot; replacing a used one needs --yes |
+| `<file>` | file | required | the image; - reads stdin |
 | `--name` | string | optional | the slot's name (default: the file's, without extension) |
 | `--description` | string | optional | the slot's description |
 | `--premultiply` | bool | optional | premultiply colour by alpha (default: for PNG, as WebATEM does) |
 
-### `bmdctl atem multiviewer input`
+### `bmdctl atem multiviewer input <window> <source>`
 
 Route a source to a multiviewer window.
 
 **Unverified.** Echo: `MvIn:<multiviewer>:<window>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<window>` | uint, 0-255 | required | window |
+| `<source>` | source, 0-65535 | required | source id or input name |
 | `--multiviewer` | uint, 0-255 | default 0 | multiviewer, 0-based |
-| `--window` | uint, 0-255 | required | window |
-| `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem multiviewer properties`
 
 Set a multiviewer's layout and program/preview swap.
 
-**Unverified.** Give at least one optional parameter. Echo: `MvPr:<multiviewer>`.
+**Unverified.** Give at least one flag. Echo: `MvPr:<multiviewer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--multiviewer` | uint, 0-255 | default 0 | multiviewer, 0-based |
 | `--layout` | uint, 0-255, 4-bit field: bit N splits quadrant N | optional | layout |
 | `--swap` | bool | optional | swap program and preview |
 
-### `bmdctl atem preview`
+### `bmdctl atem preview <source>`
 
 Put a source on an M/E's preview bus.
 
 Echo: `PrvI:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<source>` | source, 0-65535 | required | source id or input name |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem profile images`
 
 Download every used still as a PNG, named as profiles name them.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--dir` | dir | default ATEM Media Pool | where to write them |
 
-### `bmdctl atem profile restore`
+### `bmdctl atem profile restore <file>`
 
 Apply a profile XML to the switcher, and upload the images it names.
 
 **Destructive.**
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--file` | file | required | the profile XML; its images are read from beside it |
+| `<file>` | file | required | the profile XML; its images are read from beside it |
 | `--mes` | string | default all | the M/Es the M/E sections cover: all, or a list from 1 (1,2) |
 | `--program` | bool | default false | each M/E's program source |
 | `--preview` | bool | default false | each M/E's preview source |
@@ -793,13 +796,13 @@ Apply a profile XML to the switcher, and upload the images it names.
 | `--camera-control` | bool | default false | no setter exists: noted as skipped |
 | `--talkback` | bool | default false | no setter exists: noted as skipped |
 
-### `bmdctl atem profile save`
+### `bmdctl atem profile save <file>`
 
 Save the switcher's setup as ATEM Software Control's profile XML, and its media pool images.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--file` | file, written | required | the profile XML to write; images go beside it |
+| `<file>` | file, written | required | the profile XML to write; images go beside it |
 | `--mes` | string | default all | the M/Es the M/E sections cover: all, or a list from 1 (1,2) |
 | `--program` | bool | default true | each M/E's program source |
 | `--preview` | bool | default true | each M/E's preview source |
@@ -821,39 +824,39 @@ Save the switcher's setup as ATEM Software Control's profile XML, and its media 
 | `--hyperdecks` | bool | default true | <HyperDecks> |
 | `--macros` | bool | default true | <MacroPool> and <MacroControl>, downloading each macro |
 
-### `bmdctl atem program`
+### `bmdctl atem program <source>`
 
 Put a source on an M/E's program bus.
 
 Echo: `PrgI:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<source>` | source, 0-65535 | required | source id or input name |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem recording settings`
 
 Set the recording file name and disks.
 
-**Unverified.** Give at least one optional parameter. Echo: `RMSu`.
+**Unverified.** Give at least one flag. Echo: `RMSu`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--filename` | string, up to 128 bytes | optional | file name |
 | `--disk1` | uint, 0-4294967295 | optional | first disk |
 | `--disk2` | uint, 0-4294967295 | optional | second disk |
 | `--in-camera` | bool | optional | record in the cameras too |
 
-### `bmdctl atem recording state`
+### `bmdctl atem recording state <recording>`
 
 Start or stop recording.
 
 **Unverified.** Echo: `RTMS`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--recording` | bool | required | recording |
+| `<recording>` | bool | required | recording |
 
 ### `bmdctl atem startup clear`
 
@@ -871,7 +874,7 @@ Make the current state the power-on state.
 
 Print the switcher's state as the session holds it, or one part of it.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--path` | string | optional | dotted key into the state: mes.0.program, inputs.1.name, fairlight.master |
 
@@ -879,24 +882,24 @@ Print the switcher's state as the session holds it, or one part of it.
 
 Show what is on air: program, preview, transitions, keyers, macros.
 
-### `bmdctl atem streaming audio-bitrate`
+### `bmdctl atem streaming audio-bitrate <min> <max>`
 
 Set the streaming audio bitrate.
 
 **Unverified.** Echo: `STAB`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--min` | uint, 0-4294967295, bit/s | required | lowest |
-| `--max` | uint, 0-4294967295, bit/s | required | highest |
+| `<min>` | uint, 0-4294967295, bit/s | required | lowest |
+| `<max>` | uint, 0-4294967295, bit/s | required | highest |
 
 ### `bmdctl atem streaming service`
 
 Set the streaming service.
 
-**Unverified.** Give at least one optional parameter. Echo: `SRSU`.
+**Unverified.** Give at least one flag. Echo: `SRSU`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--name` | string, up to 64 bytes | optional | service name |
 | `--url` | string, up to 512 bytes | optional | server URL |
@@ -904,26 +907,26 @@ Set the streaming service.
 | `--bitrate-min` | uint, 0-4294967295, bit/s | optional | lowest bitrate (with --bitrate-max) |
 | `--bitrate-max` | uint, 0-4294967295, bit/s | optional | highest bitrate (with --bitrate-min) |
 
-### `bmdctl atem streaming state`
+### `bmdctl atem streaming state <streaming>`
 
 Start or stop streaming.
 
 **Unverified.** Echo: `StRS`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--streaming` | bool | required | streaming |
+| `<streaming>` | bool | required | streaming |
 
-### `bmdctl atem supersource box`
+### `bmdctl atem supersource box <box>`
 
 Set a SuperSource box.
 
-**Unverified.** Give at least one optional parameter. Echo: `SSBP:<supersource>:<box>`.
+**Unverified.** Give at least one flag. Echo: `SSBP:<supersource>:<box>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<box>` | uint, 0-255 | required | box, 0-3 |
 | `--supersource` | uint, 0-255 | default 0 | SuperSource, 0-based |
-| `--box` | uint, 0-255 | required | box, 0-3 |
 | `--enabled` | bool | optional | box on |
 | `--source` | source, 0-65535 | optional | source |
 | `--x` | int, -32768 to 32767, -4800-4800 | optional | x |
@@ -939,9 +942,9 @@ Set a SuperSource box.
 
 Set SuperSource's art fill, key and layer.
 
-**Unverified.** Give at least one optional parameter. Echo: `SSrc:<supersource>`.
+**Unverified.** Give at least one flag. Echo: `SSrc:<supersource>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--supersource` | uint, 0-255 | default 0 | SuperSource, 0-based |
 | `--fill-source` | source, 0-65535 | optional | art fill source |
@@ -952,16 +955,16 @@ Set SuperSource's art fill, key and layer.
 | `--gain` | uint, 0-65535, 0-1000 | optional | gain |
 | `--invert` | bool | optional | invert the key |
 
-### `bmdctl atem tbar`
+### `bmdctl atem tbar <position>`
 
 Move the T-bar.
 
 **Unverified.** Echo: `TrPs:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<position>` | int, 0-10000, clamped | required | T-bar position |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--position` | int, 0-10000, clamped | required | T-bar position |
 
 ### `bmdctl atem time`
 
@@ -975,7 +978,7 @@ Set the switcher's clock.
 
 **Unverified.** No echo.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--time` | time | default now | time |
 
@@ -989,9 +992,9 @@ No echo.
 
 Set the dip transition.
 
-Give at least one optional parameter. Echo: `TDpP:<me>`.
+Give at least one flag. Echo: `TDpP:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | optional | rate |
@@ -1001,9 +1004,9 @@ Give at least one optional parameter. Echo: `TDpP:<me>`.
 
 Set the DVE transition.
 
-Give at least one optional parameter. Echo: `TDvP:<me>`.
+Give at least one flag. Echo: `TDvP:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--logo-rate` | uint, 0-255, frames | optional | graphic logo-wipe rate (no atemwire operation sets it) |
@@ -1019,16 +1022,16 @@ Give at least one optional parameter. Echo: `TDvP:<me>`.
 | `--reverse` | bool | optional | reverse direction |
 | `--flip-flop` | bool | optional | flip flop |
 
-### `bmdctl atem transition mix`
+### `bmdctl atem transition mix <rate>`
 
 Set the mix transition's rate.
 
 Echo: `TMxP:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<rate>` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 
 ### `bmdctl atem transition next`
 
@@ -1036,41 +1039,41 @@ Set the layers the next transition takes, or toggle one.
 
 Echo: `TrSS:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--next` | flags: background=1 key1=2 key2=4 key3=8 key4=16 | optional | the layers, replacing the selection (not none) |
 | `--toggle` | enum: background=1 key1=2 key2=4 key3=8 key4=16 | optional | flip one layer in the current selection |
 
-### `bmdctl atem transition preview`
+### `bmdctl atem transition preview <enabled>`
 
 Turn transition preview on or off.
 
 **Unverified.** Echo: `TrPr:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<enabled>` | bool | required | preview the transition |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--enabled` | bool | required | preview the transition |
 
-### `bmdctl atem transition rate`
+### `bmdctl atem transition rate <rate>`
 
 Set the rate of the M/E's current transition style.
 
 Echo: `TMxP, TDpP, TWpP, TDvP or TStP:<me>, by style`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<rate>` | rate, frames, or seconds:frames at the display rate | required | rate |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--rate` | rate, frames, or seconds:frames at the display rate | required | rate |
 
 ### `bmdctl atem transition settings`
 
 Set the transition style and the layers the next transition takes.
 
-Give at least one optional parameter. Echo: `TrSS:<me>`.
+Give at least one flag. Echo: `TrSS:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--style` | enum, 0-255: mix=0 dip=1 wipe=2 dve=3 stinger=4 | optional | transition style |
@@ -1080,9 +1083,9 @@ Give at least one optional parameter. Echo: `TrSS:<me>`.
 
 Set the stinger transition.
 
-Give at least one optional parameter. Echo: `TStP:<me>`.
+Give at least one flag. Echo: `TStP:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--player` | uint, 0-255 | optional | media player slot, 1-4 (not a source id) |
@@ -1095,24 +1098,24 @@ Give at least one optional parameter. Echo: `TStP:<me>`.
 | `--trigger` | rate, 0-65535, frames, or seconds:frames at the display rate | optional | trigger point |
 | `--rate` | rate, 0-65535, frames, or seconds:frames at the display rate | optional | mix rate |
 
-### `bmdctl atem transition style`
+### `bmdctl atem transition style <style>`
 
 Set the transition style.
 
 Echo: `TrSS:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<style>` | enum: mix=0 dip=1 wipe=2 dve=3 stinger=4 | required | transition style |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--style` | enum: mix=0 dip=1 wipe=2 dve=3 stinger=4 | required | transition style |
 
 ### `bmdctl atem transition wipe`
 
 Set the wipe transition.
 
-Give at least one optional parameter. Echo: `TWpP:<me>`.
+Give at least one flag. Echo: `TWpP:<me>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | optional | rate |
@@ -1126,16 +1129,16 @@ Give at least one optional parameter. Echo: `TWpP:<me>`.
 | `--reverse` | bool | optional | reverse direction |
 | `--flip-flop` | bool | optional | flip flop |
 
-### `bmdctl atem usk chroma`
+### `bmdctl atem usk <keyer> chroma`
 
 Set an advanced chroma key.
 
-Give at least one optional parameter. Echo: `KACk:<me>:<keyer>`.
+Give at least one flag. Echo: `KACk:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--foreground` | float, 0-1, ×1000 on the wire, not clamped | optional | foreground level |
 | `--background` | float, 0-1, ×1000 on the wire, not clamped | optional | background level |
 | `--key-edge` | float, 0-1, ×1000 on the wire, not clamped | optional | key edge |
@@ -1148,16 +1151,16 @@ Give at least one optional parameter. Echo: `KACk:<me>:<keyer>`.
 | `--green` | float, about -1 to 1, ×1000 on the wire, not clamped | optional | green |
 | `--blue` | float, about -1 to 1, ×1000 on the wire, not clamped | optional | blue |
 
-### `bmdctl atem usk chroma-sample`
+### `bmdctl atem usk <keyer> chroma-sample`
 
 Set an advanced chroma key's sample cursor and colour.
 
-Give at least one optional parameter. Echo: `KACC:<me>:<keyer>`.
+Give at least one flag. Echo: `KACC:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--cursor` | bool | optional | show the sample cursor |
 | `--preview` | bool | optional | preview the key |
 | `--x` | float, 0-1 | optional | cursor x |
@@ -1167,16 +1170,16 @@ Give at least one optional parameter. Echo: `KACC:<me>:<keyer>`.
 | `--sample-cb` | float, -1 to 1 | optional | sampled Cb |
 | `--sample-cr` | float, -1 to 1 | optional | sampled Cr |
 
-### `bmdctl atem usk dve`
+### `bmdctl atem usk <keyer> dve`
 
 Set a DVE (or fly) key.
 
-Give at least one optional parameter. Echo: `KeDV:<me>:<keyer>`.
+Give at least one flag. Echo: `KeDV:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--size-x` | float, 0-2, clamped | optional | horizontal size |
 | `--size-y` | float, 0-2, clamped | optional | vertical size |
 | `--position-x` | float, display units (×1000) | optional | horizontal position |
@@ -1204,108 +1207,108 @@ Give at least one optional parameter. Echo: `KeDV:<me>:<keyer>`.
 | `--mask-right` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | mask right |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | optional | fly rate |
 
-### `bmdctl atem usk fill`
+### `bmdctl atem usk <keyer> fill <source>`
 
 Set an upstream keyer's fill source.
 
 Echo: `KeBP:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
+| `<source>` | source, 0-65535 | required | source id or input name |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
-| `--source` | source, 0-65535 | required | source id or input name |
 
-### `bmdctl atem usk key`
+### `bmdctl atem usk <keyer> key <source>`
 
 Set an upstream keyer's key (cut) source.
 
 Echo: `KeBP:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
+| `<source>` | source, 0-65535 | required | source id or input name |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
-| `--source` | source, 0-65535 | required | source id or input name |
 
-### `bmdctl atem usk keyframe-run`
+### `bmdctl atem usk <keyer> keyframe-run <to>`
 
 Fly the key to a keyframe.
 
 No echo.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
+| `<to>` | enum, 0-255: a=1 b=2 full=3 runToInfinite=4 | required | keyframe to fly to |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
-| `--to` | enum, 0-255: a=1 b=2 full=3 runToInfinite=4 | required | keyframe to fly to |
 | `--direction` | uint, 0-255 | optional | direction for runToInfinite; atemwire's two encodings agree on 1-4 and 6-9 (1 top left ... 9 bottom right) and disagree on the centre (5 or 0) |
 
-### `bmdctl atem usk keyframe-set`
+### `bmdctl atem usk <keyer> keyframe-set <keyframe>`
 
 Store the keyer's DVE as a fly keyframe.
 
 Echo: `KKFP:<me>:<keyer>:<keyframe> (A and B), KeFS:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
+| `<keyframe>` | enum, 0-255: a=1 b=2 full=3 runToInfinite=4 | required | keyframe |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
-| `--keyframe` | enum, 0-255: a=1 b=2 full=3 runToInfinite=4 | required | keyframe |
 
-### `bmdctl atem usk luma`
+### `bmdctl atem usk <keyer> luma`
 
 Set a luma key.
 
-Give at least one optional parameter. Echo: `KeLm:<me>:<keyer>`.
+Give at least one flag. Echo: `KeLm:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--premultiplied` | bool | optional | pre-multiplied key |
 | `--clip` | float, %, clamped to 0-100 | optional | clip |
 | `--gain` | float, %, clamped to 0-100 | optional | gain |
 | `--invert` | bool | optional | invert the key |
 
-### `bmdctl atem usk mask`
+### `bmdctl atem usk <keyer> mask`
 
 Set an upstream keyer's mask.
 
-**Unverified.** Give at least one optional parameter. Echo: `KeBP:<me>:<keyer>`.
+**Unverified.** Give at least one flag. Echo: `KeBP:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--enabled` | bool | optional | mask on |
 | `--top` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | top edge |
 | `--bottom` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | bottom edge |
 | `--left` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | left edge |
 | `--right` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | right edge |
 
-### `bmdctl atem usk on-air`
+### `bmdctl atem usk <keyer> on-air <on-air>`
 
 Put an upstream keyer on or off air.
 
 Echo: `KeOn:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
+| `<on-air>` | bool | required | on air |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
-| `--on-air` | bool | required | on air |
 
-### `bmdctl atem usk pattern`
+### `bmdctl atem usk <keyer> pattern`
 
 Set a pattern key.
 
-Give at least one optional parameter. Echo: `KePt:<me>:<keyer>`.
+Give at least one flag. Echo: `KePt:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--pattern` | enum, 0-255: LeftToRightBar=0 TopToBottomBar=1 HorizontalBarnDoor=2 VerticalBarnDoor=3 CornersInFourBox=4 RectangleIris=5 DiamondIris=6 CircleIris=7 TopLeftBox=8 TopRightBox=9 BottomRightBox=10 BottomLeftBox=11 TopCentreBox=12 RightCentreBox=13 BottomCentreBox=14 LeftCentreBox=15 TopLeftDiagonal=16 TopRightDiagonal=17 | optional | pattern |
 | `--size` | float, %, clamped to 0-100 | optional | size |
 | `--symmetry` | float, %, clamped to 0-100 | optional | symmetry |
@@ -1314,39 +1317,39 @@ Give at least one optional parameter. Echo: `KePt:<me>:<keyer>`.
 | `--position-y` | float, 0-1, clamped | optional | vertical position |
 | `--invert` | bool | optional | invert the pattern |
 
-### `bmdctl atem usk toggle`
+### `bmdctl atem usk <keyer> toggle`
 
 Put an upstream keyer on air if it is off, or off if it is on.
 
 Echo: `KeOn:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 
-### `bmdctl atem usk type`
+### `bmdctl atem usk <keyer> type`
 
 Set an upstream keyer's type and fly mode.
 
-Give at least one optional parameter. Echo: `KeBP:<me>:<keyer>`.
+Give at least one flag. Echo: `KeBP:<me>:<keyer>`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
+| `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--type` | enum, 0-255: luma=0 chroma=1 pattern=2 dve=3 | optional | key type |
 | `--fly` | bool | optional | fly key |
 
-### `bmdctl atem video-mode`
+### `bmdctl atem video-mode <mode>`
 
 Change the video mode: outputs resync and clients may be dropped.
 
 **Destructive.** Echo: `VidM`.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
-| `--mode` | enum, 0-255: 525i5994=0 NTSC=0 625i50=1 PAL=1 NTSC_widescreen=2 PAL_widescreen=3 720p50=4 720p5994=5 1080i50=6 1080i5994=7 1080p2398=8 1080p24=9 1080p25=10 1080p2997=11 1080p50=12 1080p5994=13 2160p2398=14 2160p24=15 2160p25=16 2160p2997=17 2160p50=18 2160p5994=19 4320p2398=20 4320p24=21 4320p25=22 4320p2997=23 4320p50=24 4320p5994=25 1080p30=26 1080p60=27 720p60=28 1080i60=29 | required | video mode |
+| `<mode>` | enum, 0-255: 525i5994=0 NTSC=0 625i50=1 PAL=1 NTSC_widescreen=2 PAL_widescreen=3 720p50=4 720p5994=5 1080i50=6 1080i5994=7 1080p2398=8 1080p24=9 1080p25=10 1080p2997=11 1080p50=12 1080p5994=13 2160p2398=14 2160p24=15 2160p25=16 2160p2997=17 2160p50=18 2160p5994=19 4320p2398=20 4320p24=21 4320p25=22 4320p2997=23 4320p50=24 4320p5994=25 1080p30=26 1080p60=27 720p60=28 1080i60=29 | required | video mode |
 
 ### `bmdctl atem video-modes`
 
@@ -1358,7 +1361,7 @@ Print each change the switcher reports, as it comes.
 
 Runs until interrupted.
 
-| parameter | value | | |
+| argument | value | | |
 |---|---|---|---|
 | `--filter` | list | optional | only keys starting with one of these: PrgI,KeOn:0 |
 | `--count` | uint | optional | stop after this many changes |

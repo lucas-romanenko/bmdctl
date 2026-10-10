@@ -34,7 +34,7 @@ func TestColour(t *testing.T) {
 		}
 		cl, o, _ := b.cli("")
 		cl.tty = c.tty
-		if code := cl.run(with("program", "--source", "1")); code != 0 {
+		if code := cl.run(with("program", "1")); code != 0 {
 			t.Fatal(code)
 		}
 		if got := strings.Contains(o.String(), "\x1b["); got != c.colour {
@@ -47,7 +47,7 @@ func TestColour(t *testing.T) {
 	// --json is never coloured.
 	cl, o, _ := b.cli("")
 	cl.tty = true
-	cl.run(with("program", "--source", "1", "--json"))
+	cl.run(with("program", "1", "--json"))
 	if strings.Contains(o.String(), "\x1b[") {
 		t.Errorf("--json coloured: %q", o)
 	}
@@ -64,9 +64,9 @@ func TestJSONFailures(t *testing.T) {
 	}{
 		{[]string{"nonsense", "--json"}, exitUsage, "usage"},
 		{[]string{"transition", "--json"}, exitUsage, "usage"},
-		{[]string{"program", "--source", "70000", "--json"}, exitUsage, "usage"},
+		{[]string{"program", "70000", "--json"}, exitUsage, "usage"},
 		{[]string{"cut", "--json"}, exitUsage, "usage"}, // no host
-		{with("video-mode", "--mode", "1080p50", "--json"), exitDestructive, "destructive"},
+		{with("video-mode", "1080p50", "--json"), exitDestructive, "destructive"},
 		{[]string{"engine", "status", "--json"}, exitOK, ""},
 	} {
 		code, out, errOut := b.run(c.args...)
@@ -100,29 +100,29 @@ func TestEveryCommandRuns(t *testing.T) {
 	t.Chdir(dir)
 	os.WriteFile("logo.png", testPNG(t), 0o644)
 	os.WriteFile("ops.json", []byte(testOps), 0o644)
-	b.must(with("media", "upload", "--slot", "2", "--file", "logo.png")...)
-	b.must(with("macro", "upload", "--slot", "2", "--file", "ops.json")...)
-	b.must(with("profile", "save", "--file", "p.xml", "--media-pool-images=false")...)
-	b.must("macro", "encode", "--file", "ops.json", "--out", "m.bin")
+	b.must(with("media", "upload", "2", "logo.png")...)
+	b.must(with("macro", "upload", "2", "ops.json")...)
+	b.must(with("profile", "save", "p.xml", "--media-pool-images=false")...)
+	b.must("macro", "encode", "ops.json", "m.bin")
 
-	// Arguments a sample can't guess.
+	// Lines a sample can't guess, as typed.
 	special := map[string][]string{
-		"media upload":    {"--slot", "3", "--file", "logo.png"},
-		"media download":  {"--slot", "2", "--file", "got.png"},
-		"media clear":     {"--slot", "2", "--yes"},
-		"macro upload":    {"--slot", "4", "--file", "ops.json"},
-		"macro download":  {"--slot", "2", "--file", "m.xml"},
-		"macro run":       {"--slot", "2"},
-		"macro delete":    {"--slot", "2", "--yes"},
-		"macro decode":    {"--file", "m.bin"},
-		"macro encode":    {"--file", "ops.json", "--out", "m2.bin"},
-		"profile save":    {"--file", "p2.xml", "--media-pool-images=false"},
-		"profile restore": {"--file", "p.xml", "--yes", "--video-mode=false"},
-		"transition next": {"--next", "background"},
-		"watch":           {"--count", "1", "--filter", "PrgI"},
-		"audio meters":    {"--for", "0.1"},
-		"camera":          {"--destination", "1", "--category", "0", "--parameter", "0"},
-		"macro record":    {"--slot", "10", "--name", "x"},
+		"media upload":    {"media", "upload", "3", "logo.png"},
+		"media download":  {"media", "download", "2", "got.png"},
+		"media clear":     {"media", "clear", "2", "--yes"},
+		"macro upload":    {"macro", "upload", "4", "ops.json"},
+		"macro download":  {"macro", "download", "2", "m.xml"},
+		"macro run":       {"macro", "run", "2"},
+		"macro delete":    {"macro", "delete", "2", "--yes"},
+		"macro decode":    {"macro", "decode", "m.bin"},
+		"macro encode":    {"macro", "encode", "ops.json", "m2.bin"},
+		"profile save":    {"profile", "save", "p2.xml", "--media-pool-images=false"},
+		"profile restore": {"profile", "restore", "p.xml", "--yes", "--video-mode=false"},
+		"transition next": {"transition", "next", "--next", "background"},
+		"watch":           {"watch", "--count", "1", "--filter", "PrgI"},
+		"audio meters":    {"audio", "meters", "--for", "0.1"},
+		"camera":          {"camera", "1", "0", "0"},
+		"macro record":    {"macro", "record", "10", "x"},
 	}
 	// Transfers get the library's timeouts, not the sweep's short echo
 	// wait.
@@ -137,14 +137,13 @@ func TestEveryCommandRuns(t *testing.T) {
 	// Run the ones that change the video mode or delete things last.
 	sort.SliceStable(entries, func(i, j int) bool { return lateCommand(entries[i].Path) < lateCommand(entries[j].Path) })
 	for _, e := range entries {
-		args, ok := special[e.Path]
+		line, ok := special[e.Path]
 		if !ok {
-			args = sampleArgs(e)
+			line = sampleLine(e)
 		}
-		if e.Destructive && !contains(args, "--yes") {
-			args = append(args, "--yes")
+		if e.Destructive && !contains(line, "--yes") {
+			line = append(line, "--yes")
 		}
-		line := append(strings.Fields(e.Path), args...)
 		if !e.Local {
 			line = with(line...)
 		}
@@ -156,7 +155,7 @@ func TestEveryCommandRuns(t *testing.T) {
 			done := make(chan int)
 			go func() { done <- cl.run(line) }()
 			ew.next(t)
-			b.must(with("program", "--source", "2")...)
+			b.must(with("program", "2")...)
 			if code := <-done; code != 0 || !strings.Contains(o.String(), "program  ME1") {
 				t.Errorf("watch: %d %q", code, o)
 			}
@@ -194,25 +193,31 @@ func contains(s []string, x string) bool {
 	return false
 }
 
-// sampleArgs are valid arguments for an entry: every required parameter,
-// and the first optional one where the entry needs one.
-func sampleArgs(e table.Entry) []string {
-	var args []string
-	add := func(p table.Param) { args = append(args, "--"+p.Name, sampleValue(p)) }
-	for _, p := range e.Params {
-		if p.Required {
-			add(p)
+// sampleLine is a valid command line for an entry, as typed: its words
+// and positional arguments, then the first flag where it needs one.
+func sampleLine(e table.Entry) []string {
+	var line []string
+	for _, x := range e.Elems() {
+		switch {
+		case x.Word != "":
+			line = append(line, x.Word)
+		case !x.Optional:
+			for _, p := range e.Params {
+				if p.Name == x.Param {
+					line = append(line, sampleValue(p))
+				}
+			}
 		}
 	}
 	if e.AtLeastOne {
 		for _, p := range e.Params {
-			if !p.Required && p.Default == "" && p.Name != "clip" {
-				add(p)
+			if !p.Required && p.Default == "" && !e.Positional(p.Name) && p.Name != "clip" {
+				line = append(line, "--"+p.Name, sampleValue(p))
 				break
 			}
 		}
 	}
-	return args
+	return line
 }
 
 func sampleValue(p table.Param) string {

@@ -20,19 +20,19 @@ func TestAudioCommands(t *testing.T) {
 		confirmed bool
 	}{
 		{[]string{"fairlight", "master", "--volume", "-6"}, "CFMP", "", true},
-		{[]string{"fairlight", "strip", "--source", "Camera 1", "--channel", "-1", "--volume", "-10", "--mix", "On"}, "CFSP", "", true},
-		{[]string{"fairlight", "eq", "--source", "1", "--channel", "-1", "--band", "0", "--gain", "3"}, "CEBP", "", true},
-		{[]string{"fairlight", "master-eq", "--band", "1", "--enabled"}, "CMBP", "", true},
-		{[]string{"fairlight", "compressor", "--source", "1", "--channel", "-1", "--threshold", "-20"}, "CICP", "", true},
-		{[]string{"fairlight", "limiter", "--source", "1", "--channel", "-1", "--enabled"}, "CILP", "", true},
-		{[]string{"fairlight", "expander", "--source", "1", "--channel", "-1", "--mode", "gate"}, "CIXP", "", true},
+		{[]string{"fairlight", "strip", "Camera 1", "--channel", "-1", "--volume", "-10", "--mix", "On"}, "CFSP", "", true},
+		{[]string{"fairlight", "eq", "1", "0", "--channel", "-1", "--gain", "3"}, "CEBP", "", true},
+		{[]string{"fairlight", "master-eq", "1", "--enabled"}, "CMBP", "", true},
+		{[]string{"fairlight", "compressor", "1", "--channel", "-1", "--threshold", "-20"}, "CICP", "", true},
+		{[]string{"fairlight", "limiter", "1", "--channel", "-1", "--enabled"}, "CILP", "", true},
+		{[]string{"fairlight", "expander", "1", "--channel", "-1", "--mode", "gate"}, "CIXP", "", true},
 		{[]string{"fairlight", "master-compressor", "--ratio", "4"}, "CMCP", "", true},
 		{[]string{"fairlight", "master-limiter", "--enabled", "false"}, "CMLP", "", true},
-		{[]string{"fairlight", "levels", "--enable", "false"}, "SFLN", "00000000", false},
-		{[]string{"audio", "input", "--source", "cam1", "--afv"}, "CAMI", "", true},
+		{[]string{"fairlight", "levels", "false"}, "SFLN", "00000000", false},
+		{[]string{"audio", "input", "cam1", "--afv"}, "CAMI", "", true},
 		{[]string{"audio", "master", "--volume", "32768"}, "CAMM", "", true},
 		{[]string{"audio", "monitor", "--mute"}, "CAMm", "", true},
-		{[]string{"audio", "levels", "--enable", "false"}, "SALN", "00000000", false},
+		{[]string{"audio", "levels", "false"}, "SALN", "00000000", false},
 	} {
 		out, got := b.mustSend(t, c.code, with(c.args...)...)
 		if c.hex != "" && got != c.hex {

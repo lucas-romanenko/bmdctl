@@ -41,6 +41,7 @@ func mediaOperations() []operation {
 				{Name: "premultiply", Kind: table.Bool, Help: "premultiply colour by alpha (default: for PNG, as WebATEM does)"}}},
 			run: opMediaUpload},
 		{entry: table.Entry{Path: "media download", Summary: "Download a still slot as a PNG.",
+			Syntax: "media download <slot> [file]",
 			Params: []table.Param{slotParam(0xFFFF, "still slot"),
 				{Name: "file", Kind: table.OutFile, Help: "where to write it; - is stdout (default: the slot's name .png)"}}},
 			run: opMediaDownload},
@@ -140,14 +141,14 @@ func opMediaUpload(c *call) (any, bool, error) {
 	slot := int(c.args.Value("slot").(uint64))
 	data := c.req.Files["file"]
 	if len(data) == 0 {
-		return nil, false, codeErr(CodeUsage, "--file: no image (empty file)")
+		return nil, false, codeErr(CodeUsage, "%s: no image (empty file)", c.entry.Label("file"))
 	}
 	img, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, false, codeErr(CodeUsage, "--file %s: not a PNG, JPEG or GIF image: %v", c.args.Value("file"), err)
+		return nil, false, codeErr(CodeUsage, "%s %s: not a PNG, JPEG or GIF image: %v", c.entry.Label("file"), c.args.Value("file"), err)
 	}
 	if n := c.state.MediaplayerSlots(); n > 0 && slot >= n {
-		return nil, false, codeErr(CodeUsage, "--slot %v: the media pool has %d stills, 1-%d", table.Index(slot), n, n)
+		return nil, false, codeErr(CodeUsage, "%s %v: the media pool has %d stills, 1-%d", c.entry.Label("slot"), table.Index(slot), n, n)
 	}
 	r := TransferResult{Slot: table.Index(slot), Bytes: len(data), Source: fmt.Sprintf("%dx%d %s", img.Bounds().Dx(), img.Bounds().Dy(), format)}
 	if old := c.state.MediaplayerSlotInfo(slot); old.IsUsed {

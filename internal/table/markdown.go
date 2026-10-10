@@ -13,8 +13,10 @@ func (r *Registry) Markdown() string {
 	b.WriteString("# bmdctl commands\n\n")
 	b.WriteString("Generated from the command table (`internal/table`); do not edit. After\n")
 	b.WriteString("changing a table, run `go test ./cmd/bmdctl -run TestCommandsDoc -update`.\n\n")
-	b.WriteString("Each command takes its parameters as `--name value` flags. **Unverified**\n")
-	b.WriteString("commands have a pinned wire format that nobody has confirmed on a\n")
+	b.WriteString("A command's required arguments follow its words, in the order they're\n")
+	b.WriteString("said (`<name>`; `[name]` may be left out); everything optional is a\n")
+	b.WriteString("`--name value` flag, which may be shortened to any unambiguous prefix.\n")
+	b.WriteString("**Unverified** commands have a pinned wire format that nobody has confirmed on a\n")
 	b.WriteString("switcher; **destructive** ones are hard to undo or drop connections. The\n")
 	b.WriteString("echo is the state the device reports back once it has applied the\n")
 	b.WriteString("command; a command without one can't be confirmed. Its key names the\n")
@@ -23,7 +25,7 @@ func (r *Registry) Markdown() string {
 	for _, d := range r.Devices() {
 		fmt.Fprintf(&b, "\n## %s\n", d)
 		for _, e := range r.Entries(d) {
-			fmt.Fprintf(&b, "\n### `bmdctl %s %s`\n\n%s\n", d, e.Path, e.Summary)
+			fmt.Fprintf(&b, "\n### `bmdctl %s %s`\n\n%s\n", d, e.Usage(), e.Summary)
 			var notes []string
 			if e.Unverified {
 				notes = append(notes, "**Unverified.**")
@@ -32,7 +34,7 @@ func (r *Registry) Markdown() string {
 				notes = append(notes, "**Destructive.**")
 			}
 			if e.AtLeastOne {
-				notes = append(notes, "Give at least one optional parameter.")
+				notes = append(notes, "Give at least one flag.")
 			}
 			if e.Local {
 				notes = append(notes, "Runs in the CLI; needs no switcher.")
@@ -52,8 +54,8 @@ func (r *Registry) Markdown() string {
 			if len(e.Params) == 0 {
 				continue
 			}
-			b.WriteString("\n| parameter | value | | |\n|---|---|---|---|\n")
-			for _, p := range e.Params {
+			b.WriteString("\n| argument | value | | |\n|---|---|---|---|\n")
+			for _, p := range e.ordered() {
 				need := "optional"
 				switch {
 				case p.Required:
@@ -61,7 +63,7 @@ func (r *Registry) Markdown() string {
 				case p.Default != "":
 					need = "default " + p.Default
 				}
-				fmt.Fprintf(&b, "| `--%s` | %s | %s | %s |\n", p.Name, p.valueDoc(), need, escape(p.Help))
+				fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", e.Shown(p.Name), p.valueDoc(), need, escape(p.Help))
 			}
 		}
 	}
