@@ -37,7 +37,9 @@ func sessionOperations() []operation {
 		{entry: table.Entry{Path: "watch", Summary: "Print each change the switcher reports, as it comes.", Stream: true,
 			Params: []table.Param{
 				{Name: "filter", Kind: table.List, Help: "only keys starting with one of these: PrgI,KeOn:0"},
-				{Name: "count", Kind: table.Uint, Help: "stop after this many changes"}}},
+				{Name: "count", Kind: table.Uint, Help: "stop after this many changes"},
+				{Name: "all", Kind: table.Bool, Default: "false",
+					Help: "include the clock's Time packets, left out unless --filter names them"}}},
 			run: opWatch},
 	}
 }
@@ -391,6 +393,7 @@ func opWatch(c *call) (any, bool, error) {
 	if c.args.Has("count") {
 		limit = c.args.Value("count").(uint64)
 	}
+	all := c.args.Value("all").(bool)
 	// Watching has begun once the subscription exists: tell the caller,
 	// so a script can act knowing nothing will be missed.
 	if err := c.out.response(Response{OK: true, Result: ChangeEvent{Kind: "watching", Time: now()},
@@ -415,10 +418,9 @@ func opWatch(c *call) (any, bool, error) {
 			case atem.ChangeDisconnected:
 				ev.Kind = "disconnected"
 			}
-			if ev.Kind == "state" && len(filters) > 0 && !slices.ContainsFunc(filters, func(f string) bool {
-				return strings.HasPrefix(ch.Key, strings.TrimSpace(f))
-			}) {
-				continue
+			matches := slices.ContainsFunc(filters, func(f string) bool { return strings.HasPrefix(ch.Key, strings.TrimSpace(f)) })
+			if ev.Kind == "state" && (len(filters) > 0 && !matches || ch.Opcode == "Time" && !all && !matches) {
+				continue // the clock ticks: noise unless asked for
 			}
 			if err := c.out.response(Response{OK: true, Result: ev, TookMS: time.Since(c.start).Milliseconds()}); err != nil {
 				return streamEnd{}, false, nil // the caller hung up

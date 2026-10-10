@@ -18,6 +18,7 @@ func init() {
 	humanFormats["disconnect"] = formatDisconnect
 	humanFormats["info"] = formatInfo
 	humanFormats["watch"] = formatWatch
+	humanFormats["state"] = formatState
 }
 
 // source is "1 (Camera 1)", or the id alone for a source without a name.
@@ -161,24 +162,6 @@ func formatInfo(p *printer, _ engine.Response, raw json.RawMessage) []string {
 		[]string{"audio", r.Audio},
 	)
 	return p.table(rows)
-}
-
-func formatWatch(p *printer, _ engine.Response, raw json.RawMessage) []string {
-	var ev struct {
-		Kind  string          `json:"kind"`
-		Key   string          `json:"key"`
-		Value json.RawMessage `json:"value"`
-		Time  string          `json:"time"`
-	}
-	json.Unmarshal(raw, &ev)
-	switch ev.Kind {
-	case "watching":
-		fmt.Fprintln(p.c.stderr, "watching; Ctrl-C to stop")
-		return nil
-	case "state":
-		return []string{fmt.Sprintf("%s  %-12s %s", ev.Time, p.c.colour(bold, ev.Key), compact(ev.Value))}
-	}
-	return []string{fmt.Sprintf("%s  %s", ev.Time, ev.Kind)}
 }
 
 func compact(raw json.RawMessage) string {

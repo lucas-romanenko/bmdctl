@@ -55,7 +55,7 @@ func TestKeyerCommands(t *testing.T) {
 	}
 	// The DSK's tie survives a mirrored gain change: the fake answers with
 	// the state it modelled, not the dump's.
-	if out := b.must(with("state", "--path", "dsks.0.properties.tie")...); out != "value  true\n" {
+	if out := b.must(with("state", "--path", "dsks.0.properties.tie")...); out != "true\n" {
 		t.Errorf("tie after gain: %q", out)
 	}
 	// The rename shows in the names: the old one is gone, the new one

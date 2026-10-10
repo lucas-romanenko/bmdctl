@@ -1362,3 +1362,4 @@ Runs until interrupted.
 |---|---|---|---|
 | `--filter` | list | optional | only keys starting with one of these: PrgI,KeOn:0 |
 | `--count` | uint | optional | stop after this many changes |
+| `--all` | bool | default false | include the clock's Time packets, left out unless --filter names them |

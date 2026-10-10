@@ -1156,12 +1156,31 @@ comes back. Indexes in results count from 1, as the flags do
     names; `--path` follows dotted keys (list indices and map keys are
     numbers; a key that isn't there exactly is matched ignoring case),
     and an unknown key lists the ones there are. Humans get one
-    `dotted.key value` line per leaf.
+    `dotted.key value` line per leaf, and a path to a leaf
+    (`mes.0.program.source`) prints the bare value alone, for scripts.
   - `watch` subscribes and streams each `Change`: `{kind, opcode, key,
     value, time}`, kind `state`, `ready` or `disconnected`. Its first
     frame is `{kind: "watching"}`, sent once the subscription exists, so
     a script knows from then on nothing is missed. `--filter` keeps keys
     starting with any of its prefixes, `--count` stops after that many.
+    The clock's `Time` packets are left out unless `--all` is given or a
+    `--filter` names them: on a switcher they drown everything else
+    (found on the first hardware run, docs/HARDWARE.md).
+  - **watch's human form** (`cmd/bmdctl/watch.go`) prints each change as
+    its time, the pretty key (atemwire's mixerstate name with the key's
+    indices, `key-on-air:0:1`, through `atem.PrettyName`, a Go addition
+    exporting each parser's PRETTY) and the value as JSON; and for the
+    common changes one line of its own: `program  ME1  CAM3 → CAM5`
+    (preview likewise), `tally  CAM5 pgm, CAM3 off` (the sources whose
+    lamps changed, by `TlSr`: on program first, then preview, then off),
+    `transition  ME1  mix  running 0.4s` (from `TrPs`, timed from the
+    first packet in transition by the events' times, then `done` and
+    `idle`). Sources show by short name, else long name, else id. What
+    it shows a change against comes from a `state` snapshot the CLI
+    takes once the engine says it watches, kept up to date by the
+    changes themselves (`InPr` renames included); a change in the moment
+    between the two shows as the new value alone. `--json` prints the
+    engine's frames, unchanged.
     A stream that ends normally sends no final response; the CLI exits 0
     on `--count` or Ctrl-C, 2 if the session closes.
 - **Group b, switching** (`ops_switching.go`). The wire commands keep

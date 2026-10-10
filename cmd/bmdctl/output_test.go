@@ -157,7 +157,7 @@ func TestEveryCommandRuns(t *testing.T) {
 			go func() { done <- cl.run(line) }()
 			ew.next(t)
 			b.must(with("program", "--source", "2")...)
-			if code := <-done; code != 0 || !strings.Contains(o.String(), "PrgI:0") {
+			if code := <-done; code != 0 || !strings.Contains(o.String(), "program  ME1") {
 				t.Errorf("watch: %d %q", code, o)
 			}
 			continue

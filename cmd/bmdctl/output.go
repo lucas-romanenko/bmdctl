@@ -29,6 +29,7 @@ type printer struct {
 	last       *engine.Response
 	written    []string // files written, in order
 	stdoutUsed bool     // a file went to stdout: print nothing else there
+	watch      *watchView
 }
 
 func (p *printer) label() string { return strings.TrimSpace(p.e.Device + " " + p.e.Path) }
@@ -296,6 +297,16 @@ func numericKeys(kvs []kv) bool {
 		_, err := strconv.Atoi(x.k)
 		return err != nil
 	})
+}
+
+// formatState prints a leaf of the state (--path to a number, a string, a
+// bool) as its bare value, for scripts; anything bigger as one
+// dotted.key value line per leaf.
+func formatState(p *printer, _ engine.Response, raw json.RawMessage) []string {
+	if v := parseOrdered(raw); v.obj == nil && v.arr == nil {
+		return []string{v.scalar}
+	}
+	return p.table(flatten(raw))
 }
 
 // humanFormats renders operations whose results read better than
