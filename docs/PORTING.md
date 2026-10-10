@@ -766,7 +766,13 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   while others raise; MiddleCentre raises; a missing `MacroSleep.frames` is
   0; marker bytes are rewritten; strip/master fader gain and HyperDeckInput
   overflow raise `struct.error`; HyperDeck addresses accept whatever glibc
-  `inet_aton` accepts.
+  `inet_aton` accepts. `sourceId` decodes unsigned (`18446744073709486336`
+  for stereo), the form bmdwire says ATEM Software Control writes
+  (`_resolve_source_id`'s docstring, `docs/PROFILE_FORMAT.md`), and the
+  encoder takes the signed form too.
+- **Two fixes** (see "Deliberate differences"): a Fairlight strip op with
+  no `sourceId` gets the stereo one, and a silenced Fairlight gain decodes
+  as `-327.68`.
 - **Not matched:** Unicode classification uses Go's tables (17.0) where
   CPython 3.12 uses 15.0, so characters assigned since differ as digits and
   in `repr()` escapes; Go strings that aren't valid UTF-8 act as U+FFFD;
@@ -778,7 +784,8 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   multi-op streams) and 4,272 op dicts from attribute pools.
   `TestDecodeMatchesAtemwire` and `TestEncodeMatchesAtemwire` require the
   same ops (ids, names, order, values), stop warnings, bytes, and error
-  class and message, and assert every op code has decode,
+  class and message (bmdwire's bytes for a strip op with no `sourceId`
+  are first rewritten to the stereo default), and assert every op code has decode,
   decode-failure, encode and encode-failure cases. `decoder_test.go` and
   `encoder_test.go` port `test_macro_decoder.py`, `test_macro_encoder.py`
   and the macro halves of `test_wipe_pattern_names.py` and
@@ -1534,10 +1541,11 @@ deliberate fix later, recorded here as such when it is made.
 
 ## Deliberate differences
 
-Bugs in bmdwire v1.3.0 the port fixes instead of copying. Each was filed
+Bugs in bmdwire v1.3.0 the port fixes instead of copying. Each is filed
 against bmdwire (`github.com/lucas-romanenko/bmdwire/issues/<n>`), and each
-has a test against the fake switcher (`atem/fake_test.go`) that fails on
-bmdwire's behaviour.
+has a test that fails on bmdwire's behaviour: against the fake switcher
+(`atem/fake_test.go`), or for the macro codec in
+`atem/macro/differences_test.go`.
 
 - **bmdwire#11: the silence timeout counts accepted inbound packets
   only.** atemwire's UDP thread times out when `select()` has slept 5 s,
@@ -1603,6 +1611,29 @@ bmdwire's behaviour.
   this session holds none is another client's. atemwire's reactions to a
   release (forget our lock, re-request for queued work) stay release-only.
   `TestAnotherClientsLockIsVisible`, `TestLockState`.
+- **A Fairlight strip op with no `sourceId` encodes the stereo one**
+  (bmdwire issue not yet filed). For a missing or empty `sourceId`,
+  `_resolve_source_id` (`atemwire/macrotransfer/fairlight.py:455-457`)
+  returns 0xFFFFFFFFFFFF0000 (-65536), although its comment says the
+  stereo value, -65280, which is 0xFFFFFFFFFFFF0100. Every live capture
+  in bmdwire's tests carries 0xFFFFFFFFFFFF0100, and so do all 24 strip
+  ops in the macro downloaded on the fourth hardware run. Here the
+  default is 0xFFFFFFFFFFFF0100. The decode is unchanged (unsigned, see
+  "Macro codec"). `TestMissingSourceIDIsStereo`,
+  `TestStereoSourceIDRoundTrips`. `TestEncodeMatchesAtemwire` rewrites
+  bmdwire's bytes for the 42 oracle cases this changes.
+- **A silenced Fairlight gain decodes as `-327.68`** (bmdwire issue not
+  yet filed). A silenced fader is recorded as -327.68 dB in Q16.16,
+  -21474836 (bytes `ec 51 b8 fe`). `_fmt_scalar` (`_helpers.py:90-97`)
+  prints six decimals, `-327.679993`; bmdwire's `docs/PROFILE_FORMAT.md`
+  (lines 802-804) says ATEM Software Control writes `-327.68`. Here
+  every Fairlight `gain` (strip and master faders, EQ, EQ band, input,
+  dynamics, headphones) decodes that one value as `-327.68`, which
+  encodes back to the same bytes. Other values keep `_fmt_scalar`'s
+  form. bmdwire's comments suggest ASC writes six significant digits
+  throughout (`-0.0800018` where `_fmt_scalar` gives `-0.080002`,
+  `fairlight.py:45-49`), but two examples are too little to change every
+  value on. `TestSilencedGainIsASCs`, `TestSilencedGainOnly`.
 
 ## SURFACE.md and the code
 
