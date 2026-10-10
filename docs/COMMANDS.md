@@ -46,6 +46,14 @@ Set the classic audio mixer's master.
 | `--volume` | uint, 0-65535, 0-65381 | optional | volume |
 | `--afv` | bool | optional | audio follows video |
 
+### `bmdctl atem audio meters`
+
+Read the audio meters: each strip's and the master's levels in dB, Fairlight or classic.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--for` | float, seconds | default 0.5 | how long to collect levels; the last of each strip's is shown |
+
 ### `bmdctl atem audio monitor`
 
 Set the classic audio mixer's monitor.

@@ -1084,6 +1084,19 @@ else (keyers, DSKs, aux, slots) from 0.
   insists on `--direction`: its mask covers only the direction, and
   atemwire sends a plain run with a zero mask, so the table marks the
   entry `complete` rather than deriving "at least one".
+- **Group d, audio** (`ops_audio.go`). The Fairlight (`fairlight ...`)
+  and classic (`audio input|master|monitor|levels`) wire commands keep
+  their entries; Fairlight and classic sources take input names too.
+  `audio meters` is new: the switcher streams levels only to a client
+  that asked (`SFLN`, or `SALN` on the classic mixer), and atemwire
+  stores `FMLv` bare, so the last strip's levels overwrite the others
+  (SURFACE.md §5.4 item 6). The readout subscribes, turns the stream on,
+  keeps each strip's latest packet for `--for` seconds (0.5 by default),
+  and turns it off again. Strips come in `FairlightStrips` order with its
+  display names. Levels are atemwire's dB (Fairlight's hundredths divided
+  by 100, the classic mixer's log scale); level and peak are the fader's
+  on Fairlight. The fake switcher answers `SFLN` with one burst of
+  fixed levels for each strip it described, and the master.
 - **Indices the switcher doesn't have** are refused before sending:
   `--me` beyond `_top`'s M/E count, `--keyer` beyond the M/E's `_MeC`,
   `--dsk` beyond `_top`'s. Only counts the switcher reported are used, not

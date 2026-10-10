@@ -5,6 +5,7 @@ package fakeatem
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 )
 
 // The state packets the fake keeps and echoes, by opcode: how many leading
@@ -105,4 +106,39 @@ func (sw *Switcher) echo(code string, c []byte) [][]byte {
 		})}
 	}
 	return nil
+}
+
+// meters answers SFLN with one burst of Fairlight meter levels: an FMLv
+// for each strip the switcher described (FASP) and the master's FDLv, at
+// fixed levels. A real switcher streams them until told to stop; the fake
+// sends one burst per request.
+func (sw *Switcher) meters(code string, c []byte) [][]byte {
+	if code != "SFLN" || len(c) < 1 || c[0] == 0 {
+		return nil
+	}
+	var out [][]byte
+	for k, p := range sw.mirror {
+		if !strings.HasPrefix(k, "FASP:") || len(p) < 16 {
+			continue
+		}
+		m := make([]byte, 40)
+		if p[14] == 0xFF {
+			m[6] = 0xFF
+		}
+		m[7] = p[15]
+		copy(m[8:10], p[0:2])
+		src := int16(binary.BigEndian.Uint16(p[0:2]))
+		// input L R, peak L R; expander, compressor, limiter GR; output
+		// L R, peak L R; fader L R, peak L R. Hundredths of a dB.
+		for i, v := range []int16{-2000, -2100, -1000, -1100, 0, -300, 0, -2000, -2100, -1000, -1100,
+			-1800 - src, -1900 - src, -1200, -1300} {
+			binary.BigEndian.PutUint16(m[10+2*i:], uint16(v))
+		}
+		out = append(out, Command("FMLv", m))
+	}
+	master := make([]byte, 28)
+	for i, v := range []int16{-1500, -1600, -600, -700, -200, 0, -1500, -1600, -600, -700, -1000, -1100, -400, -500} {
+		binary.BigEndian.PutUint16(master[2*i:], uint16(v))
+	}
+	return append(out, Command("FDLv", master))
 }
