@@ -56,16 +56,21 @@ Everything else runs against `internal/fixtures` or the fake switcher in
 - **Commits.** One commit per step, conventional commit messages
   (`feat(atem): …`, `test(fixtures): …`, `docs: …`), and push after every
   commit. The build/vet/test line above is green at each one.
-- **Scope.** Transfers (stills, macros), the macro bytecode codec, profiles,
-  a background engine, hosts, HTTP, MCP and the other devices are later
-  phases. Don't start them unless asked.
+- **Scope.** Phase 2 added transfers (stills, macros), the macro bytecode
+  codec, profiles and the display-unit readers. A background engine,
+  hosts, HTTP, MCP, CLI commands beyond sending one command, and the other
+  devices are later phases. Don't start them unless asked.
 
 ## Where things are
 
-- `atem/`: the ATEM package (transport, session, state, parsers, commands).
+- `atem/`: the ATEM package (transport, session, state, parsers, commands,
+  readers, transfers, still image conversion).
+- `atem/macro/`: the macro bytecode codec. `atem/profile/`: profile save
+  and apply.
 - `internal/fixtures/`: recorded packets, bytecode samples, the profile XML
-  golden and the state snapshots, copied raw from bmdwire's tests; the
-  README there lists where each came from.
+  golden and the state snapshots, copied raw from bmdwire's tests, and the
+  oracles generated from bmdwire; the README there lists where each came
+  from.
 - `internal/table/`: the command table every device package fills, which the
   CLI and `docs/COMMANDS.md` are generated from.
 - `internal/fakeatem/`: a fake switcher at the `net.PacketConn` level.
