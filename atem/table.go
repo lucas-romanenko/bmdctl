@@ -375,7 +375,7 @@ func commandSpecs() []spec {
 			opt("rate", "Rate", table.Rate, unitFrames, "mix rate")}},
 		{path: "transition preview", summary: "Turn transition preview on or off.", cmd: TransitionPreview{}, echo: "TrPr:<me>",
 			params: []fp{pME, req("enabled", "Enabled", table.Bool, "", "preview the transition")}},
-		{path: "transition position", summary: "Move the T-bar.", cmd: TransitionPosition{}, echo: "TrPs:<me>",
+		{path: "tbar", summary: "Move the T-bar.", cmd: TransitionPosition{}, echo: "TrPs:<me>",
 			params: []fp{pME, req("position", "Position", table.Int, "0-10000, clamped", "T-bar position")}},
 
 		// §1.4 keyer-usk

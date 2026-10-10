@@ -76,6 +76,8 @@ type Switcher struct {
 	nextClient  uint16 // next reliable sequence expected from the session
 	clientKnown bool
 	state       map[string][]byte // current state payloads, for echoes
+	mirror      map[string][]byte // state payloads mirrored commands answer with (mirror.go)
+	unanswered  map[string]bool   // commands taken but not echoed
 	commands    [][]byte
 
 	dropToClient   int
@@ -121,6 +123,9 @@ func New(dump []byte) *Switcher {
 		closed:   make(chan struct{}),
 		unacked:  map[uint16]*sent{},
 		state:    map[string][]byte{},
+		mirror:   map[string][]byte{},
+
+		unanswered: map[string]bool{},
 		dropSeqs: map[uint16]bool{},
 		locks:    map[uint16]holder{},
 
@@ -129,9 +134,22 @@ func New(dump []byte) *Switcher {
 		macros:     map[uint16]*item{},
 		xfers:      map[uint16]*xfer{},
 	}
-	forEachCommand(dump, func(code string, payload []byte) { sw.remember(code, payload) })
+	forEachCommand(dump, func(code string, payload []byte) {
+		sw.remember(code, payload)
+		sw.rememberMirrored(code, payload)
+	})
 	go sw.tick()
 	return sw
+}
+
+// Unanswered makes the switcher take these commands (by opcode) without
+// echoing them: a command whose effect never shows.
+func (sw *Switcher) Unanswered(codes ...string) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	for _, c := range codes {
+		sw.unanswered[c] = true
+	}
 }
 
 // DropToClient drops the next n reliable packets the switcher sends (the
@@ -376,7 +394,11 @@ func (sw *Switcher) receive(b []byte) {
 	var echoes [][]byte
 	forEachCommand(p.data, func(code string, payload []byte) {
 		sw.commands = append(sw.commands, Command(code, payload))
+		if sw.unanswered[code] {
+			return
+		}
 		echoes = append(echoes, sw.echo(code, payload)...)
+		echoes = append(echoes, sw.mirrorEcho(code, payload)...)
 		echoes = append(echoes, sw.transferEcho(code, payload)...)
 	})
 	if len(echoes) > 0 {

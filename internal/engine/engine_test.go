@@ -50,6 +50,7 @@ func newRig(t *testing.T, cfg Config) *rig {
 			<-r.gate
 		}
 		sw := fakeatem.New(dump)
+		sw.Unanswered("CTWp") // a command that is never confirmed
 		r.mu.Lock()
 		r.sws = append(r.sws, sw)
 		r.mu.Unlock()

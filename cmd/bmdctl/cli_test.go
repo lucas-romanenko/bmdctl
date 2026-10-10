@@ -118,7 +118,7 @@ func TestDryRun(t *testing.T) {
 		{[]string{"program", "--me", "2", "--source", "3010"}, "000c000043506749" + "01000bc2"},
 		{[]string{"transition", "preview", "--me", "2", "--enabled", "true"}, "000c000043545072" + "01010000"},
 		{[]string{"transition", "preview", "--me", "2", "--enabled"}, "000c000043545072" + "01010000"},
-		{[]string{"transition", "position", "--position", "20000"}, "000c000043545073" + "00002710"},
+		{[]string{"tbar", "--position", "20000"}, "000c000043545073" + "00002710"},
 		{[]string{"multiviewer", "input", "--multiviewer", "1", "--window", "7", "--source", "3010"}, "000c0000434d7649" + "01070bc2"},
 		{[]string{"auto-video-mode", "--enable", "true"}, "000c00004169564d" + "01000000"},
 		{[]string{"streaming", "audio-bitrate", "--min", "128000", "--max", "128000"}, "0010000053544142" + "0001f4000001f400"},
@@ -207,6 +207,7 @@ func TestSendThroughTheEngine(t *testing.T) {
 	if !strings.Contains(out, "sent") || strings.Contains(out, "confirmed") {
 		t.Errorf("cut: %q", out)
 	}
+	eventually(t, "the cut", func() bool { return len(b.sent("DCut")) == 1 })
 	// One session served both: the engine kept it.
 	if n := len(b.switchers()); n != 1 {
 		t.Errorf("%d sessions", n)
@@ -317,7 +318,8 @@ func TestJSONAndQuiet(t *testing.T) {
 // Each kind of failure has its exit status.
 func TestExitCodes(t *testing.T) {
 	b := newBench(t)
-	// 3: sent, but the fake switcher doesn't echo a wipe.
+	b.onDial = func(sw *fakeatem.Switcher) { sw.Unanswered("CTWp") }
+	// 3: sent, but the switcher doesn't echo it.
 	code, _, errOut := b.run(with("--timeout", "200ms", "transition", "wipe", "--rate", "10")...)
 	if code != exitNoEcho || !strings.Contains(errOut, "did not report TWpP:0 within 200ms") {
 		t.Errorf("no echo: %d %q", code, errOut)
