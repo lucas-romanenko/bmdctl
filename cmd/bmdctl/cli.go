@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -59,6 +60,9 @@ type cli struct {
 	engineConfig func(engine.Config) engine.Config
 	// ctx is cancelled by an interrupt.
 	ctx context.Context
+	// json: the line asked for --json, so a failure the CLI finds itself
+	// is printed as the engine would print it; quiet keeps it off stdout.
+	json, quiet bool
 }
 
 func newCLI(stdout, stderr io.Writer) *cli {
@@ -120,6 +124,7 @@ not confirmed in time, 4 refused by the switcher, 5 destructive without --yes.
 // program name and returns the exit code.
 func (c *cli) run(args []string) int {
 	g, words, tokens, err := splitLine(args)
+	c.json, c.quiet = g.json, g.quiet
 	if err != nil {
 		return c.fail(exitUsage, "bmdctl: %v", err)
 	}
@@ -174,10 +179,32 @@ func (c *cli) isGroup(device, word string) bool {
 	return len(prefix) > 0
 }
 
-// fail prints a message on stderr and returns code.
+// fail reports a failure and returns code: on stderr, or with --json
+// as the engine's failure response on stdout.
 func (c *cli) fail(code int, format string, args ...any) int {
-	fmt.Fprintf(c.stderr, format+"\n", args...)
+	msg := fmt.Sprintf(format, args...)
+	if c.json && !c.quiet {
+		b, _ := json.Marshal(engine.Response{Code: codeName(code), Error: msg})
+		fmt.Fprintf(c.stdout, "%s\n", b)
+		return code
+	}
+	fmt.Fprintln(c.stderr, msg)
 	return code
+}
+
+// codeName is the engine's error code for an exit status.
+func codeName(code int) string {
+	switch code {
+	case exitUnreachable:
+		return engine.CodeUnreachable
+	case exitNoEcho:
+		return engine.CodeNoEcho
+	case exitRejected:
+		return engine.CodeRejected
+	case exitDestructive:
+		return engine.CodeDestructive
+	}
+	return engine.CodeUsage
 }
 
 func versionString() string {

@@ -25,18 +25,20 @@ import (
 func (c *cli) runDevice(g globals, device string, words, tokens []string) int {
 	e, prefix, rest := c.reg.Resolve(device, words)
 	if e == nil {
-		w, code := c.stdout, exitOK
-		if !g.help {
-			w, code = c.stderr, exitUsage
-			switch {
-			case len(rest) > 0:
-				fmt.Fprintf(c.stderr, "bmdctl %s: unknown command %q\n\n", device, strings.Join(words, " "))
-			case len(prefix) > 0:
-				fmt.Fprintf(c.stderr, "bmdctl %s %s: missing a subcommand\n\n", device, strings.Join(prefix, " "))
-			}
+		if g.help {
+			c.groupHelp(c.stdout, device, prefix)
+			return exitOK
 		}
-		c.groupHelp(w, device, prefix)
-		return code
+		msg := fmt.Sprintf("bmdctl %s: unknown command %q", device, strings.Join(words, " "))
+		if len(rest) == 0 && len(prefix) > 0 {
+			msg = fmt.Sprintf("bmdctl %s %s: missing a subcommand", device, strings.Join(prefix, " "))
+		}
+		if c.json {
+			return c.fail(exitUsage, "%s", msg)
+		}
+		fmt.Fprintf(c.stderr, "%s\n\n", msg)
+		c.groupHelp(c.stderr, device, prefix)
+		return exitUsage
 	}
 	if len(rest) > 0 {
 		return c.fail(exitUsage, "bmdctl %s %s: unexpected %q", device, e.Path, strings.Join(rest, " "))

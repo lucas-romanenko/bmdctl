@@ -912,12 +912,21 @@ and a zero value selects nothing.
     again by the engine. An unverified one prints a line saying so on
     stderr, unless `--json`.
 - **Output.** `--json` prints each engine response line exactly as
-  received; `--quiet` prints nothing on stdout (errors still go to
-  stderr). Otherwise a result is one line: a wire command is its path, a
-  colour-free `confirmed` or `sent` (green and yellow on a terminal, none
-  with `NO_COLOR` or `TERM=dumb`), the time taken and the arguments as
-  sent (M/E from 1, sources with their names, enums by name). Operations
-  print one aligned line per row of their result.
+  received, and a failure the CLI finds itself (a usage error, a
+  destructive command without `--yes`, no host) in the same
+  `{ok:false, code, error}` shape on stdout, so a script reads one form.
+  `--quiet` prints nothing on stdout, `--json` or not; errors still go to
+  stderr. Otherwise a result is one line: a wire command (or an
+  operation that sends one) is its path, `confirmed` or `sent`, the time
+  taken and the arguments as sent (M/E from 1, sources with their names,
+  enums by name), in fixed columns so the lines of `exec` line up.
+  Operations print one aligned line per row of their result. Colour (the
+  status, what is on air) only when stdout is a terminal, and never with
+  `NO_COLOR` set or `TERM=dumb`, nor with `--json`.
+- **Every command runs.** `TestEveryCommandRuns` sends every entry in the
+  table, with sample arguments, through an engine to the fake switcher
+  and requires it to succeed (the one exception, `media
+  clear-unlocked`, is ignored by the fake as some models ignore it).
 - **Exit codes** (phase 3): 0 done, 1 usage (including a command
   `Validate` refuses) or any other failure, 2 the switcher or the engine
   unreachable, 3 sent but not confirmed in time, 4 refused by the
