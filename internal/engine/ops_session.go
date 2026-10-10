@@ -294,11 +294,8 @@ func opInfo(c *call) (any, bool, error) {
 	if s := st.MediaPool.Slots; s != nil {
 		r.Stills, r.Clips = int(s.Stills), int(s.Clips)
 	}
-	switch {
-	case st.Fairlight.Master != nil || len(st.Fairlight.Inputs) > 0:
-		r.Audio = "fairlight"
-	case st.Audio.Master != nil || len(st.Audio.Inputs) > 0:
-		r.Audio = "classic"
+	if m := Mixer(st); m != "" {
+		r.Audio = m
 	}
 	return r, false, nil
 }

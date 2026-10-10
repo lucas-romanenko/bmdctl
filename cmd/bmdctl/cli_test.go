@@ -127,7 +127,7 @@ func TestDryRun(t *testing.T) {
 			"0020000043436d64" + "020801008000000000020000000000000400f80000000000"},
 		{[]string{"transition", "mix", "1:00"}, "000c00004354 4d78 0019 0000"},
 		{[]string{"--fps", "30", "transition", "mix", "1:00"}, "000c000043544d78001e0000"},
-		{[]string{"audio", "input", "1", "--balance", "-500"}, "0014000043414d49" + "0400000100000000fe0c0000"},
+		{[]string{"classic-audio", "input", "1", "--balance", "-500"}, "0014000043414d49" + "0400000100000000fe0c0000"},
 		// Indexes are typed from 1 and sent from 0.
 		{[]string{"usk", "2", "on-air", "on"}, "000c0000434b4f6e" + "00010100"},
 		{[]string{"dsk", "on-air", "on", "--dsk", "2"}, "000c000043447 34c" + "01010000"},
@@ -135,7 +135,7 @@ func TestDryRun(t *testing.T) {
 		{[]string{"media", "player", "2", "--still", "6"}, "001000004d505353" + "0301010500000000"},
 		{[]string{"macro", "action", "run", "--slot", "4"}, "000c00004d416374" + "00030000"},
 		{[]string{"macro", "action", "stop"}, "000c00004d416374" + "ffff0100"},
-		{[]string{"fairlight", "eq", "1", "1", "--channel", "-1", "--q", "2", "-q"}, ""},
+		{[]string{"audio", "eq", "1", "1", "--channel", "-1", "--q", "2", "-q"}, ""},
 		{[]string{"supersource", "box", "1", "--y", "-200", "-y"}, "0020000043534250" + "00080000000000000000ff38000000000000000000000000"},
 	} {
 		for _, dev := range [][]string{{"atem"}, nil} {
@@ -161,9 +161,9 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 	if code != 0 || !strings.Contains(errOut, "destructive") {
 		t.Errorf("video-mode: %d %q", code, errOut)
 	}
-	code, _, errOut = runCLI("--dry-run", "audio", "levels", "true")
+	code, _, errOut = runCLI("--dry-run", "classic-audio", "levels", "true")
 	if code != 0 || !strings.Contains(errOut, "unverified") {
-		t.Errorf("audio levels: %d %q", code, errOut)
+		t.Errorf("classic-audio levels: %d %q", code, errOut)
 	}
 	for _, c := range []struct {
 		args []string

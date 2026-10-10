@@ -13,6 +13,7 @@ import (
 func init() {
 	humanFormats["input list"] = formatInputList
 	humanFormats["audio meters"] = formatMeters
+	humanFormats["classic-audio meters"] = formatMeters
 	humanFormats["media list"] = formatMediaList
 	humanFormats["media upload"] = formatTransfer
 	humanFormats["media download"] = formatTransfer

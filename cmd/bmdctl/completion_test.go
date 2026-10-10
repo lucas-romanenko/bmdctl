@@ -100,8 +100,8 @@ func TestComplete(t *testing.T) {
 		{[]string{"multiviewer", "input", "1", "cam1", "--multiviewer", ""}, []string{"1"}},
 		{[]string{"supersource", "properties", "--supersource", ""}, nil}, // it has none
 		{[]string{"hyperdeck-slot", "1"}, []string{"1", "10"}},
-		// The alias completes as the commands it stands for.
 		{[]string{"audio", "strip", "ca"}, []string{"Camera 1", "Camera 2"}},
+		{[]string{"fairlight", "strip", "ca"}, []string{"Camera 1", "Camera 2"}},
 	} {
 		if got := complete(append([]string{"--host", "studio"}, c.args...)...); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%q: %q, want %q", c.args, got, c.want)
@@ -123,10 +123,12 @@ func TestComplete(t *testing.T) {
 	}{
 		{[]string{"color", ""}, []string{"1", "2"}},
 		{[]string{"supersource", "box", ""}, []string{"1", "2", "3", "4"}},
-		{[]string{"fairlight", "master-eq", ""}, []string{"1", "2", "3", "4", "5", "6"}},
-		{[]string{"fairlight", "eq", "cam1", ""}, []string{"1", "2", "3", "4", "5", "6"}},
-		// The alias is hidden: audio lists the classic mixer's commands.
-		{[]string{"audio", ""}, []string{"input", "levels", "master", "meters", "monitor"}},
+		{[]string{"audio", "master-eq", ""}, []string{"1", "2", "3", "4", "5", "6"}},
+		{[]string{"audio", "eq", "cam1", ""}, []string{"1", "2", "3", "4", "5", "6"}},
+		{[]string{"classic-audio", ""}, []string{"input", "levels", "master", "meters", "monitor"}},
+		// fairlight completes as audio, and isn't offered itself.
+		{[]string{"fairlight", "master-"}, []string{"master-compressor", "master-eq", "master-limiter"}},
+		{[]string{"fa"}, nil},
 	} {
 		if got := complete(c.args...); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%q: %q, want %q", c.args, got, c.want)

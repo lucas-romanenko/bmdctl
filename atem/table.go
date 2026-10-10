@@ -30,10 +30,9 @@ func RegisterCommands(r *table.Registry) error {
 	if err := r.Add(entries...); err != nil {
 		return err
 	}
-	// audio strip and the rest for fairlight's; audio master and the
-	// classic mixer's other commands keep theirs. Not in bmdwire v1.3.0
-	// (docs/PORTING.md).
-	return r.Alias("atem", "audio", "fairlight")
+	// fairlight, atemwire's name for the audio group; not in bmdwire
+	// v1.3.0 (docs/PORTING.md).
+	return r.Alias("atem", "fairlight", "audio")
 }
 
 // Resolver resolves the table's rates and sources against a switcher's
@@ -547,14 +546,17 @@ func commandSpecs() []spec {
 		{path: "macro sleep", summary: "Record a wait into the macro being recorded.", cmd: MacroSleep{},
 			params: []fp{req("frames", "Frames", table.Uint, "", "frames to wait")}},
 
-		// §1.10 fairlight
-		{path: "fairlight master", summary: "Set the Fairlight master bus.", cmd: FairlightMasterProperties{}, echo: "FAMP",
-			params: []fp{opt("eq", "EQEnable", table.Bool, "", "EQ on"),
-				opt("eq-gain", "EQGain", table.Float, "dB, clamped to ±20", "EQ gain"),
-				opt("makeup", "DynamicsGain", table.Float, "dB, clamped to 0-20", "dynamics make-up gain"),
-				opt("volume", "Volume", table.Float, "dB, clamped to -100-10; -inf is -100", "fader level"),
+		// §1.10 fairlight, the audio group. audio master and audio levels
+		// send the classic mixer's command instead on a switcher that has
+		// that one (the engine's classicFor).
+		{path: "audio master", summary: "Set the master bus; on a switcher with the classic mixer, sends classic-audio master.",
+			cmd: FairlightMasterProperties{}, echo: "FAMP",
+			params: []fp{opt("eq", "EQEnable", table.Bool, "", "EQ on (Fairlight only)"),
+				opt("eq-gain", "EQGain", table.Float, "dB, clamped to ±20", "EQ gain (Fairlight only)"),
+				opt("makeup", "DynamicsGain", table.Float, "dB, clamped to 0-20", "dynamics make-up gain (Fairlight only)"),
+				opt("volume", "Volume", table.Float, "dB, clamped to -100-10 (-inf to +6 on the classic mixer); -inf is -100", "fader level"),
 				opt("afv", "AFV", table.Bool, "", "audio follows video")}},
-		{path: "fairlight strip", summary: "Set a Fairlight strip.", cmd: FairlightStripProperties{}, echo: "FASP:<source>.<channel>",
+		{path: "audio strip", summary: "Set a Fairlight strip.", cmd: FairlightStripProperties{}, echo: "FASP:<source>.<channel>",
 			params: append(stripParams(),
 				opt("delay", "Delay", table.Uint, "frames", "delay"),
 				opt("gain", "Gain", table.Float, "dB, clamped to -100-6", "input gain"),
@@ -564,7 +566,7 @@ func commandSpecs() []spec {
 				opt("pan", "Balance", table.Float, "-100 to 100, clamped", "pan"),
 				opt("volume", "Volume", table.Float, "dB, clamped to -100-10; -inf is -100", "fader level"),
 				names(opt("mix", "State", table.Enum, "", "mix option"), mixOptions))},
-		{path: "fairlight eq", summary: "Set one EQ band of a Fairlight strip.", cmd: FairlightEQBandProperties{},
+		{path: "audio eq", summary: "Set one EQ band of a Fairlight strip.", cmd: FairlightEQBandProperties{},
 			echo: "AEBP:<source>.<channel>:<band>",
 			params: append(stripParams(), pBand,
 				opt("enabled", "Enabled", table.Bool, "", "band on"),
@@ -573,7 +575,7 @@ func commandSpecs() []spec {
 				opt("frequency", "Frequency", table.Int, "Hz, clamped to 30-21700", "frequency"),
 				opt("gain", "Gain", table.Float, "dB, clamped to ±20", "gain"),
 				opt("q", "Q", table.Float, "clamped to 0.30-10.30", "Q"))},
-		{path: "fairlight master-eq", summary: "Set one EQ band of the Fairlight master bus.", cmd: FairlightMasterEQBandProperties{},
+		{path: "audio master-eq", summary: "Set one EQ band of the Fairlight master bus.", cmd: FairlightMasterEQBandProperties{},
 			echo: "AMBP:<band>",
 			params: []fp{pBand, opt("enabled", "Enabled", table.Bool, "", "band on"),
 				names(opt("shape", "Shape", table.Enum, "", "filter shape"), eqShapes),
@@ -581,7 +583,7 @@ func commandSpecs() []spec {
 				opt("frequency", "Frequency", table.Int, "Hz, clamped to 30-21700", "frequency"),
 				opt("gain", "Gain", table.Float, "dB, clamped to ±20", "gain"),
 				opt("q", "Q", table.Float, "clamped to 0.30-10.30", "Q")}},
-		{path: "fairlight compressor", summary: "Set a Fairlight strip's compressor.", cmd: FairlightCompressorProperties{},
+		{path: "audio compressor", summary: "Set a Fairlight strip's compressor.", cmd: FairlightCompressorProperties{},
 			echo: "AICP:<source>.<channel>",
 			params: append(stripParams(), opt("enabled", "Enabled", table.Bool, "", "compressor on"),
 				opt("threshold", "Threshold", table.Float, "dB, -60-0", "threshold"),
@@ -589,14 +591,14 @@ func commandSpecs() []spec {
 				opt("attack", "Attack", table.Float, "ms, 0.7-100", "attack"),
 				opt("hold", "Hold", table.Float, "ms, 0-4000", "hold"),
 				opt("release", "Release", table.Float, "ms, 50-4000", "release"))},
-		{path: "fairlight limiter", summary: "Set a Fairlight strip's limiter.", cmd: FairlightLimiterProperties{},
+		{path: "audio limiter", summary: "Set a Fairlight strip's limiter.", cmd: FairlightLimiterProperties{},
 			echo: "AILP:<source>.<channel>",
 			params: append(stripParams(), opt("enabled", "Enabled", table.Bool, "", "limiter on"),
 				opt("threshold", "Threshold", table.Float, "dB, -60-0", "threshold"),
 				opt("attack", "Attack", table.Float, "ms, 0.7-30", "attack"),
 				opt("hold", "Hold", table.Float, "ms, 0-4000", "hold"),
 				opt("release", "Release", table.Float, "ms, 50-4000", "release"))},
-		{path: "fairlight expander", summary: "Set a Fairlight strip's expander or gate.", cmd: FairlightExpanderProperties{},
+		{path: "audio expander", summary: "Set a Fairlight strip's expander or gate.", cmd: FairlightExpanderProperties{},
 			echo: "AIXP:<source>.<channel>",
 			params: append(stripParams(), opt("enabled", "Enabled", table.Bool, "", "expander on"),
 				names(opt("mode", "Mode", table.Enum, "", "mode"), expanderModes),
@@ -606,35 +608,35 @@ func commandSpecs() []spec {
 				opt("attack", "Attack", table.Float, "ms, 0.5-100", "attack"),
 				opt("hold", "Hold", table.Float, "ms, 0-4000", "hold"),
 				opt("release", "Release", table.Float, "ms, 50-4000", "release"))},
-		{path: "fairlight master-compressor", summary: "Set the Fairlight master bus compressor.",
+		{path: "audio master-compressor", summary: "Set the Fairlight master bus compressor.",
 			cmd: FairlightMasterCompressorProperties{}, echo: "MOCP",
 			params: []fp{opt("enabled", "Enabled", table.Bool, "", "compressor on"),
 				opt("threshold", "Threshold", table.Float, unitDB, "threshold"), opt("ratio", "Ratio", table.Float, "", "ratio"),
 				opt("attack", "Attack", table.Float, unitMS, "attack"), opt("hold", "Hold", table.Float, unitMS, "hold"),
 				opt("release", "Release", table.Float, unitMS, "release")}},
-		{path: "fairlight master-limiter", summary: "Set the Fairlight master bus limiter.",
+		{path: "audio master-limiter", summary: "Set the Fairlight master bus limiter.",
 			cmd: FairlightMasterLimiterProperties{}, echo: "AMLP",
 			params: []fp{opt("enabled", "Enabled", table.Bool, "", "limiter on"),
 				opt("threshold", "Threshold", table.Float, unitDB, "threshold"),
 				opt("attack", "Attack", table.Float, unitMS, "attack"), opt("hold", "Hold", table.Float, unitMS, "hold"),
 				opt("release", "Release", table.Float, unitMS, "release")}},
-		{path: "fairlight levels", summary: "Start or stop the Fairlight meter streams (again after every reconnect).",
+		{path: "audio levels", summary: "Start or stop the meter streams, again after every reconnect; on a switcher with the classic mixer, sends classic-audio levels.",
 			cmd: SendFairlightLevels{}, params: []fp{req("enable", "Enable", table.Bool, "", "stream meters")}},
 
-		// §1.11 audio-legacy
-		{path: "audio input", summary: "Set a classic audio mixer input.", cmd: AudioInput{}, echo: "AMIP:<source>.0",
+		// §1.11 audio-legacy, the classic-audio group
+		{path: "classic-audio input", summary: "Set a classic audio mixer input.", cmd: AudioInput{}, echo: "AMIP:<source>.0",
 			params: []fp{pSource, opt("balance", "Balance", table.Int, "±10000", "balance"),
 				opt("volume", "Volume", table.Uint, "0-65381", "volume"),
 				opt("on", "On", table.Bool, "", "mix option on or off (wins over --afv)"),
 				opt("afv", "AFV", table.Bool, "", "audio follows video")}},
-		{path: "audio master", summary: "Set the classic audio mixer's master.", cmd: AudioMasterProperties{}, echo: "AMMO",
+		{path: "classic-audio master", summary: "Set the classic audio mixer's master.", cmd: AudioMasterProperties{}, echo: "AMMO",
 			params: []fp{opt("volume", "Volume", table.Uint, "0-65381", "volume"), opt("afv", "AFV", table.Bool, "", "audio follows video")}},
-		{path: "audio monitor", summary: "Set the classic audio mixer's monitor.", cmd: AudioMonitorProperties{}, echo: "AMmO",
+		{path: "classic-audio monitor", summary: "Set the classic audio mixer's monitor.", cmd: AudioMonitorProperties{}, echo: "AMmO",
 			params: []fp{opt("enabled", "Enabled", table.Bool, "", "monitor on"), opt("volume", "Volume", table.Uint, "", "volume"),
 				opt("mute", "Mute", table.Bool, "", "mute"), opt("solo", "Solo", table.Bool, "", "solo"),
 				opt("solo-source", "SoloSource", table.Source, "", "solo source"), opt("dim", "Dim", table.Bool, "", "dim"),
 				opt("dim-volume", "DimVolume", table.Uint, "", "dim volume")}},
-		{path: "audio levels", summary: "Start or stop the classic mixer's meter stream.", cmd: SendAudioLevels{},
+		{path: "classic-audio levels", summary: "Start or stop the classic mixer's meter stream.", cmd: SendAudioLevels{},
 			params: []fp{req("enable", "Enable", table.Bool, "", "stream meters")}},
 
 		// §1.12 camera-control

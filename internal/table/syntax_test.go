@@ -239,43 +239,62 @@ func TestDeprecated(t *testing.T) {
 func TestAlias(t *testing.T) {
 	r := syntaxRegistry(t)
 	err := r.Add(
-		Entry{Device: "dev", Path: "audio master", Summary: "Classic.", Build: build, Params: []Param{{Name: "gain", Kind: Float}}},
-		Entry{Device: "dev", Path: "fairlight master", Summary: "Fairlight.", Build: build, Params: []Param{{Name: "gain", Kind: Float}}},
-		Entry{Device: "dev", Path: "fairlight strip", Summary: "Strip.", Build: build,
+		Entry{Device: "dev", Path: "new master", Summary: "New.", Build: build, Params: []Param{{Name: "gain", Kind: Float}}},
+		Entry{Device: "dev", Path: "new strip", Summary: "Strip.", Build: build,
 			Params: []Param{{Name: "source", Kind: Source, Required: true}, {Name: "gain", Kind: Float}}},
+		Entry{Device: "dev", Path: "old master", Summary: "Old.", Build: build, Params: []Param{{Name: "gain", Kind: Float}}},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Alias("dev", "audio", "fairlight"); err != nil {
+	if err := r.Alias("dev", "old", "new"); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.Alias("dev", "sound", "nothing"); err == nil {
 		t.Error("an alias for no command")
 	}
 	for line, want := range map[string]string{
-		"audio strip 5 --gain 1": "fairlight strip",
-		"audio master --gain 1":  "audio master",
-		"fairlight master":       "fairlight master",
+		"old strip 5 --gain 1": "new strip",
+		"old master --gain 1":  "old master",
+		"new master":           "new master",
 	} {
 		words, tokens := splitTest(line)
 		if e, _, err := r.ParseLine("dev", words, tokens); err != nil || e.Path != want {
 			t.Errorf("%q: %v %v, want %s", line, e, err, want)
 		}
 	}
-	var nc *NoCommand
-	if _, _, err := r.ParseLine("dev", []string{"audio", "bogus"}, nil); !errors.As(err, &nc) || !reflect.DeepEqual(nc.Prefix, []string{"audio"}) {
-		t.Errorf("audio bogus: %#v", err)
+	// Naming no command, a line gets the deeper of the two groups.
+	for line, want := range map[string]NoCommand{
+		"old bogus": {Prefix: []string{"old"}},
+		"old":       {Prefix: []string{"old"}, Partial: true},
+	} {
+		var nc *NoCommand
+		if _, _, err := r.ParseLine("dev", strings.Fields(line), nil); !errors.As(err, &nc) ||
+			!reflect.DeepEqual(nc.Prefix, want.Prefix) || nc.Partial != want.Partial {
+			t.Errorf("%q: %#v", line, err)
+		}
 	}
-	if next, _ := r.Next("dev", []string{"audio"}); len(next) != 1 || next[0].Word != "master" {
-		t.Errorf("after audio: %v", next)
+	if err := r.Alias("dev", "fl", "new"); err != nil {
+		t.Fatal(err)
 	}
-	if next, _ := r.Next("dev", []string{"audio", "strip"}); len(next) != 1 || next[0].Param != "source" {
-		t.Errorf("after audio strip: %v", next)
+	for line, want := range map[string]NoCommand{
+		"fl bogus": {Words: []string{"fl", "bogus"}, Prefix: []string{"new"}},
+		"fl":       {Words: []string{"fl"}, Prefix: []string{"new"}, Partial: true},
+	} {
+		var nc *NoCommand
+		if _, _, err := r.ParseLine("dev", strings.Fields(line), nil); !errors.As(err, &nc) || !reflect.DeepEqual(*nc, want) {
+			t.Errorf("%q: %#v", line, err)
+		}
 	}
-	for _, c := range r.Children("dev", []string{"audio"}) {
-		if c.Usage != "master" {
-			t.Errorf("audio lists %q", c.Usage)
+	if next, _ := r.Next("dev", []string{"old"}); len(next) != 1 || next[0].Word != "master" {
+		t.Errorf("after old: %v", next)
+	}
+	if next, _ := r.Next("dev", []string{"old", "strip"}); len(next) != 1 || next[0].Param != "source" {
+		t.Errorf("after old strip: %v", next)
+	}
+	for _, c := range r.Children("dev", nil) {
+		if c.Usage == "fl" {
+			t.Error("the alias is listed")
 		}
 	}
 }
