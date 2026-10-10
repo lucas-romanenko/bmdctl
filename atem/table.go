@@ -501,7 +501,7 @@ func commandSpecs() []spec {
 
 		// §1.8 media
 		{path: "media capture", summary: "Capture program into the next free still slot.", cmd: CaptureStill{}},
-		{path: "media clear", summary: "Clear a still slot, without the store lock (some models ignore this).",
+		{path: "media clear-unlocked", summary: "Clear a still slot without taking the store lock (some models ignore this; media clear takes it).",
 			cmd: ClearStill{}, echo: "MPfe:<slot>", params: []fp{req("slot", "Slot", table.Uint, "", "still slot, 0-based")}},
 		{path: "media player", summary: "Point a media player at a still or a clip.", cmd: MediaplayerSelect{}, echo: "MPCE:<player>",
 			params: []fp{req("player", "Player", table.Uint, "", "media player, 0-based"),

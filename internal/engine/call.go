@@ -273,5 +273,6 @@ func operations() []operation {
 	ops = append(ops, switchingOperations()...)
 	ops = append(ops, keyerOperations()...)
 	ops = append(ops, audioOperations()...)
+	ops = append(ops, mediaOperations()...)
 	return ops
 }
