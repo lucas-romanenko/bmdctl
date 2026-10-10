@@ -518,13 +518,36 @@ No echo.
 
 ### `bmdctl atem media clear`
 
-Clear a still slot, without the store lock (some models ignore this).
+Empty a still slot, under the media pool's lock.
 
 **Destructive.** Echo: `MPfe:<slot>`.
 
 | parameter | value | | |
 |---|---|---|---|
 | `--slot` | uint, 0-255 | required | still slot, 0-based |
+
+### `bmdctl atem media clear-unlocked`
+
+Clear a still slot without taking the store lock (some models ignore this; media clear takes it).
+
+**Destructive.** Echo: `MPfe:<slot>`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--slot` | uint, 0-255 | required | still slot, 0-based |
+
+### `bmdctl atem media download`
+
+Download a still slot as a PNG.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--slot` | uint, 0-65535 | required | still slot, 0-based |
+| `--file` | file, written | optional | where to write it; - is stdout (default: the slot's name .png) |
+
+### `bmdctl atem media list`
+
+List the media pool's stills and what each media player shows.
 
 ### `bmdctl atem media player`
 
@@ -537,6 +560,20 @@ Give at least one optional parameter. Echo: `MPCE:<player>`.
 | `--player` | uint, 0-255 | required | media player, 0-based |
 | `--still` | uint, 0-255 | optional | still slot (give this or --clip) |
 | `--clip` | uint, 0-255 | optional | clip slot (give this or --still) |
+
+### `bmdctl atem media upload`
+
+Upload a PNG, JPEG or GIF to a still slot, fitted to the video mode.
+
+Echo: `MPfe:<slot>`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--slot` | uint, 0-65535 | required | still slot, 0-based; replacing a used one needs --yes |
+| `--file` | file | required | the image; - reads stdin |
+| `--name` | string | optional | the slot's name (default: the file's, without extension) |
+| `--description` | string | optional | the slot's description |
+| `--premultiply` | bool | optional | premultiply colour by alpha (default: for PNG, as WebATEM does) |
 
 ### `bmdctl atem multiviewer input`
 

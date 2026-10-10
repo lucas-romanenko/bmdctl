@@ -56,6 +56,8 @@ var mirrors = map[string]mirror{
 	"CILP": m("AILP", strip, stripState, 36), "CIXP": m("AIXP", strip, stripState, 40),
 	"CEBP": m("AEBP", append(strip, 16), append(stripState, 16), 36), "CMBP": m("AMBP", at1, at0, 20),
 	"CFMP": m("FAMP", none, none, 20), "CMCP": m("MOCP", none, none, 24), "CMLP": m("AMLP", none, none, 20),
+	// media
+	"MPSS": m("MPCE", at1, at0, 4),
 	// the classic audio mixer
 	"CAMI": m("AMIP", at23, at01, 16), "CAMM": m("AMMO", none, none, 8), "CAMm": m("AMmO", none, none, 12),
 }

@@ -1097,6 +1097,26 @@ else (keyers, DSKs, aux, slots) from 0.
   by 100, the classic mixer's log scale); level and peak are the fader's
   on Fairlight. The fake switcher answers `SFLN` with one burst of
   fixed levels for each strip it described, and the master.
+- **Group e, media** (`ops_media.go`). `media list` is the still slots
+  (`mediaplayer_slot_info`) and what each player shows. Transfers run
+  through the session's transfer engine with the library's timeouts,
+  `--timeout` replacing them when given:
+  - `media upload` decodes a PNG, JPEG or GIF (the standard library's
+    decoders) in the engine and calls `UploadStill`, so the fit and the
+    conversion are WebATEM's. As WebATEM does, a PNG is premultiplied and
+    nothing else (`--premultiply` overrides it) and the slot is named
+    after the file without its extension (`still` from stdin). Replacing
+    a used slot is destructive: without `--yes` it is refused with the
+    name it holds.
+  - `media download` converts the frame at the current video mode
+    (`FrameImage`) and sends it as a PNG; without `--file` it is named
+    after the slot, made safe as a file name. A frame of another size (a
+    still stored at another video mode) is reported, not guessed at.
+  - `media clear` is atemwire's `clear_still`, under the store lock, and
+    is confirmed by the slot's `MPfe` reporting it empty. The bare `CSTL`
+    entry, which some models ignore, is now `media clear-unlocked`.
+  - Errors: a `*TransferError` or `ErrLockNotGranted` is `rejected` (4), a
+    transfer that times out under way `no_echo` (3).
 - **Indices the switcher doesn't have** are refused before sending:
   `--me` beyond `_top`'s M/E count, `--keyer` beyond the M/E's `_MeC`,
   `--dsk` beyond `_top`'s. Only counts the switcher reported are used, not

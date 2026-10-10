@@ -13,6 +13,62 @@ import (
 func init() {
 	humanFormats["input list"] = formatInputList
 	humanFormats["audio meters"] = formatMeters
+	humanFormats["media list"] = formatMediaList
+	humanFormats["media upload"] = formatTransfer
+	humanFormats["media download"] = formatTransfer
+	humanFormats["media clear"] = formatTransfer
+}
+
+func formatMediaList(p *printer, _ engine.Response, raw json.RawMessage) []string {
+	var r engine.MediaList
+	json.Unmarshal(raw, &r)
+	var rows [][]string
+	for _, s := range r.Stills {
+		if s.Used {
+			rows = append(rows, []string{fmt.Sprintf("still %d", s.Slot), s.Name, s.Hash})
+		} else {
+			rows = append(rows, []string{fmt.Sprintf("still %d", s.Slot), "-"})
+		}
+	}
+	for _, m := range r.Players {
+		rows = append(rows, []string{fmt.Sprintf("player %d", m.Player), fmt.Sprintf("%s %d", m.Type, m.Slot), m.Name})
+	}
+	return p.table(rows)
+}
+
+// formatTransfer is a transfer's line: what moved where.
+func formatTransfer(p *printer, r engine.Response, raw json.RawMessage) []string {
+	var t engine.TransferResult
+	json.Unmarshal(raw, &t)
+	status := p.c.colour(green, padRight("confirmed", 9))
+	if !r.Confirmed {
+		status = p.c.colour(yellow, padRight("sent", 9))
+	}
+	what := fmt.Sprintf("slot %d", t.Slot)
+	if t.Name != "" {
+		what += fmt.Sprintf(" %q", t.Name)
+	}
+	switch p.e.Path {
+	case "media upload", "macro upload":
+		if t.Source != "" {
+			what += fmt.Sprintf(" from %s", t.Source)
+		}
+		if t.Replaced != "" {
+			what += fmt.Sprintf(", replacing %q", t.Replaced)
+		}
+	case "media download", "macro download":
+		if len(p.written) > 0 {
+			what += " to " + strings.Join(p.written, ", ")
+		}
+		if t.Width > 0 {
+			what += fmt.Sprintf(", %dx%d", t.Width, t.Height)
+		}
+	case "media clear":
+		if t.Replaced != "" {
+			what += fmt.Sprintf(", was %q", t.Replaced)
+		}
+	}
+	return []string{fmt.Sprintf("%-24s %s %5d ms  %s", p.e.Path, status, r.TookMS, what)}
 }
 
 func formatInputList(p *printer, _ engine.Response, raw json.RawMessage) []string {
