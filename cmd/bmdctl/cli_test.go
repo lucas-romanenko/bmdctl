@@ -4,10 +4,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/lucas-romanenko/bmdctl/atem"
+	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
+	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
 var update = flag.Bool("update", false, "rewrite docs/COMMANDS.md")
@@ -65,7 +71,7 @@ func TestHelpAtEveryLevel(t *testing.T) {
 			t.Errorf("%q --help: %d %q %q", p, code, out, errOut)
 		}
 	}
-	if code, out, _ := runCLI("atem", "--help"); code != 0 || !strings.Contains(out, "--dry-run") || !strings.Contains(out, "transition ...") {
+	if code, out, _ := runCLI("atem", "--help"); code != 0 || !strings.Contains(out, "--dry-run") || !strings.Contains(out, "--host H") || !strings.Contains(out, "transition ...") {
 		t.Errorf("atem --help:\n%s", out)
 	}
 	if code, out, _ := runCLI("atem", "transition", "wipe", "-h"); code != 0 || !strings.Contains(out, "--width") ||
@@ -123,7 +129,8 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 		code int
 		msg  string
 	}{
-		{[]string{"atem", "program", "--source", "5"}, 2, "add --dry-run"},
+		{[]string{"atem", "program", "--source", "5"}, 2, "--host"},
+		{[]string{"atem", "program", "--host"}, 2, "--host needs a value"},
 		{[]string{"atem", "--dry-run", "program"}, 2, "--source is required"},
 		{[]string{"atem", "--dry-run", "program", "--source", "70000"}, 2, "out of range"},
 		{[]string{"atem", "--dry-run", "program", "--source", "5", "--bogus", "1"}, 2, "has no --bogus"},
@@ -141,5 +148,82 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 		if code != c.code || !strings.Contains(errOut, c.msg) {
 			t.Errorf("%v: %d %q, want %d and %q", c.args, code, errOut, c.code, c.msg)
 		}
+	}
+}
+
+// fakeSwitchers points the CLI at a new fake switcher replaying dump for
+// each command it runs, for the rest of the test, and returns them.
+func fakeSwitchers(t *testing.T, dump []byte) *[]*fakeatem.Switcher {
+	t.Helper()
+	var sws []*fakeatem.Switcher
+	old := dial
+	dial = func(ctx context.Context, host string) (*atem.Session, error) {
+		sw := fakeatem.New(dump)
+		sws = append(sws, sw)
+		return (&atem.Dialer{Conn: sw}).Dial(ctx, host)
+	}
+	t.Cleanup(func() { dial = old })
+	return &sws
+}
+
+// sent returns the commands with this opcode the switchers received.
+func sent(sws *[]*fakeatem.Switcher, code string) [][]byte {
+	var out [][]byte
+	for _, sw := range *sws {
+		for _, c := range sw.Commands() {
+			if string(c[4:8]) == code {
+				out = append(out, c)
+			}
+		}
+	}
+	return out
+}
+
+// With --host the command goes to the switcher. One with a state echo
+// waits for it; one without is sent and left.
+func TestSend(t *testing.T) {
+	sw := fakeSwitchers(t, fixtures.Bytes(t, "dump/initial-dump.bin"))
+	code, out, errOut := runCLI("atem", "--host", fakeatem.Address, "program", "--source", "5")
+	if code != 0 || out != "" || errOut != "" {
+		t.Fatalf("program: %d %q %q", code, out, errOut)
+	}
+	if c := sent(sw, "CPgI"); len(c) != 1 || fmt.Sprintf("%x", c[0]) != "000c000043506749"+"00000005" {
+		t.Fatalf("switcher got %x", c)
+	}
+	if code, _, errOut := runCLI("atem", "cut", "--host", fakeatem.Address); code != 0 || errOut != "" {
+		t.Fatalf("cut: %d %q", code, errOut)
+	}
+	if c := sent(sw, "DCut"); len(c) != 1 {
+		t.Fatalf("switcher got %x", c)
+	}
+	// --dry-run wins over --host: nothing is sent.
+	if code, out, _ := runCLI("atem", "--dry-run", "--host", fakeatem.Address, "program", "--source", "6"); code != 0 || out != "000c00004350674900000006\n" {
+		t.Fatalf("dry run with --host: %d %q", code, out)
+	}
+	if n := len(sent(sw, "CPgI")); n != 1 {
+		t.Fatalf("%d CPgI after the dry run", n)
+	}
+}
+
+// Without --fps, a rate in seconds:frames is converted at the switcher's
+// display rate: one second is 30 frames on a 1080p59.94 switcher, not the
+// fallback 25.
+func TestSendConvertsRatesAtTheSwitchersRate(t *testing.T) {
+	dump := bytes.Clone(fixtures.Bytes(t, "dump/initial-dump.bin"))
+	i := bytes.Index(dump, []byte("VidM"))
+	if i < 0 {
+		t.Fatal("no VidM in the dump")
+	}
+	dump[i+4] = 13 // 1080p59.94
+	sw := fakeSwitchers(t, dump)
+	if code, _, errOut := runCLI("atem", "--host", fakeatem.Address, "transition", "mix", "--rate", "1:00"); code != 0 {
+		t.Fatalf("%d %q", code, errOut)
+	}
+	if code, _, errOut := runCLI("atem", "--host", fakeatem.Address, "--fps", "50", "transition", "mix", "--rate", "1:00"); code != 0 {
+		t.Fatalf("%d %q", code, errOut)
+	}
+	c := sent(sw, "CTMx")
+	if len(c) != 2 || c[0][9] != 30 || c[1][9] != 50 {
+		t.Fatalf("switcher got %x", c)
 	}
 }

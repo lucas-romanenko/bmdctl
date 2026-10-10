@@ -4,6 +4,7 @@
 //
 //	bmdctl version
 //	bmdctl atem --help
+//	bmdctl atem --host 10.0.0.20 program --source 5
 //	bmdctl atem --dry-run transition wipe --me 0 --width 50
 //
 // Its device commands are built from the command table (internal/table);

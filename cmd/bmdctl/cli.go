@@ -3,14 +3,18 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
@@ -19,9 +23,16 @@ import (
 // Exit codes.
 const (
 	exitOK    = 0
-	exitError = 1
+	exitError = 1 // refused by the command, or the switcher didn't take it
 	exitUsage = 2
 )
+
+// echoTimeout bounds the wait for a command's state echo.
+const echoTimeout = 5 * time.Second
+
+// dial opens the session a command is sent through. Tests point it at the
+// fake switcher in internal/fakeatem.
+var dial = atem.Dial
 
 // registry builds the command table from every device package.
 func registry() *table.Registry {
@@ -94,13 +105,16 @@ func versionString() string {
 type invocation struct {
 	dryRun bool
 	help   bool
+	host   string // --host: the switcher to send to
 	fps    int
+	fpsSet bool              // --fps was given
 	words  []string          // the command's path
 	params map[string]string // --name value
 }
 
-// parseInvocation splits "[--dry-run] [--fps N] words... [--name value...]".
-// --dry-run, --fps and --help are accepted anywhere.
+// parseInvocation splits "[--host H | --dry-run] [--fps N] words...
+// [--name value...]". --host, --dry-run, --fps and --help are accepted
+// anywhere.
 func parseInvocation(args []string) (invocation, error) {
 	inv := invocation{fps: atem.FallbackFPS, params: map[string]string{}}
 	flagsStarted := false
@@ -129,12 +143,19 @@ func parseInvocation(args []string) (invocation, error) {
 			i++
 			value = args[i]
 		}
-		if name == "fps" {
+		switch name {
+		case "fps":
 			n, err := strconv.Atoi(value)
 			if err != nil || n <= 0 {
 				return inv, fmt.Errorf("--fps %q: not a positive integer", value)
 			}
-			inv.fps = n
+			inv.fps, inv.fpsSet = n, true
+			continue
+		case "host":
+			if value == "" {
+				return inv, errors.New("--host needs a value")
+			}
+			inv.host = value
 			continue
 		}
 		if len(inv.words) > 0 {
@@ -178,10 +199,36 @@ func runDevice(r *table.Registry, device string, args []string, stdout, stderr i
 		entryHelp(stdout, device, *e)
 		return exitOK
 	}
-	a, err := e.Parse(inv.params, func(s string) int { return atem.ParseRate(s, inv.fps) })
+	// Check the arguments before connecting, at --fps or the fallback rate.
+	cmd, code := build(device, e, inv, inv.fps, stderr)
+	if code != exitOK {
+		return code
+	}
+	if !inv.dryRun && inv.host == "" {
+		fmt.Fprintf(stderr, "bmdctl %s: name the switcher with --host, or add --dry-run to print the bytes\n", device)
+		return exitUsage
+	}
+	if e.Destructive {
+		fmt.Fprintf(stderr, "bmdctl: %s %s is destructive\n", device, e.Path)
+	}
+	if e.Unverified {
+		fmt.Fprintf(stderr, "bmdctl: %s %s is unverified on hardware\n", device, e.Path)
+	}
+	if inv.dryRun {
+		fmt.Fprintf(stdout, "%x\n", cmd.Encode())
+		return exitOK
+	}
+	return send(device, e, inv, stderr)
+}
+
+// build parses the arguments, converting rates at fps, then builds and
+// validates the command. On failure it reports why and returns the exit
+// code.
+func build(device string, e *table.Entry, inv invocation, fps int, stderr io.Writer) (table.Command, int) {
+	a, err := e.Parse(inv.params, func(s string) int { return atem.ParseRate(s, fps) })
 	if err != nil {
 		fmt.Fprintf(stderr, "bmdctl %s %s: %v\n", device, e.Path, strings.TrimPrefix(err.Error(), "usage: "))
-		return exitUsage
+		return nil, exitUsage
 	}
 	cmd, err := e.Build(a)
 	if err == nil {
@@ -192,31 +239,68 @@ func runDevice(r *table.Registry, device string, args []string, stdout, stderr i
 	if err != nil {
 		fmt.Fprintf(stderr, "bmdctl %s %s: %v\n", device, e.Path, strings.TrimPrefix(err.Error(), "usage: "))
 		if errors.Is(err, table.ErrUsage) {
-			return exitUsage
+			return nil, exitUsage
 		}
+		return nil, exitError
+	}
+	return cmd, exitOK
+}
+
+// send connects to the switcher named by --host and sends the command. A
+// command with a state echo waits for it, the only confirmation the
+// protocol has (SURFACE.md §4.4); one without is sent and left, as
+// atemwire's send() leaves it.
+func send(device string, e *table.Entry, inv invocation, stderr io.Writer) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	fail := func(err error) int {
+		fmt.Fprintf(stderr, "bmdctl %s %s: %v\n", device, e.Path, err)
 		return exitError
 	}
-	if e.Destructive {
-		fmt.Fprintf(stderr, "bmdctl: %s %s is destructive\n", device, e.Path)
+	s, err := dial(ctx, inv.host)
+	if err != nil {
+		return fail(err)
 	}
-	if e.Unverified {
-		fmt.Fprintf(stderr, "bmdctl: %s %s is unverified on hardware\n", device, e.Path)
+	defer s.Close()
+	fps := inv.fps
+	if !inv.fpsSet {
+		// Rates in seconds:frames mean the switcher's own frame rate.
+		fps = atem.DisplayFPS(s.State())
 	}
-	if !inv.dryRun {
-		fmt.Fprintf(stderr, "bmdctl %s: sending to a switcher comes in a later phase; add --dry-run to print the bytes\n", device)
-		return exitUsage
+	built, code := build(device, e, inv, fps, stderr)
+	if code != exitOK {
+		return code
 	}
-	fmt.Fprintf(stdout, "%x\n", cmd.Encode())
+	cmd, ok := built.(atem.Command)
+	if !ok {
+		return fail(fmt.Errorf("%T is not an ATEM command", built))
+	}
+	if cmd.EchoKey() == "" {
+		if err := s.Send(cmd); err != nil {
+			return fail(err)
+		}
+		return exitOK
+	}
+	wctx, cancel := context.WithTimeout(ctx, echoTimeout)
+	defer cancel()
+	if _, err := s.SendAndWait(wctx, cmd); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = fmt.Errorf("sent, but the switcher did not report %s within %v", cmd.EchoKey(), echoTimeout)
+		}
+		return fail(err)
+	}
 	return exitOK
 }
 
 func groupHelp(w io.Writer, r *table.Registry, device string, prefix []string) {
 	path := strings.TrimSpace(device + " " + strings.Join(prefix, " "))
-	fmt.Fprintf(w, "usage: bmdctl %s [--dry-run] [--fps N] <command> [--parameter value ...]\n\n", path)
+	fmt.Fprintf(w, "usage: bmdctl %s (--host H | --dry-run) [--fps N] <command> [--parameter value ...]\n\n", path)
 	if len(prefix) == 0 {
 		fmt.Fprintf(w, "Flags:\n")
+		fmt.Fprintf(w, "  --host H   send to the switcher at H (host or host:port, UDP %d by default)\n", atem.DefaultPort)
 		fmt.Fprintf(w, "  --dry-run  print the command's wire bytes and send nothing\n")
-		fmt.Fprintf(w, "  --fps N    display frame rate for rates given as seconds:frames (default %d)\n\n", atem.FallbackFPS)
+		fmt.Fprintf(w, "  --fps N    display frame rate for rates given as seconds:frames\n")
+		fmt.Fprintf(w, "             (default: the switcher's, or %d with --dry-run)\n\n", atem.FallbackFPS)
 	}
 	fmt.Fprintf(w, "Commands:\n")
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -236,7 +320,7 @@ func groupHelp(w io.Writer, r *table.Registry, device string, prefix []string) {
 }
 
 func entryHelp(w io.Writer, device string, e table.Entry) {
-	fmt.Fprintf(w, "usage: bmdctl %s [--dry-run] %s", device, e.Path)
+	fmt.Fprintf(w, "usage: bmdctl %s (--host H | --dry-run) %s", device, e.Path)
 	for _, p := range e.Params {
 		if p.Required {
 			fmt.Fprintf(w, " --%s <%s>", p.Name, p.Kind)

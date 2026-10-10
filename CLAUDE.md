@@ -23,8 +23,13 @@ table entry, regenerate it with
 
 ## The hardware rule
 
-No test, example or command in this repo may contact a real switcher unless
-built with `-tags hardware`. Hardware tests read the target from
+The rule covers tests and development tooling: tests, examples, benchmarks,
+oracle and fixture generators, and any script in this repo. None of them
+may contact a real switcher unless built with `-tags hardware`. It does not
+cover the shipped `bmdctl` binary, which sends to whatever host the user
+names with `--host`; its own tests point it at `internal/fakeatem`.
+
+Hardware tests read the target from
 `BMDCTL_TEST_ATEM` and refuse to run against anything other than
 `192.168.81.85` or `192.168.81.86`. They are read-only unless
 `BMDCTL_TEST_WRITE=1` is also set, and even then must never change the
