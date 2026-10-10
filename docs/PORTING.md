@@ -443,6 +443,76 @@ arguments, `Validator`.
   fails. Every command type has cases. `cmd_test.go` ports the byte
   assertions of bmdwire's own tests one for one.
 
+## Readers (`atem/read_*.go`)
+
+bmdwire v1.3.0's 88 readers (the `atemwire.messages.*` functions whose
+first parameter is `mx`, SURFACE.md §2.1) are methods on `State`, one file
+per atemwire module (`read_switching.go`, `read_transition.go`, ...), so
+callers never see wire units. `read_state.go` holds what they share from
+`state.py`.
+
+- **Names** are the reader names Go-cased with the package's initialisms
+  (`USKDVE`, `DSKState`, `FTBRate`, `FairlightEQBands`, `SDI3GLevel`).
+  `video_mode` is `CurrentVideoMode`: `State.VideoMode` is a field. Methods
+  sharing a command type's name (`AuxSource`, `ColorGenerator`,
+  `HyperdeckSettings`, `TransitionPosition`) are legal Go and stay.
+- **Dicts are `View` structs** named for the reader (`USKDVEView`; the
+  dynamics blocks are `CompressorView`, `LimiterView`, `ExpanderView`),
+  since the bare names are taken by commands and `FairlightStrip`. Fields
+  are the dict keys Go-cased (`ThresholdDB`, `AttackMS`, `AIType` for
+  `_ai_type`), tagged with the key as JSON name, in atemwire's order.
+  Lists are slices, tuples arrays (`VideoResolution` is `[2]int`), dicts
+  keyed by id maps (`map[int]` for sources, `map[string]` for strip ids).
+- **None is a nil pointer**, in results (`DVEStyle`, `USKFlyKeyframe`, the
+  master dynamics, `CurrentVideoMode`, `PlanBindingPush`'s slot, a silenced
+  `volume_db`, `FairlightSolo.StripID`) and arguments
+  (`FairlightEQBands(nil)` is the master). Where atemwire returns `[]` or
+  `{}` the Go value is empty, never nil.
+- **Defaults.** A missing packet, or an index the state has no entry for
+  (negative or out of range included), gives atemwire's default. Readers
+  with a `default=` argument take it as a parameter (`ProductName(def)`,
+  `DeviceName`, `SDI3GLevel`, `VideoResolution`); `PlanBindingPush` takes
+  `exclude_slots` as variadic ints.
+- **Floats** use atemwire's operations in atemwire's order, so they match
+  bit for bit. `round(x, n)` is `pyRound`: the exact binary value formatted
+  by `strconv` with half-even ties and read back, which is CPython's
+  `double_round`; scaling by 10^n first is not. Products feeding a sum are
+  wrapped in `float64()` so the compiler can't fuse them (`y_raw`).
+  `int()` truncates.
+- **Strings.** `decode_name` cuts at the first NUL, decodes like Python's
+  `'replace'`, and strips with Python's `str.isspace()`: Go's
+  `unicode.IsSpace` plus U+001C-U+001F. `product_name` falls back to its
+  default for an empty name, `device_name` doesn't, as in atemwire.
+- **Helpers.** `MECount`, `MEKeyerCount` and `DSKCount` (atemwire's private
+  `_dsk_count`, exported because iterating DSKs needs it) are methods;
+  `display_fps` stays `DisplayFPS(State)` (rate.go); `decode_name` and
+  `md5_hex` are unexported (`decodeName`, `md5Hex`).
+- **Ordering, where the state can't keep atemwire's.** `fairlight_strips`
+  sorts by FAIP type, number and subchannel, stably over first-arrival
+  order; the state keeps no arrival order, so `FairlightStrips` breaks ties
+  by source, then strip id. The EQ bands are taken in map-key order before
+  the stable sort by band index, and the dynamics maps are filled in
+  ascending strip-id order; both match atemwire for anything a switcher
+  sends (keys equal the packets' own band index and strip id).
+- **Not ported:** the read-modify-write operations built on readers
+  (`toggle_usk`, `toggle_dsk`, `toggle_transition_*`, `set_transition_rate`)
+  and `build_full_state`; both come later.
+- **Verification.** `internal/fixtures/oracle/readers.json`
+  (`gen_readers.py`) holds 23 scenarios: 2,129 packets fed to bmdwire
+  v1.3.0's `save_field_data`, interleaved with 7,048 reader and helper
+  calls and their results. The scenarios cover the empty state, all-0x00,
+  all-0xFF and all-0x80 payloads, random 1-4 M/E switchers with partial
+  packet sets, split and stereo Fairlight strips, names, HyperDeck
+  planning, every video mode, and chroma sample values on decimal rounding
+  ties. Each call uses every index the state has plus out-of-range ones.
+  `TestReadersMatchAtemwire` replays them through `State.store` and checks
+  values bit for bit, int vs float, None, dict keys and list order. Every
+  reader and helper must have cases, and the empty scenario is also run on
+  a zero `State{}`. For `fairlight_strips` the test re-sorts atemwire's
+  list by the Go tie-break, which only reorders atemwire's ties.
+  `read_test.go` ports bmdwire's reader assertions one for one; tests
+  whose stand-ins Go's types can't express say why in a comment.
+
 ## Still images (`atem/imaging.go`, `atem/fit.go`)
 
 `RGBAToYCbCrA`, `YCbCrAToRGBA` and `RLEEncode` port bmdwire v1.3.0's C
