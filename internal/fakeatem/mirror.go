@@ -51,7 +51,19 @@ var mirrors = map[string]mirror{
 	// downstream keyers
 	"CDsF": m("DskB", at0, at0, 8), "CDsC": m("DskB", at0, at0, 8), "CDsG": m("DskP", at1, at0, 20),
 	"CDsM": m("DskP", at1, at0, 20),
+	// Fairlight: a strip is its source and the split and subchannel bytes
+	"CFSP": m("FASP", strip, stripState, 52), "CICP": m("AICP", strip, stripState, 40),
+	"CILP": m("AILP", strip, stripState, 36), "CIXP": m("AIXP", strip, stripState, 40),
+	"CEBP": m("AEBP", append(strip, 16), append(stripState, 16), 36), "CMBP": m("AMBP", at1, at0, 20),
+	"CFMP": m("FAMP", none, none, 20), "CMCP": m("MOCP", none, none, 24), "CMLP": m("AMLP", none, none, 20),
+	// the classic audio mixer
+	"CAMI": m("AMIP", at23, at01, 16), "CAMM": m("AMMO", none, none, 8), "CAMm": m("AMmO", none, none, 12),
 }
+
+var (
+	strip      = []int{2, 3, 14, 15}
+	stripState = []int{0, 1, 14, 15}
+)
 
 // pick returns the bytes of b at the offsets.
 func pick(b []byte, at []int) (string, bool) {

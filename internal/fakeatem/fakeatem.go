@@ -399,6 +399,7 @@ func (sw *Switcher) receive(b []byte) {
 		}
 		echoes = append(echoes, sw.echo(code, payload)...)
 		echoes = append(echoes, sw.mirrorEcho(code, payload)...)
+		echoes = append(echoes, sw.meters(code, payload)...)
 		echoes = append(echoes, sw.transferEcho(code, payload)...)
 	})
 	if len(echoes) > 0 {

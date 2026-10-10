@@ -272,5 +272,6 @@ func operations() []operation {
 	ops = append(ops, sessionOperations()...)
 	ops = append(ops, switchingOperations()...)
 	ops = append(ops, keyerOperations()...)
+	ops = append(ops, audioOperations()...)
 	return ops
 }
