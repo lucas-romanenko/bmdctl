@@ -616,7 +616,7 @@ func commandSpecs() []spec {
 				opt("data", "Data", table.List, "", "comma-separated values of the data type")}},
 
 		// §1.13 hyperdeck
-		{path: "hyperdeck", summary: "Bind a HyperDeck slot to an address and an input.", cmd: HyperdeckSettings{}, echo: "RXMS:<slot>",
+		{path: "hyperdeck-slot", summary: "Bind a HyperDeck slot to an address and an input.", cmd: HyperdeckSettings{}, echo: "RXMS:<slot>",
 			params: []fp{req("slot", "Slot", table.Uint, "", "HyperDeck slot, 0-9"),
 				opt("address", "NetworkAddress", table.String, "", "deck IPv4 address; 0.0.0.0 clears the slot"),
 				opt("input", "SwitcherInput", table.Source, "", "switcher input the deck feeds")}},

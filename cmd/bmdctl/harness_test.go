@@ -40,8 +40,9 @@ type bench struct {
 	eng  *engine.Engine
 	dump []byte
 
-	mu  sync.Mutex
-	sws []*fakeatem.Switcher
+	mu    sync.Mutex
+	sws   []*fakeatem.Switcher
+	addrs []string // the address of each dial
 	// onDial, if set, sees each new fake switcher before the session.
 	onDial func(*fakeatem.Switcher)
 	// dialErr, if set, fails every dial.
@@ -110,12 +111,21 @@ func (b *bench) dial(ctx context.Context, addr string) (*atem.Session, error) {
 	}
 	sw := fakeatem.New(b.dump)
 	b.sws = append(b.sws, sw)
+	b.addrs = append(b.addrs, addr)
 	on := b.onDial
 	b.mu.Unlock()
 	if on != nil {
 		on(sw)
 	}
-	return (&atem.Dialer{Conn: sw}).Dial(ctx, addr)
+	// Whatever the address, the fake switcher answers as its own.
+	return (&atem.Dialer{Conn: sw}).Dial(ctx, fakeatem.Address)
+}
+
+// dialled returns the addresses dialled so far.
+func (b *bench) dialled() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.addrs...)
 }
 
 // switchers returns the fake switchers dialled so far.

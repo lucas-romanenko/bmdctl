@@ -14,6 +14,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
+	"github.com/lucas-romanenko/bmdctl/internal/hosts"
 	"github.com/lucas-romanenko/bmdctl/internal/paths"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
@@ -74,6 +75,7 @@ func newCLI(stdout, stderr io.Writer) *cli {
 var builtins = []struct{ name, summary string }{
 	{"version", "print bmdctl's version"},
 	{"engine", "run the background engine in the foreground; engine stop|status"},
+	{"hosts", "name devices: hosts list|add|rm|default"},
 	{"atem", "an ATEM switcher's commands (the default device)"},
 }
 
@@ -97,7 +99,9 @@ Commands:
 
 func globalHelp(w io.Writer) {
 	fmt.Fprint(w, `Flags, accepted anywhere on the line:
-  --host H       the switcher: host or host:port (UDP 9910 by default)
+  --host H       the switcher: a name from 'bmdctl hosts', or host[:port]
+                 (UDP 9910 by default); else $BMDCTL_HOST, else the last
+                 --host, else the default host
   --json         print the engine's JSON response as it is
   --quiet, -q    print nothing on stdout; the exit status tells
   --yes, -y      allow a destructive command
@@ -142,11 +146,24 @@ func (c *cli) run(args []string) int {
 		return exitOK
 	case "engine":
 		return c.engineCommand(g, words[1:], tokens)
+	case "hosts":
+		return c.hostsCommand(g, words[1:], tokens)
 	}
-	device := "atem"
-	if slices.Contains(c.reg.Devices(), first) {
-		words = words[1:]
-	} else if len(words) > 0 && c.reg.Find(device, words[0]) == nil && !c.isGroup(device, words[0]) {
+	// The device: named on the line, else the target host's type, else
+	// an ATEM.
+	device, named := "", false
+	if slices.Contains(hosts.Devices, first) {
+		device, words, named = first, words[1:], true
+	} else {
+		device = "atem"
+		if t, err := c.resolveTarget(g); err == nil && t.Device != "" {
+			device = t.Device
+		}
+	}
+	if !slices.Contains(c.reg.Devices(), device) {
+		return c.fail(exitUsage, "bmdctl: no %s commands yet; this version controls ATEM switchers", device)
+	}
+	if !named && len(words) > 0 && c.reg.Find(device, words[0]) == nil && !c.isGroup(device, words[0]) {
 		return c.fail(exitUsage, "bmdctl: unknown command %q (bmdctl --help lists them)", first)
 	}
 	return c.runDevice(g, device, words, tokens)

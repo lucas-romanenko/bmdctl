@@ -80,12 +80,26 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 		out.response(line, resp)
 		return out.code()
 	}
-	if req.Host == "" {
-		if !g.hostSet {
-			return c.fail(exitUsage, "bmdctl %s: name the switcher with --host, or add --dry-run to print the bytes", label)
-		}
-		req.Host = g.host
+	t, err := c.resolveTarget(g)
+	if errors.Is(err, errNoHost) && !e.Operation {
+		err = fmt.Errorf("%w; or add --dry-run to print the bytes", err)
 	}
+	if err != nil {
+		return c.fail(exitUsage, "bmdctl %s: %v", label, err)
+	}
+	if t.Device != "" && t.Device != req.Device {
+		return c.fail(exitUsage, "bmdctl %s: %s is a %s, not an %s", label, t.label(), t.Device, req.Device)
+	}
+	req.Host = t.Address
+	code := c.send(g, e, req, out, label)
+	if g.hostSet && code != exitUnreachable {
+		c.setLastHost(g.host)
+	}
+	return code
+}
+
+// send sends a request to the engine and prints its replies.
+func (c *cli) send(g globals, e *table.Entry, req engine.Request, out *printer, label string) int {
 	conn, err := c.connectEngine()
 	if err != nil {
 		return c.fail(codeFor(err), "bmdctl %s: %v", label, err)
