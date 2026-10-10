@@ -10,7 +10,8 @@ protocols directly: no Blackmagic software, SDK or driver is involved.
 
 ## Status
 
-Early, and not yet run against a switcher. The ATEM package has its wire
+Early. Its reads have run against one switcher (docs/HARDWARE.md); its
+writes haven't yet. The ATEM package has its wire
 layer: the UDP transport, a session that tracks the switcher's state,
 every state packet atemwire parses and every command it can send. It
 also moves stills and macros to and from the switcher, encodes and
@@ -88,6 +89,8 @@ Go 1.27. The device packages use only the standard library.
   differs from bmdwire.
 - `docs/COMMANDS.md`: every command the CLI knows, generated from the
   command table.
+- `docs/HARDWARE.md`: every session against a real switcher, and what
+  it found.
 
 ## Not affiliated with Blackmagic Design
 
