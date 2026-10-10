@@ -104,7 +104,7 @@ func (p *printer) human(r engine.Response) []string {
 	if f := humanFormats[p.e.Path]; f != nil {
 		return f(p, r, raw)
 	}
-	if !p.e.Operation {
+	if !p.e.Operation || isCommandResult(raw) {
 		return []string{p.commandLine(r, raw)}
 	}
 	return p.table(flatten(raw))
@@ -126,6 +126,15 @@ func (p *printer) commandLine(r engine.Response, raw json.RawMessage) string {
 		}
 	}
 	return strings.TrimRight(fmt.Sprintf("%-24s %s %5d ms  %s", p.e.Path, status, r.TookMS, strings.Join(args, ", ")), " ")
+}
+
+// isCommandResult reports whether an operation's result is one command
+// sent (engine.CommandResult).
+func isCommandResult(raw json.RawMessage) bool {
+	var r struct {
+		Command *string `json:"command"`
+	}
+	return json.Unmarshal(raw, &r) == nil && r.Command != nil
 }
 
 func padRight(s string, n int) string {

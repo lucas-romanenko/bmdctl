@@ -682,6 +682,17 @@ Set SuperSource's art fill, key and layer.
 | `--gain` | uint, 0-65535, 0-1000 | optional | gain |
 | `--invert` | bool | optional | invert the key |
 
+### `bmdctl atem tbar`
+
+Move the T-bar.
+
+**Unverified.** Echo: `TrPs:<me>`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--position` | int, 0-10000, clamped | required | T-bar position |
+
 ### `bmdctl atem time-of-day`
 
 Set the switcher's clock.
@@ -743,16 +754,17 @@ Echo: `TMxP:<me>`.
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 
-### `bmdctl atem transition position`
+### `bmdctl atem transition next`
 
-Move the T-bar.
+Set the layers the next transition takes, or toggle one.
 
-**Unverified.** Echo: `TrPs:<me>`.
+Echo: `TrSS:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--position` | int, 0-10000, clamped | required | T-bar position |
+| `--next` | flags: background=1 key1=2 key2=4 key3=8 key4=16 | optional | the layers, replacing the selection (not none) |
+| `--toggle` | enum: background=1 key1=2 key2=4 key3=8 key4=16 | optional | flip one layer in the current selection |
 
 ### `bmdctl atem transition preview`
 
@@ -764,6 +776,17 @@ Turn transition preview on or off.
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
 | `--enabled` | bool | required | preview the transition |
+
+### `bmdctl atem transition rate`
+
+Set the rate of the M/E's current transition style.
+
+Echo: `TMxP, TDpP, TWpP, TDvP or TStP:<me>, by style`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--rate` | rate, frames, or seconds:frames at the display rate | required | rate |
 
 ### `bmdctl atem transition settings`
 
@@ -795,6 +818,17 @@ Give at least one optional parameter. Echo: `TStP:<me>`.
 | `--duration` | rate, 0-65535, frames, or seconds:frames at the display rate | optional | clip duration |
 | `--trigger` | rate, 0-65535, frames, or seconds:frames at the display rate | optional | trigger point |
 | `--rate` | rate, 0-65535, frames, or seconds:frames at the display rate | optional | mix rate |
+
+### `bmdctl atem transition style`
+
+Set the transition style.
+
+Echo: `TrSS:<me>`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--style` | enum: mix=0 dip=1 wipe=2 dve=3 stinger=4 | required | transition style |
 
 ### `bmdctl atem transition wipe`
 

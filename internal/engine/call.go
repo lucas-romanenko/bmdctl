@@ -34,6 +34,44 @@ type call struct {
 // or an error carrying its code.
 type op func(c *call) (any, bool, error)
 
+// checkIndices refuses an M/E, keyer or DSK the switcher doesn't have,
+// where it has said how many it has: a switcher ignores a command for one
+// it lacks, and the caller would see only that no echo came.
+func (c *call) checkIndices() error {
+	idx := func(name string) (int, bool) {
+		if !c.args.Has(name) {
+			return 0, false
+		}
+		v, ok := c.args.Value(name).(uint64)
+		return int(v), ok
+	}
+	// Only counts the switcher reported: the readers' defaults (one M/E,
+	// four keyers) are guesses.
+	top := c.state.Topology
+	me, hasME := idx("me")
+	if n := c.state.MECount(); hasME && top != nil && top.MEUnits > 0 && me >= n {
+		return codeErr(CodeUsage, "--me %d: the switcher has %d M/E%s", me+1, n, plural(n))
+	}
+	if k, ok := idx("keyer"); ok && me < len(c.state.MEs) && c.state.MEs[me].Config != nil {
+		if n := c.state.MEKeyerCount(me); k >= n {
+			return codeErr(CodeUsage, "--keyer %d: M/E %d has %d upstream keyer%s, 0-%d", k, me+1, n, plural(n), n-1)
+		}
+	}
+	if d, ok := idx("dsk"); ok && top != nil && top.DownstreamKeyers > 0 {
+		if n := c.state.DSKCount(); d >= n {
+			return codeErr(CodeUsage, "--dsk %d: the switcher has %d downstream keyer%s, 0-%d", d, n, plural(n), n-1)
+		}
+	}
+	return nil
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
 // CommandResult is the result of a wire command.
 type CommandResult struct {
 	// Args are the arguments as sent, for display: M/Es counted from 1,
@@ -232,5 +270,6 @@ func RegisterOperations(r *table.Registry) error {
 func operations() []operation {
 	var ops []operation
 	ops = append(ops, sessionOperations()...)
+	ops = append(ops, switchingOperations()...)
 	return ops
 }

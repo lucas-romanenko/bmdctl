@@ -1061,6 +1061,26 @@ else (keyers, DSKs, aux, slots) from 0.
     starting with any of its prefixes, `--count` stops after that many.
     A stream that ends normally sends no final response; the CLI exits 0
     on `--count` or Ctrl-C, 2 if the session closes.
+- **Group b, switching** (`ops_switching.go`). The wire commands keep
+  their one entry each; `transition position` is now `tbar`. Three
+  operations read the state first, as atemwire's do:
+  - `transition rate` is `set_transition_rate`: the rate goes to the
+    settings of the M/E's current style (mix when unknown), checked
+    against that command's field (u8, u16 for the stinger).
+  - `transition next` sets the layers outright
+    (`set_next_transition_layers`), or `--toggle` flips one in the
+    current selection (`toggle_transition_key`,
+    `toggle_transition_background`). Where atemwire silently sends
+    nothing because the toggle would leave no layer, the CLI says so (a
+    usage error): a command line asked for something.
+  - `transition style` sets the style alone.
+  An operation that sends one command answers like a wire command, and
+  prints like one.
+- **Indices the switcher doesn't have** are refused before sending:
+  `--me` beyond `_top`'s M/E count, `--keyer` beyond the M/E's `_MeC`,
+  `--dsk` beyond `_top`'s. Only counts the switcher reported are used, not
+  the readers' defaults. A switcher ignores a command for an index it
+  lacks, so without this the user would see only "no echo".
 
 ## Fake switcher (`internal/fakeatem`, `internal/fixtures/dump`)
 
@@ -1079,9 +1099,12 @@ else (keyers, DSKs, aux, slots) from 0.
   without redoing them. `echoes.go` answers a set of common commands
   (`CPgI`, `CPvI`, `DCut`, `DAut`, `CAuS`, `CTMx`, `CKOn`, `CDsL`, `CDsT`,
   `CDsR`, `FtbC`, `CClV`, `CInL`) with the state packet a switcher would
-  send; anything else is ACKed and changes nothing. It is not a switcher
-  model and makes no claim about switcher timing.
-- **Controls.** `DropToClient(n)` drops the next n reliable packets (their
+  send. `mirror.go` confirms more without modelling them (phase 3): it
+  answers each with the state packet it holds for the same key, unchanged,
+  so the engine's wait for an echo can be tested; the tests check the
+  bytes sent. Anything else is ACKed and changes nothing. It is not a
+  switcher model and makes no claim about switcher timing.
+- **Controls.** `Unanswered(codes...)` takes commands without echoing them; `DropToClient(n)` drops the next n reliable packets (their
   resends get through); `DropSequences(...)` drops chosen sequence numbers
   of the next session; `DropFromClient(n)` ignores the next n datagrams
   from the session; `DelayACKs(d)` ACKs late; `Silence(true)` cuts the
