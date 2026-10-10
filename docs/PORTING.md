@@ -769,6 +769,69 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   and the macro halves of `test_wipe_pattern_names.py` and
   `test_input_video_migration.py` one for one, on the `macro/` fixtures.
 
+## Profiles (`atem/profile`)
+
+Ports bmdwire v1.3.0 `atemwire/profile` (SURFACE.md §3.3).
+`Save(ctx, Source, *SaveOptions)`, `FromXML`/`FromFile`,
+`(*Profile).ToXML`/`Apply(ctx, Target, *ApplyOptions)`; `Source` is
+`State`+`DownloadMacro`, `Target` is `State`+`Send`+`UploadMacro`, and
+`*atem.Session` is both (compile-time check). Options and `ApplyResult`
+mirror options.py field for field; constructors give atemwire's defaults
+and a zero value selects nothing.
+
+- **Save reads the display readers** where save.py calls one, and the raw
+  state where it reads mixerstate directly. There is no
+  `wait_state_settled`: a Session's state is complete once Dial returns.
+  Macros download one at a time within `MacroTimeout` (10 s). A failed
+  download leaves the macro with its name and description only. A decode
+  warning is logged and the ops before it are kept. Save fails only when
+  ctx ends.
+- **Fairlight strip order:** atemwire writes a source's strips in FASP
+  arrival order, which the state doesn't keep, so they go in subchannel
+  order (the order a switcher sends them).
+- **Apply runs atemwire's 17 sections in order.** Each operation is a
+  function that makes the checks the operation makes when called, and
+  records what fails as `_safe` does. Those checks: round() or int() of NaN
+  raises ValueError, of an infinity OverflowError; `_db_to_wire` raises
+  only for +inf; unknown mix option, EQ shape or frequency range raise
+  ValueError with atemwire's message. A command that only fails to encode
+  (Validate, or an int too big for its Go field) is dropped and logged, as
+  ATEMConnection's worker drops what get_command refuses. So the results
+  are atemwire's with an ATEMConnection, not with a bare AtemProtocol.
+- **Attribute values are read with Python's rules.** `_float`, `_int` and
+  `_bool` are rebuilt: float()'s grammar, Unicode digits, underscores,
+  isspace rules. `_int` is held as an integral float64 so Python's big ints
+  stay exact. An `_int` of infinity outside `_safe`, and a macro op whose
+  encoding fails with anything but ValueError, end the apply: Apply returns
+  that error (`*Error`, `*macro.Error`) with the partial result, where
+  atemwire raises.
+- **Rates** are `str(_int(rate))`, which parse_rate reads as frames at any
+  frame rate, so Apply doesn't read DisplayFPS.
+- **HyperDeck addresses** go through a port of glibc's inet_aton and are
+  sent as the dotted quad they mean; what inet_aton refuses is dropped, as
+  at encode time in atemwire.
+- **Target errors** are recorded as ConnectionDeadError (ErrClosed,
+  ErrDisconnected, ErrNotReady) or RuntimeError. A Target whose
+  `Connected()` is false gets "macros: no connected protocol".
+- **Go additions:** contexts (checked before each section), `ResyncWait`
+  (0 means 3 s, negative means no pause), `MacroTimeout`, `Logger`.
+- **XML layer:** a parser mirroring expat with namespace processing feeding
+  a TreeBuilder, and a serializer mirroring ET.indent and ET.tostring plus
+  `re.sub(r'\s+/>', '/>')`, byte for byte. FromXML's UTF-8, NUL and DTD
+  guards (Python's IGNORECASE and Unicode `\b`) are atemwire's. ToXML
+  re-indents the tree in place, as to_xml does. ParseError text and
+  positions only approximate expat's. Non-ASCII name characters use Go's
+  Unicode tables, not expat's Appendix B.
+- **Not ported:** `download_media_pool_images` (needs still download and PNG
+  export), `_source_symbol` (unused), `_ProtocolAdapter`/`_resolve_connection`.
+- **Verification:** `oracle/profile.json` from `gen_profile.py` holds the
+  golden's state, 46 saves, 274 applies (18,628 events, 30 raising) and 130
+  parses, all replayed byte for byte. The golden's state holds a TStP media
+  player of 3010, more than a u8, so the golden test injects that one value
+  through the saver's `stingerSource` hook. `profile_test.go` ports
+  bmdwire's profile tests one for one; `e2e_test.go` applies and saves
+  through a Session against the fake switcher.
+
 ## Command table and CLI (`internal/table`, `atem/table.go`, `cmd/bmdctl`)
 
 - **`internal/table` is generic** (and MIT). An `Entry` is
@@ -867,7 +930,11 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   the slot and broadcasts its MPfe or MPrp. `FailTransfers(statuses...)`
   answers the next requests with FTDE (5 also takes the lock away, 6 leaves
   it held); `PutStill`, `Still`, `PutMacro`, `Macro` and `LockedBySession`
-  fill and inspect it.
+  fill and inspect it. An empty macro upload (FTSD of length 0, then FTFD)
+  empties the slot, following atemwire's comment that ASC's "Restore from
+  State" uses it for empty macros; profile apply also sends one to restore
+  a macro's name without ops, and whether a switcher keeps that name is
+  unverified on hardware.
 - **The dump** (`internal/fixtures/dump/initial-dump.bin`) is synthetic:
   bmdwire's tests contain no recorded one. `gen_dump.py` builds 88
   commands from the values of bmdwire's `build_full_state`
