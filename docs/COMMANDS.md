@@ -9,6 +9,67 @@ switcher; **destructive** ones are hard to undo or drop connections. The
 echo is the state the device reports back once it has applied the
 command; a command without one can't be confirmed.
 
+## The command line
+
+```
+bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [--parameter value ...]
+```
+
+### Flags, accepted anywhere on the line
+
+- `--host H`: The device: a name from `bmdctl hosts`, or host[:port] (UDP 9910 by default). Without it: $BMDCTL_HOST, else the host the last --host named, else the default host.
+- `--json`: Print the engine's JSON response as it is: {ok, confirmed, result, took_ms} or {ok:false, code, error}, one per line.
+- `--quiet, -q`: Print nothing on stdout; the exit status tells. Errors still go to stderr.
+- `--yes, -y`: Allow a destructive command.
+- `--dry-run`: Print a wire command's bytes, header included, and send nothing.
+- `--fps N`: The frame rate for rates given as seconds:frames (default: the switcher's display rate; 25 with --dry-run).
+- `--timeout D`: How long to wait for the switcher's echo (default 5s), or for a transfer to finish (default: the library's).
+- `--help, -h`: Help for the command line so far.
+
+### Built-in commands
+
+- `bmdctl version`: Print bmdctl's version.
+- `bmdctl engine [--log-level L]`: Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running.
+- `bmdctl engine stop`: Stop the running engine; its sessions say goodbye to their switchers.
+- `bmdctl engine status`: Show the engine's version, pid, socket, log and sessions.
+- `bmdctl hosts [list]`: List the named hosts.
+- `bmdctl hosts add NAME ADDRESS [--device D]`: Name a device: atem (the default), hyperdeck, videohub or ultimatte.
+- `bmdctl hosts rm NAME`: Forget a host.
+- `bmdctl hosts default [NAME]`: Show the default host, or make NAME the default and the host commands go to now.
+- `bmdctl exec FILE|- [--continue]`: Run one command per line, in order, to one host. Every line is checked before the first is sent; it stops at the first failure unless --continue.
+- `bmdctl completion bash|zsh|fish`: Print a shell completion script: commands, flags, host names and, while the engine runs, the switcher's input names.
+- `bmdctl man [--dir DIR]`: Print the bmdctl(1) manual page, or write it to DIR/bmdctl.1.
+
+### Conventions
+
+- Devices: A command without a device word goes to the device type of its host, an ATEM for a bare address. `bmdctl atem ...` names the device.
+- M/Es: --me counts from 1 on the command line; the atem library's ME field counts from 0. Every other index (keyer, DSK, aux, slot, player) counts from 0.
+- Sources: A source is an id or one of the switcher's input names, long or short, in any case.
+- Rates: A rate is a frame count or seconds:frames at the switcher's display rate (half the field rate from 48 fps up).
+
+### Exit status
+
+- 0: Done.
+- 1: A usage error, or any other failure.
+- 2: The switcher or the engine is unreachable.
+- 3: Sent, but the switcher did not confirm it in time.
+- 4: The switcher refused it (a transfer, a lock), or a profile restore recorded errors.
+- 5: Destructive, and --yes was not given.
+
+### Environment
+
+- `BMDCTL_HOST`: The host a command goes to when --host doesn't name one.
+- `BMDCTL_SOCKET`: The engine's socket (a pipe name on Windows), instead of $XDG_RUNTIME_DIR/bmdctl.sock.
+- `XDG_CONFIG_HOME, XDG_STATE_HOME, XDG_RUNTIME_DIR`: Where hosts.yml, the engine's log and last host, and the socket live.
+- `NO_COLOR`: Set to anything: no colour, even on a terminal.
+
+### Files
+
+- `~/.config/bmdctl/hosts.yml`: The named hosts and the default.
+- `~/.local/state/bmdctl/engine.log`: The engine's log, rotated at 5 MiB, three old files kept.
+- `~/.local/state/bmdctl/last-host`: The host the last --host named.
+- `$XDG_RUNTIME_DIR/bmdctl.sock`: The engine's socket; a lock file beside it.
+
 ## atem
 
 ### `bmdctl atem audio input`
