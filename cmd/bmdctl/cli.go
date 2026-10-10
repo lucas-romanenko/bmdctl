@@ -63,6 +63,9 @@ type cli struct {
 	// json: the line asked for --json, so a failure the CLI finds itself
 	// is printed as the engine would print it; quiet keeps it off stdout.
 	json, quiet bool
+	// noRemember: --host doesn't become the last host used (exec's
+	// lines).
+	noRemember bool
 }
 
 func newCLI(stdout, stderr io.Writer) *cli {
@@ -80,6 +83,7 @@ var builtins = []struct{ name, summary string }{
 	{"version", "print bmdctl's version"},
 	{"engine", "run the background engine in the foreground; engine stop|status"},
 	{"hosts", "name devices: hosts list|add|rm|default"},
+	{"exec", "run the commands in a file, one per line: exec FILE|-"},
 	{"atem", "an ATEM switcher's commands (the default device)"},
 }
 
@@ -153,6 +157,8 @@ func (c *cli) run(args []string) int {
 		return c.engineCommand(g, words[1:], tokens)
 	case "hosts":
 		return c.hostsCommand(g, words[1:], tokens)
+	case "exec":
+		return c.execCommand(g, words[1:], tokens)
 	}
 	// The device: named on the line, else the target host's type, else
 	// an ATEM.

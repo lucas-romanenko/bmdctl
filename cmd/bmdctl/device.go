@@ -107,7 +107,7 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 	}
 	req.Host = t.Address
 	code := c.send(g, e, req, out, label)
-	if g.hostSet && code != exitUnreachable {
+	if g.hostSet && code != exitUnreachable && !c.noRemember {
 		c.setLastHost(g.host)
 	}
 	return code
