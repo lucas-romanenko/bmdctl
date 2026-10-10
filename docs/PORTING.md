@@ -1162,6 +1162,18 @@ else (keyers, DSKs, aux, slots) from 0.
     the apply the engine uploads each to its `index` under its `name`
     (PNGs premultiplied, as `media upload` does), reporting the ones with
     no file.
+- **Group h, video mode, startup, time, the unverified commands**
+  (`ops_system.go`). `video-modes` lists what `_VMC` says the switcher
+  supports, by the names `--mode` takes; `video-mode` refuses a mode not
+  in that list (when there is one) before the switcher drops everything
+  to try. `time` sends `TiRq` and waits for the `Time` packet that
+  answers it. Every entry atemwire restored unverified prints "unverified
+  on hardware" on stderr when sent (not with `--json`), and so do
+  `video-mode`, `time` and `time-request`, which atemwire doesn't mark:
+  the phase 3 brief asked for the line on the video mode, startup and
+  time group, and the line says why (bmdctl hasn't sent them to a
+  switcher yet, rather than atemwire's reason). `startup save`, `startup
+  clear` and `video-mode` are destructive, as before.
 - **Indices the switcher doesn't have** are refused before sending:
   `--me` beyond `_top`'s M/E count, `--keyer` beyond the M/E's `_MeC`,
   `--dsk` beyond `_top`'s. Only counts the switcher reported are used, not
@@ -1185,7 +1197,9 @@ else (keyers, DSKs, aux, slots) from 0.
   without redoing them. `echoes.go` answers a set of common commands
   (`CPgI`, `CPvI`, `DCut`, `DAut`, `CAuS`, `CTMx`, `CKOn`, `CDsL`, `CDsT`,
   `CDsR`, `FtbC`, `CClV`, `CInL`) with the state packet a switcher would
-  send. `mirror.go` confirms more without modelling them (phase 3): it
+  send; phase 3 adds `CVdM`, meter bursts for `SFLN`, and the macro
+  player and recorder (`macros.go`). `mirror.go` confirms more without
+  modelling them: it
   answers each with the state packet it holds for the same key, unchanged,
   so the engine's wait for an echo can be tested; the tests check the
   bytes sent. Anything else is ACKed and changes nothing. It is not a

@@ -75,8 +75,13 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 		return c.fail(exitUsage, "bmdctl %s: %v", label, err)
 	}
 	req.Files = files
-	if e.Unverified && !g.json {
-		fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: atemwire restored it from pyatem without checking it on a switcher\n", label)
+	if !g.json {
+		switch {
+		case e.Unverified:
+			fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: atemwire restored it from pyatem without checking it on a switcher\n", label)
+		case unchecked[e.Path]:
+			fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: bmdctl has not sent it to a switcher yet\n", label)
+		}
 	}
 	out := &printer{c: c, g: g, e: e, params: req.Params}
 	if e.Local {
@@ -208,6 +213,11 @@ func (c *cli) readFiles(e *table.Entry, raw map[string]string) (map[string][]byt
 	}
 	return files, nil
 }
+
+// unchecked are commands atemwire doesn't mark unverified but which get
+// the unverified line anyway: the video mode, startup and time group,
+// risky to send and not yet run against a switcher by bmdctl.
+var unchecked = map[string]bool{"video-mode": true, "time": true, "time-request": true}
 
 // prepare adds what a command sends besides its parameters' files, by
 // path.
