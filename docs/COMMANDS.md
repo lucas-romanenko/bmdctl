@@ -414,7 +414,7 @@ No echo.
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
 
-### `bmdctl atem hyperdeck`
+### `bmdctl atem hyperdeck-slot`
 
 Bind a HyperDeck slot to an address and an input.
 
