@@ -237,6 +237,13 @@ func (c *imagingCase) input(t *testing.T) []byte {
 	return b
 }
 
+// sweep reports whether the case is one of the colour sweeps (every 24-bit
+// colour, the 65,536-pair channel sweeps, every (Y, Cb) and (Y, Cr) pair).
+// They take most of the oracle's time, so -short skips them.
+func (c *imagingCase) sweep() bool {
+	return c.Gen != nil && (c.Gen.Kind == "colours" || c.Gen.Kind == "sweep" || c.Gen.Kind == "ycbcr")
+}
+
 func (c *imagingCase) String() string {
 	switch {
 	case c.Gen != nil:
@@ -292,6 +299,9 @@ func TestImagingMatchesAtemwire(t *testing.T) {
 	o := loadImagingOracle(t)
 	t.Run("rgb_to_atem", func(t *testing.T) {
 		for i, c := range o.RGBToATEM {
+			if c.sweep() && testing.Short() {
+				continue
+			}
 			where := fmt.Sprintf("case %d %s premultiply=%v", i, &c, c.Premultiply)
 			if c.Gen != nil && c.Gen.Kind == "colours" {
 				// 128 MiB, converted and hashed a chunk at a time as the
@@ -316,6 +326,9 @@ func TestImagingMatchesAtemwire(t *testing.T) {
 	})
 	t.Run("atem_to_rgb", func(t *testing.T) {
 		for i, c := range o.ATEMToRGB {
+			if c.sweep() && testing.Short() {
+				continue
+			}
 			got, err := YCbCrAToRGBA(c.input(t))
 			c.check(t, fmt.Sprintf("case %d %s", i, &c), got, err)
 		}
