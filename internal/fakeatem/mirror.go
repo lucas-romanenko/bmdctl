@@ -2,57 +2,115 @@
 
 package fakeatem
 
-import "fmt"
+import (
+	"maps"
+	"slices"
+)
 
 // Mirrored commands: ones the fake confirms without modelling them. It
-// answers with the state packet the dump (or a later echo) gave for the
-// same key, unchanged, so a session waiting for the command's echo sees
-// one arrive. The value proves nothing; tests check what was sent.
+// answers with the state packet it holds for the same key, unchanged: the
+// one a modelled echo (echoes.go) last sent, else the dump's, else a
+// zeroed packet of the right size with the key filled in. A session
+// waiting for the command's echo sees one arrive; the value proves
+// nothing, and tests check what was sent.
 
-// mirror is one mirrored command: the state packet that answers it and
-// where the command carries that packet's index bytes.
+// mirror is one mirrored command: the state packet that answers it, the
+// byte offsets in the command that address it, the offsets in the state
+// packet holding the same bytes, and the size of a zeroed packet.
 type mirror struct {
-	state string
-	at    int // offset of the index in the command
-	n     int // index bytes, the same at the start of the state packet
+	state   string
+	cmdAt   []int
+	stateAt []int
+	size    int
 }
+
+func m(state string, cmdAt, stateAt []int, size int) mirror {
+	return mirror{state, cmdAt, stateAt, size}
+}
+
+var (
+	at0  = []int{0}
+	at1  = []int{1}
+	at2  = []int{2}
+	at01 = []int{0, 1}
+	at12 = []int{1, 2}
+	at23 = []int{2, 3}
+	at45 = []int{4, 5}
+	none = []int{}
+)
 
 var mirrors = map[string]mirror{
 	// transitions
-	"CTTp": {"TrSS", 1, 1}, "CTPr": {"TrPr", 0, 1}, "CTPs": {"TrPs", 0, 1},
-	"CTDp": {"TDpP", 1, 1}, "CTWp": {"TWpP", 2, 1}, "CTDv": {"TDvP", 2, 1}, "CTSt": {"TStP", 2, 1},
-	"FEna": {"FEna", 0, 0},
+	"CTTp": m("TrSS", at1, at0, 8), "CTPr": m("TrPr", at0, at0, 4), "CTPs": m("TrPs", at0, at0, 8),
+	"CTDp": m("TDpP", at1, at0, 4), "CTWp": m("TWpP", at2, at0, 20), "CTDv": m("TDvP", at2, at0, 20),
+	"CTSt": m("TStP", at2, at0, 20), "FEna": m("FEna", none, none, 4),
+	// upstream keyers
+	"CKeF": m("KeBP", at01, at01, 20), "CKeC": m("KeBP", at01, at01, 20), "CKTp": m("KeBP", at12, at01, 20),
+	"CKMs": m("KeBP", at12, at01, 20), "CKLm": m("KeLm", at12, at01, 12), "CACK": m("KACk", at23, at01, 24),
+	"CACC": m("KACC", at12, at01, 16), "CKPt": m("KePt", at12, at01, 16), "CKDV": m("KeDV", at45, at01, 60),
+	// downstream keyers
+	"CDsF": m("DskB", at0, at0, 8), "CDsC": m("DskB", at0, at0, 8), "CDsG": m("DskP", at1, at0, 20),
+	"CDsM": m("DskP", at1, at0, 20),
 }
 
-// mirrored lists, by state opcode, how many leading bytes index it.
-var mirrored = func() map[string]int {
-	m := map[string]int{}
-	for _, x := range mirrors {
-		m[x.state] = x.n
+// pick returns the bytes of b at the offsets.
+func pick(b []byte, at []int) (string, bool) {
+	k := make([]byte, len(at))
+	for i, o := range at {
+		if o >= len(b) {
+			return "", false
+		}
+		k[i] = b[o]
 	}
-	return m
-}()
+	return string(k), true
+}
 
-func mirrorKey(code string, index []byte) string { return fmt.Sprintf("%s:%x", code, index) }
-
-// rememberMirrored stores a state payload the mirrors may send back.
+// rememberMirrored stores a dump payload the mirrors may send back.
 func (sw *Switcher) rememberMirrored(code string, payload []byte) {
-	n, ok := mirrored[code]
-	if !ok || len(payload) < n {
+	for _, x := range append(slices.Collect(maps.Values(mirrors)), keyframeMirrors[:]...) {
+		if x.state != code {
+			continue
+		}
+		if k, ok := pick(payload, x.stateAt); ok {
+			sw.mirror[code+":"+k] = append([]byte(nil), payload...)
+		}
 		return
 	}
-	sw.mirror[mirrorKey(code, payload[:n])] = append([]byte(nil), payload...)
 }
 
-// mirrorEcho answers a mirrored command with its stored state packet.
+// keyframeMirrors answer SFKF: keyframes A and B are stored (KKFP), the
+// other two show in the fly state (KeFS).
+var keyframeMirrors = [2]mirror{m("KKFP", []int{0, 1, 2}, []int{0, 1, 2}, 52), m("KeFS", at01, at01, 4)}
+
+// mirrorEcho answers a mirrored command with the state packet for its
+// key.
 func (sw *Switcher) mirrorEcho(code string, c []byte) [][]byte {
-	m, ok := mirrors[code]
-	if !ok || len(c) < m.at+m.n {
+	x, ok := mirrors[code]
+	if code == "SFKF" && len(c) > 2 {
+		x, ok = keyframeMirrors[1], true
+		if c[2] == 1 || c[2] == 2 {
+			x = keyframeMirrors[0]
+		}
+	}
+	if !ok {
 		return nil
 	}
-	p := sw.mirror[mirrorKey(m.state, c[m.at:m.at+m.n])]
+	k, ok := pick(c, x.cmdAt)
+	if !ok {
+		return nil
+	}
+	if kp, modelled := kept[x.state]; modelled && kp.index == len(x.stateAt) {
+		if p := sw.state[stateKey(x.state, []byte(k))]; p != nil {
+			return [][]byte{Command(x.state, p)}
+		}
+	}
+	p := sw.mirror[x.state+":"+k]
 	if p == nil {
-		return nil
+		p = make([]byte, x.size)
+		for i, o := range x.stateAt {
+			p[o] = k[i]
+		}
+		sw.mirror[x.state+":"+k] = p
 	}
-	return [][]byte{Command(m.state, p)}
+	return [][]byte{Command(x.state, p)}
 }

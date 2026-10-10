@@ -237,6 +237,16 @@ Echo: `DskP:<dsk>`.
 | `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
 | `--tie` | bool | required | tie |
 
+### `bmdctl atem dsk toggle`
+
+Put a downstream keyer on air if it is off, or off if it is on.
+
+Echo: `DskS:<dsk>`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+
 ### `bmdctl atem fairlight compressor`
 
 Set a Fairlight strip's compressor.
@@ -442,7 +452,11 @@ Give at least one optional parameter. Echo: `RXMS:<slot>`.
 
 Show the switcher's model, firmware, video mode and what it has.
 
-### `bmdctl atem input`
+### `bmdctl atem input list`
+
+List the switcher's sources: ids, names and port types.
+
+### `bmdctl atem input rename`
 
 Rename an input.
 
@@ -956,7 +970,7 @@ Echo: `KeBP:<me>:<keyer>`.
 
 Fly the key to a keyframe.
 
-Give at least one optional parameter. No echo.
+No echo.
 
 | parameter | value | | |
 |---|---|---|---|
@@ -1037,6 +1051,17 @@ Give at least one optional parameter. Echo: `KePt:<me>:<keyer>`.
 | `--position-x` | float, 0-1, clamped | optional | horizontal position |
 | `--position-y` | float, 0-1, clamped | optional | vertical position |
 | `--invert` | bool | optional | invert the pattern |
+
+### `bmdctl atem usk toggle`
+
+Put an upstream keyer on air if it is off, or off if it is on.
+
+Echo: `KeOn:<me>:<keyer>`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
 
 ### `bmdctl atem usk type`
 

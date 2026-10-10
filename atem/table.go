@@ -128,6 +128,9 @@ type spec struct {
 	echo          string
 	params        []fp
 	build         func(table.Args) (Command, error) // overrides the field mapping
+	// complete: the required parameters make a whole command, and the
+	// optional ones are extras (RFlK's direction), so it is not AtLeastOne.
+	complete bool
 }
 
 // fp is a parameter and the command field it sets.
@@ -150,7 +153,7 @@ func (s spec) entry() table.Entry {
 		if ok && (p.Kind == table.Uint || p.Kind == table.Int || p.Kind == table.Rate || p.Kind == table.Enum || p.Kind == table.Source) && p.Min == nil {
 			p.Min, p.Max = fieldRange(f.Type)
 		}
-		if ok && f.Type.Kind() == reflect.Pointer && !p.Required && p.Default == "" {
+		if ok && f.Type.Kind() == reflect.Pointer && !p.Required && p.Default == "" && !s.complete {
 			e.AtLeastOne = true
 		}
 		e.Params = append(e.Params, p.Param)
@@ -456,7 +459,7 @@ func commandSpecs() []spec {
 		{path: "usk keyframe-set", summary: "Store the keyer's DVE as a fly keyframe.", cmd: KeyerKeyframeSet{},
 			echo:   "KKFP:<me>:<keyer>:<keyframe> (A and B), KeFS:<me>:<keyer>",
 			params: []fp{pME, pKeyer, names(req("keyframe", "Keyframe", table.Enum, "", "keyframe"), keyframeNames)}},
-		{path: "usk keyframe-run", summary: "Fly the key to a keyframe.", cmd: KeyerKeyframeRun{},
+		{path: "usk keyframe-run", summary: "Fly the key to a keyframe.", cmd: KeyerKeyframeRun{}, complete: true,
 			params: []fp{pME, pKeyer, names(req("to", "RunTo", table.Enum, "", "keyframe to fly to"), keyframeNames),
 				opt("direction", "Direction", table.Uint, "",
 					"direction for runToInfinite; atemwire's two encodings agree on 1-4 and 6-9 (1 top left ... 9 bottom right) and disagree on the centre (5 or 0)")}},
@@ -667,7 +670,7 @@ func commandSpecs() []spec {
 			params: []fp{req("streaming", "Streaming", table.Bool, "", "streaming")}},
 
 		// §1.18 settings
-		{path: "input", summary: "Rename an input.", cmd: InputProperties{}, echo: "InPr:<source>",
+		{path: "input rename", summary: "Rename an input.", cmd: InputProperties{}, echo: "InPr:<source>",
 			params: []fp{pSource, opt("long-name", "LongName", table.String, "up to 20 bytes", "long name"),
 				opt("short-name", "ShortName", table.String, "up to 4 bytes", "short name"),
 				opt("port-type", "PortType", table.Uint, "", "external port type (no atemwire operation sets it)")}},

@@ -35,7 +35,7 @@ func switchingOperations() []operation {
 				{Name: "toggle", Kind: table.Enum, Names: layerNames, Help: "flip one layer in the current selection"}}},
 			run: opTransitionNext},
 		{entry: table.Entry{Path: "transition rate", Summary: "Set the rate of the M/E's current transition style.",
-			Echo: "TMxP, TDpP, TWpP, TDvP or TStP:<me>, by style",
+			Echo:   "TMxP, TDpP, TWpP, TDvP or TStP:<me>, by style",
 			Params: []table.Param{pME, {Name: "rate", Kind: table.Rate, Unit: unitFrames, Required: true, Help: "rate"}}},
 			run: opTransitionRate},
 	}

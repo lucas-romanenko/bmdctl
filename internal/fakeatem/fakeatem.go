@@ -118,16 +118,16 @@ type sent struct {
 // with its 8-byte header) after every handshake.
 func New(dump []byte) *Switcher {
 	sw := &Switcher{
-		dump:     dump,
-		wake:     make(chan struct{}, 1),
-		closed:   make(chan struct{}),
-		unacked:  map[uint16]*sent{},
-		state:    map[string][]byte{},
-		mirror:   map[string][]byte{},
+		dump:    dump,
+		wake:    make(chan struct{}, 1),
+		closed:  make(chan struct{}),
+		unacked: map[uint16]*sent{},
+		state:   map[string][]byte{},
+		mirror:  map[string][]byte{},
 
 		unanswered: map[string]bool{},
-		dropSeqs: map[uint16]bool{},
-		locks:    map[uint16]holder{},
+		dropSeqs:   map[uint16]bool{},
+		locks:      map[uint16]holder{},
 
 		lockQueued: map[uint16]bool{},
 		stills:     map[uint16]*item{},
