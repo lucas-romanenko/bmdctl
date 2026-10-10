@@ -12,7 +12,7 @@ import (
 // payload bytes index them (the M/E, keyer, source ...) and their length.
 var kept = map[string]struct{ index, size int }{
 	"PrgI": {1, 4}, "PrvI": {1, 8}, "AuxS": {1, 4}, "TMxP": {1, 4}, "KeOn": {2, 4},
-	"DskS": {1, 8}, "DskP": {1, 20}, "FtbP": {1, 4}, "ColV": {1, 8}, "InPr": {2, 36},
+	"DskS": {1, 8}, "DskP": {1, 20}, "FtbP": {1, 4}, "ColV": {1, 8}, "InPr": {2, 36}, "VidM": {0, 4},
 }
 
 func stateKey(code string, index []byte) string { return fmt.Sprintf("%s:%x", code, index) }
@@ -45,7 +45,7 @@ func (sw *Switcher) update(code string, index []byte, f func(p []byte)) []byte {
 // changed. Commands not handled here change nothing.
 func (sw *Switcher) echo(code string, c []byte) [][]byte {
 	need := map[string]int{"CPgI": 4, "CPvI": 4, "DCut": 1, "DAut": 1, "CAuS": 4, "CTMx": 2, "CKOn": 3,
-		"CDsL": 2, "CDsT": 2, "CDsR": 2, "FtbC": 3, "CClV": 8, "CInL": 32}
+		"CDsL": 2, "CDsT": 2, "CDsR": 2, "FtbC": 3, "CClV": 8, "CInL": 32, "CVdM": 1}
 	if n, ok := need[code]; !ok || len(c) < n {
 		return nil
 	}
@@ -89,6 +89,8 @@ func (sw *Switcher) echo(code string, c []byte) [][]byte {
 				}
 			}
 		})}
+	case "CVdM":
+		return [][]byte{sw.update("VidM", nil, func(p []byte) { p[0] = c[0] })}
 	case "CInL":
 		return [][]byte{sw.update("InPr", c[2:4], func(p []byte) {
 			if c[0]&0x01 != 0 {

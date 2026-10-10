@@ -25,6 +25,35 @@ func init() {
 	humanFormats["profile save"] = formatProfile
 	humanFormats["profile restore"] = formatProfile
 	humanFormats["profile images"] = formatProfile
+	humanFormats["time"] = formatTime
+	humanFormats["video-modes"] = formatVideoModes
+}
+
+func formatTime(p *printer, r engine.Response, raw json.RawMessage) []string {
+	var t engine.TimeResult
+	json.Unmarshal(raw, &t)
+	line := "time  " + t.Timecode
+	if t.Mode != "" {
+		line += "  " + t.Mode
+	}
+	return []string{line}
+}
+
+func formatVideoModes(p *printer, _ engine.Response, raw json.RawMessage) []string {
+	var ms []engine.VideoModeEntry
+	json.Unmarshal(raw, &ms)
+	if len(ms) == 0 {
+		return []string{"the switcher has not listed its video modes"}
+	}
+	var rows [][]string
+	for _, m := range ms {
+		mark := ""
+		if m.Current {
+			mark = p.c.colour(green, "current")
+		}
+		rows = append(rows, []string{fmt.Sprint(m.ID), m.Name, mark})
+	}
+	return p.table(rows)
 }
 
 // formatProfile is a line for the profile, then one per error, section

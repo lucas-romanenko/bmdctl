@@ -58,6 +58,12 @@ var mirrors = map[string]mirror{
 	"CFMP": m("FAMP", none, none, 20), "CMCP": m("MOCP", none, none, 24), "CMLP": m("AMLP", none, none, 20),
 	// media
 	"MPSS": m("MPCE", at1, at0, 4),
+	// outputs, devices, settings
+	"CMvI": m("MvIn", at01, at01, 8), "CMvP": m("MvPr", at1, at0, 4), "CSBP": m("SSBP", at23, at01, 24),
+	"CSSc": m("SSrc", at1, at0, 16), "CXMS": m("RXMS", at23, at01, 12), "CCmd": m("CCdP", []int{0, 1, 2}, []int{0, 1, 2}, 16),
+	"CRMS": m("RMSu", none, none, 140), "RcTM": m("RTMS", none, none, 8), "CRSS": m("SRSU", none, none, 1096),
+	"STAB": m("STAB", none, none, 8), "StrR": m("StRS", none, none, 4), "AiVM": m("AiVM", none, none, 4),
+	"TiRq": m("Time", none, none, 8),
 	// the classic audio mixer
 	"CAMI": m("AMIP", at23, at01, 16), "CAMM": m("AMMO", none, none, 8), "CAMm": m("AMmO", none, none, 12),
 }

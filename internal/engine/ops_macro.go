@@ -154,18 +154,16 @@ func macroAction(action uint8) op {
 	}
 }
 
-// wireChecks are checks a wire command gets before it is sent, by path:
-// the ones that overwrite a macro need --yes.
-var wireChecks = map[string]func(c *call) error{
-	"macro record": func(c *call) error {
-		return c.overwriteMacro(int(c.args.Value("slot").(uint64)))
-	},
-	"macro action": func(c *call) error {
-		if c.args.Value("action").(uint64) == uint64(atem.MacroDelete) && !c.req.Yes {
-			return codeErr(CodeDestructive, "deleting a macro is destructive: add --yes")
-		}
-		return nil
-	},
+// checkMacroRecord: recording over a macro replaces it.
+func checkMacroRecord(c *call) error { return c.overwriteMacro(int(c.args.Value("slot").(uint64))) }
+
+// checkMacroAction: a delete through macro action is as destructive as
+// macro delete.
+func checkMacroAction(c *call) error {
+	if c.args.Value("action").(uint64) == uint64(atem.MacroDelete) && !c.req.Yes {
+		return codeErr(CodeDestructive, "deleting a macro is destructive: add --yes")
+	}
+	return nil
 }
 
 func (c *call) overwriteMacro(slot int) error {

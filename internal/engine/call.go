@@ -238,6 +238,14 @@ func (s funcSink) file(f FileFrame) error {
 }
 func (funcSink) response(Response) error { return nil }
 
+// wireChecks are what a wire command is checked for against the state
+// before it is sent, by path.
+var wireChecks = map[string]func(c *call) error{
+	"macro record": checkMacroRecord,
+	"macro action": checkMacroAction,
+	"video-mode":   checkVideoMode,
+}
+
 // operation is one of the engine's table entries that isn't one wire
 // command, with its implementation.
 type operation struct {
@@ -277,5 +285,6 @@ func operations() []operation {
 	ops = append(ops, mediaOperations()...)
 	ops = append(ops, macroOperations()...)
 	ops = append(ops, profileOperations()...)
+	ops = append(ops, systemOperations()...)
 	return ops
 }
