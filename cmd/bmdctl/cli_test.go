@@ -4,29 +4,30 @@ package main
 
 import (
 	"bytes"
-	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/lucas-romanenko/bmdctl/atem"
+	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
 var update = flag.Bool("update", false, "rewrite docs/COMMANDS.md")
 
-func runCLI(args ...string) (code int, stdout, stderr string) {
-	var o, e bytes.Buffer
-	code = run(args, &o, &e)
-	return code, o.String(), e.String()
-}
-
 // docs/COMMANDS.md is generated from the command table.
 func TestCommandsDoc(t *testing.T) {
-	got := registry().Markdown()
+	reg, err := engine.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := reg.Markdown()
 	path := "../../docs/COMMANDS.md"
 	if *update {
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
@@ -54,45 +55,69 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-// --help works for the device, every group and every command.
+// No parameter may share a name with a global flag, which the parser
+// takes out of the line wherever it is.
+func TestNoParameterShadowsAGlobalFlag(t *testing.T) {
+	reg, _ := engine.NewRegistry()
+	for _, d := range reg.Devices() {
+		for _, e := range reg.Entries(d) {
+			for _, p := range e.Params {
+				if _, ok := globalFlags[p.Name]; ok {
+					t.Errorf("%s %s --%s is a global flag", d, e.Path, p.Name)
+				}
+			}
+		}
+	}
+}
+
+// --help works for the device, every group and every command, with or
+// without the device word.
 func TestHelpAtEveryLevel(t *testing.T) {
-	r := registry()
+	reg, _ := engine.NewRegistry()
 	paths := map[string]bool{"": true}
-	for _, e := range r.Entries("atem") {
+	for _, e := range reg.Entries("atem") {
 		w := e.Words()
 		for i := 1; i <= len(w); i++ {
 			paths[strings.Join(w[:i], " ")] = true
 		}
 	}
 	for p := range paths {
-		args := append([]string{"atem"}, strings.Fields(p)...)
-		code, out, errOut := runCLI(append(args, "--help")...)
-		if code != 0 || errOut != "" || !strings.HasPrefix(out, "usage: bmdctl atem") {
-			t.Errorf("%q --help: %d %q %q", p, code, out, errOut)
+		for _, dev := range [][]string{{"atem"}, nil} {
+			args := append(append(dev, strings.Fields(p)...), "--help")
+			if len(args) == 1 {
+				continue // bare --help is the top level
+			}
+			code, out, errOut := runCLI(args...)
+			if code != 0 || errOut != "" || !strings.HasPrefix(out, "usage: bmdctl [atem]") {
+				t.Errorf("%q: %d %q %q", args, code, out, errOut)
+			}
 		}
 	}
 	if code, out, _ := runCLI("atem", "--help"); code != 0 || !strings.Contains(out, "--dry-run") || !strings.Contains(out, "--host H") || !strings.Contains(out, "transition ...") {
 		t.Errorf("atem --help:\n%s", out)
 	}
-	if code, out, _ := runCLI("atem", "transition", "wipe", "-h"); code != 0 || !strings.Contains(out, "--width") ||
-		!strings.Contains(out, "CircleIris=7") || !strings.Contains(out, "Echo: TWpP:<me>") {
+	if code, out, _ := runCLI("transition", "wipe", "-h"); code != 0 || !strings.Contains(out, "--width") ||
+		!strings.Contains(out, "CircleIris=7") || !strings.Contains(out, "Echo: TWpP:<me>") ||
+		!strings.Contains(out, "--me counts M/Es from 1") || !strings.Contains(out, "uint, 1-256") {
 		t.Errorf("wipe --help:\n%s", out)
 	}
-	if code, out, _ := runCLI("--help"); code != 0 || !strings.Contains(out, "atem") {
+	if code, out, _ := runCLI("--help"); code != 0 || !strings.Contains(out, "atem") || !strings.Contains(out, "Exit status") {
 		t.Errorf("--help: %d %q", code, out)
 	}
 }
 
 // --dry-run prints the bytes and sends nothing. Expected bytes are the
-// ones bmdwire v1.3.0's tests pin, with the 8-byte header in front.
+// ones bmdwire v1.3.0's tests pin, with the 8-byte header in front. --me
+// counts from 1 here.
 func TestDryRun(t *testing.T) {
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
 		{[]string{"program", "--source", "5"}, "000c000043506749" + "00000005"},
-		{[]string{"program", "--me", "1", "--source", "3010"}, "000c000043506749" + "01000bc2"},
-		{[]string{"transition", "preview", "--me", "1", "--enabled", "true"}, "000c000043545072" + "01010000"},
+		{[]string{"program", "--me", "2", "--source", "3010"}, "000c000043506749" + "01000bc2"},
+		{[]string{"transition", "preview", "--me", "2", "--enabled", "true"}, "000c000043545072" + "01010000"},
+		{[]string{"transition", "preview", "--me", "2", "--enabled"}, "000c000043545072" + "01010000"},
 		{[]string{"transition", "position", "--position", "20000"}, "000c000043545073" + "00002710"},
 		{[]string{"multiviewer", "input", "--multiviewer", "1", "--window", "7", "--source", "3010"}, "000c0000434d7649" + "01070bc2"},
 		{[]string{"auto-video-mode", "--enable", "true"}, "000c00004169564d" + "01000000"},
@@ -102,25 +127,34 @@ func TestDryRun(t *testing.T) {
 			"0020000043436d64" + "020801008000000000020000000000000400f80000000000"},
 		{[]string{"transition", "mix", "--rate", "1:00"}, "000c00004354 4d78 0019 0000"},
 		{[]string{"--fps", "30", "transition", "mix", "--rate", "1:00"}, "000c000043544d78001e0000"},
+		{[]string{"audio", "input", "--source", "1", "--balance", "-500"}, "0014000043414d49" + "0400000100000000fe0c0000"},
+		{[]string{"fairlight", "eq", "--source", "1", "--channel", "-1", "--band", "0", "--q", "2", "-q"}, ""},
+		{[]string{"supersource", "box", "--box", "0", "--y", "-200", "-y"}, "0020000043534250" + "00080000000000000000ff38000000000000000000000000"},
 	} {
-		code, out, errOut := runCLI(append([]string{"atem", "--dry-run"}, c.args...)...)
-		want := strings.ReplaceAll(c.want, " ", "") + "\n"
-		if code != 0 || out != want {
-			t.Errorf("%v: %d %q %q, want %q", c.args, code, out, errOut, want)
+		for _, dev := range [][]string{{"atem"}, nil} {
+			args := append(append(dev, "--dry-run"), c.args...)
+			code, out, errOut := runCLI(args...)
+			want := strings.ReplaceAll(c.want, " ", "") + "\n"
+			if c.want == "" {
+				want = "" // -q
+			}
+			if code != 0 || out != want {
+				t.Errorf("%v: %d %q %q, want %q", args, code, out, errOut, want)
+			}
 		}
 	}
 	// --dry-run is accepted after the command too.
-	if _, out, _ := runCLI("atem", "cut", "--me", "2", "--dry-run"); out != "000c00004443757402000000\n" {
+	if _, out, _ := runCLI("cut", "--me", "3", "--dry-run"); out != "000c00004443757402000000\n" {
 		t.Errorf("trailing --dry-run: %q", out)
 	}
 }
 
 func TestDryRunWarnsAndRefuses(t *testing.T) {
-	code, _, errOut := runCLI("atem", "--dry-run", "video-mode", "--mode", "1080p5994")
+	code, _, errOut := runCLI("--dry-run", "video-mode", "--mode", "1080p5994")
 	if code != 0 || !strings.Contains(errOut, "destructive") {
 		t.Errorf("video-mode: %d %q", code, errOut)
 	}
-	code, _, errOut = runCLI("atem", "--dry-run", "audio", "levels", "--enable", "true")
+	code, _, errOut = runCLI("--dry-run", "audio", "levels", "--enable", "true")
 	if code != 0 || !strings.Contains(errOut, "unverified") {
 		t.Errorf("audio levels: %d %q", code, errOut)
 	}
@@ -129,20 +163,27 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 		code int
 		msg  string
 	}{
-		{[]string{"atem", "program", "--source", "5"}, 2, "--host"},
-		{[]string{"atem", "program", "--host"}, 2, "--host needs a value"},
-		{[]string{"atem", "--dry-run", "program"}, 2, "--source is required"},
-		{[]string{"atem", "--dry-run", "program", "--source", "70000"}, 2, "out of range"},
-		{[]string{"atem", "--dry-run", "program", "--source", "5", "--bogus", "1"}, 2, "has no --bogus"},
-		{[]string{"atem", "--dry-run", "transition", "wipe"}, 2, "nothing to set"},
-		{[]string{"atem", "--dry-run", "transition", "settings", "--next", "0"}, 1, "selects no layer"},
-		{[]string{"atem", "--dry-run", "media", "player", "--player", "0"}, 2, "nothing to set"},
-		{[]string{"atem", "--dry-run", "media", "player", "--player", "0", "--still", "1", "--clip", "2"}, 1, "not both"},
-		{[]string{"atem", "--dry-run", "transition", "stinger", "--clip", "7000"}, 1, "does not fit"},
-		{[]string{"atem", "--dry-run", "nonsense"}, 2, "unknown command"},
-		{[]string{"atem", "--dry-run", "transition"}, 2, "missing a subcommand"},
-		{[]string{"nonsense"}, 2, "unknown command"},
-		{nil, 2, "usage"},
+		{[]string{"program", "--source", "5"}, 1, "--host"},
+		{[]string{"program", "--host"}, 1, "--host needs a value"},
+		{[]string{"--dry-run", "program"}, 1, "--source is required"},
+		{[]string{"--dry-run", "program", "--source", "70000"}, 1, "out of range"},
+		{[]string{"--dry-run", "program", "--source", "Camera 1"}, 1, "give the source id"},
+		{[]string{"--dry-run", "program", "--me", "0", "--source", "1"}, 1, "counted from 1"},
+		{[]string{"--dry-run", "program", "--source", "5", "--bogus", "1"}, 1, "has no --bogus"},
+		{[]string{"--dry-run", "program", "--source", "5", "stray"}, 1, "unexpected \"stray\""},
+		{[]string{"--dry-run", "transition", "wipe"}, 1, "nothing to set"},
+		{[]string{"--dry-run", "transition", "mix", "--rate", "1:30"}, 1, "not under the display rate, 25 fps"},
+		{[]string{"--dry-run", "transition", "mix", "--rate", "fast"}, 1, "not seconds:frames"},
+		{[]string{"--dry-run", "transition", "settings", "--next", "0"}, 1, "selects no layer"},
+		{[]string{"--dry-run", "media", "player", "--player", "0"}, 1, "nothing to set"},
+		{[]string{"--dry-run", "media", "player", "--player", "0", "--still", "1", "--clip", "2"}, 1, "not both"},
+		{[]string{"--dry-run", "transition", "stinger", "--clip", "7000"}, 1, "does not fit"},
+		{[]string{"--dry-run", "nonsense"}, 1, "unknown command"},
+		{[]string{"atem", "--dry-run", "nonsense"}, 1, "unknown command"},
+		{[]string{"--dry-run", "transition"}, 1, "missing a subcommand"},
+		{[]string{"--fps", "0", "cut"}, 1, "--fps"},
+		{[]string{"--json=yes", "cut"}, 1, "takes no value"},
+		{nil, 1, "usage"},
 	} {
 		code, _, errOut := runCLI(c.args...)
 		if code != c.code || !strings.Contains(errOut, c.msg) {
@@ -151,79 +192,286 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 	}
 }
 
-// fakeSwitchers points the CLI at a new fake switcher replaying dump for
-// each command it runs, for the rest of the test, and returns them.
-func fakeSwitchers(t *testing.T, dump []byte) *[]*fakeatem.Switcher {
-	t.Helper()
-	var sws []*fakeatem.Switcher
-	old := dial
-	dial = func(ctx context.Context, host string) (*atem.Session, error) {
-		sw := fakeatem.New(dump)
-		sws = append(sws, sw)
-		return (&atem.Dialer{Conn: sw}).Dial(ctx, host)
+// Commands go through the engine to the switcher. One with a state echo
+// waits for it and is confirmed; one without is sent and left.
+func TestSendThroughTheEngine(t *testing.T) {
+	b := newBench(t)
+	out := b.must(with("program", "--source", "5")...)
+	if !strings.HasPrefix(out, "program") || !strings.Contains(out, "confirmed") || !strings.Contains(out, "me 1, source 5") {
+		t.Errorf("program: %q", out)
 	}
-	t.Cleanup(func() { dial = old })
-	return &sws
-}
-
-// sent returns the commands with this opcode the switchers received.
-func sent(sws *[]*fakeatem.Switcher, code string) [][]byte {
-	var out [][]byte
-	for _, sw := range *sws {
-		for _, c := range sw.Commands() {
-			if string(c[4:8]) == code {
-				out = append(out, c)
-			}
-		}
-	}
-	return out
-}
-
-// With --host the command goes to the switcher. One with a state echo
-// waits for it; one without is sent and left.
-func TestSend(t *testing.T) {
-	sw := fakeSwitchers(t, fixtures.Bytes(t, "dump/initial-dump.bin"))
-	code, out, errOut := runCLI("atem", "--host", fakeatem.Address, "program", "--source", "5")
-	if code != 0 || out != "" || errOut != "" {
-		t.Fatalf("program: %d %q %q", code, out, errOut)
-	}
-	if c := sent(sw, "CPgI"); len(c) != 1 || fmt.Sprintf("%x", c[0]) != "000c000043506749"+"00000005" {
+	if c := b.sent("CPgI"); len(c) != 1 || fmt.Sprintf("%x", c[0]) != "000c000043506749"+"00000005" {
 		t.Fatalf("switcher got %x", c)
 	}
-	if code, _, errOut := runCLI("atem", "cut", "--host", fakeatem.Address); code != 0 || errOut != "" {
-		t.Fatalf("cut: %d %q", code, errOut)
+	out = b.must(with("atem", "cut")...)
+	if !strings.Contains(out, "sent") || strings.Contains(out, "confirmed") {
+		t.Errorf("cut: %q", out)
 	}
-	if c := sent(sw, "DCut"); len(c) != 1 {
-		t.Fatalf("switcher got %x", c)
+	// One session served both: the engine kept it.
+	if n := len(b.switchers()); n != 1 {
+		t.Errorf("%d sessions", n)
 	}
 	// --dry-run wins over --host: nothing is sent.
-	if code, out, _ := runCLI("atem", "--dry-run", "--host", fakeatem.Address, "program", "--source", "6"); code != 0 || out != "000c00004350674900000006\n" {
+	if code, out, _ := b.run(with("--dry-run", "program", "--source", "6")...); code != 0 || out != "000c00004350674900000006\n" {
 		t.Fatalf("dry run with --host: %d %q", code, out)
 	}
-	if n := len(sent(sw, "CPgI")); n != 1 {
+	if n := len(b.sent("CPgI")); n != 1 {
 		t.Fatalf("%d CPgI after the dry run", n)
 	}
 }
 
-// Without --fps, a rate in seconds:frames is converted at the switcher's
-// display rate: one second is 30 frames on a 1080p59.94 switcher, not the
-// fallback 25.
-func TestSendConvertsRatesAtTheSwitchersRate(t *testing.T) {
+// Sources are ids or the switcher's input names, long or short, in any
+// case; the result shows the name.
+func TestSourceNames(t *testing.T) {
+	b := newBench(t)
+	for name, id := range map[string]string{"camera 2": "0002", "CAM1": "0001", "color bars": "03e8", "mp1": "0bc2"} {
+		out := b.must(with("preview", "--source", name)...)
+		c := b.sent("CPvI")
+		if got := fmt.Sprintf("%x", c[len(c)-1][10:12]); got != id {
+			t.Errorf("%q: sent source %s, want %s", name, got, id)
+		}
+		if !strings.Contains(out, "(") {
+			t.Errorf("%q: %q", name, out)
+		}
+	}
+	if !strings.Contains(b.must(with("preview", "--source", "camera 2")...), "source 2 (Camera 2)") {
+		t.Error("name not shown")
+	}
+	code, _, errOut := b.run(with("program", "--source", "Camera 9")...)
+	if code != exitUsage || !strings.Contains(errOut, `no input is named "Camera 9"`) {
+		t.Errorf("unknown name: %d %q", code, errOut)
+	}
+}
+
+// Rates in seconds:frames are read at the switcher's display rate unless
+// --fps is given: one second is 30 frames on a 1080p59.94 switcher, not
+// the fallback 25.
+func TestRatesAtTheSwitchersRate(t *testing.T) {
 	dump := bytes.Clone(fixtures.Bytes(t, "dump/initial-dump.bin"))
 	i := bytes.Index(dump, []byte("VidM"))
 	if i < 0 {
 		t.Fatal("no VidM in the dump")
 	}
 	dump[i+4] = 13 // 1080p59.94
-	sw := fakeSwitchers(t, dump)
-	if code, _, errOut := runCLI("atem", "--host", fakeatem.Address, "transition", "mix", "--rate", "1:00"); code != 0 {
-		t.Fatalf("%d %q", code, errOut)
-	}
-	if code, _, errOut := runCLI("atem", "--host", fakeatem.Address, "--fps", "50", "transition", "mix", "--rate", "1:00"); code != 0 {
-		t.Fatalf("%d %q", code, errOut)
-	}
-	c := sent(sw, "CTMx")
-	if len(c) != 2 || c[0][9] != 30 || c[1][9] != 50 {
+	b := newBenchDump(t, dump)
+	b.must(with("transition", "mix", "--rate", "1:00")...)
+	b.must(with("--fps", "50", "transition", "mix", "--rate", "1:00")...)
+	b.must(with("transition", "mix", "--rate", "1:29")...)
+	c := b.sent("CTMx")
+	if len(c) != 3 || c[0][9] != 30 || c[1][9] != 50 || c[2][9] != 59 {
 		t.Fatalf("switcher got %x", c)
+	}
+	// 1:29 passes the check without a switcher, which can't know the rate.
+	if code, _, errOut := b.run(with("transition", "mix", "--rate", "1:30")...); code != exitUsage || !strings.Contains(errOut, "30 fps") {
+		t.Errorf("1:30 at 30 fps: %d %q", code, errOut)
+	}
+}
+
+// --json prints exactly what the engine sent; --quiet prints nothing.
+func TestJSONAndQuiet(t *testing.T) {
+	b := newBench(t)
+	out := b.must(with("--json", "program", "--source", "CAM2")...)
+	if strings.Count(out, "\n") != 1 {
+		t.Fatalf("not one line: %q", out)
+	}
+	var r struct {
+		OK        bool `json:"ok"`
+		Confirmed bool `json:"confirmed"`
+		Result    struct {
+			Args    map[string]string `json:"args"`
+			Command string            `json:"command"`
+			Echo    string            `json:"echo"`
+			State   struct {
+				Index  int `json:"index"`
+				Source int `json:"source"`
+			} `json:"state"`
+		} `json:"result"`
+		TookMS *int64 `json:"took_ms"`
+	}
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatal(err)
+	}
+	if !r.OK || !r.Confirmed || r.Result.Command != "CPgI" || r.Result.Echo != "PrgI:0" || r.Result.State.Source != 2 ||
+		r.Result.Args["source"] != "2 (Camera 2)" || r.TookMS == nil {
+		t.Errorf("%s", out)
+	}
+	var keys map[string]json.RawMessage
+	json.Unmarshal([]byte(out), &keys)
+	if len(keys) != 4 {
+		t.Errorf("keys %v", keys)
+	}
+	if code, out, errOut := b.run(with("--quiet", "program", "--source", "1")...); code != 0 || out != "" || errOut != "" {
+		t.Errorf("quiet: %d %q %q", code, out, errOut)
+	}
+	// A failure is {ok:false, code, error} on stdout with --json.
+	code, out, _ := b.run(with("--json", "program", "--source", "Nobody")...)
+	if code != exitUsage || out != `{"ok":false,"code":"usage","error":"--source \"Nobody\": no input is named \"Nobody\""}`+"\n" {
+		t.Errorf("json failure: %d %q", code, out)
+	}
+	// --quiet still says what went wrong, on stderr.
+	if code, out, errOut := b.run(with("-q", "program", "--source", "Nobody")...); code != exitUsage || out != "" || !strings.Contains(errOut, "Nobody") {
+		t.Errorf("quiet failure: %d %q %q", code, out, errOut)
+	}
+}
+
+// Each kind of failure has its exit status.
+func TestExitCodes(t *testing.T) {
+	b := newBench(t)
+	// 3: sent, but the fake switcher doesn't echo a wipe.
+	code, _, errOut := b.run(with("--timeout", "200ms", "transition", "wipe", "--rate", "10")...)
+	if code != exitNoEcho || !strings.Contains(errOut, "did not report TWpP:0 within 200ms") {
+		t.Errorf("no echo: %d %q", code, errOut)
+	}
+	if len(b.sent("CTWp")) != 1 {
+		t.Error("wipe not sent")
+	}
+	// 5: destructive without --yes, refused before the engine is asked.
+	code, _, errOut = b.run(with("video-mode", "--mode", "1080p50")...)
+	if code != exitDestructive || !strings.Contains(errOut, "--yes") || len(b.sent("CVdM")) != 0 {
+		t.Errorf("destructive: %d %q", code, errOut)
+	}
+	// The engine refuses it too.
+	c, o, _ := b.cli("")
+	conn, err := c.connectEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := engine.Call(c.ctx, conn, engine.Request{Device: "atem", Host: fakeatem.Address, Path: "video-mode",
+		Params: map[string]string{"mode": "1080p50"}}, func([]byte, *engine.FileFrame, *engine.Response) error { return nil })
+	conn.Close()
+	if err != nil || resp.OK || resp.Code != engine.CodeDestructive || o.Len() != 0 {
+		t.Errorf("engine: %+v %v", resp, err)
+	}
+	// 1: usage.
+	if code, _, _ := b.run(with("program")...); code != exitUsage {
+		t.Errorf("usage: %d", code)
+	}
+	// 2: no switcher.
+	b.mu.Lock()
+	b.dialErr = errors.New("atem: dial 192.0.2.99:9910: context deadline exceeded")
+	b.mu.Unlock()
+	code, _, errOut = b.run("--host", "192.0.2.99", "cut")
+	if code != exitUnreachable || !strings.Contains(errOut, "192.0.2.99") {
+		t.Errorf("unreachable: %d %q", code, errOut)
+	}
+}
+
+// Without an engine and unable to start one, a command is unreachable.
+func TestNoEngine(t *testing.T) {
+	code, _, errOut := runCLI("--host", fakeatem.Address, "cut")
+	if code != exitUnreachable || !strings.Contains(errOut, "starting the engine") {
+		t.Errorf("%d %q", code, errOut)
+	}
+	if code, out, _ := runCLI("engine", "stop"); code != 0 || out != "no engine running\n" {
+		t.Errorf("stop: %d %q", code, out)
+	}
+	if code, _, errOut := runCLI("engine", "status"); code != exitUnreachable || !strings.Contains(errOut, "no engine running") {
+		t.Errorf("status: %d %q", code, errOut)
+	}
+}
+
+// A command starts an engine when none answers and retries until it
+// does.
+func TestCommandStartsTheEngine(t *testing.T) {
+	b := newBench(t)
+	b.engine().Stop()
+	eventually(t, "the old engine to go", func() bool {
+		_, err := os.Stat(b.env["BMDCTL_SOCKET"])
+		return os.IsNotExist(err)
+	})
+	c, o, e := b.cli("")
+	spawned := 0
+	c.spawn = func(exe string, args, env []string) error {
+		spawned++
+		if strings.Join(args, " ") != "engine --background" {
+			t.Errorf("spawned %v", args)
+		}
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			if err := b.startEngine(engine.Config{}); err != nil {
+				t.Error(err)
+			}
+		}()
+		return nil
+	}
+	if code := c.run(with("program", "--source", "2")); code != 0 || spawned != 1 {
+		t.Fatalf("%d, %d spawns\n%s%s", code, spawned, o, e)
+	}
+}
+
+// The engine runs in the foreground until stopped; engine status
+// reports it and its sessions; it logs to its log file.
+func TestEngineForeground(t *testing.T) {
+	b := newBench(t)
+	b.engine().Stop()
+	c, _, errOut := b.cli("")
+	done := make(chan int)
+	go func() { done <- c.run([]string{"engine", "--log-level", "debug"}) }()
+	eventually(t, "the engine", func() bool {
+		code, _, _ := b.run("engine", "status")
+		return code == 0
+	})
+	out := b.must("engine", "status")
+	if !strings.Contains(out, "running, pid") || !strings.Contains(out, "sessions  none") || !strings.Contains(out, b.env["BMDCTL_SOCKET"]) {
+		t.Errorf("status:\n%s", out)
+	}
+	var st struct {
+		OK     bool          `json:"ok"`
+		Result engine.Status `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(b.must("engine", "status", "--json")), &st); err != nil || !st.OK || st.Result.Protocol != engine.Version {
+		t.Errorf("status --json: %+v %v", st, err)
+	}
+	// A second foreground engine refuses to start.
+	if code, _, e := b.run("engine"); code != exitUsage || !strings.Contains(e, "already running") {
+		t.Errorf("second engine: %d %q", code, e)
+	}
+	if out := b.must("engine", "stop"); out != "engine stopped\n" {
+		t.Errorf("stop: %q", out)
+	}
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Errorf("engine exited %d: %s", code, errOut)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("engine still running")
+	}
+	log, err := os.ReadFile(filepath.Join(b.env["XDG_STATE_HOME"], "bmdctl", "engine.log"))
+	if err != nil || !bytes.Contains(log, []byte("engine listening")) || !bytes.Contains(log, []byte("engine stopped")) {
+		t.Errorf("log: %v\n%s", err, log)
+	}
+	if !strings.Contains(errOut.String(), "engine listening") {
+		t.Errorf("foreground engine logs to stderr too: %q", errOut)
+	}
+}
+
+// The real spawn: a command line starts this binary as a detached
+// background engine, which answers, then stops on request.
+func TestSpawnedEngine(t *testing.T) {
+	b := newBench(t)
+	b.engine().Stop()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := append(os.Environ(), "BMDCTL_TEST_MAIN=1")
+	for k, v := range b.env {
+		env = append(env, k+"="+v)
+	}
+	if err := engine.Spawn(exe, []string{"engine", "--background"}, env); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the spawned engine", func() bool {
+		code, _, _ := b.run("engine", "status")
+		return code == 0
+	})
+	out := b.must("engine", "status")
+	if strings.Contains(out, fmt.Sprintf("pid %d,", os.Getpid())) {
+		t.Errorf("the engine runs in the test process:\n%s", out)
+	}
+	b.must("engine", "stop")
+	if code, _, _ := b.run("engine", "status"); code != exitUnreachable {
+		t.Errorf("still running after stop: %d", code)
 	}
 }

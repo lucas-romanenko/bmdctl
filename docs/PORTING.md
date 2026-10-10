@@ -44,10 +44,11 @@ it. When you make a new decision, add it here in the same commit.
   are no hardware tests yet: everything runs against `internal/fixtures` or
   `internal/fakeatem`.
 - Phase 2 adds transfers (stills, macros), the macro bytecode codec,
-  profiles and the display-unit readers. Out of scope until asked: a
-  background engine, hosts, HTTP, MCP, CLI commands beyond sending one
-  command, and the HyperDeck, Videohub and Ultimatte packages beyond their
-  `doc.go`.
+  profiles and the display-unit readers. Phase 3 adds the binary: the
+  background engine, hosts, every command through the engine, `exec`,
+  completion, man pages and `doctor`. Out of scope until asked (phase 4):
+  HTTP, MCP, and the HyperDeck, Videohub and Ultimatte packages beyond
+  their `doc.go`.
 
 ## Licensing
 
@@ -58,7 +59,8 @@ it. When you make a new decision, add it here in the same commit.
 - `internal/fixtures/` holds bytes and files copied from atemwire's test
   suite, so it carries atemwire's licence as well.
 - Everything else (the CLI, the other device packages, `internal/table`,
-  `internal/fakeatem`) is MIT, as bmdwire's non-ATEM packages are.
+  `internal/fakeatem`, `internal/engine`, `internal/paths`) is MIT, as
+  bmdwire's non-ATEM packages are.
 
 ## Fixtures (`internal/fixtures`)
 
@@ -837,19 +839,28 @@ and a zero value selects nothing.
 ## Command table and CLI (`internal/table`, `atem/table.go`, `cmd/bmdctl`)
 
 - **`internal/table` is generic** (and MIT). An `Entry` is
-  `{Device, Path, Summary, Params, Build, Echo, Unverified, Destructive,
-  AtLeastOne}`; a `Param` has a name, a kind (uint, int, float, bool,
-  string, enum, flags, rate, time, list), an optional range, a unit, help,
-  and required/default. A `Registry` checks entries as they are added (no
-  duplicate paths, no path that is both a command and a group), resolves
+  `{Device, Path, Summary, Params, Build, Operation, Local, Stream, Echo,
+  Unverified, Destructive, AtLeastOne}`; a `Param` has a name, a kind
+  (uint, int, float, bool, string, enum, flags, rate, time, list, source,
+  file, out-file, dir), an optional range, a unit, help,
+  required/default, and `OneBased`. A `Registry` checks entries as they
+  are added (no duplicate paths, no path that is both a command and a
+  group, `Build` set exactly when the entry isn't an operation), resolves
   command words, parses `--name value` arguments and renders
   `docs/COMMANDS.md`.
+- **Two kinds of entry.** A wire command has a `Build` that makes one
+  `atem.Command`. An *operation* (phase 3) has none: the engine runs it by
+  path (reading state, a transfer, a read-modify-write); a `Local` one
+  needs no switcher and runs in the CLI; a `Stream` one answers until
+  stopped.
 - **Device packages fill it explicitly.** `atem.RegisterCommands(r)` adds
-  the ATEM entries; the CLI calls it. No `init()` side effects, so a
-  program that imports `atem` without the CLI gets no table.
-- **One entry per command**, 75 of them: every command except the seven
-  lock and file-transfer ones (§1.19), which a CLI reaches only through
-  transfers. Paths group by SURFACE §1 table: `program`,
+  the ATEM wire commands, `engine.RegisterOperations(r)` the operations;
+  `engine.NewRegistry` does both and the CLI and the engine share it. No
+  `init()` side effects, so a program that imports `atem` without the CLI
+  gets no table.
+- **One entry per wire command**, 75 of them: every command except the
+  seven lock and file-transfer ones (§1.19), which a CLI reaches only
+  through transfers. Paths group by SURFACE §1 table: `program`,
   `transition wipe`, `usk dve`, `fairlight strip`, ... Each parameter maps
   onto one command field and is set by reflection; integer ranges come from
   the field's Go type, so the table can't promise more than the wire holds.
@@ -861,33 +872,132 @@ and a zero value selects nothing.
 - **Masked commands need at least one field** (`AtLeastOne`): with none,
   atemwire would send a zero mask, which changes nothing. Entries derive
   this from having optional pointer fields.
-- **Rates** take frames or "seconds:frames". Sending, the CLI converts at
-  `DisplayFPS` of the session's state unless `--fps` is given; with
-  `--dry-run` there is no switcher to ask, so it uses `--fps` (default 25,
-  atemwire's fallback).
+- **`--me` counts from 1 on the command line**; the library's `ME` field
+  counts from 0. The parameter is `OneBased`: `--me 1` is index 0, the
+  range shown and checked is 1-256, the default is 1, and `--help` says
+  so. Every other index (keyer, DSK, aux, slot, player, ...) is the
+  field's own, from 0, as before.
+- **Sources** (`source` kind: program, preview, aux, keyer and DSK fill
+  and key, dip, wipe border, DVE fill and key, multiviewer windows,
+  SuperSource, Fairlight and classic audio sources, monitor solo, HyperDeck
+  input) take an id or one of the switcher's input names, long or short,
+  case-insensitive, surrounding spaces ignored (`atem.Resolver`,
+  `State.InputsNamed`). A name two inputs share is refused with both
+  listed. A numeric id is not checked against the inputs: audio sources
+  such as 1301 have no `InPr`. Names need the switcher's state, so they
+  resolve in the engine; `--dry-run` takes ids only.
+- **Rates** take frames or "seconds:frames", converted at `DisplayFPS` of
+  the session's state unless `--fps` is given (with `--dry-run`, `--fps`
+  or 25, atemwire's fallback). Deliberately stricter than atemwire's
+  `parse_rate`, which reads anything malformed as one second: the CLI
+  refuses a rate that isn't ASCII digits, optionally `:` and digits, and
+  (with the switcher's rate known) frames after the colon that aren't
+  under the display rate. A typo on the command line is an error, not a
+  silent default. `atem.ParseRate` itself is unchanged.
 - **The CLI** uses the standard library only. `bmdctl version` prints the
-  GoReleaser `-ldflags` version, else the build info. `bmdctl atem --help`
-  and `--help` after any group or command print that level's help;
-  `--host`, `--dry-run`, `--fps` and `--help` are accepted anywhere on the
-  line. Arguments are checked first, at `--fps` or the fallback rate, and
-  warnings for destructive and unverified commands go to stderr. Then:
+  GoReleaser `-ldflags` version, else the build info. The device word is
+  optional (`bmdctl program ...` is `bmdctl atem program ...`); help is
+  `--help` at any level. Global flags are accepted anywhere on the line:
+  `--host`, `--json`, `--quiet`/`-q`, `--yes`/`-y`, `--dry-run`, `--fps`,
+  `--timeout`, `--help`/`-h`. One-letter forms are single-dash only,
+  because parameters named `q` (EQ Q) and `y` (SuperSource, chroma
+  cursor) exist; a test keeps parameter names off the global flags. A
+  bool parameter given alone (`--on-air`) is true. Arguments are checked
+  first without a switcher (names and rates for their form only), then:
   - `--dry-run` prints the command's bytes (header included) as hex on
-    stdout and sends nothing, even with `--host`.
-  - `--host H` (`host` or `host:port`) dials the switcher (`Dial`, so up
-    to `ConnectTimeout`), rebuilds the command at the switcher's display
-    rate unless `--fps` was given, and sends it. A command with an echo
-    goes through `SendAndWait` and fails if the echo doesn't arrive within
-    5 s; one without is `Send` and left, as atemwire's `send()` leaves it
-    (the switcher's ACK isn't tracked). Then it closes the session.
-  - Neither is a usage error.
-
-  Exit codes: 0 done, 1 the command was refused (`Validate`) or the
-  switcher couldn't be reached or didn't echo it, 2 a usage error.
+    stdout and sends nothing, even with `--host`. Operations have none.
+  - Otherwise the command goes to the engine (below), which parses it
+    again against the switcher's state, sends it and waits for the echo.
+    A destructive command without `--yes` is refused before that, and
+    again by the engine. An unverified one prints a line saying so on
+    stderr, unless `--json`.
+- **Output.** `--json` prints each engine response line exactly as
+  received; `--quiet` prints nothing on stdout (errors still go to
+  stderr). Otherwise a result is one line: a wire command is its path, a
+  colour-free `confirmed` or `sent` (green and yellow on a terminal, none
+  with `NO_COLOR` or `TERM=dumb`), the time taken and the arguments as
+  sent (M/E from 1, sources with their names, enums by name). Operations
+  print one aligned line per row of their result.
+- **Exit codes** (phase 3): 0 done, 1 usage (including a command
+  `Validate` refuses) or any other failure, 2 the switcher or the engine
+  unreachable, 3 sent but not confirmed in time, 4 refused by the
+  switcher, 5 destructive without `--yes`. Phase 2's were 0, 1 refused or
+  unreachable, 2 usage.
 - **`docs/COMMANDS.md`** is generated by `Registry.Markdown`; the golden test
   in `cmd/bmdctl` fails when it is stale and `-update` rewrites it.
-- **Not yet:** source names (atemwire has no public source table, only
-  the macro codec's private one), read-modify-write operations (toggles,
-  `set_transition_rate`), and reading state from the CLI.
+
+## Engine (`internal/engine`)
+
+A background process holding one `atem.Session` per switcher, so a
+command costs a round trip instead of a connect and a whole state dump,
+and the switcher's live state is at hand to read a command line. It
+replaces atemwire's connection pool (`acquire_connection`, reference
+counts, a 2 s grace timer) with the policy phase 3 asked for: a session
+lives until 10 minutes pass without a request, unless pinned.
+
+- **Where.** `$BMDCTL_SOCKET`, else `$XDG_RUNTIME_DIR/bmdctl.sock`, else
+  `bmdctl-<uid>/bmdctl.sock` in `$TMPDIR` or `/tmp` (macOS and most
+  containers have no runtime dir). The directory is created 0700 and
+  refused if another user owns it; the socket is chmod 0600. A lock file
+  beside it (`bmdctl.sock.lock`, `flock` where the platform has it) keeps
+  two engines off one path; a socket left by a dead engine is removed. On
+  Windows it is the named pipe `\\.\pipe\bmdctl-<user>`, created with
+  `FILE_FLAG_FIRST_PIPE_INSTANCE` (a second engine fails), a DACL granting
+  only the user and SYSTEM, and `PIPE_REJECT_REMOTE_CLIENTS`, through
+  kernel32 and advapi32 directly: the standard library has no pipe API.
+  The Windows code is vetted with `GOOS=windows` but has never run.
+- **Starting.** A command that finds no engine runs
+  `bmdctl engine --background` detached (its own session, standard
+  streams on `/dev/null`, working directory `/`; on Windows
+  `DETACHED_PROCESS`, leaving the job object where allowed) and retries
+  for 5 s. Two commands racing both spawn; the loser finds the lock taken
+  and exits quietly. `bmdctl engine` runs one in the foreground for
+  systemd or Docker, logging to stderr as well. `bmdctl engine stop` asks
+  it to stop and waits for the socket to go; `bmdctl engine status`
+  reports its version, pid, socket, log and sessions.
+- **Protocol.** One request per connection, one JSON object per line. In:
+  `{v, device, host, path, params, files, yes, fps, timeout_ms}`, `params`
+  being the `--name value` pairs as typed. Out: `{ok, confirmed, result,
+  took_ms}` or `{ok:false, code, error}`, exactly those keys, preceded by
+  any `{"file": {param, name, data}}` frames. A streaming command sends a
+  response per result and ends with a failure or when the caller hangs
+  up. `v` is the protocol version (1); another is refused with code
+  `engine`, so a CLI and an engine built from different code can't
+  misread each other. The caller hanging up cancels its request.
+- **Files travel in the frames.** The engine may run where the caller's
+  files aren't (a container, a service), so the CLI reads every `file`
+  parameter and sends its bytes, and writes what comes back in file
+  frames: to the `out-file` parameter's path, beside it for a named
+  frame, or inside a `dir` parameter's directory. A frame name can't climb
+  out (`..`, absolute). The engine reads and writes no file but its log.
+- **Parsing happens in the engine**, against the session's state: the
+  display rate for rates, the input names for sources. The CLI's own
+  check beforehand only catches what needs no switcher.
+- **Sessions** are keyed by `host:port`, lower-cased, port 9910 by
+  default. Concurrent requests share one dial, made on the engine's
+  context (`ConnectTimeout`, 15 s), not a request's, so one caller giving
+  up doesn't fail the others. A session whose `Connected` has gone false
+  is replaced on the next request; one that is re-handshaking after a
+  silence is waited for (up to 15 s) before the state is read. The idle
+  clock starts when the last request using a session ends.
+- **Wire commands** are built and validated in the engine, then sent:
+  with an echo key through `SendAndWait`, waiting `timeout_ms` (default
+  5 s, `--timeout`), `confirmed` once it arrives; without one through
+  `Send`, `confirmed` false, as atemwire's `send()` leaves it. The result
+  is `{args, command, echo, state}`: the arguments for display, the
+  opcode, the key waited for and the echoed packet.
+- **Codes.** `usage` (exit 1), `unreachable` and `engine` (2), `no_echo`
+  (3), `rejected` (4), `destructive` (5). Session errors (`ErrClosed`,
+  `ErrDisconnected`, `ErrNotReady`) are `unreachable`; a command that
+  won't encode is `usage`.
+- **Log.** `$XDG_STATE_HOME/bmdctl/engine.log` (`~/.local/state`;
+  `%LocalAppData%\bmdctl` on Windows), slog text, one line per request
+  and per session event, rotated at 5 MiB keeping three old files. The
+  sessions log through it too, so `--log-level debug` shows the
+  transport.
+- **Stopping** closes the listener, cancels running requests and closes
+  every session, which says goodbye to each switcher; it waits up to 5 s
+  for requests to end.
 
 ## Fake switcher (`internal/fakeatem`, `internal/fixtures/dump`)
 

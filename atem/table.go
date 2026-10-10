@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -27,6 +28,97 @@ func RegisterCommands(r *table.Registry) error {
 		entries = append(entries, s.entry())
 	}
 	return r.Add(entries...)
+}
+
+// Resolver resolves the table's rates and sources against a switcher's
+// state. Unlike atemwire's parse_rate it refuses a malformed rate instead
+// of reading it as one second: a typo on the command line is an error,
+// not a silent default.
+type Resolver struct {
+	State State
+	// FPS is the display rate "seconds:frames" is counted in; 0 means
+	// DisplayFPS(State).
+	FPS int
+	// Offline accepts any source name, as source 0, and any frame count
+	// after the colon: for checking a command line before the switcher's
+	// names and frame rate are known.
+	Offline bool
+}
+
+// Rate reads "seconds:frames" or a frame count. Frames after the colon
+// must be under the display rate.
+func (r Resolver) Rate(s string) (int64, error) {
+	fps := r.FPS
+	if fps <= 0 {
+		fps = DisplayFPS(r.State)
+	}
+	sec, fr, colon := strings.Cut(strings.TrimSpace(s), ":")
+	if !allDigits(sec) || colon && !allDigits(fr) {
+		return 0, fmt.Errorf("not seconds:frames or a frame count")
+	}
+	if colon && !r.Offline {
+		if n, err := strconv.Atoi(fr); err != nil || n >= fps {
+			return 0, fmt.Errorf("%s frames is not under the display rate, %d fps", fr, fps)
+		}
+	}
+	return int64(ParseRate(s, fps)), nil
+}
+
+func allDigits(s string) bool {
+	if s == "" || len(s) > 9 {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// Source reads a source id, or the long or short name of one of the
+// switcher's inputs, case-insensitively.
+func (r Resolver) Source(s string) (uint64, error) {
+	s = strings.TrimSpace(s)
+	if allDigits(s) {
+		n, _ := strconv.ParseUint(s, 10, 64)
+		return n, nil // the caller checks the range
+	}
+	if s == "" {
+		return 0, fmt.Errorf("empty source")
+	}
+	if r.Offline {
+		return 0, nil
+	}
+	ids := r.State.InputsNamed(s)
+	switch len(ids) {
+	case 0:
+		if len(r.State.Inputs) == 0 {
+			return 0, fmt.Errorf("no input names known: give the source id")
+		}
+		return 0, fmt.Errorf("no input is named %q", s)
+	case 1:
+		return uint64(ids[0]), nil
+	}
+	var cands []string
+	for _, id := range ids {
+		cands = append(cands, fmt.Sprintf("%d (%s)", id, strings.TrimSpace(r.State.Inputs[id].Name)))
+	}
+	return 0, fmt.Errorf("%q names more than one input: %s", s, strings.Join(cands, ", "))
+}
+
+// InputsNamed returns, in id order, the inputs whose long or short name is
+// name, ignoring case and surrounding spaces.
+func (s State) InputsNamed(name string) []uint16 {
+	name = strings.TrimSpace(name)
+	var ids []uint16
+	for id, in := range s.Inputs {
+		if in != nil && (strings.EqualFold(strings.TrimSpace(in.Name), name) || strings.EqualFold(strings.TrimSpace(in.ShortName), name)) {
+			ids = append(ids, id)
+		}
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 // spec is one command's entry before it is turned into a table.Entry.
@@ -55,7 +147,7 @@ func (s spec) entry() table.Entry {
 		if !ok && s.build == nil {
 			panic(fmt.Sprintf("atem table: %s has no field %s", t.Name(), p.field))
 		}
-		if ok && (p.Kind == table.Uint || p.Kind == table.Int || p.Kind == table.Rate || p.Kind == table.Enum) && p.Min == nil {
+		if ok && (p.Kind == table.Uint || p.Kind == table.Int || p.Kind == table.Rate || p.Kind == table.Enum || p.Kind == table.Source) && p.Min == nil {
 			p.Min, p.Max = fieldRange(f.Type)
 		}
 		if ok && f.Type.Kind() == reflect.Pointer && !p.Required && p.Default == "" {
@@ -158,11 +250,13 @@ func def(name, field string, kind table.Kind, value, help string) fp {
 
 func names(p fp, n map[string]uint64) fp { p.Names = n; return p }
 
+func oneBased(p fp) fp { p.OneBased = true; return p }
+
 var (
-	pME          = def("me", "ME", table.Uint, "0", "M/E, 0-based")
+	pME          = oneBased(def("me", "ME", table.Uint, "1", "M/E (the library's ME field counts from 0)"))
 	pKeyer       = req("keyer", "Keyer", table.Uint, "", "upstream keyer, 0-based")
 	pDSK         = def("dsk", "DSK", table.Uint, "0", "downstream keyer, 0-based")
-	pSource      = req("source", "Source", table.Uint, "", "source id")
+	pSource      = req("source", "Source", table.Source, "", "source id or input name")
 	pMultiviewer = def("multiviewer", "Multiviewer", table.Uint, "0", "multiviewer, 0-based")
 	pSuperSource = def("supersource", "SuperSource", table.Uint, "0", "SuperSource, 0-based")
 )
@@ -219,7 +313,7 @@ func videoModeNames() map[string]uint64 {
 func stripParams() []fp {
 	ch := req("channel", "Channel", table.Int, "", "-1 for a stereo strip, 0 or 1 for a split-mono half")
 	ch.Min, ch.Max = table.Bounds(-128, 127)
-	return []fp{req("source", "Source", table.Uint, "", "input source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack)"), ch}
+	return []fp{req("source", "Source", table.Source, "", "audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name"), ch}
 }
 
 func commandSpecs() []spec {
@@ -244,12 +338,12 @@ func commandSpecs() []spec {
 		{path: "transition mix", summary: "Set the mix transition's rate.", cmd: MixSettings{}, echo: "TMxP:<me>",
 			params: []fp{pME, req("rate", "Rate", table.Rate, unitFrames, "rate")}},
 		{path: "transition dip", summary: "Set the dip transition.", cmd: DipSettings{}, echo: "TDpP:<me>", params: []fp{pME,
-			opt("rate", "Rate", table.Rate, unitFrames, "rate"), opt("source", "Source", table.Uint, "", "dip source")}},
+			opt("rate", "Rate", table.Rate, unitFrames, "rate"), opt("source", "Source", table.Source, "", "dip source")}},
 		{path: "transition wipe", summary: "Set the wipe transition.", cmd: WipeSettings{}, echo: "TWpP:<me>", params: []fp{pME,
 			opt("rate", "Rate", table.Rate, unitFrames, "rate"),
 			names(opt("pattern", "Pattern", table.Enum, "", "wipe pattern"), wipePatterns),
 			opt("width", "Width", table.Float, unitPercent, "border width"),
-			opt("source", "Source", table.Uint, "", "border fill source"),
+			opt("source", "Source", table.Source, "", "border fill source"),
 			opt("symmetry", "Symmetry", table.Float, unitPercent, "symmetry"),
 			opt("softness", "Softness", table.Float, unitPercent, "softness"),
 			opt("position-x", "PositionX", table.Float, unitUnit, "horizontal position"),
@@ -260,8 +354,8 @@ func commandSpecs() []spec {
 			opt("logo-rate", "LogoRate", table.Uint, "frames", "graphic logo-wipe rate (no atemwire operation sets it)"),
 			opt("rate", "Rate", table.Rate, unitFrames, "DVE rate"),
 			names(opt("style", "Style", table.Enum, "", "DVE effect"), dveStyles),
-			opt("fill-source", "FillSource", table.Uint, "", "fill source"),
-			opt("key-source", "KeySource", table.Uint, "", "key source"),
+			opt("fill-source", "FillSource", table.Source, "", "fill source"),
+			opt("key-source", "KeySource", table.Source, "", "key source"),
 			opt("key-enable", "KeyEnable", table.Bool, "", "enable the key"),
 			opt("premultiplied", "KeyPremultiplied", table.Bool, "", "pre-multiplied key"),
 			opt("clip", "KeyClip", table.Float, unitClipGain, "key clip"),
@@ -507,7 +601,7 @@ func commandSpecs() []spec {
 		{path: "audio monitor", summary: "Set the classic audio mixer's monitor.", cmd: AudioMonitorProperties{}, echo: "AMmO",
 			params: []fp{opt("enabled", "Enabled", table.Bool, "", "monitor on"), opt("volume", "Volume", table.Uint, "", "volume"),
 				opt("mute", "Mute", table.Bool, "", "mute"), opt("solo", "Solo", table.Bool, "", "solo"),
-				opt("solo-source", "SoloSource", table.Uint, "", "solo source"), opt("dim", "Dim", table.Bool, "", "dim"),
+				opt("solo-source", "SoloSource", table.Source, "", "solo source"), opt("dim", "Dim", table.Bool, "", "dim"),
 				opt("dim-volume", "DimVolume", table.Uint, "", "dim volume")}},
 		{path: "audio levels", summary: "Start or stop the classic mixer's meter stream.", cmd: SendAudioLevels{},
 			params: []fp{req("enable", "Enable", table.Bool, "", "stream meters")}},
@@ -525,7 +619,7 @@ func commandSpecs() []spec {
 		{path: "hyperdeck", summary: "Bind a HyperDeck slot to an address and an input.", cmd: HyperdeckSettings{}, echo: "RXMS:<slot>",
 			params: []fp{req("slot", "Slot", table.Uint, "", "HyperDeck slot, 0-9"),
 				opt("address", "NetworkAddress", table.String, "", "deck IPv4 address; 0.0.0.0 clears the slot"),
-				opt("input", "SwitcherInput", table.Uint, "", "switcher input the deck feeds")}},
+				opt("input", "SwitcherInput", table.Source, "", "switcher input the deck feeds")}},
 
 		// §1.14 multiviewer
 		{path: "multiviewer input", summary: "Route a source to a multiviewer window.", cmd: MultiviewInput{}, echo: "MvIn:<multiviewer>:<window>",
@@ -538,15 +632,15 @@ func commandSpecs() []spec {
 		// §1.15 supersource
 		{path: "supersource box", summary: "Set a SuperSource box.", cmd: SupersourceBoxProperties{}, echo: "SSBP:<supersource>:<box>",
 			params: []fp{pSuperSource, req("box", "Box", table.Uint, "", "box, 0-3"), opt("enabled", "Enabled", table.Bool, "", "box on"),
-				opt("source", "Source", table.Uint, "", "source"), opt("x", "X", table.Int, "-4800-4800", "x"),
+				opt("source", "Source", table.Source, "", "source"), opt("x", "X", table.Int, "-4800-4800", "x"),
 				opt("y", "Y", table.Int, "-3400-3400", "y"), opt("size", "Size", table.Uint, "70-1000", "size"),
 				opt("masked", "Masked", table.Bool, "", "crop on"), opt("top", "Top", table.Uint, "0-18000", "crop top"),
 				opt("bottom", "Bottom", table.Uint, "0-18000", "crop bottom"), opt("left", "Left", table.Uint, "0-32000", "crop left"),
 				opt("right", "Right", table.Uint, "0-32000", "crop right")}},
 		{path: "supersource properties", summary: "Set SuperSource's art fill, key and layer.", cmd: SupersourceProperties{},
 			echo: "SSrc:<supersource>",
-			params: []fp{pSuperSource, opt("fill-source", "FillSource", table.Uint, "", "art fill source"),
-				opt("key-source", "KeySource", table.Uint, "", "art key source"),
+			params: []fp{pSuperSource, opt("fill-source", "FillSource", table.Source, "", "art fill source"),
+				opt("key-source", "KeySource", table.Source, "", "art key source"),
 				names(opt("layer", "Layer", table.Enum, "", "art layer"), ssLayers),
 				opt("premultiplied", "Premultiplied", table.Bool, "", "pre-multiplied key"),
 				opt("clip", "Clip", table.Uint, "0-1000", "clip"), opt("gain", "Gain", table.Uint, "0-1000", "gain"),

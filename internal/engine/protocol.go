@@ -1,0 +1,221 @@
+// SPDX-License-Identifier: MIT
+
+package engine
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"time"
+)
+
+// Version is the request protocol's version. The engine refuses a request
+// carrying another one, so a CLI never talks to an engine built from
+// different code without knowing it.
+const Version = 1
+
+// maxFrame bounds one frame, request or reply. A frame can carry a still
+// or a profile's media pool, base64 encoded.
+const maxFrame = 1 << 30
+
+// Request is what the CLI sends: one JSON object on one line.
+type Request struct {
+	V      int    `json:"v"`
+	Device string `json:"device"`         // "atem", or "engine" for the engine itself
+	Host   string `json:"host,omitempty"` // "host" or "host:port"
+	Path   string `json:"path"`           // the command's words: "transition wipe"
+	// Params are the command's --name value pairs, as typed.
+	Params map[string]string `json:"params,omitempty"`
+	// Files holds the contents of the files the command reads, by
+	// parameter name, read by the CLI: the engine may run where the
+	// caller's files aren't (a container, another user's service).
+	Files map[string][]byte `json:"files,omitempty"`
+	// Yes allows a destructive command.
+	Yes bool `json:"yes,omitempty"`
+	// FPS, if set, is the display rate for "seconds:frames" rates
+	// instead of the switcher's.
+	FPS int `json:"fps,omitempty"`
+	// TimeoutMS bounds the wait for the switcher's echo; 0 means 5 s.
+	TimeoutMS int64 `json:"timeout_ms,omitempty"`
+}
+
+// Error codes, each with its own exit status in the CLI.
+const (
+	CodeUsage       = "usage"       // the request is wrong: exit 1
+	CodeUnreachable = "unreachable" // no switcher, or no engine: exit 2
+	CodeNoEcho      = "no_echo"     // sent, not confirmed in time: exit 3
+	CodeRejected    = "rejected"    // the switcher refused it: exit 4
+	CodeDestructive = "destructive" // needs Yes: exit 5
+)
+
+// Response is the engine's answer: {ok, confirmed, result, took_ms} on
+// success, {ok:false, code, error} on failure. A streaming command
+// sends one success per result and ends with a failure or by the caller
+// hanging up.
+type Response struct {
+	OK        bool
+	Confirmed bool // the switcher reported the change back
+	Result    any  // a json.RawMessage when read by Call
+	TookMS    int64
+	Code      string
+	Error     string
+}
+
+// MarshalJSON writes exactly the fields of the response's shape.
+func (r Response) MarshalJSON() ([]byte, error) {
+	if !r.OK {
+		return json.Marshal(struct {
+			OK    bool   `json:"ok"`
+			Code  string `json:"code"`
+			Error string `json:"error"`
+		}{false, r.Code, r.Error})
+	}
+	return json.Marshal(struct {
+		OK        bool  `json:"ok"`
+		Confirmed bool  `json:"confirmed"`
+		Result    any   `json:"result"`
+		TookMS    int64 `json:"took_ms"`
+	}{true, r.Confirmed, r.Result, r.TookMS})
+}
+
+// UnmarshalJSON reads either shape; Result stays raw JSON.
+func (r *Response) UnmarshalJSON(b []byte) error {
+	var w struct {
+		OK        bool            `json:"ok"`
+		Confirmed bool            `json:"confirmed"`
+		Result    json.RawMessage `json:"result"`
+		TookMS    int64           `json:"took_ms"`
+		Code      string          `json:"code"`
+		Error     string          `json:"error"`
+	}
+	if err := json.Unmarshal(b, &w); err != nil {
+		return err
+	}
+	*r = Response{OK: w.OK, Confirmed: w.Confirmed, TookMS: w.TookMS, Code: w.Code, Error: w.Error}
+	if len(w.Result) > 0 {
+		r.Result = w.Result
+	}
+	return nil
+}
+
+// FileFrame carries a file the command produced, before its response.
+// Param names the parameter it belongs to. Name is empty for the file the
+// parameter names, or a relative slash-separated path: inside the
+// directory a Dir parameter names, or beside the file an OutFile
+// parameter names.
+type FileFrame struct {
+	Param string `json:"param"`
+	Name  string `json:"name,omitempty"`
+	Data  []byte `json:"data"`
+}
+
+// frame is one line from the engine: a file or a response.
+type frame struct {
+	File *FileFrame `json:"file,omitempty"`
+}
+
+// Error is a failure with its code.
+type Error struct {
+	Code string
+	Err  error
+}
+
+func (e *Error) Error() string { return e.Err.Error() }
+func (e *Error) Unwrap() error { return e.Err }
+
+func codeErr(code string, format string, args ...any) error {
+	return &Error{code, fmt.Errorf(format, args...)}
+}
+
+// CodeOf returns err's code: its own, or CodeUsage.
+func CodeOf(err error) string {
+	var e *Error
+	if errors.As(err, &e) {
+		return e.Code
+	}
+	return CodeUsage
+}
+
+// Call sends req over conn and passes every frame of the reply to onFrame:
+// the raw line, and the file or the response in it. It returns the last
+// response, or an error if the engine hung up before sending one. A
+// streaming reply ends when the engine closes the connection or ctx ends.
+func Call(ctx context.Context, conn io.ReadWriteCloser, req Request, onFrame func(line []byte, f *FileFrame, r *Response) error) (Response, error) {
+	req.V = Version
+	b, err := json.Marshal(req)
+	if err != nil {
+		return Response{}, err
+	}
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
+	if _, err := conn.Write(append(b, '\n')); err != nil {
+		return Response{}, codeErr(CodeUnreachable, "engine: %v", err)
+	}
+	br := bufio.NewReaderSize(conn, 64<<10)
+	var last *Response
+	for {
+		line, err := readLine(br)
+		if err != nil {
+			if ctx.Err() != nil {
+				return Response{}, ctx.Err()
+			}
+			if last != nil && errors.Is(err, io.EOF) {
+				return *last, nil
+			}
+			return Response{}, codeErr(CodeUnreachable, "engine hung up: %v", err)
+		}
+		var f frame
+		if err := json.Unmarshal(line, &f); err != nil {
+			return Response{}, fmt.Errorf("engine: bad frame: %v", err)
+		}
+		if f.File != nil {
+			if err := onFrame(line, f.File, nil); err != nil {
+				return Response{}, err
+			}
+			continue
+		}
+		var r Response
+		if err := json.Unmarshal(line, &r); err != nil {
+			return Response{}, fmt.Errorf("engine: bad response: %v", err)
+		}
+		if err := onFrame(line, nil, &r); err != nil {
+			return Response{}, err
+		}
+		last = &r
+	}
+}
+
+func readLine(br *bufio.Reader) ([]byte, error) {
+	var buf bytes.Buffer
+	for {
+		chunk, err := br.ReadSlice('\n')
+		buf.Write(chunk)
+		if buf.Len() > maxFrame {
+			return nil, errors.New("frame too long")
+		}
+		if err == nil {
+			return bytes.TrimRight(buf.Bytes(), "\r\n"), nil
+		}
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			if err == io.EOF && buf.Len() > 0 {
+				return nil, io.ErrUnexpectedEOF
+			}
+			return nil, err
+		}
+	}
+}
+
+// timeout is a request's echo wait.
+func (r Request) timeout() time.Duration {
+	if r.TimeoutMS > 0 {
+		return time.Duration(r.TimeoutMS) * time.Millisecond
+	}
+	return DefaultEchoTimeout
+}
+
+// DefaultEchoTimeout bounds the wait for a command's echo.
+const DefaultEchoTimeout = 5 * time.Second

@@ -12,15 +12,16 @@ protocols directly: no Blackmagic software, SDK or driver is involved.
 
 Early. The ATEM package has its wire layer: the UDP transport, a session
 that tracks the switcher's state, every state packet atemwire parses and
-every command it can send. The CLI sends any of those commands to the
-switcher you name, or prints the bytes it would send. The library also
-moves stills and macros to and from the switcher, encodes and decodes
-macros, and saves and applies ASC-style profiles. The other devices come
-later.
+every command it can send. The library also moves stills and macros to
+and from the switcher, encodes and decodes macros, and saves and applies
+ASC-style profiles. The CLI runs its commands through a background
+engine that keeps a session open to each switcher; the first command
+starts it. The other devices come later.
 
 ```
-$ bmdctl atem --host 10.0.0.20 program --source 5
-$ bmdctl atem --dry-run transition wipe --me 0 --width 50 --pattern CircleIris
+$ bmdctl --host 10.0.0.20 program --source "Camera 2"
+program                  confirmed    14 ms  me 1, source 2 (Camera 2)
+$ bmdctl --dry-run transition wipe --width 50 --pattern CircleIris
 001c0000435457700006000007001388000000000000000000000000
 ```
 

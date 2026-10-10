@@ -27,20 +27,25 @@ type Command interface {
 type Kind int
 
 const (
-	Uint   Kind = iota // a non-negative integer
-	Int                // an integer
-	Float              // a decimal number (NaN and Inf parse, and are the command's to refuse)
-	Bool               // true/false, on/off, yes/no, 1/0
-	String             // any text
-	Enum               // one of Names, or the number itself
-	Flags              // comma-separated Names, or the number itself; values are OR-ed
-	Rate               // "seconds:frames" or a frame count, converted at the display frame rate
-	Time               // RFC 3339, Unix seconds, or "now"
-	List               // comma-separated values; the entry's Build interprets them
+	Uint    Kind = iota // a non-negative integer
+	Int                 // an integer
+	Float               // a decimal number (NaN and Inf parse, and are the command's to refuse)
+	Bool                // true/false, on/off, yes/no, 1/0
+	String              // any text
+	Enum                // one of Names, or the number itself
+	Flags               // comma-separated Names, or the number itself; values are OR-ed
+	Rate                // "seconds:frames" or a frame count, converted at the display frame rate
+	Time                // RFC 3339, Unix seconds, or "now"
+	List                // comma-separated values; the entry's Build interprets them
+	Source              // a source id, or an input's name, which the Resolver looks up
+	File                // a file the CLI reads and sends with the request; "-" is stdin
+	OutFile             // a file the CLI writes from the response; "-" is stdout
+	Dir                 // a directory the CLI writes the response's files into
 )
 
 func (k Kind) String() string {
-	return [...]string{"uint", "int", "float", "bool", "string", "enum", "flags", "rate", "time", "list"}[k]
+	return [...]string{"uint", "int", "float", "bool", "string", "enum", "flags", "rate", "time", "list",
+		"source", "file", "file", "dir"}[k]
 }
 
 // Param is one parameter of an entry.
@@ -53,6 +58,9 @@ type Param struct {
 	Required bool              // must be given
 	Default  string            // used when not given (implies not required)
 	Names    map[string]uint64 // Enum and Flags values by name
+	// OneBased: the command line counts from 1 where the field counts
+	// from 0 (--me 1 is M/E index 0). Min and Max are the field's range.
+	OneBased bool
 }
 
 // Entry is one command.
@@ -61,8 +69,16 @@ type Entry struct {
 	Path    string // space-separated words after the device: "transition wipe"
 	Summary string // one line
 	Params  []Param
-	// Build makes the command from parsed arguments.
+	// Build makes the command from parsed arguments. Nil for an
+	// operation.
 	Build func(Args) (Command, error)
+	// Operation: not one wire command but something the device's engine
+	// runs by path: reading state, a transfer, a read-modify-write.
+	Operation bool
+	// Local: an operation that needs no device; the CLI runs it itself.
+	Local bool
+	// Stream: the operation answers with results until it is stopped.
+	Stream bool
 	// Echo documents the state the device reports back, with parameter
 	// names in angle brackets: "PrgI:<me>". Empty when there is none.
 	Echo        string
@@ -87,8 +103,11 @@ func New() *Registry { return &Registry{} }
 // Add adds entries, refusing duplicates and malformed parameters.
 func (r *Registry) Add(entries ...Entry) error {
 	for _, e := range entries {
-		if e.Device == "" || e.Path == "" || e.Build == nil {
+		if e.Device == "" || e.Path == "" || (e.Build == nil) != e.Operation {
 			return fmt.Errorf("table: entry %q %q is incomplete", e.Device, e.Path)
+		}
+		if e.Local && !e.Operation {
+			return fmt.Errorf("table: %s %s: only an operation can be local", e.Device, e.Path)
 		}
 		for _, x := range r.entries {
 			if x.Device == e.Device && x.Path == e.Path {
@@ -106,6 +125,9 @@ func (r *Registry) Add(entries ...Entry) error {
 			seen[p.Name] = true
 			if (p.Kind == Enum || p.Kind == Flags) && len(p.Names) == 0 {
 				return fmt.Errorf("table: %s %s: %s has no names", e.Device, e.Path, p.Name)
+			}
+			if p.OneBased && p.Kind != Uint {
+				return fmt.Errorf("table: %s %s: %s: only a uint can be one-based", e.Device, e.Path, p.Name)
 			}
 		}
 		r.entries = append(r.entries, e)
@@ -135,6 +157,17 @@ func (r *Registry) Entries(device string) []Entry {
 	}
 	slices.SortFunc(es, func(a, b Entry) int { return strings.Compare(a.Path, b.Path) })
 	return es
+}
+
+// Find returns the entry with exactly this path, or nil.
+func (r *Registry) Find(device, path string) *Entry {
+	for i := range r.entries {
+		if r.entries[i].Device == device && r.entries[i].Path == path {
+			e := r.entries[i]
+			return &e
+		}
+	}
+	return nil
 }
 
 // Resolve finds the entry the leading words name. It returns the entry
@@ -194,9 +227,19 @@ type Args struct {
 // Has reports whether name was given (or has a default).
 func (a Args) Has(name string) bool { _, ok := a.values[name]; return ok }
 
-// Value returns name's parsed value: uint64 (Uint, Enum, Flags), int64
-// (Int, Rate), float64, bool, string, time.Time or []string (List).
+// Value returns name's parsed value: uint64 (Uint, Enum, Flags, Source),
+// int64 (Int, Rate), float64, bool, string (String, File, OutFile, Dir),
+// time.Time or []string (List). A one-based Uint is the field's value,
+// one less than what was typed.
 func (a Args) Value(name string) any { return a.values[name] }
+
+// Set sets name's value, for callers that build Args themselves.
+func (a *Args) Set(name string, v any) {
+	if a.values == nil {
+		a.values = map[string]any{}
+	}
+	a.values[name] = v
+}
 
 // ErrUsage marks errors in what the user typed.
 var ErrUsage = errors.New("usage")
@@ -205,10 +248,20 @@ func usagef(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrUsage, fmt.Sprintf(format, args...))
 }
 
+// Resolver converts the values whose meaning depends on the device: a
+// rate's frames depend on its frame rate, a source name on its inputs.
+// Errors are reported as usage errors.
+type Resolver interface {
+	// Rate converts "seconds:frames" or a frame count to frames.
+	Rate(s string) (int64, error)
+	// Source converts a source id or name to an id.
+	Source(s string) (uint64, error)
+}
+
 // Parse turns raw "--name value" pairs into Args for e, applying
-// defaults and checking that required parameters are present. parseRate
-// converts a Rate value to frames.
-func (e Entry) Parse(raw map[string]string, parseRate func(string) int) (Args, error) {
+// defaults and checking that required parameters are present. res
+// converts rates and sources.
+func (e Entry) Parse(raw map[string]string, res Resolver) (Args, error) {
 	a := Args{values: map[string]any{}}
 	for name := range raw {
 		if !slices.ContainsFunc(e.Params, func(p Param) bool { return p.Name == name }) {
@@ -229,7 +282,7 @@ func (e Entry) Parse(raw map[string]string, parseRate func(string) int) (Args, e
 		} else if !p.Required && p.Default == "" {
 			given++
 		}
-		v, err := p.parse(s, parseRate)
+		v, err := p.parse(s, res)
 		if err != nil {
 			return a, usagef("--%s %q: %v", p.Name, s, err)
 		}
@@ -251,12 +304,18 @@ func (e Entry) optional() []string {
 	return out
 }
 
-func (p Param) parse(s string, parseRate func(string) int) (any, error) {
+func (p Param) parse(s string, res Resolver) (any, error) {
 	switch p.Kind {
 	case Uint:
 		n, err := strconv.ParseUint(s, 0, 64)
 		if err != nil {
 			return nil, errors.New("not a non-negative integer")
+		}
+		if p.OneBased {
+			if n == 0 {
+				return nil, fmt.Errorf("out of range %s (counted from 1)", p.Range())
+			}
+			n--
 		}
 		return n, p.inRange(float64(n))
 	case Int:
@@ -304,8 +363,22 @@ func (p Param) parse(s string, parseRate func(string) int) (any, error) {
 		}
 		return v, nil
 	case Rate:
-		n := parseRate(s)
-		return int64(n), p.inRange(float64(n))
+		n, err := res.Rate(s)
+		if err != nil {
+			return nil, err
+		}
+		return n, p.inRange(float64(n))
+	case Source:
+		n, err := res.Source(s)
+		if err != nil {
+			return nil, err
+		}
+		return n, p.inRange(float64(n))
+	case File, OutFile, Dir:
+		if s == "" {
+			return nil, errors.New("empty path")
+		}
+		return s, nil
 	case Time:
 		if s == "now" {
 			return time.Now(), nil
@@ -334,20 +407,34 @@ func (p Param) inRange(f float64) error {
 	return nil
 }
 
-// Range describes the accepted range, or "".
+// Range describes the accepted range as typed on the command line, or "".
 func (p Param) Range() string {
+	lo, hi := p.Min, p.Max
+	if p.OneBased {
+		if lo != nil {
+			lo = ptr(*lo + 1)
+		}
+		if hi != nil {
+			hi = ptr(*hi + 1)
+		}
+	}
 	switch {
-	case p.Min != nil && p.Max != nil && *p.Min < 0:
-		return trim(*p.Min) + " to " + trim(*p.Max)
-	case p.Min != nil && p.Max != nil:
-		return trim(*p.Min) + "-" + trim(*p.Max)
-	case p.Min != nil:
-		return ">= " + trim(*p.Min)
-	case p.Max != nil:
-		return "<= " + trim(*p.Max)
+	case lo != nil && hi != nil && *lo < 0:
+		return trim(*lo) + " to " + trim(*hi)
+	case lo != nil && hi != nil:
+		return trim(*lo) + "-" + trim(*hi)
+	case lo != nil:
+		return ">= " + trim(*lo)
+	case hi != nil:
+		return "<= " + trim(*hi)
 	}
 	return ""
 }
+
+func ptr(f float64) *float64 { return &f }
+
+// SortedNames returns an Enum's or Flags' names in value order.
+func (p Param) SortedNames() []string { return p.names() }
 
 func (p Param) names() []string {
 	var ns []string
