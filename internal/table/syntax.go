@@ -208,10 +208,16 @@ func (e *NoCommand) Error() string {
 // no command as typed is read with the word the alias stands for.
 func (r *Registry) ParseLine(device string, words, tokens []string) (*Entry, map[string]string, error) {
 	e, raw, err := r.parseLine(device, words, tokens)
-	var nc *NoCommand
+	var nc, alias *NoCommand
 	if alt, ok := r.Unalias(device, words); ok && errors.As(err, &nc) {
-		if e, raw, err := r.parseLine(device, alt, tokens); !errors.As(err, &nc) {
+		e, raw, err := r.parseLine(device, alt, tokens)
+		if !errors.As(err, &alias) {
 			return e, raw, err
+		}
+		// Naming no command either way, the words get the group the
+		// alias leads to, if it goes further.
+		if len(alias.Prefix) > len(nc.Prefix) {
+			return nil, nil, &NoCommand{Words: words, Prefix: alias.Prefix, Partial: alias.Partial}
 		}
 	}
 	return e, raw, err

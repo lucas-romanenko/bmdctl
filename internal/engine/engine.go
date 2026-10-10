@@ -315,6 +315,9 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	if err != nil {
 		return nil, false, usageErr(err)
 	}
+	if err := c.forMixer(e.cfg.Registry); err != nil {
+		return nil, false, err
+	}
 	if err := c.checkIndices(); err != nil {
 		return nil, false, err
 	}

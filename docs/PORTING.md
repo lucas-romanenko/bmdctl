@@ -890,18 +890,46 @@ and a zero value selects nothing.
     <source>`, `keyer 5: M/E 1 has 4 upstream keyers`) and a flag as
     `--name`.
   - **Fairlight `--channel`** defaults to -1, a stereo strip, where it
-    was required: `fairlight strip cam1 --volume -10` reads as said, and
+    was required: `audio strip cam1 --volume -10` reads as said, and
     a split-mono half is `--channel 0` or `1`.
-  - **`audio` is a hidden second name for `fairlight`**, not in bmdwire
-    v1.3.0: `audio strip cam1 --volume -10` is `fairlight strip`. The
-    classic mixer's commands already start with `audio` (`audio input`,
-    `audio master`, `audio monitor`, `audio levels`, and the `audio
-    meters` operation), so the alias stands for `fairlight` only where a
-    line names none of them (`Registry.Alias`; `ParseLine` and `Next`
-    try the line as typed first). `audio master` stays the classic
-    mixer's master: `fairlight master` has to be said. Help, completion's
-    lists and `docs/COMMANDS.md` don't show the alias; once given, its
-    arguments complete and its `--help` is the Fairlight command's.
+  - **`audio` is the Fairlight group, `classic-audio` the classic
+    mixer's** (after the first hardware run; atemwire's tables call
+    them fairlight and audio-legacy). `audio strip`, `audio eq`, `audio
+    master` and the rest are Fairlight's; `classic-audio input`,
+    `master`, `monitor`, `levels` and `meters` the classic mixer's.
+    `fairlight` is a hidden second name for `audio` (`Registry.Alias`:
+    it stands for `audio` wherever a line names no command of its own,
+    which is every line; help, completion's lists and
+    `docs/COMMANDS.md` leave it out, while `fairlight strip <Tab>`
+    completes and `fairlight --help` is the audio group's). A line that
+    names no command either way gets the deeper of the two groups for
+    its help.
+  - **Where both mixers have a command** (master, levels, meters),
+    `audio` sends the one the switcher has and `classic-audio` forces
+    the classic one. The switcher's mixer (`engine.Mixer`, also `info`'s
+    `audio`) is the one whose capabilities it sent: `_FAC` for Fairlight,
+    `_AMC` for the classic mixer, which atemwire doesn't parse and keeps
+    raw (`State.Raw`). Failing both, it is the mixer whose state it sent
+    (`FAMP`/`FAIP` or `AMMO`/`AMIP`); the topology (`_top`) says nothing
+    about audio. On a classic switcher the engine (`forMixer`, after the
+    arguments parse) sends `classic-audio master` for `audio master` and
+    `classic-audio levels` for `audio levels`, with the same arguments:
+    a Fairlight-only one (`--eq`, `--eq-gain`, `--makeup`) is refused,
+    naming the classic command, and `--volume`, in dB as Fairlight's is,
+    goes on the classic mixer's scale, which atemwire leaves raw (0-65381):
+    32768 × 10^(dB/20), rounded, 32768 being 0 dB and 65381 +6 dB, the
+    classic fader's top; -inf and anything below the scale are 0. (The
+    scale is the one the classic mixer's u16 is known to hold; it is
+    unconfirmed on hardware, as the classic commands are.)
+    `classic-audio master --volume` stays atemwire's raw value. The
+    result says what was sent (`CommandResult.Sent`, `"sent":
+    "classic-audio master"` in `--json`, and the result line names it,
+    with its arguments as sent), and the CLI prints the unverified notice
+    for it then, since it could not know before sending. `audio meters`
+    reads whichever mixer the switcher has, `classic-audio meters` the
+    classic one's. `--dry-run`, with no switcher, encodes the Fairlight
+    command for `audio master` and `audio levels`; `classic-audio` gives
+    the classic bytes.
 - **Two kinds of entry.** A wire command has a `Build` that makes one
   `atem.Command`. An *operation* (phase 3) has none: the engine runs it by
   path (reading state, a transfer, a read-modify-write); a `Local` one
@@ -915,7 +943,7 @@ and a zero value selects nothing.
 - **One entry per wire command**, 75 of them: every command except the
   seven lock and file-transfer ones (§1.19), which a CLI reaches only
   through transfers. Paths group by SURFACE §1 table: `program`,
-  `transition wipe`, `usk dve`, `fairlight strip`, ... Each parameter maps
+  `transition wipe`, `usk dve`, `audio strip`, ... Each parameter maps
   onto one command field and is set by reflection; integer ranges come from
   the field's Go type, so the table can't promise more than the wire holds.
   Camera control is the one hand-written builder (its `--data` values are
@@ -1277,10 +1305,10 @@ comes back. Indexes in results count from 1, as the flags do
   insists on `--direction`: its mask covers only the direction, and
   atemwire sends a plain run with a zero mask, so the table marks the
   entry `complete` rather than deriving "at least one".
-- **Group d, audio** (`ops_audio.go`). The Fairlight (`fairlight ...`)
-  and classic (`audio input|master|monitor|levels`) wire commands keep
-  their entries; Fairlight and classic sources take input names too.
-  `audio meters` is new: the switcher streams levels only to a client
+- **Group d, audio** (`ops_audio.go`). The Fairlight (`audio ...`)
+  and classic (`classic-audio input|master|monitor|levels`) wire
+  commands keep their entries (named as above); Fairlight and classic
+  sources take input names too. `audio meters` is new: the switcher streams levels only to a client
   that asked (`SFLN`, or `SALN` on the classic mixer), and atemwire
   stores `FMLv` bare, so the last strip's levels overwrite the others
   (SURFACE.md §5.4 item 6). The readout subscribes, turns the stream on,

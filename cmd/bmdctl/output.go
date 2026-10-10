@@ -130,21 +130,31 @@ func (p *printer) human(r engine.Response) []string {
 }
 
 // commandLine is a wire command's result: the command, whether the
-// switcher confirmed it, how long it took and what was sent.
+// switcher confirmed it, how long it took and what was sent. A command
+// the engine sent in place of the one asked for (classic-audio master for
+// audio master) is shown as itself, with the notice an unverified one
+// gets.
 func (p *printer) commandLine(r engine.Response, raw json.RawMessage) string {
 	var res engine.CommandResult
 	json.Unmarshal(raw, &res)
+	e := p.e
+	if sent := p.c.reg.Find(e.Device, res.Sent); sent != nil {
+		e = sent
+		if e.Unverified {
+			fmt.Fprintf(p.c.stderr, "bmdctl: %s %s is unverified on hardware: atemwire restored it from pyatem without checking it on a switcher\n", e.Device, e.Path)
+		}
+	}
 	status := p.c.colour(yellow, padRight("sent", 9))
 	if r.Confirmed {
 		status = p.c.colour(green, padRight("confirmed", 9))
 	}
 	var args []string
-	for _, prm := range p.e.Params {
+	for _, prm := range e.Params {
 		if v, ok := res.Args[prm.Name]; ok {
 			args = append(args, prm.Name+" "+v)
 		}
 	}
-	return strings.TrimRight(fmt.Sprintf("%-24s %s %5d ms  %s", p.e.Path, status, r.TookMS, strings.Join(args, ", ")), " ")
+	return strings.TrimRight(fmt.Sprintf("%-24s %s %5d ms  %s", e.Path, status, r.TookMS, strings.Join(args, ", ")), " ")
 }
 
 // isCommandResult reports whether an operation's result is one command

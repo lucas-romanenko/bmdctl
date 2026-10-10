@@ -78,64 +78,171 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 
 ## atem
 
-### `bmdctl atem audio input <source>`
+### `bmdctl atem audio compressor <source>`
 
-Set a classic audio mixer input.
+Set a Fairlight strip's compressor.
 
-**Unverified.** Give at least one flag. Echo: `AMIP:<source>.0`.
+Give at least one flag. Echo: `AICP:<source>.<channel>`.
 
 | argument | value | | |
 |---|---|---|---|
-| `<source>` | source, 0-65535 | required | source id or input name |
-| `--balance` | int, -32768 to 32767, ±10000 | optional | balance |
-| `--volume` | uint, 0-65535, 0-65381 | optional | volume |
-| `--on` | bool | optional | mix option on or off (wins over --afv) |
-| `--afv` | bool | optional | audio follows video |
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
+| `--enabled` | bool | optional | compressor on |
+| `--threshold` | float, dB, -60-0 | optional | threshold |
+| `--ratio` | float, 1.2-20 | optional | ratio |
+| `--attack` | float, ms, 0.7-100 | optional | attack |
+| `--hold` | float, ms, 0-4000 | optional | hold |
+| `--release` | float, ms, 50-4000 | optional | release |
+
+### `bmdctl atem audio eq <source> <band>`
+
+Set one EQ band of a Fairlight strip.
+
+Give at least one flag. Echo: `AEBP:<source>.<channel>:<band>`.
+
+| argument | value | | |
+|---|---|---|---|
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `<band>` | uint, 1-6, counted from 1 | required | EQ band |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
+| `--enabled` | bool | optional | band on |
+| `--shape` | enum, 0-255: LowShelf=1 LowPass=2 BandPass=4 Notch=8 HighPass=16 HighShelf=32 | optional | filter shape |
+| `--range` | enum, 0-255: Low=1 MidLow=2 MidHigh=4 High=8 | optional | frequency range |
+| `--frequency` | int, Hz, clamped to 30-21700 | optional | frequency |
+| `--gain` | float, dB, clamped to ±20 | optional | gain |
+| `--q` | float, clamped to 0.30-10.30 | optional | Q |
+
+### `bmdctl atem audio expander <source>`
+
+Set a Fairlight strip's expander or gate.
+
+Give at least one flag. Echo: `AIXP:<source>.<channel>`.
+
+| argument | value | | |
+|---|---|---|---|
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
+| `--enabled` | bool | optional | expander on |
+| `--mode` | enum, 0-255: expander=0 gate=1 | optional | mode |
+| `--threshold` | float, dB, -50-0 | optional | threshold |
+| `--range` | float, dB, 0-60 | optional | range |
+| `--ratio` | float, 1-3 | optional | ratio |
+| `--attack` | float, ms, 0.5-100 | optional | attack |
+| `--hold` | float, ms, 0-4000 | optional | hold |
+| `--release` | float, ms, 50-4000 | optional | release |
 
 ### `bmdctl atem audio levels <enable>`
 
-Start or stop the classic mixer's meter stream.
+Start or stop the meter streams, again after every reconnect; on a switcher with the classic mixer, sends classic-audio levels.
 
-**Unverified.** No echo.
+No echo.
 
 | argument | value | | |
 |---|---|---|---|
 | `<enable>` | bool | required | stream meters |
 
-### `bmdctl atem audio master`
+### `bmdctl atem audio limiter <source>`
 
-Set the classic audio mixer's master.
+Set a Fairlight strip's limiter.
 
-**Unverified.** Give at least one flag. Echo: `AMMO`.
+Give at least one flag. Echo: `AILP:<source>.<channel>`.
 
 | argument | value | | |
 |---|---|---|---|
-| `--volume` | uint, 0-65535, 0-65381 | optional | volume |
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
+| `--enabled` | bool | optional | limiter on |
+| `--threshold` | float, dB, -60-0 | optional | threshold |
+| `--attack` | float, ms, 0.7-30 | optional | attack |
+| `--hold` | float, ms, 0-4000 | optional | hold |
+| `--release` | float, ms, 50-4000 | optional | release |
+
+### `bmdctl atem audio master`
+
+Set the master bus; on a switcher with the classic mixer, sends classic-audio master.
+
+Give at least one flag. Echo: `FAMP`.
+
+| argument | value | | |
+|---|---|---|---|
+| `--eq` | bool | optional | EQ on (Fairlight only) |
+| `--eq-gain` | float, dB, clamped to ±20 | optional | EQ gain (Fairlight only) |
+| `--makeup` | float, dB, clamped to 0-20 | optional | dynamics make-up gain (Fairlight only) |
+| `--volume` | float, dB, clamped to -100-10 (-inf to +6 on the classic mixer); -inf is -100 | optional | fader level |
 | `--afv` | bool | optional | audio follows video |
+
+### `bmdctl atem audio master-compressor`
+
+Set the Fairlight master bus compressor.
+
+Give at least one flag. Echo: `MOCP`.
+
+| argument | value | | |
+|---|---|---|---|
+| `--enabled` | bool | optional | compressor on |
+| `--threshold` | float, dB | optional | threshold |
+| `--ratio` | float | optional | ratio |
+| `--attack` | float, ms | optional | attack |
+| `--hold` | float, ms | optional | hold |
+| `--release` | float, ms | optional | release |
+
+### `bmdctl atem audio master-eq <band>`
+
+Set one EQ band of the Fairlight master bus.
+
+Give at least one flag. Echo: `AMBP:<band>`.
+
+| argument | value | | |
+|---|---|---|---|
+| `<band>` | uint, 1-6, counted from 1 | required | EQ band |
+| `--enabled` | bool | optional | band on |
+| `--shape` | enum, 0-255: LowShelf=1 LowPass=2 BandPass=4 Notch=8 HighPass=16 HighShelf=32 | optional | filter shape |
+| `--range` | enum, 0-255: Low=1 MidLow=2 MidHigh=4 High=8 | optional | frequency range |
+| `--frequency` | int, Hz, clamped to 30-21700 | optional | frequency |
+| `--gain` | float, dB, clamped to ±20 | optional | gain |
+| `--q` | float, clamped to 0.30-10.30 | optional | Q |
+
+### `bmdctl atem audio master-limiter`
+
+Set the Fairlight master bus limiter.
+
+Give at least one flag. Echo: `AMLP`.
+
+| argument | value | | |
+|---|---|---|---|
+| `--enabled` | bool | optional | limiter on |
+| `--threshold` | float, dB | optional | threshold |
+| `--attack` | float, ms | optional | attack |
+| `--hold` | float, ms | optional | hold |
+| `--release` | float, ms | optional | release |
 
 ### `bmdctl atem audio meters`
 
-Read the audio meters: each strip's and the master's levels in dB, Fairlight or classic.
+Read the audio meters: each strip's and the master's levels in dB, from whichever mixer the switcher has.
 
 | argument | value | | |
 |---|---|---|---|
 | `--for` | float, seconds | default 0.5 | how long to collect levels; the last of each strip's is shown |
 
-### `bmdctl atem audio monitor`
+### `bmdctl atem audio strip <source>`
 
-Set the classic audio mixer's monitor.
+Set a Fairlight strip.
 
-**Unverified.** Give at least one flag. Echo: `AMmO`.
+Give at least one flag. Echo: `FASP:<source>.<channel>`.
 
 | argument | value | | |
 |---|---|---|---|
-| `--enabled` | bool | optional | monitor on |
-| `--volume` | uint, 0-65535 | optional | volume |
-| `--mute` | bool | optional | mute |
-| `--solo` | bool | optional | solo |
-| `--solo-source` | source, 0-65535 | optional | solo source |
-| `--dim` | bool | optional | dim |
-| `--dim-volume` | uint, 0-65535 | optional | dim volume |
+| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
+| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
+| `--delay` | uint, 0-255, frames | optional | delay |
+| `--gain` | float, dB, clamped to -100-6 | optional | input gain |
+| `--eq` | bool | optional | EQ on |
+| `--eq-gain` | float, dB, clamped to ±20 | optional | EQ gain |
+| `--makeup` | float, dB, clamped to 0-20 | optional | dynamics make-up gain |
+| `--pan` | float, -100 to 100, clamped | optional | pan |
+| `--volume` | float, dB, clamped to -100-10; -inf is -100 | optional | fader level |
+| `--mix` | enum, 0-255: Off=1 On=2 AudioFollowVideo=4 | optional | mix option |
 
 ### `bmdctl atem auto`
 
@@ -182,6 +289,65 @@ Send one Blackmagic camera control parameter.
 | `--relative` | bool | default false | add to the current value |
 | `--type` | enum, 0-255: bool=0 int8=1 int16=2 int32=3 int64=4 string=5 fixed16=128 | default bool | data type |
 | `--data` | list | optional | comma-separated values of the data type |
+
+### `bmdctl atem classic-audio input <source>`
+
+Set a classic audio mixer input.
+
+**Unverified.** Give at least one flag. Echo: `AMIP:<source>.0`.
+
+| argument | value | | |
+|---|---|---|---|
+| `<source>` | source, 0-65535 | required | source id or input name |
+| `--balance` | int, -32768 to 32767, ±10000 | optional | balance |
+| `--volume` | uint, 0-65535, 0-65381 | optional | volume |
+| `--on` | bool | optional | mix option on or off (wins over --afv) |
+| `--afv` | bool | optional | audio follows video |
+
+### `bmdctl atem classic-audio levels <enable>`
+
+Start or stop the classic mixer's meter stream.
+
+**Unverified.** No echo.
+
+| argument | value | | |
+|---|---|---|---|
+| `<enable>` | bool | required | stream meters |
+
+### `bmdctl atem classic-audio master`
+
+Set the classic audio mixer's master.
+
+**Unverified.** Give at least one flag. Echo: `AMMO`.
+
+| argument | value | | |
+|---|---|---|---|
+| `--volume` | uint, 0-65535, 0-65381 | optional | volume |
+| `--afv` | bool | optional | audio follows video |
+
+### `bmdctl atem classic-audio meters`
+
+Read the classic audio mixer's meters: each input's and the master's levels in dB.
+
+| argument | value | | |
+|---|---|---|---|
+| `--for` | float, seconds | default 0.5 | how long to collect levels; the last of each strip's is shown |
+
+### `bmdctl atem classic-audio monitor`
+
+Set the classic audio mixer's monitor.
+
+**Unverified.** Give at least one flag. Echo: `AMmO`.
+
+| argument | value | | |
+|---|---|---|---|
+| `--enabled` | bool | optional | monitor on |
+| `--volume` | uint, 0-65535 | optional | volume |
+| `--mute` | bool | optional | mute |
+| `--solo` | bool | optional | solo |
+| `--solo-source` | source, 0-65535 | optional | solo source |
+| `--dim` | bool | optional | dim |
+| `--dim-volume` | uint, 0-65535 | optional | dim volume |
 
 ### `bmdctl atem color <generator>`
 
@@ -321,164 +487,6 @@ Echo: `DskS:<dsk>`.
 | argument | value | | |
 |---|---|---|---|
 | `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
-
-### `bmdctl atem fairlight compressor <source>`
-
-Set a Fairlight strip's compressor.
-
-Give at least one flag. Echo: `AICP:<source>.<channel>`.
-
-| argument | value | | |
-|---|---|---|---|
-| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
-| `--enabled` | bool | optional | compressor on |
-| `--threshold` | float, dB, -60-0 | optional | threshold |
-| `--ratio` | float, 1.2-20 | optional | ratio |
-| `--attack` | float, ms, 0.7-100 | optional | attack |
-| `--hold` | float, ms, 0-4000 | optional | hold |
-| `--release` | float, ms, 50-4000 | optional | release |
-
-### `bmdctl atem fairlight eq <source> <band>`
-
-Set one EQ band of a Fairlight strip.
-
-Give at least one flag. Echo: `AEBP:<source>.<channel>:<band>`.
-
-| argument | value | | |
-|---|---|---|---|
-| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `<band>` | uint, 1-6, counted from 1 | required | EQ band |
-| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
-| `--enabled` | bool | optional | band on |
-| `--shape` | enum, 0-255: LowShelf=1 LowPass=2 BandPass=4 Notch=8 HighPass=16 HighShelf=32 | optional | filter shape |
-| `--range` | enum, 0-255: Low=1 MidLow=2 MidHigh=4 High=8 | optional | frequency range |
-| `--frequency` | int, Hz, clamped to 30-21700 | optional | frequency |
-| `--gain` | float, dB, clamped to ±20 | optional | gain |
-| `--q` | float, clamped to 0.30-10.30 | optional | Q |
-
-### `bmdctl atem fairlight expander <source>`
-
-Set a Fairlight strip's expander or gate.
-
-Give at least one flag. Echo: `AIXP:<source>.<channel>`.
-
-| argument | value | | |
-|---|---|---|---|
-| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
-| `--enabled` | bool | optional | expander on |
-| `--mode` | enum, 0-255: expander=0 gate=1 | optional | mode |
-| `--threshold` | float, dB, -50-0 | optional | threshold |
-| `--range` | float, dB, 0-60 | optional | range |
-| `--ratio` | float, 1-3 | optional | ratio |
-| `--attack` | float, ms, 0.5-100 | optional | attack |
-| `--hold` | float, ms, 0-4000 | optional | hold |
-| `--release` | float, ms, 50-4000 | optional | release |
-
-### `bmdctl atem fairlight levels <enable>`
-
-Start or stop the Fairlight meter streams (again after every reconnect).
-
-No echo.
-
-| argument | value | | |
-|---|---|---|---|
-| `<enable>` | bool | required | stream meters |
-
-### `bmdctl atem fairlight limiter <source>`
-
-Set a Fairlight strip's limiter.
-
-Give at least one flag. Echo: `AILP:<source>.<channel>`.
-
-| argument | value | | |
-|---|---|---|---|
-| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
-| `--enabled` | bool | optional | limiter on |
-| `--threshold` | float, dB, -60-0 | optional | threshold |
-| `--attack` | float, ms, 0.7-30 | optional | attack |
-| `--hold` | float, ms, 0-4000 | optional | hold |
-| `--release` | float, ms, 50-4000 | optional | release |
-
-### `bmdctl atem fairlight master`
-
-Set the Fairlight master bus.
-
-Give at least one flag. Echo: `FAMP`.
-
-| argument | value | | |
-|---|---|---|---|
-| `--eq` | bool | optional | EQ on |
-| `--eq-gain` | float, dB, clamped to ±20 | optional | EQ gain |
-| `--makeup` | float, dB, clamped to 0-20 | optional | dynamics make-up gain |
-| `--volume` | float, dB, clamped to -100-10; -inf is -100 | optional | fader level |
-| `--afv` | bool | optional | audio follows video |
-
-### `bmdctl atem fairlight master-compressor`
-
-Set the Fairlight master bus compressor.
-
-Give at least one flag. Echo: `MOCP`.
-
-| argument | value | | |
-|---|---|---|---|
-| `--enabled` | bool | optional | compressor on |
-| `--threshold` | float, dB | optional | threshold |
-| `--ratio` | float | optional | ratio |
-| `--attack` | float, ms | optional | attack |
-| `--hold` | float, ms | optional | hold |
-| `--release` | float, ms | optional | release |
-
-### `bmdctl atem fairlight master-eq <band>`
-
-Set one EQ band of the Fairlight master bus.
-
-Give at least one flag. Echo: `AMBP:<band>`.
-
-| argument | value | | |
-|---|---|---|---|
-| `<band>` | uint, 1-6, counted from 1 | required | EQ band |
-| `--enabled` | bool | optional | band on |
-| `--shape` | enum, 0-255: LowShelf=1 LowPass=2 BandPass=4 Notch=8 HighPass=16 HighShelf=32 | optional | filter shape |
-| `--range` | enum, 0-255: Low=1 MidLow=2 MidHigh=4 High=8 | optional | frequency range |
-| `--frequency` | int, Hz, clamped to 30-21700 | optional | frequency |
-| `--gain` | float, dB, clamped to ±20 | optional | gain |
-| `--q` | float, clamped to 0.30-10.30 | optional | Q |
-
-### `bmdctl atem fairlight master-limiter`
-
-Set the Fairlight master bus limiter.
-
-Give at least one flag. Echo: `AMLP`.
-
-| argument | value | | |
-|---|---|---|---|
-| `--enabled` | bool | optional | limiter on |
-| `--threshold` | float, dB | optional | threshold |
-| `--attack` | float, ms | optional | attack |
-| `--hold` | float, ms | optional | hold |
-| `--release` | float, ms | optional | release |
-
-### `bmdctl atem fairlight strip <source>`
-
-Set a Fairlight strip.
-
-Give at least one flag. Echo: `FASP:<source>.<channel>`.
-
-| argument | value | | |
-|---|---|---|---|
-| `<source>` | source, 0-65535 | required | audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name |
-| `--channel` | int, -128 to 127 | default -1 | -1 for a stereo strip, 0 or 1 for a split-mono half |
-| `--delay` | uint, 0-255, frames | optional | delay |
-| `--gain` | float, dB, clamped to -100-6 | optional | input gain |
-| `--eq` | bool | optional | EQ on |
-| `--eq-gain` | float, dB, clamped to ±20 | optional | EQ gain |
-| `--makeup` | float, dB, clamped to 0-20 | optional | dynamics make-up gain |
-| `--pan` | float, -100 to 100, clamped | optional | pan |
-| `--volume` | float, dB, clamped to -100-10; -inf is -100 | optional | fader level |
-| `--mix` | enum, 0-255: Off=1 On=2 AudioFollowVideo=4 | optional | mix option |
 
 ### `bmdctl atem ftb enable <enabled>`
 

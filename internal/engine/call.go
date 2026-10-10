@@ -79,6 +79,10 @@ type CommandResult struct {
 	Args map[string]string `json:"args,omitempty"`
 	// Command is the command's opcode.
 	Command string `json:"command"`
+	// Sent is the path of the command sent, where it isn't the one asked
+	// for: classic-audio master for audio master on a switcher with the
+	// classic mixer. Args are then that command's.
+	Sent string `json:"sent,omitempty"`
 	// Echo is the state key the engine waited for, if the command has one.
 	Echo string `json:"echo,omitempty"`
 	// State is the echoed state packet.
@@ -103,6 +107,9 @@ func (c *call) sendEntry() (any, bool, error) {
 	}
 	r, confirmed, err := c.send(cmd)
 	r.Args = c.displayArgs()
+	if c.entry.Path != c.req.Path {
+		r.Sent = c.entry.Path
+	}
 	return r, confirmed, err
 }
 

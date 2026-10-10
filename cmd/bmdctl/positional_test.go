@@ -62,18 +62,18 @@ func TestPositionalExamples(t *testing.T) {
 // release, with a notice on stderr, and nothing shows it.
 func TestOldFlagForm(t *testing.T) {
 	for old, now := range map[string]string{
-		"program --source 5":                                  "program 5",
-		"program --me 2 --source 3010":                        "program 3010 --me 2",
-		"usk on-air --keyer 2 --on-air":                       "usk 2 on-air on",
-		"usk fill --keyer 1 --source 7":                       "usk 1 fill 7",
-		"aux --aux 2 --source 2001":                           "aux 2 2001",
-		"transition mix --rate 1:00":                          "transition mix 1:00",
-		"color --generator 1 --hue 180":                       "color 1 --hue 180",
-		"streaming audio-bitrate --min 8 --max 9":             "streaming audio-bitrate 8 9",
-		"camera --destination 2 --category 8 --parameter 1":   "camera 2 8 1",
-		"macro action --action stop":                          "macro action stop",
-		"dsk on-air --on-air --dsk 2":                         "dsk on-air on --dsk 2",
-		"fairlight eq --source 1 --channel -1 --band 1 --q 2": "fairlight eq 1 1 --channel -1 --q 2",
+		"program --source 5":                                "program 5",
+		"program --me 2 --source 3010":                      "program 3010 --me 2",
+		"usk on-air --keyer 2 --on-air":                     "usk 2 on-air on",
+		"usk fill --keyer 1 --source 7":                     "usk 1 fill 7",
+		"aux --aux 2 --source 2001":                         "aux 2 2001",
+		"transition mix --rate 1:00":                        "transition mix 1:00",
+		"color --generator 1 --hue 180":                     "color 1 --hue 180",
+		"streaming audio-bitrate --min 8 --max 9":           "streaming audio-bitrate 8 9",
+		"camera --destination 2 --category 8 --parameter 1": "camera 2 8 1",
+		"macro action --action stop":                        "macro action stop",
+		"dsk on-air --on-air --dsk 2":                       "dsk on-air on --dsk 2",
+		"audio eq --source 1 --channel -1 --band 1 --q 2":   "audio eq 1 1 --channel -1 --q 2",
 	} {
 		_, o1, e1 := runCLI(append([]string{"--dry-run"}, strings.Fields(old)...)...)
 		_, o2, e2 := runCLI(append([]string{"--dry-run"}, strings.Fields(now)...)...)
@@ -124,34 +124,45 @@ func TestOldFlagFormOnce(t *testing.T) {
 	}
 }
 
-// audio is a hidden second name for fairlight, wherever it names none of
-// the classic mixer's commands.
-func TestAudioAlias(t *testing.T) {
-	_, o1, e1 := runCLI("--dry-run", "audio", "strip", "1", "--volume", "-10")
-	_, o2, _ := runCLI("--dry-run", "fairlight", "strip", "1", "--volume", "-10")
+// fairlight, atemwire's name for the audio group, still works, and
+// nothing lists it.
+func TestFairlightAlias(t *testing.T) {
+	_, o1, e1 := runCLI("--dry-run", "fairlight", "strip", "1", "--volume", "-10")
+	_, o2, _ := runCLI("--dry-run", "audio", "strip", "1", "--volume", "-10")
 	if o1 == "" || o1 != o2 || e1 != "" {
-		t.Errorf("audio strip: %q %q, fairlight strip: %q", o1, e1, o2)
+		t.Errorf("fairlight strip: %q %q, audio strip: %q", o1, e1, o2)
 	}
-	if _, help, _ := runCLI("audio", "eq", "--help"); !strings.HasPrefix(help, "usage: bmdctl [atem] fairlight eq <source> <band>") {
-		t.Errorf("audio eq --help:\n%s", help)
+	if _, help, _ := runCLI("fairlight", "eq", "--help"); !strings.HasPrefix(help, "usage: bmdctl [atem] audio eq <source> <band>") {
+		t.Errorf("fairlight eq --help:\n%s", help)
 	}
-	// The classic mixer's commands keep the word.
-	if _, help, _ := runCLI("audio", "master", "--help"); !strings.HasPrefix(help, "usage: bmdctl [atem] audio master") {
-		t.Errorf("audio master --help:\n%s", help)
+	// The groups: audio for the Fairlight mixer and both mixers' shared
+	// commands, classic-audio for the classic mixer's.
+	_, audio, _ := runCLI("audio", "--help")
+	_, classic, _ := runCLI("classic-audio", "--help")
+	for _, want := range []string{"  strip <source>", "  master ", "  levels <enable>", "  meters "} {
+		if !strings.Contains(audio, want) {
+			t.Errorf("audio --help lacks %q:\n%s", want, audio)
+		}
 	}
-	// Nothing lists it.
-	_, group, _ := runCLI("audio", "--help")
-	_, top, _ := runCLI("--help")
+	for _, want := range []string{"  input <source>", "  master ", "  monitor ", "  levels <enable>", "  meters "} {
+		if !strings.Contains(classic, want) {
+			t.Errorf("classic-audio --help lacks %q:\n%s", want, classic)
+		}
+	}
+	// Nothing lists the alias.
+	_, top, _ := runCLI("atem", "--help")
 	reg, _ := engine.NewRegistry()
-	if strings.Contains(group, "  strip <source>") {
-		t.Errorf("audio --help shows fairlight's commands:\n%s", group)
-	}
-	for what, text := range map[string]string{"--help": top, "COMMANDS.md": commandsDoc(reg)} {
-		if strings.Contains(text, "audio strip") {
+	for what, text := range map[string]string{"atem --help": top, "COMMANDS.md": commandsDoc(reg)} {
+		if strings.Contains(text, "fairlight strip") || strings.Contains(text, "fairlight ...") || strings.Contains(text, "  fairlight") {
 			t.Errorf("%s shows the alias", what)
 		}
 	}
-	if code, _, errOut := runCLI("--dry-run", "audio", "bogus"); code != exitUsage || !strings.Contains(errOut, `unknown command "audio bogus"`) {
-		t.Errorf("audio bogus: %d %q", code, errOut)
+	// Naming no command, it gets the audio group's help.
+	if code, _, errOut := runCLI("--dry-run", "fairlight", "bogus"); code != exitUsage ||
+		!strings.Contains(errOut, `unknown command "fairlight bogus"`) || !strings.Contains(errOut, "bmdctl [atem] audio <command>") {
+		t.Errorf("fairlight bogus: %d %q", code, errOut)
+	}
+	if _, help, _ := runCLI("fairlight", "--help"); !strings.HasPrefix(help, "usage: bmdctl [atem] audio <command>") {
+		t.Errorf("fairlight --help:\n%s", help)
 	}
 }

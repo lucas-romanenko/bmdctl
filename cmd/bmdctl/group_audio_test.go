@@ -3,11 +3,14 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
+	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
+	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
 // Group d, end to end against the fake switcher: the Fairlight and
@@ -19,20 +22,20 @@ func TestAudioCommands(t *testing.T) {
 		code, hex string
 		confirmed bool
 	}{
-		{[]string{"fairlight", "master", "--volume", "-6"}, "CFMP", "", true},
-		{[]string{"fairlight", "strip", "Camera 1", "--channel", "-1", "--volume", "-10", "--mix", "On"}, "CFSP", "", true},
-		{[]string{"fairlight", "eq", "1", "1", "--channel", "-1", "--gain", "3"}, "CEBP", "", true},
-		{[]string{"fairlight", "master-eq", "1", "--enabled"}, "CMBP", "", true},
-		{[]string{"fairlight", "compressor", "1", "--channel", "-1", "--threshold", "-20"}, "CICP", "", true},
-		{[]string{"fairlight", "limiter", "1", "--channel", "-1", "--enabled"}, "CILP", "", true},
-		{[]string{"fairlight", "expander", "1", "--channel", "-1", "--mode", "gate"}, "CIXP", "", true},
-		{[]string{"fairlight", "master-compressor", "--ratio", "4"}, "CMCP", "", true},
-		{[]string{"fairlight", "master-limiter", "--enabled", "false"}, "CMLP", "", true},
-		{[]string{"fairlight", "levels", "false"}, "SFLN", "00000000", false},
-		{[]string{"audio", "input", "cam1", "--afv"}, "CAMI", "", true},
-		{[]string{"audio", "master", "--volume", "32768"}, "CAMM", "", true},
-		{[]string{"audio", "monitor", "--mute"}, "CAMm", "", true},
-		{[]string{"audio", "levels", "false"}, "SALN", "00000000", false},
+		{[]string{"audio", "master", "--volume", "-6"}, "CFMP", "", true},
+		{[]string{"audio", "strip", "Camera 1", "--channel", "-1", "--volume", "-10", "--mix", "On"}, "CFSP", "", true},
+		{[]string{"audio", "eq", "1", "1", "--channel", "-1", "--gain", "3"}, "CEBP", "", true},
+		{[]string{"audio", "master-eq", "1", "--enabled"}, "CMBP", "", true},
+		{[]string{"audio", "compressor", "1", "--channel", "-1", "--threshold", "-20"}, "CICP", "", true},
+		{[]string{"audio", "limiter", "1", "--channel", "-1", "--enabled"}, "CILP", "", true},
+		{[]string{"audio", "expander", "1", "--channel", "-1", "--mode", "gate"}, "CIXP", "", true},
+		{[]string{"audio", "master-compressor", "--ratio", "4"}, "CMCP", "", true},
+		{[]string{"audio", "master-limiter", "--enabled", "false"}, "CMLP", "", true},
+		{[]string{"audio", "levels", "false"}, "SFLN", "00000000", false},
+		{[]string{"classic-audio", "input", "cam1", "--afv"}, "CAMI", "", true},
+		{[]string{"classic-audio", "master", "--volume", "32768"}, "CAMM", "", true},
+		{[]string{"classic-audio", "monitor", "--mute"}, "CAMm", "", true},
+		{[]string{"classic-audio", "levels", "false"}, "SALN", "00000000", false},
 	} {
 		out, got := b.mustSend(t, c.code, with(c.args...)...)
 		if c.hex != "" && got != c.hex {
@@ -46,7 +49,7 @@ func TestAudioCommands(t *testing.T) {
 			t.Errorf("%v: %q, want %s", c.args, out, status)
 		}
 	}
-	// A strip by input name: the fairlight strip's source is Camera 1's id.
+	// A strip by input name: the Fairlight strip's source is Camera 1's id.
 	if got := b.lastSent(t, "CFSP"); got[4:8] != "0001" {
 		t.Errorf("strip source: %s", got)
 	}
@@ -73,5 +76,101 @@ func TestAudioCommands(t *testing.T) {
 	}
 	if code, _, errOut := b.run(with("audio", "meters", "--for", "0")...); code != exitUsage || !strings.Contains(errOut, "0 to 60 seconds") {
 		t.Errorf("--for 0: %d %q", code, errOut)
+	}
+}
+
+// fairlightCodes are the fixture dump's Fairlight mixer packets.
+var fairlightCodes = map[string]bool{"FAMP": true, "FAIP": true, "FASP": true, "AEBP": true, "AICP": true, "AILP": true,
+	"AMBP": true, "MOCP": true, "AMLP": true, "FMHP": true, "FAMS": true}
+
+// audioDump is the fixture dump without its Fairlight mixer's packets,
+// with extra packets in before its last (InCm).
+func audioDump(t *testing.T, extra ...[]byte) []byte {
+	d := fixtures.Bytes(t, "dump/initial-dump.bin")
+	var out []byte
+	for i := 0; i < len(d); {
+		n := int(binary.BigEndian.Uint16(d[i:]))
+		code := string(d[i+4 : i+8])
+		if code == "InCm" {
+			for _, x := range extra {
+				out = append(out, x...)
+			}
+		}
+		if !fairlightCodes[code] {
+			out = append(out, d[i:i+n]...)
+		}
+		i += n
+	}
+	return out
+}
+
+// audio master, levels and meters reach whichever mixer the switcher
+// reports: its capabilities (_FAC, _AMC) first, then its state.
+func TestAudioFollowsMixer(t *testing.T) {
+	fac, amc := fakeatem.Command("_FAC", make([]byte, 4)), fakeatem.Command("_AMC", make([]byte, 4))
+	ammo := fakeatem.Command("AMMO", make([]byte, 8))
+	for _, c := range []struct {
+		name, mixer string
+		dump        []byte
+	}{
+		{"Fairlight state", "fairlight", fixtures.Bytes(t, "dump/initial-dump.bin")},
+		{"_AMC", "classic", audioDump(t, amc)},
+		{"classic state", "classic", audioDump(t, ammo)},
+		{"_FAC over classic state", "fairlight", audioDump(t, fac, ammo)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			b := newBenchDump(t, c.dump)
+			var info struct {
+				Result engine.InfoResult `json:"result"`
+			}
+			json.Unmarshal([]byte(b.must(with("info", "--json")...)), &info)
+			if info.Result.Audio != c.mixer {
+				t.Errorf("info: audio %q", info.Result.Audio)
+			}
+			var meters struct {
+				Result engine.MetersResult `json:"result"`
+			}
+			json.Unmarshal([]byte(b.must(with("audio", "meters", "--for", "0.1", "--json")...)), &meters)
+			if meters.Result.Mixer != c.mixer {
+				t.Errorf("meters: mixer %q", meters.Result.Mixer)
+			}
+			if c.mixer == "fairlight" {
+				b.mustSend(t, "CFMP", with("audio", "master", "--volume", "-6")...)
+				b.mustSend(t, "SFLN", with("audio", "levels", "on")...)
+				return
+			}
+			// The classic master, with -6 dB on its scale (32768 is 0 dB),
+			// shown as what was sent, with the unverified command's notice.
+			n := len(b.sent("CAMM"))
+			code, out, errOut := b.run(with("audio", "master", "--volume", "-6", "--afv")...)
+			if code != 0 || len(b.sent("CAMM")) != n+1 || b.lastSent(t, "CAMM") != "0500402700000100" {
+				t.Fatalf("audio master: %d %q %q", code, out, errOut)
+			}
+			if !strings.HasPrefix(out, "classic-audio master") || !strings.Contains(out, "volume 16423, afv true") ||
+				!strings.Contains(errOut, "classic-audio master is unverified") {
+				t.Errorf("audio master: %q %q", out, errOut)
+			}
+			if out := b.must(with("audio", "master", "--volume", "-inf", "--json")...); !strings.Contains(out, `"sent":"classic-audio master"`) ||
+				b.lastSent(t, "CAMM") != "0100000000000000" {
+				t.Errorf("-inf: %q %s", out, b.lastSent(t, "CAMM"))
+			}
+			if code, _, errOut := b.run(with("audio", "master", "--eq", "on")...); code != exitUsage ||
+				!strings.Contains(errOut, "--eq: the switcher's audio mixer is the classic one, and classic-audio master has no --eq") {
+				t.Errorf("--eq: %d %q", code, errOut)
+			}
+			if _, got := b.mustSend(t, "SALN", with("audio", "levels", "on")...); got != "01000000" {
+				t.Errorf("audio levels sent SALN %s", got)
+			}
+		})
+	}
+	// classic-audio forces the classic mixer's command on a Fairlight
+	// switcher.
+	b := newBench(t)
+	var meters struct {
+		Result engine.MetersResult `json:"result"`
+	}
+	json.Unmarshal([]byte(b.must(with("classic-audio", "meters", "--for", "0.1", "--json")...)), &meters)
+	if meters.Result.Mixer != "classic" || len(b.sent("SALN")) != 2 {
+		t.Errorf("classic-audio meters: %+v, SALN %x", meters.Result, b.sent("SALN"))
 	}
 }

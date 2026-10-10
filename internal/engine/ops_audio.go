@@ -8,8 +8,12 @@ package engine
 // strip's levels overwrite the others (SURFACE.md §5.4 item 6). The
 // readout therefore turns the stream on, collects each packet as it
 // arrives for a moment, and turns the stream off again.
+//
+// Where a command exists for both mixers (master, levels, meters), audio
+// sends the one the switcher has and classic-audio forces the classic one.
 
 import (
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,13 +24,88 @@ import (
 )
 
 func audioOperations() []operation {
+	forSecs := []table.Param{{Name: "for", Kind: table.Float, Default: "0.5", Unit: "seconds",
+		Help: "how long to collect levels; the last of each strip's is shown"}}
 	return []operation{
 		{entry: table.Entry{Path: "audio meters",
-			Summary: "Read the audio meters: each strip's and the master's levels in dB, Fairlight or classic.",
-			Params: []table.Param{{Name: "for", Kind: table.Float, Default: "0.5", Unit: "seconds",
-				Help: "how long to collect levels; the last of each strip's is shown"}}},
+			Summary: "Read the audio meters: each strip's and the master's levels in dB, from whichever mixer the switcher has.",
+			Params:  forSecs},
+			run: opAudioMeters},
+		{entry: table.Entry{Path: "classic-audio meters",
+			Summary: "Read the classic audio mixer's meters: each input's and the master's levels in dB.",
+			Params:  forSecs},
 			run: opAudioMeters},
 	}
+}
+
+// Mixer is the audio mixer the switcher reports: "fairlight" when it
+// sent the Fairlight mixer's capabilities (_FAC, which atemwire keeps
+// raw) and "classic" when it sent the classic mixer's (_AMC); failing
+// both, the mixer whose state it sent; "" when it sent neither. Its
+// topology (_top) says nothing about audio.
+func Mixer(st atem.State) string {
+	_, fac := st.Raw["_FAC"]
+	_, amc := st.Raw["_AMC"]
+	switch {
+	case fac:
+		return "fairlight"
+	case amc:
+		return "classic"
+	case st.Fairlight.Master != nil || len(st.Fairlight.Inputs) > 0:
+		return "fairlight"
+	case st.Audio.Master != nil || len(st.Audio.Inputs) > 0:
+		return "classic"
+	}
+	return ""
+}
+
+// classicFor is the classic mixer's command each audio command sends
+// instead on a switcher whose mixer is the classic one.
+var classicFor = map[string]string{
+	"audio master": "classic-audio master",
+	"audio levels": "classic-audio levels",
+}
+
+// forMixer turns an audio command the classic mixer has too into the
+// classic one's, on a switcher with that mixer: the same arguments, with
+// --volume converted from dB to the classic mixer's scale, and a
+// Fairlight-only one refused.
+func (c *call) forMixer(r *table.Registry) error {
+	path, ok := classicFor[c.entry.Path]
+	if !ok || Mixer(c.state) != "classic" {
+		return nil
+	}
+	classic := r.Find(c.entry.Device, path)
+	raw := map[string]string{}
+	for name, v := range c.req.Params {
+		if !slices.ContainsFunc(classic.Params, func(p table.Param) bool { return p.Name == name }) {
+			return codeErr(CodeUsage, "--%s: the switcher's audio mixer is the classic one, and %s has no --%s", name, path, name)
+		}
+		raw[name] = v
+	}
+	if c.args.Has("volume") {
+		raw["volume"] = strconv.Itoa(int(classicVolume(c.args.Value("volume").(float64))))
+	}
+	args, err := classic.Parse(raw, c.res)
+	if err != nil {
+		return usageErr(err)
+	}
+	c.entry, c.args = classic, args
+	return nil
+}
+
+// classicVolume is a level in dB on the classic mixer's scale, where
+// 32768 is 0 dB and its top, 65381, +6 dB; -inf, and anything below
+// what the scale holds, is 0.
+func classicVolume(db float64) uint16 {
+	v := math.Round(32768 * math.Pow(10, db/20))
+	switch {
+	case math.IsNaN(v) || v < 0:
+		return 0
+	case v > 65381:
+		return 65381
+	}
+	return uint16(v)
 }
 
 // Meter is one strip's (or the master's) levels, in dB.
@@ -59,11 +138,15 @@ func opAudioMeters(c *call) (any, bool, error) {
 		return nil, false, codeErr(CodeUsage, "--for %v: give 0 to 60 seconds", secs)
 	}
 	r := MetersResult{Seconds: secs, Strips: []Meter{}}
+	mixer := Mixer(st)
+	if c.entry.Path == "classic-audio meters" {
+		mixer = "classic"
+	}
 	var on, off atem.Command
-	switch {
-	case st.Fairlight.Master != nil || len(st.Fairlight.Inputs) > 0:
+	switch mixer {
+	case "fairlight":
 		r.Mixer, on, off = "fairlight", atem.SendFairlightLevels{Enable: true}, atem.SendFairlightLevels{}
-	case st.Audio.Master != nil || len(st.Audio.Inputs) > 0:
+	case "classic":
 		r.Mixer, on, off = "classic", atem.SendAudioLevels{Enable: true}, atem.SendAudioLevels{}
 	default:
 		return nil, false, codeErr(CodeUsage, "the switcher has reported no audio mixer")
