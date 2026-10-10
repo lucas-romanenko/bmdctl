@@ -70,7 +70,8 @@ func TestMacroCommands(t *testing.T) {
 		t.Errorf("upload: %q", out)
 	}
 	sw := b.switchers()[0]
-	if got, name, desc, ok := sw.Macro(5); !ok || !bytes.Equal(got, want) || name != "Intro" || desc != "opens" {
+	// Slot 5, counted from 1, is the switcher's slot 4.
+	if got, name, desc, ok := sw.Macro(4); !ok || !bytes.Equal(got, want) || name != "Intro" || desc != "opens" {
 		t.Errorf("switcher holds %x %q %q %v", got, name, desc, ok)
 	}
 	out = b.must(with("macro", "list")...)
@@ -82,7 +83,8 @@ func TestMacroCommands(t *testing.T) {
 	}
 	out = b.must(with("macro", "download", "--slot", "intro")...)
 	data, err := os.ReadFile(filepath.Join(dir, "Intro.xml"))
-	if err != nil || !strings.Contains(string(data), `<Macro index="5" name="Intro" description="opens">`) {
+	// The file's index counts from 0, as ATEM Software Control writes it.
+	if err != nil || !strings.Contains(string(data), `<Macro index="4" name="Intro" description="opens">`) {
 		t.Errorf("download: %q %v\n%s", out, err, data)
 	}
 	b.must(with("macro", "download", "--slot", "5", "--file", "d.bin")...)
@@ -96,7 +98,7 @@ func TestMacroCommands(t *testing.T) {
 
 	// Run and stop.
 	out = b.must(with("macro", "run", "--slot", "Intro")...)
-	if !strings.Contains(out, "confirmed") || !strings.Contains(out, "slot 5 (Intro)") || b.lastSent(t, "MAct") != "00050000" {
+	if !strings.Contains(out, "confirmed") || !strings.Contains(out, "slot 5 (Intro)") || b.lastSent(t, "MAct") != "00040000" {
 		t.Errorf("run: %q", out)
 	}
 	if out := b.must(with("macro", "list")...); !strings.Contains(out, "running") {
@@ -123,7 +125,7 @@ func TestMacroCommands(t *testing.T) {
 		t.Errorf("action delete without --yes: %d", code)
 	}
 	out = b.must(with("macro", "delete", "--slot", "rec", "--yes")...)
-	if !strings.Contains(out, "confirmed") || b.lastSent(t, "MAct") != "00070500" {
+	if !strings.Contains(out, "confirmed") || !strings.Contains(out, "slot 7 (Rec)") || b.lastSent(t, "MAct") != "00060500" {
 		t.Errorf("delete: %q", out)
 	}
 	if code, _, errOut := b.run(with("macro", "run", "--slot", "nobody")...); code != exitUsage || !strings.Contains(errOut, "no macro has that name") {

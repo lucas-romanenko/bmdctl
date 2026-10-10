@@ -100,20 +100,20 @@ func TestEveryCommandRuns(t *testing.T) {
 	t.Chdir(dir)
 	os.WriteFile("logo.png", testPNG(t), 0o644)
 	os.WriteFile("ops.json", []byte(testOps), 0o644)
-	b.must(with("media", "upload", "--slot", "1", "--file", "logo.png")...)
-	b.must(with("macro", "upload", "--slot", "1", "--file", "ops.json")...)
+	b.must(with("media", "upload", "--slot", "2", "--file", "logo.png")...)
+	b.must(with("macro", "upload", "--slot", "2", "--file", "ops.json")...)
 	b.must(with("profile", "save", "--file", "p.xml", "--media-pool-images=false")...)
 	b.must("macro", "encode", "--file", "ops.json", "--out", "m.bin")
 
 	// Arguments a sample can't guess.
 	special := map[string][]string{
-		"media upload":    {"--slot", "2", "--file", "logo.png"},
-		"media download":  {"--slot", "1", "--file", "got.png"},
-		"media clear":     {"--slot", "1", "--yes"},
-		"macro upload":    {"--slot", "3", "--file", "ops.json"},
-		"macro download":  {"--slot", "1", "--file", "m.xml"},
-		"macro run":       {"--slot", "1"},
-		"macro delete":    {"--slot", "1", "--yes"},
+		"media upload":    {"--slot", "3", "--file", "logo.png"},
+		"media download":  {"--slot", "2", "--file", "got.png"},
+		"media clear":     {"--slot", "2", "--yes"},
+		"macro upload":    {"--slot", "4", "--file", "ops.json"},
+		"macro download":  {"--slot", "2", "--file", "m.xml"},
+		"macro run":       {"--slot", "2"},
+		"macro delete":    {"--slot", "2", "--yes"},
 		"macro decode":    {"--file", "m.bin"},
 		"macro encode":    {"--file", "ops.json", "--out", "m2.bin"},
 		"profile save":    {"--file", "p2.xml", "--media-pool-images=false"},
@@ -122,7 +122,7 @@ func TestEveryCommandRuns(t *testing.T) {
 		"watch":           {"--count", "1", "--filter", "PrgI"},
 		"audio meters":    {"--for", "0.1"},
 		"camera":          {"--destination", "1", "--category", "0", "--parameter", "0"},
-		"macro record":    {"--slot", "9", "--name", "x"},
+		"macro record":    {"--slot", "10", "--name", "x"},
 	}
 	// Transfers get the library's timeouts, not the sweep's short echo
 	// wait.

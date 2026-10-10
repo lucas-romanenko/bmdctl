@@ -7,7 +7,9 @@ Each command takes its parameters as `--name value` flags. **Unverified**
 commands have a pinned wire format that nobody has confirmed on a
 switcher; **destructive** ones are hard to undo or drop connections. The
 echo is the state the device reports back once it has applied the
-command; a command without one can't be confirmed.
+command; a command without one can't be confirmed. Its key names the
+state as the device's library does, so an ATEM's indexes in it count
+from 0.
 
 ## The command line
 
@@ -37,14 +39,14 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [--parameter value .
 - `bmdctl hosts rm NAME`: Forget a host.
 - `bmdctl hosts default [NAME]`: Show the default host, or make NAME the default and the host commands go to now.
 - `bmdctl exec FILE|- [--continue]`: Run one command per line, in order, to one host. Every line is checked before the first is sent; it stops at the first failure unless --continue.
-- `bmdctl completion bash|zsh|fish`: Print a shell completion script: commands, flags, host names and, while the engine runs, the switcher's input names.
+- `bmdctl completion bash|zsh|fish`: Print a shell completion script: commands, flags, host names and, while the engine runs, the switcher's input names and the indexes it has, counted from 1.
 - `bmdctl man [--dir DIR]`: Print the bmdctl(1) manual page, or write it to DIR/bmdctl.1.
 - `bmdctl doctor`: Check the engine, its socket and log, the hosts file and that each host answers, and say what is misconfigured. Exit 1 for a misconfiguration, 2 when a host only didn't answer.
 
 ### Conventions
 
 - Devices: A command without a device word goes to the device type of its host, an ATEM for a bare address. `bmdctl atem ...` names the device.
-- M/Es: --me counts from 1 on the command line; the atem library's ME field counts from 0. Every other index (keyer, DSK, aux, slot, player) counts from 0.
+- Indexes: M/Es, upstream and downstream keyers, aux outputs, media and macro slots and media players count from 1, as ATEM Software Control and the panels count them: on the command line, in --help and in results, --json included. The atem library counts them from 0, and so do the switcher state `state` and `watch` print and the index attributes of ATEM Software Control's XML files. Colour generators, multiviewers and their windows, SuperSources and their boxes, HyperDeck slots and EQ bands keep their fields' numbering.
 - Sources: A source is an id or one of the switcher's input names, long or short, in any case.
 - Rates: A rate is a frame count or seconds:frames at the switcher's display rate (half the field rate from 48 fps up).
 
@@ -140,7 +142,7 @@ No echo.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 
 ### `bmdctl atem auto-video-mode`
 
@@ -160,7 +162,7 @@ Echo: `AuxS:<aux>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--aux` | uint, 0-255 | required | aux output, 0-based |
+| `--aux` | uint, 1-256, counted from 1 | required | aux output |
 | `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem camera`
@@ -207,7 +209,7 @@ No echo.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 
 ### `bmdctl atem disconnect`
 
@@ -221,7 +223,7 @@ No echo.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+| `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 
 ### `bmdctl atem dsk fill`
 
@@ -231,7 +233,7 @@ Echo: `DskB:<dsk>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+| `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 | `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem dsk gain`
@@ -242,7 +244,7 @@ Give at least one optional parameter. Echo: `DskP:<dsk>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+| `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 | `--premultiplied` | bool | optional | pre-multiplied key |
 | `--clip` | float, %, clamped to 0-100 | optional | clip |
 | `--gain` | float, %, clamped to 0-100 | optional | gain |
@@ -256,7 +258,7 @@ Echo: `DskB:<dsk>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+| `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 | `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem dsk mask`
@@ -267,7 +269,7 @@ Give at least one optional parameter. Echo: `DskP:<dsk>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+| `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 | `--enabled` | bool | optional | mask on |
 | `--top` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | top edge |
 | `--bottom` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | bottom edge |
@@ -282,7 +284,7 @@ Echo: `DskS:<dsk>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+| `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 | `--on-air` | bool | required | on air |
 
 ### `bmdctl atem dsk rate`
@@ -293,7 +295,7 @@ Echo: `DskP:<dsk>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+| `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 
 ### `bmdctl atem dsk tie`
@@ -304,7 +306,7 @@ Echo: `DskP:<dsk>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+| `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 | `--tie` | bool | required | tie |
 
 ### `bmdctl atem dsk toggle`
@@ -315,7 +317,7 @@ Echo: `DskS:<dsk>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--dsk` | uint, 0-255 | default 0 | downstream keyer, 0-based |
+| `--dsk` | uint, 1-256, counted from 1 | default 1 | downstream keyer |
 
 ### `bmdctl atem fairlight compressor`
 
@@ -493,7 +495,7 @@ Echo: `FtbP:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 
 ### `bmdctl atem ftb toggle`
@@ -504,7 +506,7 @@ No echo.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 
 ### `bmdctl atem hyperdeck-slot`
 
@@ -547,7 +549,7 @@ Echo: `MRPr, MRcS or MPrp:<slot>, by action`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | uint, 0-65535 | default 65535 | macro slot, 0-based; 65535 for whatever is running or recording |
+| `--slot` | uint, 1-65535, counted from 1 | optional | macro slot (default: whatever is running or recording) |
 | `--action` | enum, 0-255: run=0 stop=1 stop-record=2 insert-user-wait=3 continue=4 delete=5 | required | action |
 
 ### `bmdctl atem macro decode`
@@ -568,7 +570,7 @@ Delete a macro.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | string | required | macro slot, 0-based, or the macro's name |
+| `--slot` | string | required | macro slot, or the macro's name |
 
 ### `bmdctl atem macro download`
 
@@ -576,7 +578,7 @@ Download a macro as XML ops, JSON ops or bytecode.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | string | required | macro slot, 0-based, or the macro's name |
+| `--slot` | string | required | macro slot, or the macro's name |
 | `--file` | file, written | optional | where to write it; - is stdout (default: the macro's name, .xml) |
 | `--format` | enum: xml=0 json=1 bin=2 | optional | default: from --file's extension, else xml |
 
@@ -607,7 +609,7 @@ Echo: `MRcS`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | uint, 0-65535 | required | macro slot, 0-based |
+| `--slot` | uint, 1-65536, counted from 1 | required | macro slot |
 | `--name` | string | required | name |
 | `--description` | string | optional | description |
 
@@ -619,7 +621,7 @@ Echo: `MRPr`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | string | required | macro slot, 0-based, or the macro's name |
+| `--slot` | string | required | macro slot, or the macro's name |
 
 ### `bmdctl atem macro sleep`
 
@@ -645,7 +647,7 @@ Echo: `MPrp:<slot>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | uint, 0-65535 | required | macro slot, 0-based; replacing a used one needs --yes |
+| `--slot` | uint, 1-65535, counted from 1 | required | macro slot; replacing a used one needs --yes |
 | `--file` | file | required | the macro; - reads stdin |
 | `--name` | string | optional | the macro's name (default: the file's <Macro name>, else its file name) |
 | `--description` | string | optional | the macro's description (default: the file's) |
@@ -664,7 +666,7 @@ Empty a still slot, under the media pool's lock.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | uint, 0-255 | required | still slot, 0-based |
+| `--slot` | uint, 1-256, counted from 1 | required | still slot |
 
 ### `bmdctl atem media clear-unlocked`
 
@@ -674,7 +676,7 @@ Clear a still slot without taking the store lock (some models ignore this; media
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | uint, 0-255 | required | still slot, 0-based |
+| `--slot` | uint, 1-256, counted from 1 | required | still slot |
 
 ### `bmdctl atem media download`
 
@@ -682,7 +684,7 @@ Download a still slot as a PNG.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | uint, 0-65535 | required | still slot, 0-based |
+| `--slot` | uint, 1-65536, counted from 1 | required | still slot |
 | `--file` | file, written | optional | where to write it; - is stdout (default: the slot's name .png) |
 
 ### `bmdctl atem media list`
@@ -697,9 +699,9 @@ Give at least one optional parameter. Echo: `MPCE:<player>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--player` | uint, 0-255 | required | media player, 0-based |
-| `--still` | uint, 0-255 | optional | still slot (give this or --clip) |
-| `--clip` | uint, 0-255 | optional | clip slot (give this or --still) |
+| `--player` | uint, 1-256, counted from 1 | required | media player |
+| `--still` | uint, 1-256, counted from 1 | optional | still slot (give this or --clip) |
+| `--clip` | uint, 1-256, counted from 1 | optional | clip slot (give this or --still) |
 
 ### `bmdctl atem media upload`
 
@@ -709,7 +711,7 @@ Echo: `MPfe:<slot>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--slot` | uint, 0-65535 | required | still slot, 0-based; replacing a used one needs --yes |
+| `--slot` | uint, 1-65536, counted from 1 | required | still slot; replacing a used one needs --yes |
 | `--file` | file | required | the image; - reads stdin |
 | `--name` | string | optional | the slot's name (default: the file's, without extension) |
 | `--description` | string | optional | the slot's description |
@@ -747,7 +749,7 @@ Echo: `PrvI:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem profile images`
@@ -773,7 +775,7 @@ Apply a profile XML to the switcher, and upload the images it names.
 | `--next-transition` | bool | default true | each M/E's next-transition layers |
 | `--transition-style` | bool | default true | each M/E's transition style and its settings |
 | `--ftb` | bool | default true | each M/E's fade to black |
-| `--keyers` | string | default all | the upstream keyers: all, none, or a list from 0 (0,1) |
+| `--keyers` | string | default all | the upstream keyers: all, none, or a list from 1 (1,2) |
 | `--macros-only` | bool | default false | start from nothing but the macros (ApplyOptions.macros_only), then add flags given |
 | `--video-mode` | bool | default true | change the video mode if it differs: outputs resync |
 | `--inputs` | bool | default true | input names |
@@ -804,7 +806,7 @@ Save the switcher's setup as ATEM Software Control's profile XML, and its media 
 | `--next-transition` | bool | default true | each M/E's next-transition layers |
 | `--transition-style` | bool | default true | each M/E's transition style and its settings |
 | `--ftb` | bool | default true | each M/E's fade to black |
-| `--keyers` | string | default all | the upstream keyers: all, none, or a list from 0 (0,1) |
+| `--keyers` | string | default all | the upstream keyers: all, none, or a list from 1 (1,2) |
 | `--downstream-keys` | bool | default true | <DownstreamKeys> |
 | `--color-generators` | bool | default true | <ColorGenerators> |
 | `--fairlight` | bool | default true | <FairlightAudioMixer> |
@@ -827,7 +829,7 @@ Echo: `PrgI:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem recording settings`
@@ -958,7 +960,7 @@ Move the T-bar.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--position` | int, 0-10000, clamped | required | T-bar position |
 
 ### `bmdctl atem time`
@@ -991,7 +993,7 @@ Give at least one optional parameter. Echo: `TDpP:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | optional | rate |
 | `--source` | source, 0-65535 | optional | dip source |
 
@@ -1003,7 +1005,7 @@ Give at least one optional parameter. Echo: `TDvP:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--logo-rate` | uint, 0-255, frames | optional | graphic logo-wipe rate (no atemwire operation sets it) |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | optional | DVE rate |
 | `--style` | enum, 0-255: SqueezeTopLeft=16 SqueezeTop=17 SqueezeTopRight=18 SqueezeLeft=19 SqueezeRight=20 SqueezeBottomLeft=21 SqueezeBottom=22 SqueezeBottomRight=23 PushTopLeft=24 PushTop=25 PushTopRight=26 PushLeft=27 PushRight=28 PushBottomLeft=29 PushBottom=30 PushBottomRight=31 GraphicLogoWipe=34 | optional | DVE effect |
@@ -1025,7 +1027,7 @@ Echo: `TMxP:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | required | rate |
 
 ### `bmdctl atem transition next`
@@ -1036,7 +1038,7 @@ Echo: `TrSS:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--next` | flags: background=1 key1=2 key2=4 key3=8 key4=16 | optional | the layers, replacing the selection (not none) |
 | `--toggle` | enum: background=1 key1=2 key2=4 key3=8 key4=16 | optional | flip one layer in the current selection |
 
@@ -1048,7 +1050,7 @@ Turn transition preview on or off.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--enabled` | bool | required | preview the transition |
 
 ### `bmdctl atem transition rate`
@@ -1059,7 +1061,7 @@ Echo: `TMxP, TDpP, TWpP, TDvP or TStP:<me>, by style`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--rate` | rate, frames, or seconds:frames at the display rate | required | rate |
 
 ### `bmdctl atem transition settings`
@@ -1070,7 +1072,7 @@ Give at least one optional parameter. Echo: `TrSS:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--style` | enum, 0-255: mix=0 dip=1 wipe=2 dve=3 stinger=4 | optional | transition style |
 | `--next` | flags: background=1 key1=2 key2=4 key3=8 key4=16 | optional | layers the next transition takes (not none) |
 
@@ -1082,7 +1084,7 @@ Give at least one optional parameter. Echo: `TStP:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--player` | uint, 0-255 | optional | media player slot, 1-4 (not a source id) |
 | `--premultiplied` | bool | optional | pre-multiplied key |
 | `--clip` | float, %, ×10 on the wire, not clamped | optional | key clip |
@@ -1101,7 +1103,7 @@ Echo: `TrSS:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--style` | enum: mix=0 dip=1 wipe=2 dve=3 stinger=4 | required | transition style |
 
 ### `bmdctl atem transition wipe`
@@ -1112,7 +1114,7 @@ Give at least one optional parameter. Echo: `TWpP:<me>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
 | `--rate` | rate, 0-255, frames, or seconds:frames at the display rate | optional | rate |
 | `--pattern` | enum, 0-255: LeftToRightBar=0 TopToBottomBar=1 HorizontalBarnDoor=2 VerticalBarnDoor=3 CornersInFourBox=4 RectangleIris=5 DiamondIris=6 CircleIris=7 TopLeftBox=8 TopRightBox=9 BottomRightBox=10 BottomLeftBox=11 TopCentreBox=12 RightCentreBox=13 BottomCentreBox=14 LeftCentreBox=15 TopLeftDiagonal=16 TopRightDiagonal=17 | optional | wipe pattern |
 | `--width` | float, %, clamped to 0-100 | optional | border width |
@@ -1132,8 +1134,8 @@ Give at least one optional parameter. Echo: `KACk:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--foreground` | float, 0-1, ×1000 on the wire, not clamped | optional | foreground level |
 | `--background` | float, 0-1, ×1000 on the wire, not clamped | optional | background level |
 | `--key-edge` | float, 0-1, ×1000 on the wire, not clamped | optional | key edge |
@@ -1154,8 +1156,8 @@ Give at least one optional parameter. Echo: `KACC:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--cursor` | bool | optional | show the sample cursor |
 | `--preview` | bool | optional | preview the key |
 | `--x` | float, 0-1 | optional | cursor x |
@@ -1173,8 +1175,8 @@ Give at least one optional parameter. Echo: `KeDV:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--size-x` | float, 0-2, clamped | optional | horizontal size |
 | `--size-y` | float, 0-2, clamped | optional | vertical size |
 | `--position-x` | float, display units (×1000) | optional | horizontal position |
@@ -1210,8 +1212,8 @@ Echo: `KeBP:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem usk key`
@@ -1222,8 +1224,8 @@ Echo: `KeBP:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--source` | source, 0-65535 | required | source id or input name |
 
 ### `bmdctl atem usk keyframe-run`
@@ -1234,8 +1236,8 @@ No echo.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--to` | enum, 0-255: a=1 b=2 full=3 runToInfinite=4 | required | keyframe to fly to |
 | `--direction` | uint, 0-255 | optional | direction for runToInfinite; atemwire's two encodings agree on 1-4 and 6-9 (1 top left ... 9 bottom right) and disagree on the centre (5 or 0) |
 
@@ -1247,8 +1249,8 @@ Echo: `KKFP:<me>:<keyer>:<keyframe> (A and B), KeFS:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--keyframe` | enum, 0-255: a=1 b=2 full=3 runToInfinite=4 | required | keyframe |
 
 ### `bmdctl atem usk luma`
@@ -1259,8 +1261,8 @@ Give at least one optional parameter. Echo: `KeLm:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--premultiplied` | bool | optional | pre-multiplied key |
 | `--clip` | float, %, clamped to 0-100 | optional | clip |
 | `--gain` | float, %, clamped to 0-100 | optional | gain |
@@ -1274,8 +1276,8 @@ Set an upstream keyer's mask.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--enabled` | bool | optional | mask on |
 | `--top` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | top edge |
 | `--bottom` | float, display units: ±9 top and bottom, ±16 left and right (×1000) | optional | bottom edge |
@@ -1290,8 +1292,8 @@ Echo: `KeOn:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--on-air` | bool | required | on air |
 
 ### `bmdctl atem usk pattern`
@@ -1302,8 +1304,8 @@ Give at least one optional parameter. Echo: `KePt:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--pattern` | enum, 0-255: LeftToRightBar=0 TopToBottomBar=1 HorizontalBarnDoor=2 VerticalBarnDoor=3 CornersInFourBox=4 RectangleIris=5 DiamondIris=6 CircleIris=7 TopLeftBox=8 TopRightBox=9 BottomRightBox=10 BottomLeftBox=11 TopCentreBox=12 RightCentreBox=13 BottomCentreBox=14 LeftCentreBox=15 TopLeftDiagonal=16 TopRightDiagonal=17 | optional | pattern |
 | `--size` | float, %, clamped to 0-100 | optional | size |
 | `--symmetry` | float, %, clamped to 0-100 | optional | symmetry |
@@ -1320,8 +1322,8 @@ Echo: `KeOn:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 
 ### `bmdctl atem usk type`
 
@@ -1331,8 +1333,8 @@ Give at least one optional parameter. Echo: `KeBP:<me>:<keyer>`.
 
 | parameter | value | | |
 |---|---|---|---|
-| `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
-| `--keyer` | uint, 0-255 | required | upstream keyer, 0-based |
+| `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
+| `--keyer` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `--type` | enum, 0-255: luma=0 chroma=1 pattern=2 dve=3 | optional | key type |
 | `--fly` | bool | optional | fly key |
 

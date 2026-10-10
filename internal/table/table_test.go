@@ -3,7 +3,9 @@
 package table
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -191,5 +193,40 @@ func TestOperations(t *testing.T) {
 	md := r.Markdown()
 	if strings.Contains(md, "No echo") || !strings.Contains(md, "Runs in the CLI") {
 		t.Errorf("markdown:\n%s", md)
+	}
+}
+
+// An Index counts from 1 wherever people see it, and from 0 as a value.
+func TestIndex(t *testing.T) {
+	i := Index(2)
+	for got, want := range map[string]string{
+		i.String(): "3", fmt.Sprintf("%d", i): "3", fmt.Sprintf("%v", i): "3", fmt.Sprintf("%3d|%-3v|", i, i): "  3|3  |",
+		fmt.Sprint(i): "3", fmt.Sprintf("%s", i): "3", fmt.Sprintf("%d", *IndexPtr(0)): "1",
+		fmt.Sprintf("%+v", struct{ I Index }{i}): "{I:3}",
+	} {
+		if got != want {
+			t.Errorf("%q, want %q", got, want)
+		}
+	}
+	b, _ := json.Marshal(struct {
+		I Index  `json:"i"`
+		P *Index `json:"p,omitempty"`
+	}{I: 2, P: IndexPtr(0)})
+	if string(b) != `{"i":3,"p":1}` {
+		t.Errorf("json %s", b)
+	}
+	var back Index
+	if err := json.Unmarshal([]byte("3"), &back); err != nil || back != 2 {
+		t.Errorf("unmarshal %v %v", int(back), err)
+	}
+	for in, want := range map[string]Index{"1": 0, "20": 19} {
+		if got, err := ParseIndex(in); err != nil || got != want {
+			t.Errorf("parse %q: %v %v", in, int(got), err)
+		}
+	}
+	for _, in := range []string{"0", "-1", "x", "", "1.5"} {
+		if _, err := ParseIndex(in); err == nil {
+			t.Errorf("parse %q accepted", in)
+		}
 	}
 }

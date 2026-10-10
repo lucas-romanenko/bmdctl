@@ -72,7 +72,7 @@ type StatusResult struct {
 
 // MEStatus is one M/E.
 type MEStatus struct {
-	ME         int              `json:"me"` // counted from 1, as --me
+	ME         table.Index      `json:"me"`
 	Program    Source           `json:"program"`
 	Preview    Source           `json:"preview"`
 	Transition TransitionStatus `json:"transition"`
@@ -100,38 +100,38 @@ type FTBStatus struct {
 
 // KeyerStatus is one upstream keyer.
 type KeyerStatus struct {
-	Keyer int    `json:"keyer"` // from 0, as --keyer
-	OnAir bool   `json:"on_air"`
-	Type  string `json:"type"`
-	Fill  Source `json:"fill"`
-	Key   Source `json:"key"`
+	Keyer table.Index `json:"keyer"`
+	OnAir bool        `json:"on_air"`
+	Type  string      `json:"type"`
+	Fill  Source      `json:"fill"`
+	Key   Source      `json:"key"`
 }
 
 // DSKStatus is one downstream keyer.
 type DSKStatus struct {
-	DSK          int    `json:"dsk"` // from 0, as --dsk
-	OnAir        bool   `json:"on_air"`
-	Tie          bool   `json:"tie"`
-	InTransition bool   `json:"in_transition"`
-	Rate         int    `json:"rate"`
-	Fill         Source `json:"fill"`
-	Key          Source `json:"key"`
+	DSK          table.Index `json:"dsk"`
+	OnAir        bool        `json:"on_air"`
+	Tie          bool        `json:"tie"`
+	InTransition bool        `json:"in_transition"`
+	Rate         int         `json:"rate"`
+	Fill         Source      `json:"fill"`
+	Key          Source      `json:"key"`
 }
 
 // AuxStatus is one aux output.
 type AuxStatus struct {
-	Aux    int    `json:"aux"` // from 0, as --aux
-	Source Source `json:"source"`
+	Aux    table.Index `json:"aux"`
+	Source Source      `json:"source"`
 }
 
 // MacroStatus is the macro player and recorder.
 type MacroStatus struct {
-	Running   bool   `json:"running"`
-	Waiting   bool   `json:"waiting"`
-	Slot      int    `json:"slot"` // -1 when idle
-	Name      string `json:"name,omitempty"`
-	Recording bool   `json:"recording"`
-	RecSlot   int    `json:"recording_slot"` // -1 when not recording
+	Running   bool         `json:"running"`
+	Waiting   bool         `json:"waiting"`
+	Slot      *table.Index `json:"slot,omitempty"` // none when idle
+	Name      string       `json:"name,omitempty"`
+	Recording bool         `json:"recording"`
+	RecSlot   *table.Index `json:"recording_slot,omitempty"` // none when not recording
 }
 
 var (
@@ -160,7 +160,7 @@ func opStatus(c *call) (any, bool, error) {
 			}
 		}
 		rate := st.ActiveTransitionRate(me)
-		m := MEStatus{ME: me + 1, Program: sourceOf(st, st.ProgramSource(me)), Preview: sourceOf(st, st.PreviewSource(me)),
+		m := MEStatus{ME: table.Index(me), Program: sourceOf(st, st.ProgramSource(me)), Preview: sourceOf(st, st.PreviewSource(me)),
 			Transition: TransitionStatus{Style: nameOr(styleNames, st.TransitionStyle(me)), Rate: rate,
 				RateText: atem.FormatRate(rate, fps), Next: next, InTransition: st.TransitionInTransition(me),
 				Position: int(st.TransitionPosition(me))},
@@ -170,31 +170,31 @@ func opStatus(c *call) (any, bool, error) {
 			m.Transition.Preview = p.Enabled
 		}
 		for k := range st.MEKeyerCount(me) {
-			m.Keyers = append(m.Keyers, KeyerStatus{Keyer: k, OnAir: st.USKOnAir(me, k), Type: nameOr(keyTypeNames, st.USKType(me, k)),
+			m.Keyers = append(m.Keyers, KeyerStatus{Keyer: table.Index(k), OnAir: st.USKOnAir(me, k), Type: nameOr(keyTypeNames, st.USKType(me, k)),
 				Fill: sourceOf(st, st.USKFillSource(me, k)), Key: sourceOf(st, st.USKKeySource(me, k))})
 		}
 		r.MEs = append(r.MEs, m)
 	}
 	for d := range st.DSKCount() {
 		v := st.DSKState(d)
-		r.DSKs = append(r.DSKs, DSKStatus{DSK: d, OnAir: v.OnAir, Tie: v.Tie, InTransition: v.InTransition, Rate: v.Rate,
+		r.DSKs = append(r.DSKs, DSKStatus{DSK: table.Index(d), OnAir: v.OnAir, Tie: v.Tie, InTransition: v.InTransition, Rate: v.Rate,
 			Fill: sourceOf(st, v.FillSource), Key: sourceOf(st, v.KeySource)})
 	}
 	for i, a := range st.Aux {
 		if a != nil {
-			r.Aux = append(r.Aux, AuxStatus{Aux: i, Source: sourceOf(st, st.AuxSource(i))})
+			r.Aux = append(r.Aux, AuxStatus{Aux: table.Index(i), Source: sourceOf(st, st.AuxSource(i))})
 		}
 	}
-	r.Macro = MacroStatus{Running: st.MacroPlayRunning(), Slot: -1, RecSlot: -1}
+	r.Macro = MacroStatus{Running: st.MacroPlayRunning()}
 	if p := st.Macros.PlayStatus; p != nil {
 		r.Macro.Waiting = p.Waiting
 		if p.Running && p.Index != 0xFFFF {
-			r.Macro.Slot = int(p.Index)
+			r.Macro.Slot = table.IndexPtr(int(p.Index))
 			r.Macro.Name = st.MacroEntry(int(p.Index)).Name
 		}
 	}
 	if rs := st.Macros.RecordStatus; rs != nil && rs.IsRecording {
-		r.Macro.Recording, r.Macro.RecSlot = true, int(rs.Index)
+		r.Macro.Recording, r.Macro.RecSlot = true, table.IndexPtr(int(rs.Index))
 	}
 	if s := st.Recording.Status; s != nil {
 		r.Recording = &s.IsRecording

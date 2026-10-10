@@ -48,7 +48,7 @@ func TestMediaCommands(t *testing.T) {
 		t.Errorf("upload: %q", out)
 	}
 	out = b.must(with("media", "list")...)
-	if !strings.Contains(out, "still 3   logo") || !strings.Contains(out, "still 4   -") || !strings.Contains(out, "player 0") {
+	if !strings.Contains(out, "still 3   logo") || !strings.Contains(out, "still 4   -") || !strings.Contains(out, "player 1  still 1") {
 		t.Errorf("list:\n%s", out)
 	}
 	// Replacing a used slot is destructive.
@@ -117,7 +117,8 @@ func TestMediaCommands(t *testing.T) {
 	if _, got := b.mustSend(t, "Capt", with("media", "capture")...); got != "" {
 		t.Errorf("capture: %s", got)
 	}
-	if _, got := b.mustSend(t, "MPSS", with("media", "player", "--player", "1", "--still", "5")...); got != "0301010500000000" {
+	// Player 2 and still 6, counted from 1: player 1 and still 5 on the wire.
+	if _, got := b.mustSend(t, "MPSS", with("media", "player", "--player", "2", "--still", "6")...); got != "0301010500000000" {
 		t.Errorf("player: %s", got)
 	}
 	if code, _, errOut := b.run(with("media", "upload", "--slot", "3", "--file", filepath.Join(dir, "Other.png"), "--yes", "--slot", "4")...); code != exitUsage || !strings.Contains(errOut, "given twice") {

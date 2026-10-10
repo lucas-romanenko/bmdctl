@@ -94,8 +94,8 @@ func TestSwitchingCommands(t *testing.T) {
 		msg  string
 	}{
 		{[]string{"program", "--me", "2", "--source", "1"}, "--me 2: the switcher has 1 M/E"},
-		{[]string{"usk", "on-air", "--keyer", "4", "--on-air"}, "--keyer 4: M/E 1 has 4 upstream keyers, 0-3"},
-		{[]string{"dsk", "on-air", "--dsk", "2", "--on-air"}, "--dsk 2: the switcher has 2 downstream keyers, 0-1"},
+		{[]string{"usk", "on-air", "--keyer", "5", "--on-air"}, "--keyer 5: M/E 1 has 4 upstream keyers, 1-4"},
+		{[]string{"dsk", "on-air", "--dsk", "3", "--on-air"}, "--dsk 3: the switcher has 2 downstream keyers, 1-2"},
 		{[]string{"transition", "next"}, "give --next or --toggle"},
 		{[]string{"transition", "next", "--next", "key1", "--toggle", "key2"}, "give --next or --toggle"},
 		{[]string{"transition", "next", "--next", "0"}, "selects no layer"},

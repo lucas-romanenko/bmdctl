@@ -98,12 +98,15 @@ func formatStatus(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	macro := "idle"
 	switch {
 	case r.Macro.Running:
-		macro = fmt.Sprintf("running %d %s", r.Macro.Slot, r.Macro.Name)
+		macro = "running"
+		if r.Macro.Slot != nil {
+			macro += fmt.Sprintf(" %d %s", *r.Macro.Slot, r.Macro.Name)
+		}
 		if r.Macro.Waiting {
 			macro += ", waiting"
 		}
-	case r.Macro.Recording:
-		macro = fmt.Sprintf("recording %d", r.Macro.RecSlot)
+	case r.Macro.Recording && r.Macro.RecSlot != nil:
+		macro = fmt.Sprintf("recording %d", *r.Macro.RecSlot)
 	}
 	rows = append(rows, []string{"macro", strings.TrimSpace(macro)})
 	if r.Recording != nil {

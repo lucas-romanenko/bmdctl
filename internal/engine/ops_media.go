@@ -25,7 +25,7 @@ import (
 
 func slotParam(max float64, help string) table.Param {
 	lo, hi := table.Bounds(0, max)
-	return table.Param{Name: "slot", Kind: table.Uint, Min: lo, Max: hi, Required: true, Help: help}
+	return table.Param{Name: "slot", Kind: table.Uint, Min: lo, Max: hi, Required: true, OneBased: true, Help: help}
 }
 
 func mediaOperations() []operation {
@@ -34,36 +34,36 @@ func mediaOperations() []operation {
 			run: opMediaList},
 		{entry: table.Entry{Path: "media upload", Summary: "Upload a PNG, JPEG or GIF to a still slot, fitted to the video mode.",
 			Echo: "MPfe:<slot>",
-			Params: []table.Param{slotParam(0xFFFF, "still slot, 0-based; replacing a used one needs --yes"),
+			Params: []table.Param{slotParam(0xFFFF, "still slot; replacing a used one needs --yes"),
 				{Name: "file", Kind: table.File, Required: true, Help: "the image; - reads stdin"},
 				{Name: "name", Kind: table.String, Help: "the slot's name (default: the file's, without extension)"},
 				{Name: "description", Kind: table.String, Help: "the slot's description"},
 				{Name: "premultiply", Kind: table.Bool, Help: "premultiply colour by alpha (default: for PNG, as WebATEM does)"}}},
 			run: opMediaUpload},
 		{entry: table.Entry{Path: "media download", Summary: "Download a still slot as a PNG.",
-			Params: []table.Param{slotParam(0xFFFF, "still slot, 0-based"),
+			Params: []table.Param{slotParam(0xFFFF, "still slot"),
 				{Name: "file", Kind: table.OutFile, Help: "where to write it; - is stdout (default: the slot's name .png)"}}},
 			run: opMediaDownload},
 		{entry: table.Entry{Path: "media clear", Summary: "Empty a still slot, under the media pool's lock.", Destructive: true,
-			Echo: "MPfe:<slot>", Params: []table.Param{slotParam(0xFF, "still slot, 0-based")}},
+			Echo: "MPfe:<slot>", Params: []table.Param{slotParam(0xFF, "still slot")}},
 			run: opMediaClear},
 	}
 }
 
 // StillEntry is one still slot.
 type StillEntry struct {
-	Slot int    `json:"slot"`
-	Used bool   `json:"used"`
-	Name string `json:"name,omitempty"`
-	Hash string `json:"hash,omitempty"`
+	Slot table.Index `json:"slot"`
+	Used bool        `json:"used"`
+	Name string      `json:"name,omitempty"`
+	Hash string      `json:"hash,omitempty"`
 }
 
 // PlayerEntry is what one media player shows.
 type PlayerEntry struct {
-	Player int    `json:"player"`
-	Type   string `json:"type"` // still or clip
-	Slot   int    `json:"slot"`
-	Name   string `json:"name,omitempty"`
+	Player table.Index `json:"player"`
+	Type   string      `json:"type"` // still or clip
+	Slot   table.Index `json:"slot"`
+	Name   string      `json:"name,omitempty"`
 }
 
 // MediaList is the media pool.
@@ -78,7 +78,7 @@ func opMediaList(c *call) (any, bool, error) {
 	r := MediaList{Stills: []StillEntry{}, Players: []PlayerEntry{}}
 	for slot := range st.MediaplayerSlots() {
 		v := st.MediaplayerSlotInfo(slot)
-		r.Stills = append(r.Stills, StillEntry{Slot: slot, Used: v.IsUsed, Name: v.Name, Hash: v.Hash})
+		r.Stills = append(r.Stills, StillEntry{Slot: table.Index(slot), Used: v.IsUsed, Name: v.Name, Hash: v.Hash})
 	}
 	if s := st.MediaPool.Slots; s != nil {
 		r.Clips = int(s.Clips)
@@ -88,7 +88,7 @@ func opMediaList(c *call) (any, bool, error) {
 			continue
 		}
 		v := st.MediaplayerSelected(i)
-		e := PlayerEntry{Player: i, Type: "still", Slot: v.Slot}
+		e := PlayerEntry{Player: table.Index(i), Type: "still", Slot: table.Index(v.Slot)}
 		if v.SourceType == 2 {
 			e.Type = "clip"
 		} else {
@@ -101,14 +101,14 @@ func opMediaList(c *call) (any, bool, error) {
 
 // TransferResult is what a transfer moved.
 type TransferResult struct {
-	Slot        int    `json:"slot"`
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
-	Bytes       int    `json:"bytes"`           // the file's size
-	Width       int    `json:"width,omitempty"` // a still's frame
-	Height      int    `json:"height,omitempty"`
-	Source      string `json:"source,omitempty"` // the image's size before fitting, for an upload
-	Replaced    string `json:"replaced,omitempty"`
+	Slot        table.Index `json:"slot"`
+	Name        string      `json:"name,omitempty"`
+	Description string      `json:"description,omitempty"`
+	Bytes       int         `json:"bytes"`           // the file's size
+	Width       int         `json:"width,omitempty"` // a still's frame
+	Height      int         `json:"height,omitempty"`
+	Source      string      `json:"source,omitempty"` // the image's size before fitting, for an upload
+	Replaced    string      `json:"replaced,omitempty"`
 }
 
 // transferErr gives a transfer's error its code: refused by the switcher
@@ -147,12 +147,12 @@ func opMediaUpload(c *call) (any, bool, error) {
 		return nil, false, codeErr(CodeUsage, "--file %s: not a PNG, JPEG or GIF image: %v", c.args.Value("file"), err)
 	}
 	if n := c.state.MediaplayerSlots(); n > 0 && slot >= n {
-		return nil, false, codeErr(CodeUsage, "--slot %d: the media pool has %d stills, 0-%d", slot, n, n-1)
+		return nil, false, codeErr(CodeUsage, "--slot %v: the media pool has %d stills, 1-%d", table.Index(slot), n, n)
 	}
-	r := TransferResult{Slot: slot, Bytes: len(data), Source: fmt.Sprintf("%dx%d %s", img.Bounds().Dx(), img.Bounds().Dy(), format)}
+	r := TransferResult{Slot: table.Index(slot), Bytes: len(data), Source: fmt.Sprintf("%dx%d %s", img.Bounds().Dx(), img.Bounds().Dy(), format)}
 	if old := c.state.MediaplayerSlotInfo(slot); old.IsUsed {
 		if !c.req.Yes {
-			return nil, false, codeErr(CodeDestructive, "still slot %d holds %q: add --yes to replace it", slot, old.Name)
+			return nil, false, codeErr(CodeDestructive, "still slot %v holds %q: add --yes to replace it", table.Index(slot), old.Name)
 		}
 		r.Replaced = old.Name
 	}
@@ -187,7 +187,7 @@ func opMediaDownload(c *call) (any, bool, error) {
 	slot := int(c.args.Value("slot").(uint64))
 	info := c.state.MediaplayerSlotInfo(slot)
 	if !info.IsUsed {
-		return nil, false, codeErr(CodeUsage, "still slot %d is empty", slot)
+		return nil, false, codeErr(CodeUsage, "still slot %v is empty", table.Index(slot))
 	}
 	m := c.state.VideoMode.Mode
 	if m == nil {
@@ -202,7 +202,7 @@ func opMediaDownload(c *call) (any, bool, error) {
 	}
 	img, err := atem.FrameImage(frame, w, h)
 	if err != nil {
-		return nil, false, codeErr(CodeRejected, "still slot %d: %v (was it stored at another video mode?)", slot, err)
+		return nil, false, codeErr(CodeRejected, "still slot %v: %v (was it stored at another video mode?)", table.Index(slot), err)
 	}
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
@@ -210,12 +210,12 @@ func opMediaDownload(c *call) (any, bool, error) {
 	}
 	f := FileFrame{Param: "file", Data: buf.Bytes()}
 	if !c.args.Has("file") {
-		f.Name = fileName(info.Name, fmt.Sprintf("still-%d", slot)) + ".png"
+		f.Name = fileName(info.Name, "still-"+table.Index(slot).String()) + ".png"
 	}
 	if err := c.out.file(f); err != nil {
 		return nil, false, err
 	}
-	return TransferResult{Slot: slot, Name: info.Name, Bytes: buf.Len(), Width: w, Height: h}, true, nil
+	return TransferResult{Slot: table.Index(slot), Name: info.Name, Bytes: buf.Len(), Width: w, Height: h}, true, nil
 }
 
 // fileName makes a name a file name: no path separators or control
@@ -247,7 +247,7 @@ func opMediaClear(c *call) (any, bool, error) {
 	if err := c.sess.ClearStill(ctx, slot); err != nil {
 		return nil, false, transferErr(err)
 	}
-	r := TransferResult{Slot: slot, Replaced: name}
+	r := TransferResult{Slot: table.Index(slot), Replaced: name}
 	key := fmt.Sprintf("MPfe:%d", slot)
 	timer := time.NewTimer(c.req.timeout())
 	defer timer.Stop()
@@ -256,7 +256,7 @@ func opMediaClear(c *call) (any, bool, error) {
 		case <-c.ctx.Done():
 			return nil, false, codeErr(CodeUnreachable, "%v", c.ctx.Err())
 		case <-timer.C:
-			return nil, false, codeErr(CodeNoEcho, "sent, but the switcher did not report %s empty within %v", key, c.req.timeout())
+			return nil, false, codeErr(CodeNoEcho, "sent, but the switcher did not report still slot %v empty (%s) within %v", table.Index(slot), key, c.req.timeout())
 		case ch, ok := <-changes:
 			if !ok {
 				return nil, false, codeErr(CodeUnreachable, "the session closed")

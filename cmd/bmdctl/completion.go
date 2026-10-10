@@ -24,6 +24,8 @@ const completeFiles = ":files"
 
 const bashCompletion = `# bash completion for bmdctl. Load it with:
 #   source <(bmdctl completion bash)
+# Indexes (M/Es, keyers, DSKs, aux, media and macro slots, players) are
+# offered counted from 1, as bmdctl takes them.
 _bmdctl() {
     local cur=${COMP_WORDS[COMP_CWORD]} out line
     out=$(bmdctl __complete "${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null) || return
@@ -43,7 +45,9 @@ complete -F _bmdctl bmdctl
 const zshCompletion = `#compdef bmdctl
 # zsh completion for bmdctl. Load it with:
 #   source <(bmdctl completion zsh)
-# or save it as _bmdctl in a directory on $fpath.
+# or save it as _bmdctl in a directory on $fpath. Indexes (M/Es, keyers,
+# DSKs, aux, media and macro slots, players) are offered counted from 1,
+# as bmdctl takes them.
 _bmdctl() {
     local -a out
     out=("${(@f)$(bmdctl __complete "${(@)words[2,CURRENT]}" 2>/dev/null)}")
@@ -62,7 +66,9 @@ fi
 
 const fishCompletion = `# fish completion for bmdctl. Load it with:
 #   bmdctl completion fish | source
-# or save it as ~/.config/fish/completions/bmdctl.fish.
+# or save it as ~/.config/fish/completions/bmdctl.fish. Indexes (M/Es,
+# keyers, DSKs, aux, media and macro slots, players) are offered counted
+# from 1, as bmdctl takes them.
 function __bmdctl_complete
     set -l tokens (commandline -opc)
     set -e tokens[1]
@@ -82,7 +88,7 @@ func (c *cli) completionCommand(g globals, words []string) int {
 		if !g.help {
 			w, code = c.stderr, exitUsage
 		}
-		fmt.Fprint(w, "usage: bmdctl completion bash|zsh|fish\n\nPrints a script that completes bmdctl's commands, flags, host names and,\nwhile the engine runs, the switcher's input names.\n")
+		fmt.Fprint(w, "usage: bmdctl completion bash|zsh|fish\n\nPrints a script that completes bmdctl's commands, flags, host names and,\nwhile the engine runs, the switcher's input names and the indexes it has,\ncounted from 1.\n")
 		return code
 	}
 	script := map[string]string{"bash": bashCompletion, "zsh": zshCompletion, "fish": fishCompletion}[words[0]]
@@ -149,7 +155,7 @@ func (c *cli) complete(args []string) []string {
 			if p.Kind == table.Bool && strings.HasPrefix(cur, "-") {
 				return c.completeFlags(cur, e, first, tokens)
 			}
-			return c.completeValue(cur, *p, g)
+			return c.completeValue(cur, e, *p, g, tokens)
 		}
 	}
 
@@ -233,9 +239,12 @@ func (c *cli) completeFlags(cur string, e *table.Entry, builtin string, tokens [
 }
 
 // completeValue offers a parameter's values: names for an enum, flags
-// and bools, the switcher's input names for a source (when the engine is
-// running), files for a file.
-func (c *cli) completeValue(cur string, p table.Param, g globals) []string {
+// and bools, files for a file, and from a running engine the switcher's
+// input names for a source and the indexes it has, counted from 1.
+func (c *cli) completeValue(cur string, e *table.Entry, p table.Param, g globals, tokens []string) []string {
+	if p.OneBased || p.Name == "slot" && p.Kind == table.String {
+		return match(cur, c.liveIndexes(e, p, g, tokens))
+	}
 	switch p.Kind {
 	case table.Enum, table.Flags:
 		names := p.SortedNames()
@@ -270,27 +279,98 @@ func (c *cli) hostNames() []string {
 	return out
 }
 
-// liveSources asks a running engine for the target switcher's input
-// names (never starting one), within a second.
-func (c *cli) liveSources(g globals) []string {
+// ask runs a read-only request for the target switcher on a running
+// engine (never starting one), within a second, and decodes its result
+// into v.
+func (c *cli) ask(g globals, path string, params map[string]string, v any) bool {
 	t, err := c.resolveTarget(g)
 	if err != nil || t.Device != "" && t.Device != "atem" {
-		return nil
+		return false
 	}
 	conn, err := c.dialRunning()
 	if err != nil {
-		return nil
+		return false
 	}
 	defer conn.Close()
 	ctx, cancel := context.WithTimeout(c.ctx, time.Second)
 	defer cancel()
-	resp, err := engine.Call(ctx, conn, engine.Request{Device: "atem", Host: t.Address, Path: "input list"},
+	resp, err := engine.Call(ctx, conn, engine.Request{Device: "atem", Host: t.Address, Path: path, Params: params},
 		func([]byte, *engine.FileFrame, *engine.Response) error { return nil })
 	if err != nil || !resp.OK {
+		return false
+	}
+	return json.Unmarshal(resp.Result.(json.RawMessage), v) == nil
+}
+
+// liveIndexes are the values an index parameter can take on the target
+// switcher, counted from 1, from a running engine: as many M/Es, keyers,
+// DSKs, aux outputs, media players and still or clip slots as it has, and
+// the macro slots it holds (with their names where a name will do).
+func (c *cli) liveIndexes(e *table.Entry, p table.Param, g globals, tokens []string) []string {
+	upTo := func(n int) []string {
+		var out []string
+		for i := range n {
+			out = append(out, table.Index(i).String())
+		}
+		return out
+	}
+	if strings.HasPrefix(e.Path, "macro ") && p.Name == "slot" {
+		var ml engine.MacroList
+		if !c.ask(g, "macro list", map[string]string{"all": "true"}, &ml) {
+			return nil
+		}
+		var out []string
+		for _, m := range ml.Macros {
+			if !m.Used && p.Kind == table.String {
+				continue // run, delete and download name a macro there is
+			}
+			out = append(out, m.Slot.String())
+			if p.Kind == table.String && m.Name != "" {
+				out = append(out, m.Name)
+			}
+		}
+		return out
+	}
+	var info engine.InfoResult
+	if !c.ask(g, "info", nil, &info) {
 		return nil
 	}
+	switch p.Name {
+	case "me":
+		return upTo(info.MEs)
+	case "keyer":
+		me := 0
+		for i := 0; i+1 < len(tokens); i++ {
+			if tokens[i] == "--me" {
+				if x, err := table.ParseIndex(tokens[i+1]); err == nil {
+					me = int(x)
+				}
+			}
+		}
+		if me < len(info.Keyers) {
+			return upTo(info.Keyers[me])
+		}
+	case "dsk":
+		return upTo(info.DSKs)
+	case "aux":
+		return upTo(info.Aux)
+	case "player":
+		return upTo(info.MediaPlayers)
+	case "slot", "still":
+		return upTo(info.Stills)
+	case "clip":
+		return upTo(info.Clips)
+	}
+	return nil
+}
+
+// liveSources are the target switcher's input names, from a running
+// engine.
+func (c *cli) liveSources(g globals) []string {
 	var ins []engine.InputEntry
-	json.Unmarshal(resp.Result.(json.RawMessage), &ins)
+	if !c.ask(g, "input list", nil, &ins) {
+		return nil
+	}
 	var out []string
 	for _, in := range ins {
 		out = append(out, in.Long)

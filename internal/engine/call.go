@@ -50,16 +50,16 @@ func (c *call) checkIndices() error {
 	top := c.state.Topology
 	me, hasME := idx("me")
 	if n := c.state.MECount(); hasME && top != nil && top.MEUnits > 0 && me >= n {
-		return codeErr(CodeUsage, "--me %d: the switcher has %d M/E%s", me+1, n, plural(n))
+		return codeErr(CodeUsage, "--me %v: the switcher has %d M/E%s", table.Index(me), n, plural(n))
 	}
 	if k, ok := idx("keyer"); ok && me < len(c.state.MEs) && c.state.MEs[me].Config != nil {
 		if n := c.state.MEKeyerCount(me); k >= n {
-			return codeErr(CodeUsage, "--keyer %d: M/E %d has %d upstream keyer%s, 0-%d", k, me+1, n, plural(n), n-1)
+			return codeErr(CodeUsage, "--keyer %v: M/E %v has %d upstream keyer%s, 1-%d", table.Index(k), table.Index(me), n, plural(n), n)
 		}
 	}
 	if d, ok := idx("dsk"); ok && top != nil && top.DownstreamKeyers > 0 {
 		if n := c.state.DSKCount(); d >= n {
-			return codeErr(CodeUsage, "--dsk %d: the switcher has %d downstream keyer%s, 0-%d", d, n, plural(n), n-1)
+			return codeErr(CodeUsage, "--dsk %v: the switcher has %d downstream keyer%s, 1-%d", table.Index(d), n, plural(n), n)
 		}
 	}
 	return nil
@@ -74,8 +74,8 @@ func plural(n int) string {
 
 // CommandResult is the result of a wire command.
 type CommandResult struct {
-	// Args are the arguments as sent, for display: M/Es counted from 1,
-	// sources with their names, enums by name.
+	// Args are the arguments as sent, for display: indexes counted from
+	// 1, sources with their names, enums by name.
 	Args map[string]string `json:"args,omitempty"`
 	// Command is the command's opcode.
 	Command string `json:"command"`
@@ -162,7 +162,7 @@ func displayValue(p table.Param, v any, st atem.State) string {
 	case uint64:
 		switch {
 		case p.OneBased:
-			return fmt.Sprint(x + 1)
+			return table.Index(x).String()
 		case p.Kind == table.Source:
 			return sourceLabel(st, int(x))
 		case p.Kind == table.Enum:

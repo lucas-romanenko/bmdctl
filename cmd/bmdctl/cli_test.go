@@ -98,7 +98,7 @@ func TestHelpAtEveryLevel(t *testing.T) {
 	}
 	if code, out, _ := runCLI("transition", "wipe", "-h"); code != 0 || !strings.Contains(out, "--width") ||
 		!strings.Contains(out, "CircleIris=7") || !strings.Contains(out, "Echo: TWpP:<me>") ||
-		!strings.Contains(out, "--me counts M/Es from 1") || !strings.Contains(out, "uint, 1-256") {
+		!strings.Contains(out, "--me counts from 1, as ATEM Software Control does") || !strings.Contains(out, "uint, 1-256") {
 		t.Errorf("wipe --help:\n%s", out)
 	}
 	if code, out, _ := runCLI("--help"); code != 0 || !strings.Contains(out, "atem") || !strings.Contains(out, "Exit status") {
@@ -128,6 +128,13 @@ func TestDryRun(t *testing.T) {
 		{[]string{"transition", "mix", "--rate", "1:00"}, "000c00004354 4d78 0019 0000"},
 		{[]string{"--fps", "30", "transition", "mix", "--rate", "1:00"}, "000c000043544d78001e0000"},
 		{[]string{"audio", "input", "--source", "1", "--balance", "-500"}, "0014000043414d49" + "0400000100000000fe0c0000"},
+		// Indexes are typed from 1 and sent from 0.
+		{[]string{"usk", "on-air", "--keyer", "2", "--on-air"}, "000c0000434b4f6e" + "00010100"},
+		{[]string{"dsk", "on-air", "--dsk", "2", "--on-air"}, "000c000043447 34c" + "01010000"},
+		{[]string{"aux", "--aux", "2", "--source", "2001"}, "000c000043417553" + "010107d1"},
+		{[]string{"media", "player", "--player", "2", "--still", "6"}, "001000004d505353" + "0301010500000000"},
+		{[]string{"macro", "action", "--slot", "4", "--action", "run"}, "000c00004d416374" + "00030000"},
+		{[]string{"macro", "action", "--action", "stop"}, "000c00004d416374" + "ffff0100"},
 		{[]string{"fairlight", "eq", "--source", "1", "--channel", "-1", "--band", "0", "--q", "2", "-q"}, ""},
 		{[]string{"supersource", "box", "--box", "0", "--y", "-200", "-y"}, "0020000043534250" + "00080000000000000000ff38000000000000000000000000"},
 	} {
@@ -175,8 +182,10 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 		{[]string{"--dry-run", "transition", "mix", "--rate", "1:30"}, 1, "not under the display rate, 25 fps"},
 		{[]string{"--dry-run", "transition", "mix", "--rate", "fast"}, 1, "not seconds:frames"},
 		{[]string{"--dry-run", "transition", "settings", "--next", "0"}, 1, "selects no layer"},
-		{[]string{"--dry-run", "media", "player", "--player", "0"}, 1, "nothing to set"},
-		{[]string{"--dry-run", "media", "player", "--player", "0", "--still", "1", "--clip", "2"}, 1, "not both"},
+		{[]string{"--dry-run", "media", "player", "--player", "1"}, 1, "nothing to set"},
+		{[]string{"--dry-run", "media", "player", "--player", "1", "--still", "1", "--clip", "2"}, 1, "not both"},
+		{[]string{"--dry-run", "usk", "on-air", "--keyer", "0", "--on-air"}, 1, "--keyer \"0\": counted from 1: 1-256"},
+		{[]string{"--dry-run", "dsk", "on-air", "--dsk", "0", "--on-air"}, 1, "counted from 1"},
 		{[]string{"--dry-run", "transition", "stinger", "--clip", "7000"}, 1, "does not fit"},
 		{[]string{"--dry-run", "nonsense"}, 1, "unknown command"},
 		{[]string{"atem", "--dry-run", "nonsense"}, 1, "unknown command"},

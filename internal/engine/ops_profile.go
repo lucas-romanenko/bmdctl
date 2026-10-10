@@ -45,7 +45,7 @@ func meParams(program, preview bool) []table.Param {
 		boolParam("next-transition", true, "each M/E's next-transition layers"),
 		boolParam("transition-style", true, "each M/E's transition style and its settings"),
 		boolParam("ftb", true, "each M/E's fade to black"),
-		{Name: "keyers", Kind: table.String, Default: "all", Help: "the upstream keyers: all, none, or a list from 0 (0,1)"},
+		{Name: "keyers", Kind: table.String, Default: "all", Help: "the upstream keyers: all, none, or a list from 1 (1,2)"},
 	}
 }
 
@@ -100,17 +100,17 @@ func profileOperations() []operation {
 
 // meOptions reads the per-M/E flags into one block per M/E slot.
 func (c *call) meOptions() ([]profile.MixEffectOptions, error) {
-	mes, err := indexList(c.args.Value("mes").(string), 1, profile.PlatformMaxMEs, "--mes")
+	mes, err := indexList(c.args.Value("mes").(string), profile.PlatformMaxMEs, "--mes")
 	if err != nil {
 		return nil, err
 	}
-	keyers, err := indexList(c.args.Value("keyers").(string), 0, 3, "--keyers")
+	keyers, err := indexList(c.args.Value("keyers").(string), 4, "--keyers")
 	if err != nil {
 		return nil, err
 	}
 	var out []profile.MixEffectOptions
 	for me := range profile.PlatformMaxMEs {
-		if !mes[me+1] {
+		if !mes[me] {
 			out = append(out, profile.MixEffectOptionsNone())
 			continue
 		}
@@ -124,13 +124,13 @@ func (c *call) meOptions() ([]profile.MixEffectOptions, error) {
 	return out, nil
 }
 
-// indexList reads "all", "none" or a comma-separated list of numbers
-// from lo to hi.
-func indexList(s string, lo, hi int, flag string) (map[int]bool, error) {
+// indexList reads "all", "none" or a comma-separated list of indexes
+// counted from 1, up to n, into a set of indexes.
+func indexList(s string, n int, flag string) (map[int]bool, error) {
 	set := map[int]bool{}
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "all":
-		for i := lo; i <= hi; i++ {
+		for i := range n {
 			set[i] = true
 		}
 		return set, nil
@@ -138,11 +138,11 @@ func indexList(s string, lo, hi int, flag string) (map[int]bool, error) {
 		return set, nil
 	}
 	for _, f := range strings.Split(s, ",") {
-		n, err := strconv.Atoi(strings.TrimSpace(f))
-		if err != nil || n < lo || n > hi {
-			return nil, codeErr(CodeUsage, "%s %q: give all, none, or numbers %d-%d", flag, s, lo, hi)
+		i, err := table.ParseIndex(strings.TrimSpace(f))
+		if err != nil || int(i) >= n {
+			return nil, codeErr(CodeUsage, "%s %q: give all, none, or numbers 1-%d", flag, s, n)
 		}
-		set[n] = true
+		set[int(i)] = true
 	}
 	return set, nil
 }
@@ -163,10 +163,10 @@ type ProfileResult struct {
 
 // ImageResult is one media pool image saved or restored.
 type ImageResult struct {
-	Slot  int    `json:"slot"`
-	Name  string `json:"name"`
-	Path  string `json:"path"`
-	Error string `json:"error,omitempty"` // why it was skipped
+	Slot  table.Index `json:"slot"`
+	Name  string      `json:"name"`
+	Path  string      `json:"path"`
+	Error string      `json:"error,omitempty"` // why it was skipped
 }
 
 func opProfileSave(c *call) (any, bool, error) {
@@ -231,7 +231,7 @@ func (c *call) downloadImages(param, prefix string) ([]ImageResult, error) {
 		if name == "" {
 			name = fmt.Sprintf("Slot%d", slot)
 		}
-		r := ImageResult{Slot: slot, Name: name, Path: prefix + fileName(name, fmt.Sprintf("Slot%d", slot)) + ".png"}
+		r := ImageResult{Slot: table.Index(slot), Name: name, Path: prefix + fileName(name, fmt.Sprintf("Slot%d", slot)) + ".png"}
 		ctx, cancel := c.transferCtx()
 		frame, err := c.sess.DownloadStill(ctx, slot)
 		cancel()
@@ -324,14 +324,15 @@ func (c *call) uploadImages(p *profile.Profile) []ImageResult {
 	stills := pool.FindAll("Stills/Still")
 	slices.SortStableFunc(stills, func(a, b *profile.Element) int { return idx(a) - idx(b) })
 	for _, s := range stills {
-		r := ImageResult{Slot: idx(s), Name: s.GetDefault("name", ""), Path: s.GetDefault("path", "")}
+		slot := idx(s) // the XML's index counts from 0, as ASC writes it
+		r := ImageResult{Slot: table.Index(slot), Name: s.GetDefault("name", ""), Path: s.GetDefault("path", "")}
 		if r.Path == "" {
 			continue
 		}
-		data, ok := c.req.Files[ImageParam(r.Slot)]
+		data, ok := c.req.Files[ImageParam(slot)]
 		var err error
 		switch {
-		case r.Slot < 0:
+		case slot < 0:
 			err = fmt.Errorf("index %q is not a slot", s.GetDefault("index", ""))
 		case !ok:
 			err = fmt.Errorf("no file at %s", r.Path)
@@ -340,13 +341,13 @@ func (c *call) uploadImages(p *profile.Profile) []ImageResult {
 			var format string
 			if img, format, err = image.Decode(bytes.NewReader(data)); err == nil {
 				ctx, cancel := c.transferCtx()
-				err = c.sess.UploadStill(ctx, r.Slot, img, atem.StillOptions{Name: r.Name, Premultiply: format == "png"})
+				err = c.sess.UploadStill(ctx, slot, img, atem.StillOptions{Name: r.Name, Premultiply: format == "png"})
 				cancel()
 			}
 		}
 		if err != nil {
 			r.Error = err.Error()
-			c.e.log.Warn("media pool image not restored", "slot", r.Slot, "path", r.Path, "err", err)
+			c.e.log.Warn("media pool image not restored", "slot", slot, "path", r.Path, "err", err)
 		}
 		out = append(out, r)
 	}

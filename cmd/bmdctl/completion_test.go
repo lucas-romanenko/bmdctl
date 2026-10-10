@@ -71,10 +71,35 @@ func TestComplete(t *testing.T) {
 	if got := complete("--host", "studio", "program", "--source", "ca"); !reflect.DeepEqual(got, []string{"Camera 1", "Camera 2"}) {
 		t.Errorf("live sources: %q", got)
 	}
+	// Indexes, counted from 1, as many as the switcher has.
+	for _, c := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"usk", "on-air", "--keyer", ""}, []string{"1", "2", "3", "4"}},
+		{[]string{"usk", "on-air", "--me", "1", "--keyer", "3"}, []string{"3"}},
+		{[]string{"dsk", "tie", "--dsk", ""}, []string{"1", "2"}},
+		{[]string{"aux", "--aux", ""}, []string{"1", "2", "3", "4", "5", "6"}},
+		{[]string{"media", "player", "--player", ""}, []string{"1", "2"}},
+		{[]string{"media", "player", "--player", "1", "--still", "2"}, []string{"2", "20"}},
+		{[]string{"media", "download", "--slot", "1"}, []string{"1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"}},
+		{[]string{"program", "--me", ""}, []string{"1"}},
+		// A macro by number or name, the ones there are.
+		{[]string{"macro", "run", "--slot", ""}, []string{"1", "Open Show", "3", "Half Time"}},
+		{[]string{"macro", "run", "--slot", "h"}, []string{"Half Time"}},
+		{[]string{"macro", "record", "--slot", ""}, []string{"1", "2", "3"}},
+	} {
+		if got := complete(append([]string{"--host", "studio"}, c.args...)...); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%q: %q, want %q", c.args, got, c.want)
+		}
+	}
 	// No engine: no names, and no engine started.
 	b.engine().Stop()
 	if got := complete("--host", "studio", "program", "--source", ""); got != nil {
 		t.Errorf("sources without an engine: %q", got)
+	}
+	if got := complete("--host", "studio", "usk", "on-air", "--keyer", ""); got != nil {
+		t.Errorf("indexes without an engine: %q", got)
 	}
 	// __complete prints them one per line.
 	code, out, _ := b.run("__complete", "transition", "m")

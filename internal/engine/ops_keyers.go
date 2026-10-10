@@ -14,11 +14,11 @@ import (
 var (
 	pKeyer = func() table.Param {
 		lo, hi := table.Bounds(0, 255)
-		return table.Param{Name: "keyer", Kind: table.Uint, Min: lo, Max: hi, Required: true, Help: "upstream keyer, 0-based"}
+		return table.Param{Name: "keyer", Kind: table.Uint, Min: lo, Max: hi, Required: true, OneBased: true, Help: "upstream keyer"}
 	}()
 	pDSK = func() table.Param {
 		lo, hi := table.Bounds(0, 255)
-		return table.Param{Name: "dsk", Kind: table.Uint, Min: lo, Max: hi, Default: "0", Help: "downstream keyer, 0-based"}
+		return table.Param{Name: "dsk", Kind: table.Uint, Min: lo, Max: hi, Default: "1", OneBased: true, Help: "downstream keyer"}
 	}()
 )
 
