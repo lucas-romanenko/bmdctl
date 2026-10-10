@@ -90,10 +90,12 @@ type Switcher struct {
 	locks      map[uint16]holder // store locks that are held
 	lockQueued map[uint16]bool   // the session's PLCK waits for another client's release
 
-	stills   map[uint16]*item // the media pool's stills (transfers.go)
-	macros   map[uint16]*item
-	xfers    map[uint16]*xfer // transfers in progress, by transfer id
-	failNext []uint8          // FTDE statuses for the next transfer requests
+	stills map[uint16]*item // the media pool's stills (transfers.go)
+	macros map[uint16]*item
+	xfers  map[uint16]*xfer // transfers in progress, by transfer id
+
+	recording *recording // the macro being recorded (macros.go)
+	failNext  []uint8    // FTDE statuses for the next transfer requests
 }
 
 // holder is who holds a store lock.
@@ -400,6 +402,7 @@ func (sw *Switcher) receive(b []byte) {
 		echoes = append(echoes, sw.echo(code, payload)...)
 		echoes = append(echoes, sw.mirrorEcho(code, payload)...)
 		echoes = append(echoes, sw.meters(code, payload)...)
+		echoes = append(echoes, sw.macroEcho(code, payload)...)
 		echoes = append(echoes, sw.transferEcho(code, payload)...)
 	})
 	if len(echoes) > 0 {

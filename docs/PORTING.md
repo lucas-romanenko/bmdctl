@@ -1117,6 +1117,30 @@ else (keyers, DSKs, aux, slots) from 0.
     entry, which some models ignore, is now `media clear-unlocked`.
   - Errors: a `*TransferError` or `ErrLockNotGranted` is `rejected` (4), a
     transfer that times out under way `no_echo` (3).
+- **Group f, macros** (`ops_macro.go`). `macro run`, `stop` and `delete`
+  send `MAct`; `--slot` there and in `download` takes a slot or a
+  macro's name (case-insensitive; a name two macros share is refused).
+  `macro list` shows the used slots (`--all` the empty ones too) and
+  which runs or records. Deleting, and recording or uploading over a
+  used slot, need `--yes`; so does `macro action --action delete`, and
+  `macro record` into a used slot (both wire commands, checked before
+  sending).
+  - **The file form** is ATEM Software Control's: a `<Macro index name
+    description>` element of `<Op id ...>` elements, the form profiles
+    hold macros in, written by the profile package's serializer
+    (`ToXML`) and read by its parser (`FromXML`, guards included). A
+    file holding a profile or `<MacroPool>` with exactly one macro is
+    read too. JSON is a list of op objects, `"id"` first and the
+    attributes in atemwire's order (or `{name, description, ops}`);
+    anything else is bytecode. `download` picks XML, JSON or bytecode by
+    `--format` or the file's extension, XML by default.
+  - `macro decode` and `macro encode` are local: the CLI runs them
+    without an engine or a switcher. Decoding never fails outright, as
+    the codec doesn't; its warning goes to stderr. Encoding fails with
+    the codec's Python class and message.
+  - The fake switcher models `MAct` and `MSRc` far enough for their
+    state to show: running, stopped, recording, a recording stored as an
+    empty macro under its name, a deletion.
 - **Indices the switcher doesn't have** are refused before sending:
   `--me` beyond `_top`'s M/E count, `--keyer` beyond the M/E's `_MeC`,
   `--dsk` beyond `_top`'s. Only counts the switcher reported are used, not

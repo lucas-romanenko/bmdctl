@@ -17,6 +17,50 @@ func init() {
 	humanFormats["media upload"] = formatTransfer
 	humanFormats["media download"] = formatTransfer
 	humanFormats["media clear"] = formatTransfer
+	humanFormats["macro list"] = formatMacroList
+	humanFormats["macro download"] = formatTransfer
+	humanFormats["macro upload"] = formatTransfer
+	humanFormats["macro decode"] = formatMacroDecode
+	humanFormats["macro encode"] = formatMacroEncode
+}
+
+func formatMacroList(p *printer, _ engine.Response, raw json.RawMessage) []string {
+	var r engine.MacroList
+	json.Unmarshal(raw, &r)
+	rows := [][]string{}
+	for _, m := range r.Macros {
+		state := ""
+		switch {
+		case m.Slot == r.Running:
+			state = p.c.colour(red, "running")
+		case m.Slot == r.Recording:
+			state = p.c.colour(red, "recording")
+		case !m.Used:
+			state = "-"
+		case m.Invalid:
+			state = "invalid"
+		}
+		rows = append(rows, []string{fmt.Sprintf("macro %d", m.Slot), m.Name, state, m.Description})
+	}
+	if len(rows) == 0 {
+		return []string{"no macros"}
+	}
+	return p.table(rows)
+}
+
+func formatMacroDecode(p *printer, _ engine.Response, raw json.RawMessage) []string {
+	var r engine.MacroResult
+	json.Unmarshal(raw, &r)
+	if r.Warning != "" {
+		fmt.Fprintf(p.c.stderr, "bmdctl %s: %s\n", p.label(), r.Warning)
+	}
+	return strings.Split(strings.TrimRight(r.XML, "\n"), "\n")
+}
+
+func formatMacroEncode(p *printer, _ engine.Response, raw json.RawMessage) []string {
+	var r engine.MacroResult
+	json.Unmarshal(raw, &r)
+	return []string{fmt.Sprintf("encoded %s, %d bytes, to %s", r.Source, r.Bytes, strings.Join(p.written, ", "))}
 }
 
 func formatMediaList(p *printer, _ engine.Response, raw json.RawMessage) []string {
