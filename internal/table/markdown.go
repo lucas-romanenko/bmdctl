@@ -32,12 +32,21 @@ func (r *Registry) Markdown() string {
 			if e.AtLeastOne {
 				notes = append(notes, "Give at least one optional parameter.")
 			}
-			if e.Echo != "" {
+			if e.Local {
+				notes = append(notes, "Runs in the CLI; needs no switcher.")
+			}
+			if e.Stream {
+				notes = append(notes, "Runs until interrupted.")
+			}
+			switch {
+			case e.Echo != "":
 				notes = append(notes, fmt.Sprintf("Echo: `%s`.", e.Echo))
-			} else {
+			case !e.Operation:
 				notes = append(notes, "No echo.")
 			}
-			fmt.Fprintf(&b, "\n%s\n", strings.Join(notes, " "))
+			if len(notes) > 0 {
+				fmt.Fprintf(&b, "\n%s\n", strings.Join(notes, " "))
+			}
 			if len(e.Params) == 0 {
 				continue
 			}
@@ -62,6 +71,12 @@ func (p Param) valueDoc() string {
 	parts := []string{p.Kind.String()}
 	if r := p.Range(); r != "" {
 		parts = append(parts, r)
+	}
+	if p.OneBased {
+		parts = append(parts, "counted from 1")
+	}
+	if p.Kind == OutFile {
+		parts = append(parts, "written")
 	}
 	if p.Unit != "" {
 		parts = append(parts, p.Unit)

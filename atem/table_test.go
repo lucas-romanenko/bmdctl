@@ -6,6 +6,7 @@ package atem
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/lucas-romanenko/bmdctl/internal/table"
@@ -69,7 +70,7 @@ func TestCommandTable(t *testing.T) {
 				}
 			}
 		}
-		a, err := e.Parse(raw, func(s string) int { return ParseRate(s, 25) })
+		a, err := e.Parse(raw, Resolver{})
 		if err != nil {
 			t.Errorf("%s: %v", e.Path, err)
 			continue
@@ -106,5 +107,48 @@ func TestCommandTable(t *testing.T) {
 	}
 	if len(entries) != 75 {
 		t.Errorf("%d entries, want 75", len(entries))
+	}
+}
+
+// The resolver reads rates strictly and sources by id or by name.
+func TestResolver(t *testing.T) {
+	st := newState()
+	st.VideoMode.Mode = &VideoModeField{Mode: 13, Rate: 59.94}
+	st.Inputs[1] = &InputPropertiesField{Index: 1, Name: "Camera 1", ShortName: "CAM1"}
+	st.Inputs[2] = &InputPropertiesField{Index: 2, Name: "Stage Left ", ShortName: "SL"}
+	st.Inputs[3] = &InputPropertiesField{Index: 3, Name: "Wide", ShortName: "CAM"}
+	st.Inputs[4] = &InputPropertiesField{Index: 4, Name: "Tight", ShortName: "cam"}
+	r := Resolver{State: st}
+	for in, want := range map[string]int64{"50": 50, "1:00": 30, "1:29": 59, " 0:05 ": 5, "0": 0} {
+		if got, err := r.Rate(in); err != nil || got != want {
+			t.Errorf("rate %q: %d %v, want %d", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "1:30", "1:", ":5", "x", "1.5", "-1", "1:2:3", "１"} {
+		if got, err := r.Rate(in); err == nil {
+			t.Errorf("rate %q: %d accepted", in, got)
+		}
+	}
+	if got, err := (Resolver{State: st, FPS: 25}).Rate("1:00"); err != nil || got != 25 {
+		t.Errorf("--fps 25: %d %v", got, err)
+	}
+	if got, err := (Resolver{Offline: true}).Rate("1:40"); err != nil || got != 65 {
+		t.Errorf("offline 1:40: %d %v", got, err)
+	}
+	for in, want := range map[string]uint64{"5": 5, "3010": 3010, "camera 1": 1, "CAM1": 1, "stage left": 2, "sl": 2} {
+		if got, err := r.Source(in); err != nil || got != want {
+			t.Errorf("source %q: %d %v, want %d", in, got, err, want)
+		}
+	}
+	for in, msg := range map[string]string{"Camera 9": "no input is named", "cam": "more than one input: 3 (Wide), 4 (Tight)", "": "empty"} {
+		if _, err := r.Source(in); err == nil || !strings.Contains(err.Error(), msg) {
+			t.Errorf("source %q: %v, want %q", in, err, msg)
+		}
+	}
+	if _, err := (Resolver{}).Source("Camera 1"); err == nil || !strings.Contains(err.Error(), "give the source id") {
+		t.Errorf("no names known: %v", err)
+	}
+	if got, err := (Resolver{Offline: true}).Source("Anything"); err != nil || got != 0 {
+		t.Errorf("offline name: %d %v", got, err)
 	}
 }
