@@ -17,7 +17,9 @@ func (r *Registry) Markdown() string {
 	b.WriteString("commands have a pinned wire format that nobody has confirmed on a\n")
 	b.WriteString("switcher; **destructive** ones are hard to undo or drop connections. The\n")
 	b.WriteString("echo is the state the device reports back once it has applied the\n")
-	b.WriteString("command; a command without one can't be confirmed.\n")
+	b.WriteString("command; a command without one can't be confirmed. Its key names the\n")
+	b.WriteString("state as the device's library does, so an ATEM's indexes in it count\n")
+	b.WriteString("from 0.\n")
 	for _, d := range r.Devices() {
 		fmt.Fprintf(&b, "\n## %s\n", d)
 		for _, e := range r.Entries(d) {

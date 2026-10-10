@@ -256,9 +256,9 @@ func names(p fp, n map[string]uint64) fp { p.Names = n; return p }
 func oneBased(p fp) fp { p.OneBased = true; return p }
 
 var (
-	pME          = oneBased(def("me", "ME", table.Uint, "1", "M/E (the library's ME field counts from 0)"))
-	pKeyer       = req("keyer", "Keyer", table.Uint, "", "upstream keyer, 0-based")
-	pDSK         = def("dsk", "DSK", table.Uint, "0", "downstream keyer, 0-based")
+	pME          = oneBased(def("me", "ME", table.Uint, "1", "M/E"))
+	pKeyer       = oneBased(req("keyer", "Keyer", table.Uint, "", "upstream keyer"))
+	pDSK         = oneBased(def("dsk", "DSK", table.Uint, "1", "downstream keyer"))
 	pSource      = req("source", "Source", table.Source, "", "source id or input name")
 	pMultiviewer = def("multiviewer", "Multiviewer", table.Uint, "0", "multiviewer, 0-based")
 	pSuperSource = def("supersource", "SuperSource", table.Uint, "0", "SuperSource, 0-based")
@@ -331,7 +331,7 @@ func commandSpecs() []spec {
 
 		// §1.2 aux
 		{path: "aux", summary: "Route a source to an aux output.", cmd: AuxSource{}, echo: "AuxS:<aux>",
-			params: []fp{req("aux", "Aux", table.Uint, "", "aux output, 0-based"), pSource}},
+			params: []fp{oneBased(req("aux", "Aux", table.Uint, "", "aux output")), pSource}},
 
 		// §1.3 transition
 		{path: "transition settings", summary: "Set the transition style and the layers the next transition takes.",
@@ -502,19 +502,19 @@ func commandSpecs() []spec {
 		// §1.8 media
 		{path: "media capture", summary: "Capture program into the next free still slot.", cmd: CaptureStill{}},
 		{path: "media clear-unlocked", summary: "Clear a still slot without taking the store lock (some models ignore this; media clear takes it).",
-			cmd: ClearStill{}, echo: "MPfe:<slot>", params: []fp{req("slot", "Slot", table.Uint, "", "still slot, 0-based")}},
+			cmd: ClearStill{}, echo: "MPfe:<slot>", params: []fp{oneBased(req("slot", "Slot", table.Uint, "", "still slot"))}},
 		{path: "media player", summary: "Point a media player at a still or a clip.", cmd: MediaplayerSelect{}, echo: "MPCE:<player>",
-			params: []fp{req("player", "Player", table.Uint, "", "media player, 0-based"),
-				opt("still", "Still", table.Uint, "", "still slot (give this or --clip)"),
-				opt("clip", "Clip", table.Uint, "", "clip slot (give this or --still)")}},
+			params: []fp{oneBased(req("player", "Player", table.Uint, "", "media player")),
+				oneBased(opt("still", "Still", table.Uint, "", "still slot (give this or --clip)")),
+				oneBased(opt("clip", "Clip", table.Uint, "", "clip slot (give this or --still)"))}},
 
 		// §1.9 macro
 		{path: "macro action", summary: "Run, stop, continue or delete a macro, or stop recording.", cmd: MacroAction{},
-			echo: "MRPr, MRcS or MPrp:<slot>, by action",
-			params: []fp{def("slot", "Slot", table.Uint, "65535", "macro slot, 0-based; 65535 for whatever is running or recording"),
-				names(req("action", "Action", table.Enum, "", "action"), macroActions)}},
+			echo:   "MRPr, MRcS or MPrp:<slot>, by action",
+			build:  buildMacroAction,
+			params: []fp{macroActionSlot(), names(req("action", "Action", table.Enum, "", "action"), macroActions)}},
 		{path: "macro record", summary: "Start recording a macro.", cmd: MacroRecord{}, echo: "MRcS",
-			params: []fp{req("slot", "Slot", table.Uint, "", "macro slot, 0-based"), req("name", "Name", table.String, "", "name"),
+			params: []fp{oneBased(req("slot", "Slot", table.Uint, "", "macro slot")), req("name", "Name", table.String, "", "name"),
 				def("description", "Description", table.String, "", "description")}},
 		{path: "macro sleep", summary: "Record a wait into the macro being recorded.", cmd: MacroSleep{},
 			params: []fp{req("frames", "Frames", table.Uint, "", "frames to wait")}},
@@ -684,6 +684,24 @@ func commandSpecs() []spec {
 			params: []fp{def("time", "Time", table.Time, "now", "time")}},
 		{path: "time-request", summary: "Ask the switcher for its time (the reply is the Time packet).", cmd: TimeRequest{}},
 	}
+}
+
+// macroActionSlot is macro action's --slot: one-based, and left out for
+// whatever is running or recording (slot 0xFFFF on the wire), so the
+// highest slot it can name is 0xFFFE.
+func macroActionSlot() fp {
+	p := oneBased(opt("slot", "Slot", table.Uint, "", "macro slot (default: whatever is running or recording)"))
+	p.Min, p.Max = table.Bounds(0, 0xFFFE)
+	return p
+}
+
+// buildMacroAction sends slot 0xFFFF when --slot is left out.
+func buildMacroAction(a table.Args) (Command, error) {
+	c := MacroAction{Slot: 0xFFFF, Action: uint8(a.Value("action").(uint64))}
+	if a.Has("slot") {
+		c.Slot = uint16(a.Value("slot").(uint64))
+	}
+	return c, nil
 }
 
 // buildCameraControl reads --data as values of --type.

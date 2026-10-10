@@ -25,18 +25,20 @@ func TestProfileCommands(t *testing.T) {
 	t.Chdir(dir)
 	os.WriteFile("logo.png", testPNG(t), 0o644)
 	os.WriteFile("ops.json", []byte(testOps), 0o644)
-	b.must(with("media", "upload", "--slot", "2", "--file", "logo.png", "--name", "Logo")...)
-	b.must(with("macro", "upload", "--slot", "4", "--file", "ops.json", "--name", "Cams")...)
+	// Still 3 and macro 5, counted from 1: slots 2 and 4 in the switcher
+	// and in the profile's XML, which counts from 0 as ASC writes it.
+	b.must(with("media", "upload", "--slot", "3", "--file", "logo.png", "--name", "Logo")...)
+	b.must(with("macro", "upload", "--slot", "5", "--file", "ops.json", "--name", "Cams")...)
 
 	out := b.must(with("profile", "save", "--file", "prof/studio.xml")...)
 	if !strings.Contains(out, "saved prof/studio.xml: ATEM 1 M/E Constellation HD 525i59.94 4:3") ||
-		!strings.Contains(out, "still 2  Logo   ATEM Media Pool/Logo.png") {
+		!strings.Contains(out, "still 3  Logo   ATEM Media Pool/Logo.png") {
 		t.Errorf("save:\n%s", out)
 	}
-	// Slot 0 is used in the dump, but the fake has no frame for it: it is
+	// Still 1 (slot 0) is used in the dump, but the fake has no frame for it: it is
 	// skipped, as atemwire skips a slot that fails.
-	if !strings.Contains(out, "still 0") {
-		t.Errorf("slot 0 not reported:\n%s", out)
+	if !strings.Contains(out, "still 1") {
+		t.Errorf("still 1 not reported:\n%s", out)
 	}
 	xml, err := os.ReadFile("prof/studio.xml")
 	if err != nil {
@@ -73,14 +75,14 @@ func TestProfileCommands(t *testing.T) {
 	if code, _, _ := b.run(with("profile", "restore", "--file", "prof/studio.xml")...); code != exitDestructive {
 		t.Errorf("restore without --yes: %d", code)
 	}
-	b.must(with("media", "clear", "--slot", "2", "--yes")...)
+	b.must(with("media", "clear", "--slot", "3", "--yes")...)
 	b.switchers()[0].PutMacro(4, nil, "", "")
 	n := len(b.sent("CTTp"))
 	out = b.must(with("profile", "restore", "--file", "prof/studio.xml", "--yes", "--video-mode", "false")...)
 	if !strings.Contains(out, "restored prof/studio.xml (Test") && !strings.Contains(out, "restored prof/studio.xml") {
 		t.Errorf("restore:\n%s", out)
 	}
-	if !strings.Contains(out, "still 2  Logo") {
+	if !strings.Contains(out, "still 3  Logo") {
 		t.Errorf("restore images:\n%s", out)
 	}
 	if len(b.sent("CTTp")) == n {

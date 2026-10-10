@@ -22,7 +22,8 @@ func TestSessionCommands(t *testing.T) {
 
 	out := b.must(with("status")...)
 	for _, want := range []string{"session     192.0.2.10:9910", "ATEM 1 M/E Constellation HD", "1080p50",
-		"program 1 (Camera 1)", "preview 2 (Camera 2)", "me 1 key 0  on air", "dsk 0", "aux 0", "macro"} {
+		"program 1 (Camera 1)", "preview 2 (Camera 2)", "me 1 key 1  on air", "me 1 key 4  off air", "dsk 1       on air",
+		"dsk 2       off air", "aux 1       3010 (Media Player 1)", "macro"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status lacks %q:\n%s", want, out)
 		}
@@ -30,8 +31,19 @@ func TestSessionCommands(t *testing.T) {
 	var st struct {
 		Result engine.StatusResult `json:"result"`
 	}
-	json.Unmarshal([]byte(b.must(with("status", "--json")...)), &st)
-	if len(st.Result.MEs) != 1 || st.Result.MEs[0].ME != 1 || st.Result.MEs[0].Program.ID != 1 || st.Result.MEs[0].Program.Name != "Camera 1" ||
+	raw := b.must(with("status", "--json")...)
+	// Indexes count from 1 in JSON too.
+	for _, want := range []string{`"me":1,`, `"keyers":[{"keyer":1,"on_air":true`, `{"keyer":4,`, `"dsks":[{"dsk":1,`, `"aux":[{"aux":1,`} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("status --json lacks %s: %.300s", want, raw)
+		}
+	}
+	if strings.Contains(raw, `"slot"`) {
+		t.Errorf("an idle macro player has a slot: %.300s", raw)
+	}
+	json.Unmarshal([]byte(raw), &st)
+	// Read back, an Index holds the library's value again.
+	if len(st.Result.MEs) != 1 || st.Result.MEs[0].ME != 0 || st.Result.MEs[0].Program.ID != 1 || st.Result.MEs[0].Program.Name != "Camera 1" ||
 		st.Result.MEs[0].Transition.Style != "dip" || len(st.Result.MEs[0].Keyers) != 4 || len(st.Result.DSKs) != 2 {
 		t.Errorf("status --json: %+v", st.Result)
 	}
@@ -132,7 +144,7 @@ func TestWatch(t *testing.T) {
 	}
 	b.must(with("preview", "--source", "1")...) // filtered out
 	b.must(with("program", "--source", "1")...)
-	b.must(with("usk", "on-air", "--keyer", "1", "--on-air")...)
+	b.must(with("usk", "on-air", "--keyer", "2", "--on-air")...) // KeOn:0:1: the state keeps the library's numbering
 	for _, want := range []string{`"key":"PrgI:0","value":{"index":0,"source":1}`, `"key":"KeOn:0:1","value":{"index":0,"keyer":1,"enabled":true}`} {
 		var frame struct {
 			OK     bool `json:"ok"`

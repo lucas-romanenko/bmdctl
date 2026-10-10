@@ -17,7 +17,7 @@ var (
 	pME = func() table.Param {
 		lo, hi := table.Bounds(0, 255)
 		return table.Param{Name: "me", Kind: table.Uint, Min: lo, Max: hi, Default: "1", OneBased: true,
-			Help: "M/E (the library's ME field counts from 0)"}
+			Help: "M/E"}
 	}()
 	transitionStyles = map[string]uint64{"mix": 0, "dip": 1, "wipe": 2, "dve": 3, "stinger": 4}
 	layerNames       = map[string]uint64{"background": 1, "key1": 2, "key2": 4, "key3": 8, "key4": 16}

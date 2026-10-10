@@ -58,7 +58,7 @@ type Param struct {
 	Required bool              // must be given
 	Default  string            // used when not given (implies not required)
 	Names    map[string]uint64 // Enum and Flags values by name
-	// OneBased: the command line counts from 1 where the field counts
+	// OneBased: an Index, typed counted from 1 where the field counts
 	// from 0 (--me 1 is M/E index 0). Min and Max are the field's range.
 	OneBased bool
 }
@@ -307,15 +307,16 @@ func (e Entry) optional() []string {
 func (p Param) parse(s string, res Resolver) (any, error) {
 	switch p.Kind {
 	case Uint:
+		if p.OneBased {
+			i, err := ParseIndex(s)
+			if err != nil {
+				return nil, fmt.Errorf("%v: %s", err, p.Range())
+			}
+			return uint64(i), p.inRange(float64(i))
+		}
 		n, err := strconv.ParseUint(s, 0, 64)
 		if err != nil {
 			return nil, errors.New("not a non-negative integer")
-		}
-		if p.OneBased {
-			if n == 0 {
-				return nil, fmt.Errorf("out of range %s (counted from 1)", p.Range())
-			}
-			n--
 		}
 		return n, p.inRange(float64(n))
 	case Int:
@@ -409,15 +410,10 @@ func (p Param) inRange(f float64) error {
 
 // Range describes the accepted range as typed on the command line, or "".
 func (p Param) Range() string {
-	lo, hi := p.Min, p.Max
-	if p.OneBased {
-		if lo != nil {
-			lo = ptr(*lo + 1)
-		}
-		if hi != nil {
-			hi = ptr(*hi + 1)
-		}
+	if p.OneBased && p.Min != nil && p.Max != nil {
+		return Index(*p.Min).String() + "-" + Index(*p.Max).String()
 	}
+	lo, hi := p.Min, p.Max
 	switch {
 	case lo != nil && hi != nil && *lo < 0:
 		return trim(*lo) + " to " + trim(*hi)
@@ -430,8 +426,6 @@ func (p Param) Range() string {
 	}
 	return ""
 }
-
-func ptr(f float64) *float64 { return &f }
 
 // SortedNames returns an Enum's or Flags' names in value order.
 func (p Param) SortedNames() []string { return p.names() }

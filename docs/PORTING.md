@@ -843,7 +843,8 @@ and a zero value selects nothing.
   Unverified, Destructive, AtLeastOne}`; a `Param` has a name, a kind
   (uint, int, float, bool, string, enum, flags, rate, time, list, source,
   file, out-file, dir), an optional range, a unit, help,
-  required/default, and `OneBased`. A `Registry` checks entries as they
+  required/default, and `OneBased` (an `Index`, below). A `Registry`
+  checks entries as they
   are added (no duplicate paths, no path that is both a command and a
   group, `Build` set exactly when the entry isn't an operation), resolves
   command words, parses `--name value` arguments and renders
@@ -872,11 +873,31 @@ and a zero value selects nothing.
 - **Masked commands need at least one field** (`AtLeastOne`): with none,
   atemwire would send a zero mask, which changes nothing. Entries derive
   this from having optional pointer fields.
-- **`--me` counts from 1 on the command line**; the library's `ME` field
-  counts from 0. The parameter is `OneBased`: `--me 1` is index 0, the
-  range shown and checked is 1-256, the default is 1, and `--help` says
-  so. Every other index (keyer, DSK, aux, slot, player, ...) is the
-  field's own, from 0, as before.
+- **Indexes count from 1, as ATEM Software Control and the panels count
+  them:** M/Es (`--me`), upstream keyers (`--keyer`), DSKs (`--dsk`), aux
+  outputs (`--aux`), still and clip slots (`--slot`, `--still`,
+  `--clip`), macro slots (`--slot`) and media players (`--player`), on
+  the command line, in `--help` and in results, `--json` included. The
+  atem package counts from 0 and is unchanged; the CLI/engine boundary
+  converts, and only `table.Index` (`internal/table/index.go`) adds or
+  takes away the one: a one-based parameter is parsed by `ParseIndex`
+  (so `Args` hold the package's value), `Range` shows the field's range
+  through it (`--keyer`: 1-256), and a result that names an index holds
+  an `Index`, whose JSON, `String` and `Format` (any verb, so even `%d`
+  can't print the raw value) count from 1. Defaults moved with it
+  (`--dsk 1`, `--me 1`). `macro action --slot`, which atemwire's 65535
+  (whatever is running) used to default, is now optional: left out it
+  sends 0xFFFF, and the highest slot it names is 65535 (0xFFFE).
+  - **What still counts from 0**, because it is the library's or a file
+    format's own: the switcher state `state` prints (`--path mes.0`),
+    `watch`'s values and keys (`KeOn:0:1`), a wire command's echo key and
+    echoed packet in its result, and the `index` attributes of ATEM
+    Software Control's XML (`macro download`, `profile save`). Indexes
+    outside the list above keep their field's numbering: colour
+    generators, multiviewers and windows, SuperSources and boxes,
+    HyperDeck slots, EQ bands; the stinger's `--player` was already 1-4
+    on the wire. A still without a name is saved as atemwire's
+    `Slot<n>.png`, n from 0.
 - **Sources** (`source` kind: program, preview, aux, keyer and DSK fill
   and key, dip, wipe border, DVE fill and key, multiviewer windows,
   SuperSource, Fairlight and classic audio sources, monitor solo, HyperDeck
@@ -918,7 +939,7 @@ and a zero value selects nothing.
   `--quiet` prints nothing on stdout, `--json` or not; errors still go to
   stderr. Otherwise a result is one line: a wire command (or an
   operation that sends one) is its path, `confirmed` or `sent`, the time
-  taken and the arguments as sent (M/E from 1, sources with their names,
+  taken and the arguments as sent (indexes from 1, sources with their names,
   enums by name), in fixed columns so the lines of `exec` line up.
   Operations print one aligned line per row of their result. Colour (the
   status, what is on air) only when stdout is a terminal, and never with
@@ -968,10 +989,14 @@ and a zero value selects nothing.
   what it prints, so the three can't disagree. It completes built-ins,
   command words, global and parameter flags (less those already given),
   enum and flag names (after a comma too), bools, files, host names from
-  `hosts.yml` and, for a source parameter, the switcher's input names:
-  those it asks a running engine for (`input list`, one second at most)
-  and never starts one, so pressing Tab doesn't open a session to a
-  switcher. Matching ignores case.
+  `hosts.yml`, for a source parameter the switcher's input names, and
+  for an index the values the switcher has, counted from 1 (as many
+  M/Es, keyers on the `--me` given, DSKs, aux outputs, players, stills
+  and clips as `info` reports; the macro slots `macro list` reports, and
+  for `--slot` that takes a name, the used ones' names too). Those it
+  asks a running engine for (one second at most) and never starts one,
+  so pressing Tab doesn't open a session to a switcher. Matching ignores
+  case.
 - **The man page** `bmdctl man` prints (or writes to `--dir`) is
   bmdctl(1), rendered like `docs/COMMANDS.md` from the command table
   plus the CLI's own reference (`reference.go`: flags, built-ins,
@@ -1110,8 +1135,8 @@ lives until 10 minutes pass without a request, unless pinned.
 
 The commands that aren't one wire command. Each is a table entry with
 `Operation` set and a function in the engine; the CLI only formats what
-comes back. Numbers in results follow the flags: M/Es from 1, everything
-else (keyers, DSKs, aux, slots) from 0.
+comes back. Indexes in results count from 1, as the flags do
+(`table.Index`, above).
 
 - **Group a, the session** (`ops_session.go`).
   - `status` reads the state through atemwire's readers: per M/E program
@@ -1224,7 +1249,7 @@ else (keyers, DSKs, aux, slots) from 0.
   `Apply` with every `ApplyOptions` flag, atemwire's defaults included
   (no program or preview, no fly keyframes), `--macros-only` starting
   from `MacrosOnly()`, and is destructive. The per-M/E blocks are
-  `--mes` (from 1) and `--keyers` (from 0) with the five per-M/E flags
+  `--mes` and `--keyers` (lists from 1) with the five per-M/E flags
   applied to each M/E chosen. A restore that records errors exits 4 and
   lists them; one that aborts (atemwire raising) lists the abort too.
   - **Images.** atemwire leaves media pool pixels to its caller:
@@ -1246,12 +1271,9 @@ else (keyers, DSKs, aux, slots) from 0.
   in that list (when there is one) before the switcher drops everything
   to try. `time` sends `TiRq` and waits for the `Time` packet that
   answers it. Every entry atemwire restored unverified prints "unverified
-  on hardware" on stderr when sent (not with `--json`), and so do
-  `video-mode`, `time` and `time-request`, which atemwire doesn't mark:
-  the phase 3 brief asked for the line on the video mode, startup and
-  time group, and the line says why (bmdctl hasn't sent them to a
-  switcher yet, rather than atemwire's reason). `startup save`, `startup
-  clear` and `video-mode` are destructive, as before.
+  on hardware" on stderr when sent (not with `--json`); `video-mode`,
+  `time` and `time-request` don't, as atemwire verified them. `startup
+  save`, `startup clear` and `video-mode` are destructive, as before.
 - **Indices the switcher doesn't have** are refused before sending:
   `--me` beyond `_top`'s M/E count, `--keyer` beyond the M/E's `_MeC`,
   `--dsk` beyond `_top`'s. Only counts the switcher reported are used, not

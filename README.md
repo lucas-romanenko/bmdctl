@@ -25,7 +25,7 @@ $ bmdctl hosts default studio
 $ bmdctl program --source "Camera 2"
 program                  confirmed    14 ms  me 1, source 2 (Camera 2)
 $ bmdctl status
-$ bmdctl media upload --slot 0 --file logo.png
+$ bmdctl media upload --slot 1 --file logo.png
 $ bmdctl macro run --slot "Open Show"
 $ bmdctl exec opening-cue.txt
 $ bmdctl --dry-run transition wipe --width 50 --pattern CircleIris

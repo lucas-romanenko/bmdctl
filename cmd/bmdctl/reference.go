@@ -39,14 +39,14 @@ var refBuiltins = []refItem{
 	{"bmdctl hosts rm NAME", "Forget a host."},
 	{"bmdctl hosts default [NAME]", "Show the default host, or make NAME the default and the host commands go to now."},
 	{"bmdctl exec FILE|- [--continue]", "Run one command per line, in order, to one host. Every line is checked before the first is sent; it stops at the first failure unless --continue."},
-	{"bmdctl completion bash|zsh|fish", "Print a shell completion script: commands, flags, host names and, while the engine runs, the switcher's input names."},
+	{"bmdctl completion bash|zsh|fish", "Print a shell completion script: commands, flags, host names and, while the engine runs, the switcher's input names and the indexes it has, counted from 1."},
 	{"bmdctl man [--dir DIR]", "Print the bmdctl(1) manual page, or write it to DIR/bmdctl.1."},
 	{"bmdctl doctor", "Check the engine, its socket and log, the hosts file and that each host answers, and say what is misconfigured. Exit 1 for a misconfiguration, 2 when a host only didn't answer."},
 }
 
 var refNotes = []refItem{
 	{"Devices", "A command without a device word goes to the device type of its host, an ATEM for a bare address. `bmdctl atem ...` names the device."},
-	{"M/Es", "--me counts from 1 on the command line; the atem library's ME field counts from 0. Every other index (keyer, DSK, aux, slot, player) counts from 0."},
+	{"Indexes", "M/Es, upstream and downstream keyers, aux outputs, media and macro slots and media players count from 1, as ATEM Software Control and the panels count them: on the command line, in --help and in results, --json included. The atem library counts them from 0, and so do the switcher state `state` and `watch` print and the index attributes of ATEM Software Control's XML files. Colour generators, multiviewers and their windows, SuperSources and their boxes, HyperDeck slots and EQ bands keep their fields' numbering."},
 	{"Sources", "A source is an id or one of the switcher's input names, long or short, in any case."},
 	{"Rates", "A rate is a frame count or seconds:frames at the switcher's display rate (half the field rate from 48 fps up)."},
 }

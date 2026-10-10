@@ -8,8 +8,9 @@ import (
 )
 
 // Group h, end to end against the fake switcher: the video mode, startup
-// state, the clock, and the commands atemwire restored unverified, each
-// saying so on stderr unless --json.
+// state, the clock, and the commands atemwire restored unverified, each of
+// those saying so on stderr unless --json. The video mode and the clock
+// are verified in atemwire and say nothing.
 func TestSystemCommands(t *testing.T) {
 	b := newBench(t)
 	out := b.must(with("video-modes")...)
@@ -32,11 +33,11 @@ func TestSystemCommands(t *testing.T) {
 		confirmed  bool
 		unverified string // the stderr line's reason, "" for none
 	}{
-		{[]string{"video-mode", "--mode", "NTSC", "--yes"}, "CVdM", "00000000", true, "bmdctl has not sent it"},
+		{[]string{"video-mode", "--mode", "NTSC", "--yes"}, "CVdM", "00000000", true, ""},
 		{[]string{"startup", "save", "--yes"}, "SRsv", "", false, "atemwire restored it"},
 		{[]string{"startup", "clear", "--yes"}, "SRcl", "", false, "atemwire restored it"},
 		{[]string{"time-of-day", "--time", "2026-09-11T12:00:00Z"}, "SToD", "6aa3ed4000000000", false, "atemwire restored it"},
-		{[]string{"time-request"}, "TiRq", "", false, "bmdctl has not sent it"},
+		{[]string{"time-request"}, "TiRq", "", false, ""},
 		{[]string{"auto-video-mode", "--enable"}, "AiVM", "01000000", true, "atemwire restored it"},
 		{[]string{"camera", "--destination", "1", "--category", "0", "--parameter", "2", "--type", "fixed16", "--data", "0.5"}, "CCmd", "", true, "atemwire restored it"},
 		{[]string{"multiviewer", "input", "--window", "3", "--source", "CAM2"}, "CMvI", "00030002", true, "atemwire restored it"},
@@ -81,7 +82,7 @@ func TestSystemCommands(t *testing.T) {
 	}
 	// The clock: TiRq, then the Time packet.
 	code, out, errOut := b.run(with("time")...)
-	if code != 0 || !strings.Contains(out, "time  10:20:30:05") || !strings.Contains(errOut, "unverified on hardware") {
+	if code != 0 || !strings.Contains(out, "time  10:20:30:05") || errOut != "" {
 		t.Errorf("time: %d %q %q", code, out, errOut)
 	}
 }

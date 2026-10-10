@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	pMacroSlot   = table.Param{Name: "slot", Kind: table.String, Required: true, Help: "macro slot, 0-based, or the macro's name"}
+	pMacroSlot   = table.Param{Name: "slot", Kind: table.String, Required: true, Help: "macro slot, or the macro's name"}
 	macroFormats = map[string]uint64{"xml": 0, "json": 1, "bin": 2}
 )
 
@@ -48,7 +48,7 @@ func macroOperations() []operation {
 				{Name: "format", Kind: table.Enum, Names: macroFormats, Help: "default: from --file's extension, else xml"}}},
 			run: opMacroDownload},
 		{entry: table.Entry{Path: "macro upload", Summary: "Upload a macro from XML ops, JSON ops or bytecode.", Echo: "MPrp:<slot>",
-			Params: []table.Param{slotParam(0xFFFF, "macro slot, 0-based; replacing a used one needs --yes"),
+			Params: []table.Param{slotParam(0xFFFE, "macro slot; replacing a used one needs --yes"),
 				{Name: "file", Kind: table.File, Required: true, Help: "the macro; - reads stdin"},
 				{Name: "name", Kind: table.String, Help: "the macro's name (default: the file's <Macro name>, else its file name)"},
 				{Name: "description", Kind: table.String, Help: "the macro's description (default: the file's)"}}},
@@ -67,11 +67,12 @@ func macroOperations() []operation {
 // holds, ignoring case.
 func (c *call) macroSlot() (int, error) {
 	s := strings.TrimSpace(c.args.Value("slot").(string))
-	if n, err := strconv.Atoi(s); err == nil {
-		if n < 0 || n > 0xFFFF {
-			return 0, codeErr(CodeUsage, "--slot %d: out of range 0-65535", n)
+	if _, err := strconv.Atoi(s); err == nil {
+		i, err := table.ParseIndex(s)
+		if err != nil || i > 0xFFFE {
+			return 0, codeErr(CodeUsage, "--slot %s: a macro slot is 1-65535", s)
 		}
-		return n, nil
+		return int(i), nil
 	}
 	var slots []int
 	for k, p := range c.state.Macros.Properties {
@@ -91,24 +92,24 @@ func (c *call) macroSlot() (int, error) {
 
 // MacroEntry is one macro slot.
 type MacroEntry struct {
-	Slot        int    `json:"slot"`
-	Used        bool   `json:"used"`
-	Invalid     bool   `json:"invalid,omitempty"`
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
+	Slot        table.Index `json:"slot"`
+	Used        bool        `json:"used"`
+	Invalid     bool        `json:"invalid,omitempty"`
+	Name        string      `json:"name,omitempty"`
+	Description string      `json:"description,omitempty"`
 }
 
 // MacroList is the macro pool.
 type MacroList struct {
 	Macros    []MacroEntry `json:"macros"`
-	Running   int          `json:"running"`   // slot, or -1
-	Recording int          `json:"recording"` // slot, or -1
+	Running   *table.Index `json:"running,omitempty"`   // the slot, if one runs
+	Recording *table.Index `json:"recording,omitempty"` // the slot, if one records
 }
 
 func opMacroList(c *call) (any, bool, error) {
 	st := c.state
 	all := c.args.Value("all").(bool)
-	r := MacroList{Macros: []MacroEntry{}, Running: -1, Recording: -1}
+	r := MacroList{Macros: []MacroEntry{}}
 	var slots []int
 	for k := range st.Macros.Properties {
 		slots = append(slots, int(k))
@@ -119,14 +120,14 @@ func opMacroList(c *call) (any, bool, error) {
 		if p == nil || !p.IsUsed && !all {
 			continue
 		}
-		r.Macros = append(r.Macros, MacroEntry{Slot: s, Used: p.IsUsed, Invalid: p.IsInvalid,
+		r.Macros = append(r.Macros, MacroEntry{Slot: table.Index(s), Used: p.IsUsed, Invalid: p.IsInvalid,
 			Name: st.MacroEntry(s).Name, Description: strings.ToValidUTF8(p.Description, "�")})
 	}
 	if p := st.Macros.PlayStatus; p != nil && p.Running && p.Index != 0xFFFF {
-		r.Running = int(p.Index)
+		r.Running = table.IndexPtr(int(p.Index))
 	}
 	if rs := st.Macros.RecordStatus; rs != nil && rs.IsRecording {
-		r.Recording = int(rs.Index)
+		r.Recording = table.IndexPtr(int(rs.Index))
 	}
 	return r, false, nil
 }
@@ -142,12 +143,12 @@ func macroAction(action uint8) op {
 				return nil, false, err
 			}
 			if !c.state.MacroEntry(slot).IsUsed {
-				return nil, false, codeErr(CodeUsage, "macro slot %d is empty", slot)
+				return nil, false, codeErr(CodeUsage, "macro slot %v is empty", table.Index(slot))
 			}
 		}
 		r, confirmed, err := c.sendBuilt(atem.MacroAction{Slot: uint16(slot), Action: action})
 		if cr, ok := r.(CommandResult); ok && c.args.Has("slot") {
-			cr.Args["slot"] = fmt.Sprintf("%d (%s)", slot, c.state.MacroEntry(slot).Name)
+			cr.Args["slot"] = fmt.Sprintf("%v (%s)", table.Index(slot), c.state.MacroEntry(slot).Name)
 			r = cr
 		}
 		return r, confirmed, err
@@ -168,7 +169,7 @@ func checkMacroAction(c *call) error {
 
 func (c *call) overwriteMacro(slot int) error {
 	if e := c.state.MacroEntry(slot); e.IsUsed && !c.req.Yes {
-		return codeErr(CodeDestructive, "macro slot %d holds %q: add --yes to replace it", slot, e.Name)
+		return codeErr(CodeDestructive, "macro slot %v holds %q: add --yes to replace it", table.Index(slot), e.Name)
 	}
 	return nil
 }
@@ -189,7 +190,7 @@ func opMacroDownload(c *call) (any, bool, error) {
 	}
 	entry := c.state.MacroEntry(slot)
 	if !entry.IsUsed {
-		return nil, false, codeErr(CodeUsage, "macro slot %d is empty", slot)
+		return nil, false, codeErr(CodeUsage, "macro slot %v is empty", table.Index(slot))
 	}
 	format := "xml"
 	file, hasFile := "", c.args.Has("file")
@@ -216,7 +217,7 @@ func opMacroDownload(c *call) (any, bool, error) {
 		desc = strings.ToValidUTF8(p.Description, "�")
 	}
 	ops, decodeErr := macro.Decode(bytecode)
-	r := MacroResult{TransferResult: TransferResult{Slot: slot, Name: entry.Name, Description: desc, Bytes: len(bytecode)},
+	r := MacroResult{TransferResult: TransferResult{Slot: table.Index(slot), Name: entry.Name, Description: desc, Bytes: len(bytecode)},
 		Format: format}
 	if decodeErr != nil {
 		r.Warning = decodeErr.Error()
@@ -238,7 +239,7 @@ func opMacroDownload(c *call) (any, bool, error) {
 	}
 	f := FileFrame{Param: "file", Data: data}
 	if !hasFile {
-		f.Name = fileName(entry.Name, fmt.Sprintf("macro-%d", slot)) + "." + format
+		f.Name = fileName(entry.Name, "macro-"+table.Index(slot).String()) + "." + format
 	}
 	if err := c.out.file(f); err != nil {
 		return nil, false, err
@@ -257,7 +258,7 @@ func opMacroUpload(c *call) (any, bool, error) {
 		file := c.args.Value("file").(string)
 		m.Name = strings.TrimSuffix(path.Base(strings.ReplaceAll(file, `\`, "/")), path.Ext(file))
 		if file == "-" {
-			m.Name = fmt.Sprintf("Macro %d", slot+1)
+			m.Name = "Macro " + table.Index(slot).String()
 		}
 	}
 	if c.args.Has("name") {
@@ -269,7 +270,7 @@ func opMacroUpload(c *call) (any, bool, error) {
 	if err := c.overwriteMacro(slot); err != nil {
 		return nil, false, err
 	}
-	r := MacroResult{TransferResult: TransferResult{Slot: slot, Name: m.Name, Description: m.Description,
+	r := MacroResult{TransferResult: TransferResult{Slot: table.Index(slot), Name: m.Name, Description: m.Description,
 		Bytes: len(m.Bytecode), Source: fmt.Sprintf("%d ops", m.Ops)}}
 	if e := c.state.MacroEntry(slot); e.IsUsed {
 		r.Replaced = e.Name

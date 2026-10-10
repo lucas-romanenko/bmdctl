@@ -98,9 +98,9 @@ func formatMacroList(p *printer, _ engine.Response, raw json.RawMessage) []strin
 	for _, m := range r.Macros {
 		state := ""
 		switch {
-		case m.Slot == r.Running:
+		case r.Running != nil && m.Slot == *r.Running:
 			state = p.c.colour(red, "running")
-		case m.Slot == r.Recording:
+		case r.Recording != nil && m.Slot == *r.Recording:
 			state = p.c.colour(red, "recording")
 		case !m.Used:
 			state = "-"
