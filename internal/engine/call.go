@@ -271,5 +271,6 @@ func operations() []operation {
 	var ops []operation
 	ops = append(ops, sessionOperations()...)
 	ops = append(ops, switchingOperations()...)
+	ops = append(ops, keyerOperations()...)
 	return ops
 }

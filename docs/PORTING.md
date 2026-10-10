@@ -1076,6 +1076,14 @@ else (keyers, DSKs, aux, slots) from 0.
   - `transition style` sets the style alone.
   An operation that sends one command answers like a wire command, and
   prints like one.
+- **Group c, keyers, aux, inputs, colour** (`ops_keyers.go`). `usk
+  toggle` and `dsk toggle` are atemwire's `toggle_usk` and `toggle_dsk`:
+  the on-air state read, inverted, sent. The rename is now `input
+  rename`, beside `input list` (every source with its names and port
+  type, named from `InPr`'s categories). `usk keyframe-run` no longer
+  insists on `--direction`: its mask covers only the direction, and
+  atemwire sends a plain run with a zero mask, so the table marks the
+  entry `complete` rather than deriving "at least one".
 - **Indices the switcher doesn't have** are refused before sending:
   `--me` beyond `_top`'s M/E count, `--keyer` beyond the M/E's `_MeC`,
   `--dsk` beyond `_top`'s. Only counts the switcher reported are used, not
@@ -1104,7 +1112,8 @@ else (keyers, DSKs, aux, slots) from 0.
   so the engine's wait for an echo can be tested; the tests check the
   bytes sent. Anything else is ACKed and changes nothing. It is not a
   switcher model and makes no claim about switcher timing.
-- **Controls.** `Unanswered(codes...)` takes commands without echoing them; `DropToClient(n)` drops the next n reliable packets (their
+- **Controls.** `Unanswered(codes...)` takes commands without echoing
+  them; `DropToClient(n)` drops the next n reliable packets (their
   resends get through); `DropSequences(...)` drops chosen sequence numbers
   of the next session; `DropFromClient(n)` ignores the next n datagrams
   from the session; `DelayACKs(d)` ACKs late; `Silence(true)` cuts the
