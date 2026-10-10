@@ -318,6 +318,11 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	if err := c.checkIndices(); err != nil {
 		return nil, false, err
 	}
+	if check := wireChecks[entry.Path]; check != nil {
+		if err := check(c); err != nil {
+			return nil, false, err
+		}
+	}
 	if !entry.Operation {
 		return c.sendEntry()
 	}

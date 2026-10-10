@@ -224,6 +224,7 @@ func (c *call) runLocal() (any, bool, error) {
 func RunLocal(ctx context.Context, reg *table.Registry, req Request, onFile func(FileFrame) error) Response {
 	e := New(Config{Registry: reg})
 	defer e.cancel()
+	req.V = Version
 	return e.Handle(ctx, req, funcSink{onFile})
 }
 
@@ -274,5 +275,6 @@ func operations() []operation {
 	ops = append(ops, keyerOperations()...)
 	ops = append(ops, audioOperations()...)
 	ops = append(ops, mediaOperations()...)
+	ops = append(ops, macroOperations()...)
 	return ops
 }

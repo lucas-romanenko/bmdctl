@@ -75,8 +75,11 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 	}
 	out := &printer{c: c, g: g, e: e, params: req.Params}
 	if e.Local {
-		resp := engine.RunLocal(c.ctx, c.reg, req, out.file)
-		line, _ := json.Marshal(resp)
+		// Run it here, then read the response back as if it had come
+		// from an engine, so it prints the same way.
+		line, _ := json.Marshal(engine.RunLocal(c.ctx, c.reg, req, out.file))
+		var resp engine.Response
+		json.Unmarshal(line, &resp)
 		out.response(line, resp)
 		return out.code()
 	}
