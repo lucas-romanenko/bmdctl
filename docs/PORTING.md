@@ -583,7 +583,9 @@ does.
   pair, 48 pixels a fused multiply-add would change (found by a C search),
   RLE runs, errors and malformed streams, and 219 fits up to 1920×1080.
   `TestImagingMatchesAtemwire` and `TestFitFrameMatchesWebATEM` replay them
-  all. `imaging_test.go` ports `test_imaging_alpha.py` and
+  all; `-short` skips the colour sweeps (every 24-bit colour, the
+  65,536-pair channel sweeps and the Y'CbCr pairs), which take most of
+  the time. `imaging_test.go` ports `test_imaging_alpha.py` and
   `test_mediaconvert_hardening.py` one for one; `test_input_buffers_are_released`
   has no counterpart, because Go has no `Py_buffer`.
 
