@@ -488,6 +488,55 @@ Echo: `MRPr, MRcS or MPrp:<slot>, by action`.
 | `--slot` | uint, 0-65535 | default 65535 | macro slot, 0-based; 65535 for whatever is running or recording |
 | `--action` | enum, 0-255: run=0 stop=1 stop-record=2 insert-user-wait=3 continue=4 delete=5 | required | action |
 
+### `bmdctl atem macro decode`
+
+Turn macro bytecode into XML ops (JSON with --json).
+
+Runs in the CLI; needs no switcher.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--file` | file | required | the bytecode; - reads stdin |
+
+### `bmdctl atem macro delete`
+
+Delete a macro.
+
+**Destructive.** Echo: `MPrp:<slot>`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--slot` | string | required | macro slot, 0-based, or the macro's name |
+
+### `bmdctl atem macro download`
+
+Download a macro as XML ops, JSON ops or bytecode.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--slot` | string | required | macro slot, 0-based, or the macro's name |
+| `--file` | file, written | optional | where to write it; - is stdout (default: the macro's name, .xml) |
+| `--format` | enum: xml=0 json=1 bin=2 | optional | default: from --file's extension, else xml |
+
+### `bmdctl atem macro encode`
+
+Turn XML or JSON ops into macro bytecode.
+
+Runs in the CLI; needs no switcher.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--file` | file | required | the ops; - reads stdin |
+| `--out` | file, written | required | where to write the bytecode; - is stdout |
+
+### `bmdctl atem macro list`
+
+List the macros: slot, name, description; and what runs or records.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--all` | bool | default false | include empty slots |
+
 ### `bmdctl atem macro record`
 
 Start recording a macro.
@@ -500,6 +549,16 @@ Echo: `MRcS`.
 | `--name` | string | required | name |
 | `--description` | string | optional | description |
 
+### `bmdctl atem macro run`
+
+Run a macro.
+
+Echo: `MRPr`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--slot` | string | required | macro slot, 0-based, or the macro's name |
+
 ### `bmdctl atem macro sleep`
 
 Record a wait into the macro being recorded.
@@ -509,6 +568,25 @@ No echo.
 | parameter | value | | |
 |---|---|---|---|
 | `--frames` | uint, 0-4294967295 | required | frames to wait |
+
+### `bmdctl atem macro stop`
+
+Stop the macro that is running.
+
+Echo: `MRPr`.
+
+### `bmdctl atem macro upload`
+
+Upload a macro from XML ops, JSON ops or bytecode.
+
+Echo: `MPrp:<slot>`.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--slot` | uint, 0-65535 | required | macro slot, 0-based; replacing a used one needs --yes |
+| `--file` | file | required | the macro; - reads stdin |
+| `--name` | string | optional | the macro's name (default: the file's <Macro name>, else its file name) |
+| `--description` | string | optional | the macro's description (default: the file's) |
 
 ### `bmdctl atem media capture`
 
