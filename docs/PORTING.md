@@ -643,6 +643,62 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   a disconnect failing waiting transfers, and a command echoed while a
   download is in flight.
 
+## Macro codec (`atem/macro`)
+
+Ports bmdwire v1.3.0 `atemwire/macrotransfer` (`__init__.py`,
+`_helpers.py` and the per-feature codecs; `_io.py` belongs to transfers):
+the 146 `_KNOWN_OPS` codes, one Go file per Python module. API: `Op{ID,
+Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
+
+- **Its own package**, importing nothing from `atem`, so `atem`'s transfer
+  code and the profile package can both import it. It keeps a copy of
+  `VIDEO_MODE_NAMES` and `VIDEO_MODE_XML_NAMES`; a test checks the first
+  equals `atem.VideoModeNames`.
+- **Ops are ordered.** `Params` holds atemwire's dict order, `id` excluded,
+  because profile XML writes attributes in that order. `Get` returns the
+  last match, as `dict(pairs)` would.
+- **Python semantics, ported not approximated.** Attribute strings go
+  through ports of CPython 3.12's `int()` (whitespace, sign, underscores,
+  Unicode digits, the 4300-digit limit, `0x` prefix in base 16),
+  `float()`, `round()` (half to even, exact big ints), `str.strip()`
+  (`\x1c`-`\x1f` count as whitespace), `bytes([...])`, `bytes.fromhex`,
+  `struct.pack`/`unpack_from` and glibc `inet_aton`, with exact
+  arbitrary-precision masking. Encoders raise (panic, recovered in
+  `EncodeOp`/`Decode`) in atemwire's evaluation order, so the first error is
+  atemwire's.
+- **Errors carry the Python class.** `EncodeOp` returns `*Error` wherever
+  `encode_single_op` raises: `ValueError`, `struct.error`, `OSError` or
+  `OverflowError`, with CPython's message. Profile apply drops `ValueError`
+  ops and aborts on the rest (SURFACE §5.4 item 8); the class lets the
+  profile port do the same. A decoder failure becomes `Unknown_0xNNNN` with
+  `rawParams` and `decodeError` (CPython's message), as in atemwire.
+- **Decode never fails outright.** Where atemwire logs a warning and returns
+  the ops so far (truncated header, op_len < 4, overrun), `Decode` returns
+  the same ops and an error with the warning text.
+- **Quirks kept** (SURFACE §5.4 item 9 and more): unknown style/key-type
+  strings encode as Mix/Luma and unknown mix type as On; mask 0 decodes as
+  Background; u16/u32 values and several index bytes are masked silently
+  while others raise; MiddleCentre raises; a missing `MacroSleep.frames` is
+  0; marker bytes are rewritten; strip/master fader gain and HyperDeckInput
+  overflow raise `struct.error`; HyperDeck addresses accept whatever glibc
+  `inet_aton` accepts.
+- **Not matched:** Unicode classification uses Go's tables (17.0) where
+  CPython 3.12 uses 15.0, so characters assigned since differ as digits and
+  in `repr()` escapes; Go strings that aren't valid UTF-8 act as U+FFFD;
+  messages follow CPython 3.12's wording. The per-op "decode failure"
+  warning is not logged (the op's decodeError holds it).
+- **Verification.** `internal/fixtures/oracle/macro.json` (`gen_macro.py`,
+  CPython 3.12.3) holds 1,987 bytecode cases (the 32 `macro/` samples,
+  random/short/edge parameter blocks for every op code and unknown ones,
+  multi-op streams) and 4,272 op dicts from attribute pools.
+  `TestDecodeMatchesAtemwire` and `TestEncodeMatchesAtemwire` require the
+  same ops (ids, names, order, values), stop warnings, bytes, and error
+  class and message, and assert every op code has decode,
+  decode-failure, encode and encode-failure cases. `decoder_test.go` and
+  `encoder_test.go` port `test_macro_decoder.py`, `test_macro_encoder.py`
+  and the macro halves of `test_wipe_pattern_names.py` and
+  `test_input_video_migration.py` one for one, on the `macro/` fixtures.
+
 ## Command table and CLI (`internal/table`, `atem/table.go`, `cmd/bmdctl`)
 
 - **`internal/table` is generic** (and MIT). An `Entry` is
@@ -872,6 +928,11 @@ follows the code.
   only); on UDP its handler looks up a transfer queue that doesn't exist and
   raises `KeyError`, losing the rest of the packet. (The port drops it:
   bmdwire#14.)
+- **§5.4 item 8** names `OSError` and `struct.error` as the exceptions a
+  macro encoder leaks; `OverflowError` (an infinite fixed-point value) and
+  a `ValueError` for an address with an embedded NUL exist too.
+- **§3.2 "Fixed-point values are Q16.16"** holds, but signed values are
+  range-checked (`ValueError`) while unsigned ones are masked silently.
 - **§4.2 "after 5 s with no packets"**: the timeout is `select()` on the
   socket and the outbound queue, so it is 5 s with no datagram in (from
   anyone) and no packet out. A client that keeps sending to a dead switcher

@@ -41,7 +41,7 @@ Command bytes the transport tests put in a datagram's data. They are synthetic: 
 
 ## macro/
 
-Macro bytecode samples (little-endian ops: `u16 length, u16 op code, params`), named `op<code>-<hex>.bin`. They are decoded by the macro codec, a later phase; until then they are only loaded. "capture" notes come from the comments in `test_fairlight_byte_identical_roundtrip_for_live_captures`, which also say which of them are synthetic.
+Macro bytecode samples (little-endian ops: `u16 length, u16 op code, params`), named `op<code>-<hex>.bin`. `atem/macro`'s tests decode them where bmdwire's tests use the same literals, and `oracle/macro.json` records what bmdwire v1.3.0's codec makes of every one. "capture" notes come from the comments in `test_fairlight_byte_identical_roundtrip_for_live_captures`, which also say which of them are synthetic.
 
 | file | bytes | origin | notes |
 |---|---|---|---|
@@ -107,6 +107,7 @@ cd internal/fixtures/oracle
 python3 -I gen_recv.py ../../../../bmdwire recv.json
 python3 -I gen_send.py ../../../../bmdwire send.json
 python3 -I gen_imaging.py ../../../../bmdwire imaging.json
+python3 -I gen_macro.py ../../../../bmdwire macro.json
 ```
 
 The scripts use a fixed random seed, so the output only changes if bmdwire
@@ -119,6 +120,7 @@ or the script does. `gen_recv.py` and `gen_send.py` stub the C extension;
 | `recv.json` | 319236 | `gen_recv.py`, driving bmdwire v1.3.0's `AtemProtocol.save_field_data` | 1,062 payloads over all 92 state packets and four raw-stored codes: random bytes at, under and over each parser's length, and well-formed variable-length packets. Each case records whether atemwire raised, consumed the packet, stored it raw or parsed it, and then its mixerstate key, index path and attributes. `TestParsersMatchAtemwire` replays them all |
 | `send.json` | 1508486 | `gen_send.py`, calling bmdwire v1.3.0's operations (and, for the fields no operation sets, its Send classes) on a fake connection | 5,966 calls over all 82 commands, with value pools that probe rounding ties, clamps, NaN and infinities, and every enum name the operations accept. Each case records the bytes atemwire sent, or that it raised or chose to send nothing, and the Go command (type and field values in the operation's units) that must do the same. `TestCommandsMatchAtemwire` replays them all |
 | `imaging.json` | 327121 | `gen_imaging.py`, calling bmdwire v1.3.0's `atemwire/imaging.py`: `rgb_to_atem`, `atem_to_rgb` and `rle_encode` run its C extension (`mediaconvertmodule.c`, compiled unmodified against a stand-in `Python.h` with this Python's CFLAGS), `rle_decode` is its pure Python; and WebATEM's `_prepare_frame` (atem-web-control v2.0.2, `atem_control/uploader.py` lines 292-310, reproduced in the script with an in-memory image in place of the file, on Pillow 10.2.0) | 84 `rgb_to_atem` cases (both premultiply settings; edge, saturated and random pixels; every 24-bit colour in both pixel slots; ragged lengths), 43 `atem_to_rgb` (alpha and chroma edges, bytes at and above 0x80, every (Y, Cb) and (Y, Cr) pair, 1 MiB of random words), 129 `rle_encode` (runs of 1 to 7 and long runs at the start, middle and end, the reserved 0xFE word, ragged lengths, random runs), 225 `rle_decode` (encoder outputs, hand-built, truncated and malformed streams; 40 raise), 219 fits of six generated patterns from 80 source shapes (wider, taller, equal aspect, 1 pixel wide or tall, up- and downscaled, already the target size) to nine targets from 5x3 to 1920x1080. Large inputs come from generators the Go test reimplements; large outputs are SHA-256 digests. Each case records the bytes or the exception (name, and message for the C functions). `TestImagingMatchesAtemwire` and `TestFitFrameMatchesWebATEM` replay them all |
+| `macro.json` | 1194609 | `gen_macro.py`, calling bmdwire v1.3.0's `decode_macro_bytecode`, `encode_single_op` and `encode_macro_bytecode` | 1,987 bytecode cases (the 32 `macro/` samples; random, short and enum-walking parameter blocks for all 146 known op codes and for unknown ones; multi-op streams, empty, truncated and with bogus lengths), each with the ops atemwire decodes (ids, attribute names in dict order, values), the warning that stopped it if any, and what re-encoding those ops gives; and 4,272 op dicts built from attribute pools (enum names, numbers, numeric strings, out-of-range values, missing attributes, unknown ids, garbage) with the bytes `encode_single_op` returned or the class and message of what it raised. Recorded with CPython 3.12.3, whose messages it quotes. `TestDecodeMatchesAtemwire` and `TestEncodeMatchesAtemwire` replay them all |
 
 ## dump/
 
