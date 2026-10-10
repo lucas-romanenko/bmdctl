@@ -60,6 +60,14 @@ const (
 	silenceTimeout = 5 * time.Second
 )
 
+// The paced bulk send queue (BaseProtocol.send_queue and queue_trigger),
+// which carries upload chunks.
+const (
+	bulkBatch    = 5                    // batch_size: packets per trigger
+	bulkDelay    = 3 * time.Millisecond // batch_delay: atemwire sleeps this long after a batch
+	bulkQueueMax = 1024                 // the deque's maxlen
+)
+
 // The defaults for the three tunables atemwire keeps as class attributes
 // (and its tests monkeypatch).
 const (
@@ -225,6 +233,12 @@ type transport struct {
 	received      seqHistory
 	retransmitBuf map[uint16]*packet
 
+	// bulk is atemwire's send_queue: the data of reliable packets (upload
+	// chunks) waiting for queueTrigger. bulkEnabled is queue_enabled: the
+	// queue has had packets since it last reported draining.
+	bulk        [][]byte
+	bulkEnabled bool
+
 	// lastRX is when a datagram was last accepted from the switcher (the
 	// right peer, well formed, not stale), or connect last ran. The
 	// silence timeout counts from it. atemwire's select() also wakes on
@@ -295,6 +309,40 @@ func (t *transport) connect() error {
 	}
 	t.state = stateSYNSent
 	return nil
+}
+
+// queuePacket is queue_packet: queue reliable packet data for queueTrigger.
+// A full queue drops its oldest packet, loudly, as the bounded deque does.
+func (t *transport) queuePacket(data []byte) {
+	if len(t.bulk) == bulkQueueMax {
+		t.log.Error("atem: bulk send queue overflow, dropping the oldest packet; the transfer is likely corrupt", "max", bulkQueueMax)
+		t.bulk = t.bulk[1:]
+	}
+	t.bulk = append(t.bulk, data)
+}
+
+// queueTrigger is queue_trigger without its sleep: send up to bulkBatch
+// queued packets. flushed is true once, on the first call that finds the
+// queue empty after it had packets (atemwire's TransferQueueFlushed). The
+// session paces the calls.
+func (t *transport) queueTrigger() (sent int, flushed bool, err error) {
+	if len(t.bulk) == 0 {
+		if t.bulkEnabled {
+			t.bulkEnabled = false
+			return 0, true, nil
+		}
+		return 0, false, nil
+	}
+	t.bulkEnabled = true
+	for sent < bulkBatch && len(t.bulk) > 0 {
+		d := t.bulk[0]
+		t.bulk = t.bulk[1:]
+		if err := t.sendReliable(d); err != nil {
+			return sent, false, err
+		}
+		sent++
+	}
+	return sent, false, nil
 }
 
 // silent reports whether nothing has been accepted from the switcher for
@@ -539,6 +587,9 @@ type handled struct {
 	// data is the packet's command data, for a data packet on an
 	// established session; nil otherwise.
 	data []byte
+	// control: a control frame (no data) on an established session, after
+	// which atemwire triggers the bulk queue a second time.
+	control bool
 }
 
 // handle is the per-packet part of receive_packet: the handshake while
@@ -558,6 +609,7 @@ func (t *transport) handle(p packet) (handled, error) {
 	case stateEstablished:
 		if p.length == headerLen {
 			// A control frame. Start ACKing if nothing has yet.
+			h.control = true
 			if !t.enableACK {
 				t.enableACK = true
 				ack := &packet{flags: flagACK, ack: t.ackNumber, remoteSeq: ackMagic}

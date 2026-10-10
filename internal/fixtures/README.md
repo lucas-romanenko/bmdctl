@@ -98,22 +98,27 @@ The ASC-style profile XML that `Profile.to_xml` must reproduce byte for byte for
 ## oracle/
 
 Generated, not copied: what bmdwire v1.3.0 itself does with a given input,
-recorded by running it. Each file has the script that made it beside it;
-rerun it against a bmdwire checkout at tag `v1.3.0` to regenerate:
+recorded by running it (and, in `imaging.json`, what WebATEM's frame
+preparation does). Each file has the script that made it beside it; rerun
+it against a bmdwire checkout at tag `v1.3.0` to regenerate:
 
 ```
 cd internal/fixtures/oracle
 python3 -I gen_recv.py ../../../../bmdwire recv.json
 python3 -I gen_send.py ../../../../bmdwire send.json
+python3 -I gen_imaging.py ../../../../bmdwire imaging.json
 ```
 
 The scripts use a fixed random seed, so the output only changes if bmdwire
-or the script does. The C extension is stubbed; nothing here uses it.
+or the script does. `gen_recv.py` and `gen_send.py` stub the C extension;
+`gen_imaging.py` compiles it, unmodified, and needs gcc and Pillow 10.2.0
+(its docstring says how).
 
 | file | bytes | origin | notes |
 |---|---|---|---|
 | `recv.json` | 319236 | `gen_recv.py`, driving bmdwire v1.3.0's `AtemProtocol.save_field_data` | 1,062 payloads over all 92 state packets and four raw-stored codes: random bytes at, under and over each parser's length, and well-formed variable-length packets. Each case records whether atemwire raised, consumed the packet, stored it raw or parsed it, and then its mixerstate key, index path and attributes. `TestParsersMatchAtemwire` replays them all |
 | `send.json` | 1508486 | `gen_send.py`, calling bmdwire v1.3.0's operations (and, for the fields no operation sets, its Send classes) on a fake connection | 5,966 calls over all 82 commands, with value pools that probe rounding ties, clamps, NaN and infinities, and every enum name the operations accept. Each case records the bytes atemwire sent, or that it raised or chose to send nothing, and the Go command (type and field values in the operation's units) that must do the same. `TestCommandsMatchAtemwire` replays them all |
+| `imaging.json` | 327121 | `gen_imaging.py`, calling bmdwire v1.3.0's `atemwire/imaging.py`: `rgb_to_atem`, `atem_to_rgb` and `rle_encode` run its C extension (`mediaconvertmodule.c`, compiled unmodified against a stand-in `Python.h` with this Python's CFLAGS), `rle_decode` is its pure Python; and WebATEM's `_prepare_frame` (atem-web-control v2.0.2, `atem_control/uploader.py` lines 292-310, reproduced in the script with an in-memory image in place of the file, on Pillow 10.2.0) | 84 `rgb_to_atem` cases (both premultiply settings; edge, saturated and random pixels; every 24-bit colour in both pixel slots; ragged lengths), 43 `atem_to_rgb` (alpha and chroma edges, bytes at and above 0x80, every (Y, Cb) and (Y, Cr) pair, 1 MiB of random words), 129 `rle_encode` (runs of 1 to 7 and long runs at the start, middle and end, the reserved 0xFE word, ragged lengths, random runs), 225 `rle_decode` (encoder outputs, hand-built, truncated and malformed streams; 40 raise), 219 fits of six generated patterns from 80 source shapes (wider, taller, equal aspect, 1 pixel wide or tall, up- and downscaled, already the target size) to nine targets from 5x3 to 1920x1080. Large inputs come from generators the Go test reimplements; large outputs are SHA-256 digests. Each case records the bytes or the exception (name, and message for the C functions). `TestImagingMatchesAtemwire` and `TestFitFrameMatchesWebATEM` replay them all |
 
 ## dump/
 

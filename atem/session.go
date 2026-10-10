@@ -171,6 +171,7 @@ type Session struct {
 	subs           map[*subscription]struct{}
 	fatal          error
 	dumpErr        error // the first parse error since the dump began
+	lane           lane  // the transfer engine (transfer.go)
 
 	// Shared.
 	reqs      chan func()   // closures the run goroutine executes
@@ -214,6 +215,7 @@ func newSession(conn net.PacketConn, raddr *net.UDPAddr, log *slog.Logger, silen
 		state:     newState(),
 		waiters:   make(map[string][]*waiter),
 		subs:      make(map[*subscription]struct{}),
+		lane:      newLane(),
 		reqs:      make(chan func()),
 		datagrams: make(chan datagram, 256),
 		quit:      make(chan struct{}),
@@ -408,6 +410,8 @@ func (s *Session) loop() error {
 			s.flush()
 		case <-s.pace.C:
 			s.flush()
+		case <-s.bulkTimerC():
+			s.onBulkTimer()
 		case <-silence.C:
 			if s.t.silent() {
 				s.onSilence()
@@ -424,9 +428,13 @@ func (s *Session) shutdown() {
 	s.connected.Store(false)
 	never := make(chan struct{})
 	s.ready.Store(&never)
+	if s.t.state == stateEstablished {
+		s.releaseLocksNow()
+	}
 	s.t.closeSession()
 	_ = s.conn.Close()
 	err := s.closedErr()
+	s.resetLane(err)
 	for _, ws := range s.waiters {
 		for _, w := range ws {
 			w.ch <- waitResult{err: err}
@@ -445,6 +453,7 @@ func (s *Session) onDatagram(d datagram) {
 		return
 	}
 	for _, p := range pkts {
+		ackOn := s.t.enableACK
 		h, err := s.t.handle(p)
 		if err != nil {
 			s.fatal = err
@@ -453,7 +462,16 @@ func (s *Session) onDatagram(d datagram) {
 		if h.ready {
 			s.onReady()
 		}
-		if h.data != nil {
+		// receive_packet's two queue_trigger calls: for every packet once
+		// ACKs flow, and again for a control frame. A drained queue is
+		// handled before the packet's data, as atemwire's flush sentinel is.
+		if ackOn {
+			s.bulkTrigger(true)
+		}
+		if h.control {
+			s.bulkTrigger(true)
+		}
+		if h.data != nil && s.fatal == nil {
 			s.onData(h.data)
 		}
 		if s.fatal != nil {
@@ -492,8 +510,19 @@ var timeRequest = []byte{0, 8, 0, 0, 'T', 'i', 'R', 'q'}
 func (s *Session) onData(data []byte) {
 	s.protoConnected = true
 	err := decodeFields(data, func(code string, payload []byte) error {
-		if code == "LKOB" {
-			return s.onLockObtained(payload)
+		switch code {
+		case "LKOB", "FTCD", "FTDa", "FTDE", "FTDC":
+			return s.onTransferPacket(code, payload)
+		case "LKST":
+			// The engine reacts to a release first, then it is stored and
+			// published, as in save_field_data.
+			v, err := parsers[code].parse(payload)
+			if err != nil {
+				return err
+			}
+			if f := v.(*LockStateField); !f.State {
+				s.onLockReleased(f.Store)
+			}
 		}
 		c, err := s.state.store(code, payload)
 		if err != nil && !s.initialized && s.dumpErr == nil {
@@ -541,22 +570,6 @@ func (s *Session) incompleteDump() {
 	s.log.Error("atem: incomplete state dump", "err", err)
 }
 
-// onLockObtained: the switcher granted a store lock. Nothing in this
-// session requests locks yet (transfers are a later phase), and atemwire
-// answers a grant with nothing queued by releasing it at once
-// (_transfer_trigger with an empty queue), so this does too.
-func (s *Session) onLockObtained(payload []byte) error {
-	f, err := parseLKOB(payload)
-	if err != nil {
-		return err
-	}
-	release := []byte{0, 12, 0, 0, 'L', 'O', 'C', 'K', byte(f.Store >> 8), byte(f.Store), 0, 0}
-	if err := s.t.sendReliable(release); err != nil {
-		s.fatal = err
-	}
-	return nil
-}
-
 // resync is atemwire's answer to a zero-length command header: report a
 // disconnect, say goodbye and handshake again for a fresh state dump.
 func (s *Session) resync() {
@@ -596,6 +609,9 @@ func (s *Session) disconnected() {
 	s.state.Macros.LastRun = last
 	s.initialized = false
 	s.dumpErr = nil
+	// A transfer in flight died with the session; the new one must not
+	// inherit its queue or locks (_reset_transfer_lane).
+	s.resetLane(ErrDisconnected)
 	if s.readyClosed {
 		s.readyClosed = false
 		ready := make(chan struct{})
@@ -661,10 +677,11 @@ func (s *Session) queue(b []byte) {
 // flush sends the outbox as reliable packets of at most maxCommandBytes,
 // at most one every burstSpacing. A packet goes at once if none has gone
 // in the last burstSpacing; otherwise it waits for that mark and takes
-// whatever has been queued meanwhile.
+// whatever has been queued meanwhile. While a transfer is running there is
+// no spacing, as atemwire's worker skips it then.
 func (s *Session) flush() {
 	for len(s.outbox) > 0 {
-		if wait := time.Until(s.lastFlush.Add(burstSpacing)); wait > 0 {
+		if wait := time.Until(s.lastFlush.Add(burstSpacing)); wait > 0 && !s.lane.active() {
 			s.pace.Reset(wait)
 			return
 		}

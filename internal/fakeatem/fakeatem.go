@@ -17,7 +17,8 @@
 // client hold a store lock, and inject datagrams from anywhere.
 //
 // It is not a switcher model: commands without an echo handler are ACKed
-// and otherwise ignored.
+// and otherwise ignored. It does keep a media pool and a macro pool, with
+// their locks and file transfers (transfers.go).
 package fakeatem
 
 import (
@@ -84,7 +85,13 @@ type Switcher struct {
 	silent         bool
 	stale          int // packets of the old session to send around the next handshake
 
-	locks map[uint16]holder // store locks that are held
+	locks      map[uint16]holder // store locks that are held
+	lockQueued map[uint16]bool   // the session's PLCK waits for another client's release
+
+	stills   map[uint16]*item // the media pool's stills (transfers.go)
+	macros   map[uint16]*item
+	xfers    map[uint16]*xfer // transfers in progress, by transfer id
+	failNext []uint8          // FTDE statuses for the next transfer requests
 }
 
 // holder is who holds a store lock.
@@ -116,6 +123,11 @@ func New(dump []byte) *Switcher {
 		state:    map[string][]byte{},
 		dropSeqs: map[uint16]bool{},
 		locks:    map[uint16]holder{},
+
+		lockQueued: map[uint16]bool{},
+		stills:     map[uint16]*item{},
+		macros:     map[uint16]*item{},
+		xfers:      map[uint16]*xfer{},
 	}
 	forEachCommand(dump, func(code string, payload []byte) { sw.remember(code, payload) })
 	go sw.tick()
@@ -206,6 +218,9 @@ func (sw *Switcher) ReleaseLock(store uint16) {
 	if sw.locks[store] == heldByOther {
 		delete(sw.locks, store)
 		sw.broadcast(lockState(store, false))
+		if sw.lockQueued[store] {
+			sw.broadcast(sw.grant(store)...)
+		}
 	}
 }
 
@@ -362,6 +377,7 @@ func (sw *Switcher) receive(b []byte) {
 	forEachCommand(p.data, func(code string, payload []byte) {
 		sw.commands = append(sw.commands, Command(code, payload))
 		echoes = append(echoes, sw.echo(code, payload)...)
+		echoes = append(echoes, sw.transferEcho(code, payload)...)
 	})
 	if len(echoes) > 0 {
 		sw.sendReliable(echoes)
@@ -380,7 +396,8 @@ func (sw *Switcher) sendStale() {
 	}
 }
 
-// endSession forgets the session: the switcher gives up its locks.
+// endSession forgets the session: the switcher gives up its locks and
+// its transfers.
 func (sw *Switcher) endSession() {
 	sw.established = false
 	for store, h := range sw.locks {
@@ -388,6 +405,8 @@ func (sw *Switcher) endSession() {
 			delete(sw.locks, store)
 		}
 	}
+	clear(sw.lockQueued)
+	clear(sw.xfers)
 }
 
 // startSession runs after the handshake: a fresh session id, the dump,

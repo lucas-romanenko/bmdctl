@@ -6,8 +6,8 @@ package atem
 
 // SURFACE.md §1.19 lock and file transfer, from bmdwire v1.3.0
 // atemwire/messages/lock.py and file_transfer.py: the building blocks of
-// the transfer flows (stills, macros), a later phase. None has an echo of
-// its own; their replies drive the transfer engine.
+// the transfer flows (transfer.go). None has an echo of its own; their
+// replies drive the transfer engine.
 
 // Stores (Lock.Store and the transfer requests).
 const (

@@ -13,8 +13,9 @@ protocols directly: no Blackmagic software, SDK or driver is involved.
 Early. The ATEM package has its wire layer: the UDP transport, a session
 that tracks the switcher's state, every state packet atemwire parses and
 every command it can send. The CLI sends any of those commands to the
-switcher you name, or prints the bytes it would send. Stills and macro
-transfers, profiles and the other devices come later.
+switcher you name, or prints the bytes it would send. The library also
+moves stills and macros to and from the switcher. Profiles and the other
+devices come later.
 
 ```
 $ bmdctl atem --host 10.0.0.20 program --source 5

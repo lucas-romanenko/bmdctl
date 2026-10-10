@@ -31,6 +31,15 @@
 // re-handshake empties the state and Ready returns a new, open channel
 // until the next state dump finishes.
 //
+// # Transfers
+//
+// The session also moves stills and macros to and from the switcher's
+// stores, alongside the commands (DownloadStill, UploadStill, ClearStill,
+// DownloadMacro, UploadMacro). A transfer is a task queued on the owner
+// goroutine's transfer lane; the method returns when the switcher reports
+// it done, refuses it, or ctx ends, which withdraws it. The still store's
+// lock is taken and given back per frame, as atemwire does.
+//
 // # Threading contract
 //
 // Every Session method is safe to call from any goroutine, any number of
@@ -38,7 +47,7 @@
 //
 // One owner goroutine holds everything that changes: the transport and its
 // sequence numbers, the state, the queue of commands waiting to go out, the
-// SendAndWait waiters and the subscribers. Nothing else reads or writes
+// SendAndWait waiters, the subscribers and the transfer lane. Nothing else reads or writes
 // them, so there is no mutex on the state. A second goroutine does nothing
 // but read datagrams from the socket and pass them to the owner; every
 // write to the socket and every decision about a datagram is the owner's.
@@ -57,6 +66,8 @@
 //   - Subscribe's channel gets every Change. The owner never blocks on a
 //     subscriber: one that falls 1024 changes behind has its channel closed,
 //     so it learns it missed something instead of missing it silently.
+//   - The transfer methods queue a task and wait for its result on a
+//     channel of their own; cancelling ctx withdraws the task.
 //   - Connected and Ready read values the owner publishes atomically; they
 //     never wait for the owner.
 //

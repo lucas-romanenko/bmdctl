@@ -28,8 +28,9 @@ it. When you make a new decision, add it here in the same commit.
 
 - Module `github.com/lucas-romanenko/bmdctl`, Go 1.27.
 - Device packages (`atem`, `hyperdeck`, `videohub`, `ultimatte`) use the
-  standard library only. `golang.org/x/image` is allowed later for image
-  fitting (still upload) and nowhere else.
+  standard library only. `golang.org/x/image` was allowed for image fitting
+  (still upload) and turned out not to be needed: the fit ports Pillow's own
+  kernel (see "Still images").
 - One commit per step of the plan, conventional commit messages, pushed
   after every commit. `go build ./... && go vet ./... && go test ./...` is
   green at every commit.
@@ -42,9 +43,11 @@ it. When you make a new decision, add it here in the same commit.
   binary is not covered: it sends to whatever host the user names. There
   are no hardware tests yet: everything runs against `internal/fixtures` or
   `internal/fakeatem`.
-- Out of scope until asked: transfers (stills, macros), the macro bytecode
-  codec, profiles, a background engine, hosts, HTTP, MCP, and the HyperDeck,
-  Videohub and Ultimatte packages beyond their `doc.go`.
+- Phase 2 adds transfers (stills, macros), the macro bytecode codec,
+  profiles and the display-unit readers. Out of scope until asked: a
+  background engine, hosts, HTTP, MCP, CLI commands beyond sending one
+  command, and the HyperDeck, Videohub and Ultimatte packages beyond their
+  `doc.go`.
 
 ## Licensing
 
@@ -122,10 +125,10 @@ keepalive and no client retransmit timer, as in atemwire.
 - **Session ids.** Packets carrying the previous session's id, and while
   the handshake is in flight anything but the SYN reply, are dropped
   before any receive state sees them; a deliberate difference (bmdwire#12).
-- **Not ported yet:** the paced bulk send queue (`queue_packet`,
-  `queue_trigger`, `batch_size` 5 / 3 ms, `aggressive_drain`, the
-  `TransferQueueFlushed` sentinel). Only uploads use it; it arrives with
-  transfers. `Wakeup` has no counterpart: the session's owner goroutine
+- **The paced bulk send queue** (`queue_packet`, `queue_trigger`, the
+  `TransferQueueFlushed` sentinel) is the transport's `bulk`; uploads use
+  it, so it is described under "Transfers". `Wakeup` has no counterpart:
+  the session's owner goroutine
   wakes on channels.
 - **Logging.** `ATEMWIRE_PACKET_TRACE` is not read. The transport logs to a
   `*slog.Logger` (discarded by default): per-packet detail at debug,
@@ -204,8 +207,9 @@ two settings `Dial` needs a struct for.
   meanwhile, up to 1200 bytes. A lone command still goes out immediately.
   The difference: atemwire puts no gap between packets of *different*
   drains, so a caller sending in a tight loop can microburst; here no two
-  command packets are ever closer than 10 ms. atemwire skips the spacing
-  while a file transfer is running; transfers are a later phase.
+  command packets are ever closer than 10 ms. While a transfer is queued or
+  running there is no spacing, as atemwire's worker skips it then
+  (`_transfer_active`).
 - **SendAndWait** has no atemwire counterpart; atemwire's caller subscribes
   to `change:<key>` and waits (§4.4). The waiter is registered and the
   command queued in one owner step, so the echo can't be missed. It fails
@@ -238,9 +242,9 @@ two settings `Dial` needs a struct for.
   caller dials again. On Windows an ICMP port-unreachable can surface as a
   read error (WSAECONNRESET) and end the session, as it ends atemwire's UDP
   thread.
-- **Close** says goodbye, closes the socket, fails pending waiters with
-  `ErrClosed` and closes subscriber channels. `release_locks_now` comes with
-  transfers.
+- **Close** gives back any store lock held (`release_locks_now`, see
+  "Transfers"), says goodbye, closes the socket, fails pending waiters and
+  transfers with `ErrClosed` and closes subscriber channels.
 - **Not yet:** typed state (step 4) and parsers (step 5), so `State` holds
   every packet raw at this step; `last_run_macro_index` arrives with the
   `MRPr` parser; transfers, locks and the pool later.
@@ -338,11 +342,10 @@ with a store function (where `save_field_data` puts the result);
   every packet that carries one (`FASP`, `AEBP`, `AICP`, `AILP`, `AIXP`
   and also `AMIP`, so `State.Audio.Inputs` is keyed `"<source>.0"`, as
   atemwire's `mixerstate['audio-input']` is).
-- **Consumed packets.** `LKOB`, `FTCD`, `FTDC`, `FTDa` and `FTDE` are parsed
-  and dropped: their consumer, the transfer engine, is a later phase.
-  `LKOB` is the one with a side effect: with nothing queued, atemwire's
-  `_transfer_trigger` releases a granted lock at once, so the session
-  sends `LOCK(store, false)` when one arrives.
+- **Consumed packets.** `LKOB`, `FTCD`, `FTDC`, `FTDa` and `FTDE` are
+  parsed and handed to the transfer engine, never stored; `State.store`
+  alone (the oracle replay) parses and drops them. A lock release (`LKST`)
+  goes to the engine first, then is stored.
 - **The last-run latch.** Storing an `MRPr` with the running bit set and an
   index other than 0xFFFF sets `State.Macros.LastRun` (bmdwire v1.3.0
   `a9f3646`: slot 0 counts). A disconnect empties the state but keeps the
@@ -440,6 +443,206 @@ arguments, `Validator`.
   fails. Every command type has cases. `cmd_test.go` ports the byte
   assertions of bmdwire's own tests one for one.
 
+## Still images (`atem/imaging.go`, `atem/fit.go`)
+
+`RGBAToYCbCrA`, `YCbCrAToRGBA` and `RLEEncode` port bmdwire v1.3.0's C
+extension (`atemwire/mediaconvertmodule.c`: `rgb_to_atem`, `atem_to_rgb`,
+`rle_encode`); `RLEDecode` ports `atemwire/imaging.py`'s pure-Python
+`rle_decode`. `FitFrame` reproduces WebATEM's `_prepare_frame`
+(atem-web-control v2.0.2, `atem_control/uploader.py`), which atemwire
+leaves to its caller. `FrameImage` wraps `YCbCrAToRGBA` in an
+`*image.NRGBA`, as profile save's `atem_to_rgb` plus `Image.frombytes`
+does.
+
+- **Bit for bit with the C.** Each float32 and float64 step is rounded where
+  the C rounds it: float luma and chroma in `rgb_to_atem`; double
+  temporaries, double `fmin`/`fmax`, float stores and truncating casts in
+  `atem_to_rgb`. Every product that feeds a sum is converted explicitly, so
+  Go can't fuse it into an FMA (it may on arm64 and GOAMD64=v3; the
+  extension is built without FMA). The `#define`d constants are hex
+  literals of the doubles gcc folds operation by operation; Go's exact
+  constant folding differs in the last bit for three of them. No 10-bit
+  input turns that into a different byte, but the port keeps gcc's values.
+- **C quirks kept.** `atem_to_rgb` reads through a signed `char`, so bytes
+  0 and 4 sign-extend before the shift (unobservable: such alphas saturate
+  to 255 either way). `clamp` holds its value in a signed short, so one
+  above 32767 comes back unclamped (unreachable). Each pair's Cb and Cr
+  come from its second pixel alone. `rle_encode` compares a word index with
+  a byte length, so a repeated word always continues the run and a run at
+  the end is written by the flush after the loop. Width and height, unused
+  by the C, are not parameters.
+- **Errors where Python raises.** A length that isn't a multiple of 8, and
+  the reserved word `FEFEFEFEFEFEFEFE` in `RLEEncode`, error with the C's
+  messages after `atem: `. In `RLEDecode`: a ragged tail made only of 0xFE
+  bytes (`IndexError`), a header without a whole count (`struct.error`),
+  and a run too long to hold (`OverflowError`). A run whose word is cut
+  short repeats the short word, and a ragged tail that isn't all 0xFE is
+  copied, as in atemwire.
+- **Deliberate differences.** `RLEDecode` refuses a run that would take its
+  output past 256 MiB (twice an 8K frame) rather than try to allocate it;
+  atemwire raises `MemoryError` only if the allocation fails, or is killed.
+  `FrameImage` requires exactly width×height×4 bytes, where `frombytes`
+  ignores surplus.
+- **FitFrame** follows `_prepare_frame` from the pixels on. The scale and
+  the `max(1, int(...))` size are Python's float64. Pillow 10.2.0's
+  `resize(LANCZOS)` for RGBA is a copy when the size is unchanged;
+  otherwise it converts RGBA to RGBa, runs `ImagingResampleInner`
+  (`precompute_coeffs`, 22-bit `normalize_coeffs_8bpc`, a horizontal pass
+  over the rows used and then a vertical pass, `clip8`), and converts RGBa
+  back to RGBA. Then `paste(scaled, offset, scaled)` blends onto (0,0,0,0)
+  with `paste_mask_RGBA`'s `BLEND`/`DIV255`, alpha channel included, so
+  colour lands premultiplied and alpha as a²/255. That is what WebATEM
+  uploads; it is reproduced, not corrected. Pillow is HPND (MIT-CMU), and
+  the code says so. `golang.org/x/image` is not used: an exact port of
+  Pillow's kernel is the point.
+- **Not mirrored.** File decoding (Pillow's `open`/`convert('RGBA')`) is the
+  caller's job. An `*image.NRGBA` is read as is; anything else goes through
+  `color.NRGBAModel`, which may round differently from Pillow. The `.png`
+  premultiply choice is the caller's (`StillOptions.Premultiply`). An empty
+  source gives a transparent frame (Python raises `ZeroDivisionError`); a
+  frame under 1×1 panics. The filter uses Go's `math.Sin`: for 7,214 size
+  pairs (1-6,000 px into 1-1,920) every 22-bit weight equals the glibc-`sin`
+  one, but a last-bit difference could in principle move a weight by one.
+- **Verification.** `internal/fixtures/oracle/imaging.json` comes from
+  `gen_imaging.py`. It compiles `mediaconvertmodule.c` unmodified against a
+  stand-in `Python.h` with Python's own CFLAGS (this machine has no Python
+  headers) and calls it through bmdwire's `imaging.py`; `rle_decode` is
+  bmdwire's; the fits run `_prepare_frame`'s lines on Pillow 10.2.0. Its 700
+  cases cover every 24-bit colour in both pixel slots with every alpha
+  (non-premultiplied `rgb_to_atem` exhaustively), every (Y, Cb) and (Y, Cr)
+  pair, 48 pixels a fused multiply-add would change (found by a C search),
+  RLE runs, errors and malformed streams, and 219 fits up to 1920×1080.
+  `TestImagingMatchesAtemwire` and `TestFitFrameMatchesWebATEM` replay them
+  all. `imaging_test.go` ports `test_imaging_alpha.py` and
+  `test_mediaconvert_hardening.py` one for one; `test_input_buffers_are_released`
+  has no counterpart, because Go has no `Py_buffer`.
+
+## Transfers (`atem/transfer.go`)
+
+The transfer engine (SURFACE.md §3.0), from bmdwire v1.3.0: the lane of
+`protocol.py` (`transfer_queue`, `transfer`, `transfer_requested`,
+`locks`, `_lock_release_pending`, `_lock_requested`, `transfer_budget`,
+`_transfer_trigger`, `_release_then_continue`, `_queue_chunks`,
+`_queue_flushed`, and the LKOB, lock-state, FTCD, FTDa, FTDE and FTDC
+branches of `save_field_data`), `_transfer.py` (`TransferTask`), the bulk
+send queue of `transport.py`, and the callers that wait on it:
+`connection.py` (`download_still`, `clear_still`, `download_macro`),
+`macrotransfer/_io.py` (`upload_macro_bytecode`) and WebATEM's
+`atem_control/uploader.py` (still upload).
+
+API: `DownloadStill(ctx, slot) ([]byte, error)`, `UploadStill(ctx, slot,
+img, StillOptions)`, `UploadStillFrame(ctx, slot, frame, name,
+description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
+`UploadMacro(ctx, slot, name, description, bytecode)`, `LockHolder(store)`;
+`*TransferError`, `ErrLockNotGranted`.
+
+- **On the owner goroutine.** The lane is session state like the rest,
+  touched only by the run goroutine; a method queues a task there and waits
+  on the task's channel. atemwire's lane is driven by the worker (packets)
+  and by the caller's thread (`download`, `upload`, `queue_clear`) at once,
+  which SURFACE §4.5 notes isn't thread safe; here nothing can race it.
+- **The state machine is atemwire's, branch for branch**:
+  - per-store queues, tried in the order they were created (Python's dict
+    order); one transfer in flight; transfer ids from 43 (42, incremented
+    before use), carried across reconnects;
+  - PLCK for a transfer, a whole-store LOCK for a clear; a lock request not
+    repeated within a second (`LOCK_REREQUEST_SECONDS`) and deferred while
+    our own unlock's echo is pending; on any release with work queued, an
+    immediate re-request (the pounce);
+  - the lock released after every frame, the LKST echo starting the next
+    task; the lock-exempt macro store going on at once; with nothing
+    queued, every held lock released (left marked held until the echo);
+  - FTDE 1 retries with the same transfer id, 5 asks for the lock again, 6
+    gives the lock back and keeps the task; any other status drops the task
+    and releases the lock; FTDa, FTDE and FTDC with no transfer in flight or
+    another transfer id are ignored;
+  - FTDC pops the queue head and releases the lock before the RLE decode;
+    each downloaded chunk is acknowledged with FTUA(tid, 0);
+  - FTCD's size is rounded down to whole words and its transfer id isn't
+    checked; a chunk never ends on an RLE header or a header and its count;
+    an empty upload sends FTFD with FTSD (no budget comes); FTSD's mode is 1
+    (write RLE) for stills and 0x0300 (write, pre-erase) for macros.
+- **Results go to the task, not to events.** atemwire raises
+  `download-done`, `upload-done`, `clear-dispatched` and
+  `file-transfer-error`; its callers filter by store and slot, attribute any
+  fatal FTDE to whatever they wait on (§5.4 item 13) and are serialised per
+  connection (`_transfer_serial_lock`) to make that safe. Here the engine
+  finishes the task it is acting on, so a result can't reach the wrong
+  caller and callers can overlap. A fatal status is a `*TransferError`
+  naming the status as `FileTransferErrorField.__repr__` does. The progress
+  events (`transfer-progress`, `upload-progress`) are not ported: no
+  callback runs on the owner goroutine.
+- **Cancellation withdraws one task.** When their timeout expires,
+  atemwire's callers call `abort_transfers`, which empties the whole lane,
+  safe there only because transfers are serialised. Here the end of a
+  task's context withdraws that task alone: a queued one is dequeued
+  (`dequeue_clear`, for every kind of task) and the lane triggered, so a
+  lock nobody needs is released; the one in flight is abandoned as a fatal
+  FTDE abandons it. A clear already sent isn't withdrawn and its caller
+  succeeds, as `clear_still`'s does. A timeout with the store lock never
+  granted wraps `ErrLockNotGranted`: `download_still`'s "another client is
+  holding it". `abort_transfers` itself has no counterpart.
+- **Default timeouts** when the context has no deadline: 30 s still
+  download, 5 s clear, 10 s macro download and upload (atemwire's callers),
+  90 s still upload (WebATEM's `UPLOAD_TIMEOUT`).
+- **Not ready means refused.** A transfer asked for between a disconnect and
+  the end of the next state dump fails with `ErrNotReady` before anything
+  is sent; atemwire checks only `is_connected` and queues into a session
+  that is re-handshaking.
+- **The bulk queue** is the transport's `bulk` (`send_queue`). Upload chunks
+  wait there. Each packet from the switcher once ACKs flow, and a control
+  frame a second time, sends up to five (`batch_size`), as `receive_packet`
+  calls `queue_trigger`; a drained queue is reported once and handled
+  before that packet's data, as the `TransferQueueFlushed` sentinel is;
+  `_queue_chunks` triggers too and drops the report, as atemwire does.
+  atemwire sleeps 3 ms after each batch on its protocol thread; the owner
+  goroutine can't sleep (it sends the ACKs), so a trigger within 3 ms of the
+  last batch is deferred to the 3 ms mark instead. `aggressive_drain` is
+  set only by `AtemProtocol`'s constructor and isn't ported. The queue's
+  1024 cap drops the oldest packet with an error, as the deque does, and
+  the queue outlives a disconnect, as atemwire's does.
+- **Engine commands bypass the outbox**, as `send_commands` bypasses the
+  worker's queue: one reliable packet per call, straight to the transport.
+- **Teardown.** `Close` writes the release of every still-store lock held
+  straight to the socket before the goodbye (`release_locks_now`); a
+  disconnect resets the lane without sending anything
+  (`_reset_transfer_lane`) and fails waiting transfers with
+  `ErrDisconnected`.
+- **A frame that doesn't decode is an error.** atemwire logs the exception
+  `rle_decode` raises in the FTDC handler and its caller times out; here the
+  download fails with it. The lock is released first either way.
+- **Locks.** `LockHolder(store)` combines the lane's lock table with
+  `State.Locks` (bmdwire#15): the session holds a lock from its LKOB until
+  its release's echo, and a lock reported taken otherwise is another
+  client's. LKST doesn't name the holder, so if the broadcast for our own
+  grant came before the LKOB it would read as another client's until then.
+- **Stills.** `UploadStill` is WebATEM's `_prepare_frame` and upload:
+  `FitFrame`, `RGBAToYCbCrA` (premultiplied if asked; WebATEM premultiplies
+  `.png` files only), then `UploadStillFrame`, which is `AtemProtocol.upload`
+  with `compress=True`: MD5 over the frame, `RLEEncode`, FTSD with the
+  uncompressed length, FTFD with the name. The frame size is the session's
+  video mode's; decoding an image file is the caller's job. WebATEM's wait
+  for a slot to go off air and its MPfe hash check after the upload are not
+  ported. `ClearStill` returns when the CSTL is sent, not when MPfe
+  confirms it, as `clear_still` does. Slots are ints checked against the
+  wire: u16, or u8 for `ClearStill` (CSTL).
+- **Tests.** `transfer_test.go` drives the lane directly, as bmdwire's tests
+  drive `AtemProtocol`, porting the engine tests of `test_lock_delivery.py`,
+  `test_download_still.py`, `test_session_hygiene_atemwire.py` and
+  `test_teardown_releases_locks.py` one for one, plus the bulk queue's
+  pacing, chunking and flush. Tests of event-handler bookkeeping
+  (`test_returns_frame_and_unregisters_handlers`,
+  `test_other_slots_event_does_not_satisfy` and its clear twin,
+  `test_raise_*`) and of `abort_transfers` have no counterpart: there are no
+  handlers, and cancellation is per task. `transfer_fake_test.go` runs
+  transfers end to end against the fake switcher: still and macro round
+  trips over several budgets, `UploadStill`'s fit and conversion, a locked
+  clear, FTDE 1, 5 and 6 recovered and 2 fatal, a lock held by another
+  client (a timeout that names it, a withdrawn clear that never runs, a
+  waiting transfer that runs on its release), `*XFC` with a transfer queued,
+  a disconnect failing waiting transfers, and a command echoed while a
+  download is in flight.
+
 ## Command table and CLI (`internal/table`, `atem/table.go`, `cmd/bmdctl`)
 
 - **`internal/table` is generic** (and MIT). An `Entry` is
@@ -455,7 +658,7 @@ arguments, `Validator`.
   program that imports `atem` without the CLI gets no table.
 - **One entry per command**, 75 of them: every command except the seven
   lock and file-transfer ones (§1.19), which a CLI reaches only through
-  transfers (later phase). Paths group by SURFACE §1 table: `program`,
+  transfers. Paths group by SURFACE §1 table: `program`,
   `transition wipe`, `usk dve`, `fairlight strip`, ... Each parameter maps
   onto one command field and is set by reflection; integer ranges come from
   the field's Go type, so the table can't promise more than the wire holds.
@@ -527,6 +730,18 @@ arguments, `Validator`.
   `ReleaseLock(store)` play another client taking and releasing a store
   lock, broadcast as `LKST`. `Commands()` and `Handshakes()` let tests look
   inside.
+- **Transfers** (`transfers.go`). The fake keeps a media pool and a macro
+  pool. The session's PLCK or LOCK is granted (LKOB, and LKST to all) unless
+  another client holds the lock; then a PLCK waits for its release and a
+  LOCK is dropped. CSTL works only under the lock. FTSU is served in
+  1296-byte chunks, 16 in flight, each freed by its FTUA, then FTDC; an
+  empty slot is an FTDC alone. FTSD (lock held for stills, mode 1 for
+  stills and 0x0300 for macros, else FTDE 2) gets 16-chunk budgets until
+  the announced uncompressed length is in (it counts RLE runs); FTFD stores
+  the slot and broadcasts its MPfe or MPrp. `FailTransfers(statuses...)`
+  answers the next requests with FTDE (5 also takes the lock away, 6 leaves
+  it held); `PutStill`, `Still`, `PutMacro`, `Macro` and `LockedBySession`
+  fill and inspect it.
 - **The dump** (`internal/fixtures/dump/initial-dump.bin`) is synthetic:
   bmdwire's tests contain no recorded one. `gen_dump.py` builds 88
   commands from the values of bmdwire's `build_full_state`
