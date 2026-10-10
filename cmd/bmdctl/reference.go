@@ -45,6 +45,7 @@ var refBuiltins = []refItem{
 }
 
 var refNotes = []refItem{
+	{"Arguments", "A command's required arguments follow its words in the order they're said: `program 5`, `usk 1 fill cam3`, `media upload 10 logo.png`. Optional ones are --name flags, which may be shortened to any unambiguous prefix (--sat for --saturation); `[file]` in a syntax may be left out."},
 	{"Devices", "A command without a device word goes to the device type of its host, an ATEM for a bare address. `bmdctl atem ...` names the device."},
 	{"Indexes", "M/Es, upstream and downstream keyers, aux outputs, media and macro slots and media players count from 1, as ATEM Software Control and the panels count them: on the command line, in --help and in results, --json included. The atem library counts them from 0, and so do the switcher state `state` and `watch` print and the index attributes of ATEM Software Control's XML files. Colour generators, multiviewers and their windows, SuperSources and their boxes, HyperDeck slots and EQ bands keep their fields' numbering."},
 	{"Sources", "A source is an id or one of the switcher's input names, long or short, in any case."},
@@ -80,7 +81,7 @@ func commandsDoc(r *table.Registry) string {
 	md := r.Markdown()
 	head, body, _ := strings.Cut(md, "\n## ")
 	b.WriteString(head)
-	b.WriteString("\n## The command line\n\n```\nbmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [--parameter value ...]\n```\n")
+	b.WriteString("\n## The command line\n\n```\nbmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag value ...]\n```\n")
 	section := func(title string, items []refItem, code bool) {
 		fmt.Fprintf(&b, "\n### %s\n\n", title)
 		for _, it := range items {
@@ -168,7 +169,7 @@ func manPage(r *table.Registry) string {
 	v := strings.TrimPrefix(versionString(), "bmdctl ")
 	fmt.Fprintf(&b, ".TH BMDCTL 1 \"\" \"bmdctl %s\" \"User Commands\"\n", roff(v))
 	b.WriteString(".SH NAME\nbmdctl \\- control Blackmagic Design ATEM switchers\n")
-	b.WriteString(".SH SYNOPSIS\n.B bmdctl\n[\\fB\\-\\-host\\fR \\fIH\\fR] [\\fB\\-\\-json\\fR|\\fB\\-\\-quiet\\fR] [\\fB\\-\\-yes\\fR] [\\fBatem\\fR] \\fIcommand\\fR [\\fB\\-\\-parameter\\fR \\fIvalue\\fR ...]\n")
+	b.WriteString(".SH SYNOPSIS\n.B bmdctl\n[\\fB\\-\\-host\\fR \\fIH\\fR] [\\fB\\-\\-json\\fR|\\fB\\-\\-quiet\\fR] [\\fB\\-\\-yes\\fR] [\\fBatem\\fR] \\fIcommand\\fR [\\fIarguments\\fR] [\\fB\\-\\-flag\\fR \\fIvalue\\fR ...]\n")
 	b.WriteString(".SH DESCRIPTION\nbmdctl sends commands to ATEM switchers over their UDP protocol and reads back their state. " +
 		"Commands run through a background engine that keeps a session open to each switcher; the first command starts it. " +
 		"A command that the switcher reports back is confirmed; one without such an echo is sent and left.\n")
@@ -187,7 +188,7 @@ func manPage(r *table.Registry) string {
 	items("CONVENTIONS", refNotes, false)
 	b.WriteString(".SH ATEM COMMANDS\n")
 	for _, e := range r.Entries("atem") {
-		fmt.Fprintf(&b, ".SS \"%s\"\n%s\n", roff(e.Path), roff(e.Summary))
+		fmt.Fprintf(&b, ".SS \"%s\"\n%s\n", roff(e.Usage()), roff(e.Summary))
 		var notes []string
 		if e.Destructive {
 			notes = append(notes, "Destructive: needs --yes.")
@@ -199,7 +200,7 @@ func manPage(r *table.Registry) string {
 			notes = append(notes, "Runs in the CLI; needs no switcher.")
 		}
 		if e.AtLeastOne {
-			notes = append(notes, "Give at least one optional parameter.")
+			notes = append(notes, "Give at least one flag.")
 		}
 		if e.Echo != "" {
 			notes = append(notes, "Echo: "+e.Echo+".")
@@ -207,15 +208,15 @@ func manPage(r *table.Registry) string {
 		if len(notes) > 0 {
 			fmt.Fprintf(&b, ".PP\n%s\n", roff(strings.Join(notes, " ")))
 		}
-		for _, p := range e.Params {
+		for _, p := range e.Ordered() {
 			need := ""
 			switch {
-			case p.Required:
-				need = " (required)"
 			case p.Default != "":
 				need = " (default " + p.Default + ")"
+			case !p.Required && e.Positional(p.Name):
+				need = " (optional)"
 			}
-			fmt.Fprintf(&b, ".TP\n\\fB%s\\fR \\fI%s\\fR%s\n%s\n", roff("--"+p.Name), roff(paramValue(p)), roff(need), roff(p.Help))
+			fmt.Fprintf(&b, ".TP\n\\fB%s\\fR \\fI%s\\fR%s\n%s\n", roff(e.Shown(p.Name)), roff(paramValue(p)), roff(need), roff(p.Help))
 			if len(p.Names) > 0 {
 				var ns []string
 				for _, n := range p.SortedNames() {

@@ -96,12 +96,12 @@ func TestHostResolution(t *testing.T) {
 		}
 		return d[len(d)-1]
 	}
-	b.must("--host", "Studio", "program", "--source", "1")
+	b.must("--host", "Studio", "program", "1")
 	if last() != "192.0.2.10:9910" {
 		t.Fatalf("by name: %v", b.dialled())
 	}
 	// The last --host is remembered.
-	b.must("program", "--source", "2")
+	b.must("program", "2")
 	if n := len(b.dialled()); n != 1 {
 		t.Errorf("last used: %v", b.dialled())
 	}

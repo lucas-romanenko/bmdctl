@@ -144,6 +144,7 @@ func (s spec) entry() table.Entry {
 	e := table.Entry{
 		Device: "atem", Path: s.path, Summary: s.summary, Echo: s.echo,
 		Unverified: s.cmd.Unverified(), Destructive: s.cmd.Destructive(),
+		Syntax: s.syntax(),
 	}
 	for _, p := range s.params {
 		f, ok := t.FieldByName(p.field)
@@ -170,6 +171,23 @@ func (s spec) entry() table.Entry {
 		return c, nil
 	}
 	return e
+}
+
+// syntax puts an upstream keyer's number where it is said, before what is
+// done to it: "usk <keyer> fill <source>". Every other command takes the
+// table's default, its words and then its required arguments in order.
+func (s spec) syntax() string {
+	rest, ok := strings.CutPrefix(s.path, "usk ")
+	if !ok {
+		return ""
+	}
+	out := "usk <keyer> " + rest
+	for _, p := range s.params {
+		if p.Required && p.Name != "keyer" {
+			out += " <" + p.Name + ">"
+		}
+	}
+	return out
 }
 
 // fieldRange is the range of an integer field (or the integer a pointer
@@ -314,7 +332,7 @@ func videoModeNames() map[string]uint64 {
 
 // stripParams are the source and channel that address a Fairlight strip.
 func stripParams() []fp {
-	ch := req("channel", "Channel", table.Int, "", "-1 for a stereo strip, 0 or 1 for a split-mono half")
+	ch := def("channel", "Channel", table.Int, "-1", "-1 for a stereo strip, 0 or 1 for a split-mono half")
 	ch.Min, ch.Max = table.Bounds(-128, 127)
 	return []fp{req("source", "Source", table.Source, "", "audio source id (cameras 1...N, 1301 XLR mic, 1401 TRS jack) or input name"), ch}
 }

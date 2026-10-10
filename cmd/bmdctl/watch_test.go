@@ -98,13 +98,13 @@ func TestWatchHuman(t *testing.T) {
 	// The dump's program is CAM2: the line shows it leaving.
 	w, done := watch("--count", "4")
 	b.must(with("time-request")...) // a Time packet comes back: left out
-	b.must(with("program", "--source", "CAM1")...)
+	b.must(with("program", "CAM1")...)
 	tally := fakeatem.Command("TlSr", []byte{0, 2, 0, 1, 1, 0, 2, 0, 0, 0})
 	trps := make([]byte, 8)
 	trps[1], trps[2] = 1, 20
 	binary.BigEndian.PutUint16(trps[4:], 2500)
 	sw.Send(tally, fakeatem.Command("TrPs", trps))
-	b.must(with("usk", "on-air", "--keyer", "2", "--on-air")...)
+	b.must(with("usk", "2", "on-air", "on")...)
 	for _, want := range []string{"program  ME1  CAM2 → CAM1", "tally  CAM1 pgm", "transition  ME1  dip  running 0.0s",
 		`key-on-air:0:1  {"index":0,"keyer":1,"enabled":true}`} {
 		if l := w.next(t); !strings.HasSuffix(l, want) || len(l) < 14 || l[12:14] != "  " {
@@ -126,7 +126,7 @@ func TestWatchHuman(t *testing.T) {
 	if l := w.next(t); !strings.Contains(l, `"kind":"watching"`) {
 		t.Errorf("--json first frame %q", l)
 	}
-	b.must(with("program", "--source", "CAM2")...)
+	b.must(with("program", "CAM2")...)
 	if l := w.next(t); !strings.Contains(l, `"kind":"state","opcode":"PrgI","key":"PrgI:0","value":{"index":0,"source":2}`) {
 		t.Errorf("--json frame %q", l)
 	}

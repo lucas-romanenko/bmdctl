@@ -846,9 +846,45 @@ and a zero value selects nothing.
   required/default, and `OneBased` (an `Index`, below). A `Registry`
   checks entries as they
   are added (no duplicate paths, no path that is both a command and a
-  group, `Build` set exactly when the entry isn't an operation), resolves
-  command words, parses `--name value` arguments and renders
+  group, `Build` set exactly when the entry isn't an operation, a syntax
+  that fits, below), reads command lines (`ParseLine`) and renders
   `docs/COMMANDS.md`.
+- **Required arguments are positional, in the order they're said;
+  optional ones are flags** (phase 3, after the first hardware run).
+  An entry's `Syntax` is its words with its positional arguments where a
+  person says them: `program <source>`, `aux <aux> <source>`,
+  `usk <keyer> fill <source>` (the keyer before what is done to it),
+  `media upload <slot> <file>`. Left empty it is the path followed by
+  each required parameter in the table's order, which is the order for
+  every command but the upstream keyer's and the two downloads. `Add`
+  refuses an entry with a required parameter that isn't positional, or
+  a syntax whose words aren't its path. An optional argument is a flag
+  (`--me`, `--dsk`, every setting of `usk <keyer> luma` or `transition
+  wipe`), except one that reads as the object of the command: the file a
+  download writes (`media download <slot> [file]`, `macro download <slot>
+  [file]`), which may be left out.
+  - **Reading a line.** `ParseLine` matches the words against every
+    entry's syntax (literal words exactly, an argument taking any word),
+    preferring a match that leaves no required argument empty, then the
+    most literal words; values after the flags fill the arguments still
+    empty, in order (`program --me 2 5`). A flag may be shortened to any
+    unambiguous prefix (`--sat` for `--saturation`); an ambiguous one
+    lists what it could be. Words that name no command give the longest
+    group they begin, for its help; a command with words left over says
+    which (`unexpected "6": program <source>`).
+  - **The `--name` form**, how every argument was given before, is still
+    read for every positional argument, for one release: `program
+    --source 5` is `program 5`, `usk on-air --keyer 2 --on-air` is
+    `usk 2 on-air on`. Help, `docs/COMMANDS.md`, the man page and
+    completion show only the positional form; an argument given both ways
+    is "given twice". Drop it in the release after this one.
+  - **Messages** name a positional argument as it appears (`source
+    "Nobody": no input is named "Nobody"`, `missing <source>: program
+    <source>`, `keyer 5: M/E 1 has 4 upstream keyers`) and a flag as
+    `--name`.
+  - **Fairlight `--channel`** defaults to -1, a stereo strip, where it
+    was required: `fairlight strip cam1 --volume -10` reads as said, and
+    a split-mono half is `--channel 0` or `1`.
 - **Two kinds of entry.** A wire command has a `Build` that makes one
   `atem.Command`. An *operation* (phase 3) has none: the engine runs it by
   path (reading state, a transfer, a read-modify-write); a `Local` one
@@ -923,7 +959,8 @@ and a zero value selects nothing.
   `--timeout`, `--help`/`-h`. One-letter forms are single-dash only,
   because parameters named `q` (EQ Q) and `y` (SuperSource, chroma
   cursor) exist; a test keeps parameter names off the global flags. A
-  bool parameter given alone (`--on-air`) is true. Arguments are checked
+  bool flag given alone (`--fly`) is true; a positional bool takes on,
+  off, true, false, yes, no, 1 or 0. Arguments are checked
   first without a switcher (names and rates for their form only), then:
   - `--dry-run` prints the command's bytes (header included) as hex on
     stdout and sends nothing, even with `--host`. Operations have none.
@@ -986,14 +1023,19 @@ and a zero value selects nothing.
   which prints the candidates for the last word, one per line (or
   `:files` to have the shell complete file names); the bash, zsh and
   fish scripts `bmdctl completion SHELL` prints only call it and add
-  what it prints, so the three can't disagree. It completes built-ins,
-  command words, global and parameter flags (less those already given),
-  enum and flag names (after a comma too), bools, files, host names from
+  what it prints, so the three can't disagree. It walks the command's
+  syntax (`Registry.Next`): after a command's words come its next word
+  or the value of its next positional argument, so `usk <Tab>` offers
+  keyers and `usk 1 <Tab>` what a keyer does. It completes built-ins,
+  command words, global flags and the optional arguments' flags (less
+  those already given; a positional argument's hidden `--name` form is
+  not offered), enum and flag names (after a comma too), bools, files,
+  host names from
   `hosts.yml`, for a source parameter the switcher's input names, and
   for an index the values the switcher has, counted from 1 (as many
   M/Es, keyers on the `--me` given, DSKs, aux outputs, players, stills
   and clips as `info` reports; the macro slots `macro list` reports, and
-  for `--slot` that takes a name, the used ones' names too). Those it
+  for a slot that takes a name, the used ones' names too). Those it
   asks a running engine for (one second at most) and never starts one,
   so pressing Tab doesn't open a session to a switcher. Matching ignores
   case.

@@ -23,31 +23,25 @@ import (
 
 // runDevice runs one of a device's commands.
 func (c *cli) runDevice(g globals, device string, words, tokens []string) int {
-	e, prefix, rest := c.reg.Resolve(device, words)
-	if e == nil {
+	e, raw, err := c.reg.ParseLine(device, words, tokens)
+	var nc *table.NoCommand
+	if errors.As(err, &nc) {
 		if g.help {
-			c.groupHelp(c.stdout, device, prefix)
+			c.groupHelp(c.stdout, device, nc.Prefix)
 			return exitOK
 		}
-		msg := fmt.Sprintf("bmdctl %s: unknown command %q", device, strings.Join(words, " "))
-		if len(rest) == 0 && len(prefix) > 0 {
-			msg = fmt.Sprintf("bmdctl %s %s: missing a subcommand", device, strings.Join(prefix, " "))
-		}
+		msg := fmt.Sprintf("bmdctl %s: %v", device, nc)
 		if c.json {
 			return c.fail(exitUsage, "%s", msg)
 		}
 		fmt.Fprintf(c.stderr, "%s\n\n", msg)
-		c.groupHelp(c.stderr, device, prefix)
+		c.groupHelp(c.stderr, device, nc.Prefix)
 		return exitUsage
-	}
-	if len(rest) > 0 {
-		return c.fail(exitUsage, "bmdctl %s %s: unexpected %q", device, e.Path, strings.Join(rest, " "))
 	}
 	if g.help {
 		c.entryHelp(c.stdout, device, *e)
 		return exitOK
 	}
-	raw, err := parseParams(e, tokens)
 	if err == nil {
 		err = precheck(e, raw, g)
 	}
@@ -295,37 +289,53 @@ func outPath(e *table.Entry, raw map[string]string, f engine.FileFrame) (string,
 
 func (c *cli) groupHelp(w io.Writer, device string, prefix []string) {
 	path := strings.Join(prefix, " ")
-	fmt.Fprintf(w, "usage: bmdctl [%s] %s<command> [--parameter value ...]\n\n", device, strings.TrimSpace(path+" "))
+	if path != "" {
+		path += " "
+	}
+	fmt.Fprintf(w, "usage: bmdctl [%s] %s<command> [arguments] [--flag value ...]\n\n", device, path)
 	fmt.Fprintf(w, "Commands:\n")
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, ch := range c.reg.Children(device, prefix) {
-		name, summary := ch[0], ch[1]
-		if group, ok := strings.CutSuffix(name, " ..."); ok {
+		usage, summary := ch.Usage, ch.Summary
+		if ch.Group {
 			var subs []string
-			for _, sub := range c.reg.Children(device, append(slices.Clone(prefix), group)) {
-				subs = append(subs, strings.TrimSuffix(sub[0], " ..."))
+			for _, sub := range c.reg.Children(device, append(slices.Clone(prefix), ch.Usage)) {
+				subs = append(subs, firstWord(sub.Usage))
 			}
-			summary = strings.Join(subs, ", ")
+			usage, summary = ch.Usage+" ...", strings.Join(subs, ", ")
 		}
-		fmt.Fprintf(tw, "  %s\t%s\n", name, summary)
+		fmt.Fprintf(tw, "  %s\t%s\n", usage, summary)
 	}
 	tw.Flush()
-	fmt.Fprintf(w, "\nRun 'bmdctl %s %s<command> --help' for a command's parameters.\n", device, strings.TrimSpace(path+" "))
+	fmt.Fprintf(w, "\nRun 'bmdctl %s %s<command> --help' for a command's arguments.\n", device, path)
 	if len(prefix) == 0 {
 		fmt.Fprintln(w)
 		globalHelp(w)
 	}
 }
 
-func (c *cli) entryHelp(w io.Writer, device string, e table.Entry) {
-	fmt.Fprintf(w, "usage: bmdctl [%s] %s", device, e.Path)
-	for _, p := range e.Params {
-		if p.Required {
-			fmt.Fprintf(w, " --%s <%s>", p.Name, p.Kind)
+// firstWord is a child's word: its first that isn't an argument.
+func firstWord(usage string) string {
+	for _, f := range strings.Fields(usage) {
+		if !strings.HasPrefix(f, "<") && !strings.HasPrefix(f, "[") {
+			return f
 		}
 	}
-	if slices.ContainsFunc(e.Params, func(p table.Param) bool { return !p.Required }) {
-		fmt.Fprint(w, " [--parameter value ...]")
+	return usage
+}
+
+func (c *cli) entryHelp(w io.Writer, device string, e table.Entry) {
+	fmt.Fprintf(w, "usage: bmdctl [%s] %s", device, e.Usage())
+	var args, flags []table.Param
+	for _, p := range e.Params {
+		if e.Positional(p.Name) {
+			args = append(args, p)
+		} else {
+			flags = append(flags, p)
+		}
+	}
+	if len(flags) > 0 {
+		fmt.Fprint(w, " [--flag value ...]")
 	}
 	fmt.Fprintf(w, "\n\n%s\n", e.Summary)
 	if e.Destructive {
@@ -340,45 +350,53 @@ func (c *cli) entryHelp(w io.Writer, device string, e table.Entry) {
 	if e.Echo != "" {
 		fmt.Fprintf(w, "Echo: %s\n", e.Echo)
 	}
-	if len(e.Params) > 0 {
-		fmt.Fprintf(w, "\nParameters:\n")
+	// Arguments in the order they're said, then the flags.
+	slices.SortStableFunc(args, func(a, b table.Param) int { return position(e, a.Name) - position(e, b.Name) })
+	for _, part := range []struct {
+		title string
+		ps    []table.Param
+	}{{"Arguments", args}, {"Flags", flags}} {
+		if len(part.ps) == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "\n%s:\n", part.title)
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		for _, p := range e.Params {
+		for _, p := range part.ps {
 			need := ""
 			switch {
-			case p.Required:
-				need = "required"
 			case p.Default != "":
 				need = "default " + p.Default
+			case !p.Required && e.Positional(p.Name):
+				need = "optional"
 			}
-			fmt.Fprintf(tw, "  --%s\t%s\t%s\t%s\n", p.Name, paramValue(p), need, p.Help)
+			fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", e.Shown(p.Name), paramValue(p), need, p.Help)
 		}
 		tw.Flush()
-		if e.AtLeastOne {
-			fmt.Fprintln(w, "\nGive at least one of the optional parameters.")
+	}
+	if e.AtLeastOne {
+		fmt.Fprintln(w, "\nGive at least one of the flags.")
+	}
+	for _, p := range e.Params {
+		if len(p.Names) == 0 {
+			continue
 		}
-		for _, p := range e.Params {
-			if len(p.Names) == 0 {
-				continue
+		fmt.Fprintf(w, "\n%s values:\n", e.Shown(p.Name))
+		line := " "
+		for _, n := range p.SortedNames() {
+			item := fmt.Sprintf(" %s=%d", n, p.Names[n])
+			if len(line)+len(item) > 78 {
+				fmt.Fprintln(w, line)
+				line = " "
 			}
-			fmt.Fprintf(w, "\n--%s values:\n", p.Name)
-			line := " "
-			for _, n := range p.SortedNames() {
-				item := fmt.Sprintf(" %s=%d", n, p.Names[n])
-				if len(line)+len(item) > 78 {
-					fmt.Fprintln(w, line)
-					line = " "
-				}
-				line += item
-			}
-			fmt.Fprintln(w, line)
+			line += item
 		}
+		fmt.Fprintln(w, line)
 	}
 	var notes []string
 	var counted []string
 	for _, p := range e.Params {
 		if p.OneBased || p.Name == "slot" && p.Kind == table.String {
-			counted = append(counted, "--"+p.Name)
+			counted = append(counted, e.Shown(p.Name))
 		}
 	}
 	switch len(counted) {
@@ -386,7 +404,7 @@ func (c *cli) entryHelp(w io.Writer, device string, e table.Entry) {
 	case 1:
 		notes = append(notes, counted[0]+" counts from 1, as ATEM Software Control does; the atem library counts from 0.")
 	default:
-		notes = append(notes, strings.Join(counted, ", ")+" count from 1, as ATEM Software Control does; the atem library counts from 0.")
+		notes = append(notes, strings.Join(counted, " and ")+" count from 1, as ATEM Software Control does; the atem library counts from 0.")
 	}
 	if slices.ContainsFunc(e.Params, func(p table.Param) bool { return p.Kind == table.Source }) {
 		notes = append(notes, "A source is an id or one of the switcher's input names, long or short, in any case.")
@@ -394,9 +412,17 @@ func (c *cli) entryHelp(w io.Writer, device string, e table.Entry) {
 	if slices.ContainsFunc(e.Params, func(p table.Param) bool { return p.Kind == table.Rate }) {
 		notes = append(notes, "A rate is a frame count or seconds:frames at the switcher's display rate.")
 	}
+	if slices.ContainsFunc(e.Params, func(p table.Param) bool { return p.Kind == table.Bool && e.Positional(p.Name) }) {
+		notes = append(notes, "On and off are on, off, true, false, yes, no, 1 or 0.")
+	}
 	if len(notes) > 0 {
 		fmt.Fprintf(w, "\n%s\n", strings.Join(notes, "\n"))
 	}
+}
+
+// position is a positional argument's place in the syntax.
+func position(e table.Entry, name string) int {
+	return slices.IndexFunc(e.Elems(), func(x table.Elem) bool { return x.Param == name })
 }
 
 func paramValue(p table.Param) string {

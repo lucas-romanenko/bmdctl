@@ -69,6 +69,11 @@ type Entry struct {
 	Path    string // space-separated words after the device: "transition wipe"
 	Summary string // one line
 	Params  []Param
+	// Syntax is the command as typed, the path's words with the
+	// positional arguments where they're said: "usk <keyer> fill
+	// <source>", "media download <slot> [file]". Empty means the path
+	// followed by each required parameter in order (syntax.go).
+	Syntax string
 	// Build makes the command from parsed arguments. Nil for an
 	// operation.
 	Build func(Args) (Command, error)
@@ -130,6 +135,9 @@ func (r *Registry) Add(entries ...Entry) error {
 				return fmt.Errorf("table: %s %s: %s: only a uint can be one-based", e.Device, e.Path, p.Name)
 			}
 		}
+		if err := e.checkSyntax(); err != nil {
+			return err
+		}
 		r.entries = append(r.entries, e)
 	}
 	return nil
@@ -168,53 +176,6 @@ func (r *Registry) Find(device, path string) *Entry {
 		}
 	}
 	return nil
-}
-
-// Resolve finds the entry the leading words name. It returns the entry
-// and the words left over; if the words only name a group (or nothing),
-// the entry is nil and prefix is the longest matching group.
-func (r *Registry) Resolve(device string, words []string) (e *Entry, prefix []string, rest []string) {
-	es := r.Entries(device)
-	for n := len(words); n > 0; n-- {
-		path := strings.Join(words[:n], " ")
-		for i := range es {
-			if es[i].Path == path {
-				return &es[i], words[:n], words[n:]
-			}
-		}
-	}
-	for n := len(words); n > 0; n-- {
-		path := strings.Join(words[:n], " ") + " "
-		for _, x := range es {
-			if strings.HasPrefix(x.Path, path) {
-				return nil, words[:n], words[n:]
-			}
-		}
-	}
-	return nil, nil, words
-}
-
-// Children lists what comes after prefix: subgroups (with a trailing
-// "...") and commands, each with a summary.
-func (r *Registry) Children(device string, prefix []string) [][2]string {
-	var out [][2]string
-	seen := map[string]bool{}
-	p := strings.Join(prefix, " ")
-	for _, e := range r.Entries(device) {
-		w := e.Words()
-		if len(w) <= len(prefix) || (p != "" && !strings.HasPrefix(e.Path, p+" ")) {
-			continue
-		}
-		next := w[len(prefix)]
-		if len(w) == len(prefix)+1 {
-			out = append(out, [2]string{next, e.Summary})
-		} else if !seen[next] {
-			seen[next] = true
-			out = append(out, [2]string{next + " ...", ""})
-		}
-	}
-	slices.SortFunc(out, func(a, b [2]string) int { return strings.Compare(a[0], b[0]) })
-	return out
 }
 
 // Args holds an entry's parsed arguments.
@@ -273,7 +234,7 @@ func (e Entry) Parse(raw map[string]string, res Resolver) (Args, error) {
 		s, ok := raw[p.Name]
 		if !ok {
 			if p.Required {
-				return a, usagef("--%s is required", p.Name)
+				return a, usagef("missing <%s>: %s", p.Name, e.Usage())
 			}
 			if p.Default == "" {
 				continue
@@ -284,7 +245,7 @@ func (e Entry) Parse(raw map[string]string, res Resolver) (Args, error) {
 		}
 		v, err := p.parse(s, res)
 		if err != nil {
-			return a, usagef("--%s %q: %v", p.Name, s, err)
+			return a, usagef("%s %q: %v", e.Label(p.Name), s, err)
 		}
 		a.values[p.Name] = v
 	}

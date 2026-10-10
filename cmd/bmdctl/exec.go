@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/lucas-romanenko/bmdctl/internal/hosts"
+	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
 
 const execUsage = `usage: bmdctl exec FILE|- [--continue] [--host H] [--json|--quiet] [--yes] [--timeout D]
@@ -138,14 +139,14 @@ func (c *cli) checkLine(args []string) error {
 	if !slices.Contains(c.reg.Devices(), device) {
 		return fmt.Errorf("no %s commands yet", device)
 	}
-	e, _, rest := c.reg.Resolve(device, words)
-	if e == nil || len(rest) > 0 {
-		return fmt.Errorf("unknown command %q", strings.Join(words, " "))
+	e, raw, err := c.reg.ParseLine(device, words, tokens)
+	var nc *table.NoCommand
+	if errors.As(err, &nc) {
+		return nc
 	}
 	if g.help {
 		return nil
 	}
-	raw, err := parseParams(e, tokens)
 	if err == nil {
 		err = precheck(e, raw, g)
 	}

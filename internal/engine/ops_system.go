@@ -118,5 +118,5 @@ func checkVideoMode(c *call) error {
 		}
 		names = append(names, videoModeName(m.ID))
 	}
-	return codeErr(CodeUsage, "--mode %s: the switcher supports %s", videoModeName(want), strings.Join(names, ", "))
+	return codeErr(CodeUsage, "%s %s: the switcher supports %s", c.entry.Label("mode"), videoModeName(want), strings.Join(names, ", "))
 }

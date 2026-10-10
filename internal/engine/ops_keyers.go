@@ -25,7 +25,7 @@ var (
 func keyerOperations() []operation {
 	return []operation{
 		{entry: table.Entry{Path: "usk toggle", Summary: "Put an upstream keyer on air if it is off, or off if it is on.",
-			Echo: "KeOn:<me>:<keyer>", Params: []table.Param{pME, pKeyer}}, run: opUSKToggle},
+			Syntax: "usk <keyer> toggle", Echo: "KeOn:<me>:<keyer>", Params: []table.Param{pME, pKeyer}}, run: opUSKToggle},
 		{entry: table.Entry{Path: "dsk toggle", Summary: "Put a downstream keyer on air if it is off, or off if it is on.",
 			Echo: "DskS:<dsk>", Params: []table.Param{pDSK}}, run: opDSKToggle},
 		{entry: table.Entry{Path: "input list", Summary: "List the switcher's sources: ids, names and port types."},

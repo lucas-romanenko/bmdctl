@@ -17,14 +17,14 @@ func TestSystemCommands(t *testing.T) {
 	if !strings.Contains(out, "current") {
 		t.Errorf("video-modes:\n%s", out)
 	}
-	if code, _, errOut := b.run(with("video-mode", "--mode", "1080p50")...); code != exitDestructive || !strings.Contains(errOut, "--yes") {
+	if code, _, errOut := b.run(with("video-mode", "1080p50")...); code != exitDestructive || !strings.Contains(errOut, "--yes") {
 		t.Errorf("video-mode without --yes: %d %q", code, errOut)
 	}
-	if code, _, errOut := b.run(with("video-mode", "--mode", "4320p60", "--yes")...); code != exitUsage || !strings.Contains(errOut, "not one of") {
+	if code, _, errOut := b.run(with("video-mode", "4320p60", "--yes")...); code != exitUsage || !strings.Contains(errOut, "not one of") {
 		t.Errorf("unknown mode: %d %q", code, errOut)
 	}
-	if code, _, errOut := b.run(with("video-mode", "--mode", "1080p25", "--yes")...); code != exitUsage ||
-		!strings.Contains(errOut, "--mode 1080p25: the switcher supports 1080p50, 525i5994") {
+	if code, _, errOut := b.run(with("video-mode", "1080p25", "--yes")...); code != exitUsage ||
+		!strings.Contains(errOut, "mode 1080p25: the switcher supports 1080p50, 525i5994") {
 		t.Errorf("unsupported mode: %d %q", code, errOut)
 	}
 	for _, c := range []struct {
@@ -33,23 +33,23 @@ func TestSystemCommands(t *testing.T) {
 		confirmed  bool
 		unverified string // the stderr line's reason, "" for none
 	}{
-		{[]string{"video-mode", "--mode", "NTSC", "--yes"}, "CVdM", "00000000", true, ""},
+		{[]string{"video-mode", "NTSC", "--yes"}, "CVdM", "00000000", true, ""},
 		{[]string{"startup", "save", "--yes"}, "SRsv", "", false, "atemwire restored it"},
 		{[]string{"startup", "clear", "--yes"}, "SRcl", "", false, "atemwire restored it"},
 		{[]string{"time-of-day", "--time", "2026-09-11T12:00:00Z"}, "SToD", "6aa3ed4000000000", false, "atemwire restored it"},
 		{[]string{"time-request"}, "TiRq", "", false, ""},
-		{[]string{"auto-video-mode", "--enable"}, "AiVM", "01000000", true, "atemwire restored it"},
-		{[]string{"camera", "--destination", "1", "--category", "0", "--parameter", "2", "--type", "fixed16", "--data", "0.5"}, "CCmd", "", true, "atemwire restored it"},
-		{[]string{"multiviewer", "input", "--window", "3", "--source", "CAM2"}, "CMvI", "00030002", true, "atemwire restored it"},
+		{[]string{"auto-video-mode", "on"}, "AiVM", "01000000", true, "atemwire restored it"},
+		{[]string{"camera", "1", "0", "2", "--type", "fixed16", "--data", "0.5"}, "CCmd", "", true, "atemwire restored it"},
+		{[]string{"multiviewer", "input", "3", "CAM2"}, "CMvI", "00030002", true, "atemwire restored it"},
 		{[]string{"multiviewer", "properties", "--swap"}, "CMvP", "", true, "atemwire restored it"},
-		{[]string{"supersource", "box", "--box", "1", "--source", "cam1"}, "CSBP", "", true, "atemwire restored it"},
+		{[]string{"supersource", "box", "1", "--source", "cam1"}, "CSBP", "", true, "atemwire restored it"},
 		{[]string{"supersource", "properties", "--fill-source", "MP1"}, "CSSc", "", true, "atemwire restored it"},
 		{[]string{"recording", "settings", "--filename", "show"}, "CRMS", "", true, "atemwire restored it"},
-		{[]string{"recording", "state", "--recording"}, "RcTM", "", true, "atemwire restored it"},
+		{[]string{"recording", "state", "on"}, "RcTM", "", true, "atemwire restored it"},
 		{[]string{"streaming", "service", "--name", "YouTube"}, "CRSS", "", true, "atemwire restored it"},
-		{[]string{"streaming", "audio-bitrate", "--min", "128000", "--max", "128000"}, "STAB", "", true, "atemwire restored it"},
-		{[]string{"streaming", "state", "--streaming"}, "StrR", "", true, "atemwire restored it"},
-		{[]string{"hyperdeck-slot", "--slot", "1", "--address", "192.0.2.50", "--input", "Camera 2"}, "CXMS", "", true, ""},
+		{[]string{"streaming", "audio-bitrate", "128000", "128000"}, "STAB", "", true, "atemwire restored it"},
+		{[]string{"streaming", "state", "on"}, "StrR", "", true, "atemwire restored it"},
+		{[]string{"hyperdeck-slot", "1", "--address", "192.0.2.50", "--input", "Camera 2"}, "CXMS", "", true, ""},
 	} {
 		n := len(b.sent(c.code))
 		code, out, errOut := b.run(with(c.args...)...)

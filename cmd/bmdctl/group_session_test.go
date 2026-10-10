@@ -17,8 +17,8 @@ import (
 // disconnect, info, state, watch.
 func TestSessionCommands(t *testing.T) {
 	b := newBench(t)
-	b.must(with("program", "--source", "CAM1")...)
-	b.must(with("preview", "--source", "Camera 2")...)
+	b.must(with("program", "CAM1")...)
+	b.must(with("preview", "Camera 2")...)
 
 	out := b.must(with("status")...)
 	for _, want := range []string{"session     192.0.2.10:9910", "ATEM 1 M/E Constellation HD", "1080p50",
@@ -149,9 +149,9 @@ func TestWatch(t *testing.T) {
 	if !strings.HasPrefix(first, `{"ok":true,"confirmed":false,"result":{"kind":"watching"`) {
 		t.Fatalf("first frame: %s", first)
 	}
-	b.must(with("preview", "--source", "1")...) // filtered out
-	b.must(with("program", "--source", "1")...)
-	b.must(with("usk", "on-air", "--keyer", "2", "--on-air")...) // KeOn:0:1: the state keeps the library's numbering
+	b.must(with("preview", "1")...) // filtered out
+	b.must(with("program", "1")...)
+	b.must(with("usk", "2", "on-air", "on")...) // KeOn:0:1: the state keeps the library's numbering
 	for _, want := range []string{`"key":"PrgI:0","value":{"index":0,"source":1}`, `"key":"KeOn:0:1","value":{"index":0,"keyer":1,"enabled":true}`} {
 		var frame struct {
 			OK     bool `json:"ok"`
@@ -180,7 +180,7 @@ func TestWatch(t *testing.T) {
 	if l := ew.next(t); l != "watching; Ctrl-C to stop" {
 		t.Errorf("stderr %q", l)
 	}
-	b.must(with("program", "--source", "2")...)
+	b.must(with("program", "2")...)
 	if l := w.next(t); !strings.HasSuffix(l, "  program  ME1  CAM1 → CAM2") {
 		t.Errorf("human line %q", l)
 	}

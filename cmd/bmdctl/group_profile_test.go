@@ -27,10 +27,10 @@ func TestProfileCommands(t *testing.T) {
 	os.WriteFile("ops.json", []byte(testOps), 0o644)
 	// Still 3 and macro 5, counted from 1: slots 2 and 4 in the switcher
 	// and in the profile's XML, which counts from 0 as ASC writes it.
-	b.must(with("media", "upload", "--slot", "3", "--file", "logo.png", "--name", "Logo")...)
-	b.must(with("macro", "upload", "--slot", "5", "--file", "ops.json", "--name", "Cams")...)
+	b.must(with("media", "upload", "3", "logo.png", "--name", "Logo")...)
+	b.must(with("macro", "upload", "5", "ops.json", "--name", "Cams")...)
 
-	out := b.must(with("profile", "save", "--file", "prof/studio.xml")...)
+	out := b.must(with("profile", "save", "prof/studio.xml")...)
 	if !strings.Contains(out, "saved prof/studio.xml: ATEM 1 M/E Constellation HD 525i59.94 4:3") ||
 		!strings.Contains(out, "still 3  Logo   ATEM Media Pool/Logo.png") {
 		t.Errorf("save:\n%s", out)
@@ -55,7 +55,7 @@ func TestProfileCommands(t *testing.T) {
 		t.Errorf("image: %v", err)
 	}
 	// Sections can be left out.
-	b.must(with("profile", "save", "--file", "lean.xml", "--macros=false", "--media-pool-images", "false", "--keyers", "none")...)
+	b.must(with("profile", "save", "lean.xml", "--macros=false", "--media-pool-images", "false", "--keyers", "none")...)
 	lean, _ := os.ReadFile("lean.xml")
 	if bytes.Contains(lean, []byte("<MacroPool")) || bytes.Contains(lean, []byte("<Key ")) {
 		t.Errorf("lean profile:\n%s", lean)
@@ -72,13 +72,13 @@ func TestProfileCommands(t *testing.T) {
 
 	// Restore: destructive; it applies the profile, then uploads the
 	// images it names into their slots.
-	if code, _, _ := b.run(with("profile", "restore", "--file", "prof/studio.xml")...); code != exitDestructive {
+	if code, _, _ := b.run(with("profile", "restore", "prof/studio.xml")...); code != exitDestructive {
 		t.Errorf("restore without --yes: %d", code)
 	}
-	b.must(with("media", "clear", "--slot", "3", "--yes")...)
+	b.must(with("media", "clear", "3", "--yes")...)
 	b.switchers()[0].PutMacro(4, nil, "", "")
 	n := len(b.sent("CTTp"))
-	out = b.must(with("profile", "restore", "--file", "prof/studio.xml", "--yes", "--video-mode", "false")...)
+	out = b.must(with("profile", "restore", "prof/studio.xml", "--yes", "--video-mode", "false")...)
 	if !strings.Contains(out, "restored prof/studio.xml (Test") && !strings.Contains(out, "restored prof/studio.xml") {
 		t.Errorf("restore:\n%s", out)
 	}
@@ -97,20 +97,19 @@ func TestProfileCommands(t *testing.T) {
 	var r struct {
 		Result engine.ProfileResult `json:"result"`
 	}
-	json.Unmarshal([]byte(b.must(with("profile", "restore", "--file", "prof/studio.xml", "--yes", "--video-mode", "false",
-		"--macros-only", "--json")...)), &r)
+	json.Unmarshal([]byte(b.must(with("profile", "restore", "prof/studio.xml", "--yes", "--video-mode", "false", "--macros-only", "--json")...)), &r)
 	if len(r.Result.Applied) != 1 || !strings.HasPrefix(r.Result.Applied[0], "macros") {
 		t.Errorf("--macros-only applied %v", r.Result.Applied)
 	}
 	// A profile whose apply records errors exits 4, listing them.
 	os.WriteFile("bad.xml", []byte(`<Profile majorVersion="2" minorVersion="1" product="Test">`+
 		`<FairlightAudioMixer masterOutFaderGain="inf" followFadeToBlack="False"/></Profile>`), 0o644)
-	code, out, _ := b.run(with("profile", "restore", "--file", "bad.xml", "--yes")...)
+	code, out, _ := b.run(with("profile", "restore", "bad.xml", "--yes")...)
 	if code != exitRejected || !strings.Contains(out, "error") || !strings.Contains(out, "fairlight.master: ") {
 		t.Errorf("bad profile: %d\n%s", code, out)
 	}
 	os.WriteFile("broken.xml", []byte(`<Profile><Unclosed></Profile>`), 0o644)
-	if code, _, errOut := b.run(with("profile", "restore", "--file", "broken.xml", "--yes")...); code != exitUsage || !strings.Contains(errOut, "broken.xml") {
+	if code, _, errOut := b.run(with("profile", "restore", "broken.xml", "--yes")...); code != exitUsage || !strings.Contains(errOut, "broken.xml") {
 		t.Errorf("broken: %d %q", code, errOut)
 	}
 }

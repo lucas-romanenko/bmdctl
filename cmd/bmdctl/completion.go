@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -135,7 +136,11 @@ func (c *cli) complete(args []string) []string {
 			return nil
 		}
 	}
-	e, prefix, _ := c.reg.Resolve(device, path)
+	e, _, err := c.reg.ParseLine(device, path, tokens)
+	var nc *table.NoCommand
+	if errors.As(err, &nc) {
+		e = nil
+	}
 
 	// A value for the flag before it.
 	switch prev {
@@ -151,7 +156,7 @@ func (c *cli) complete(args []string) []string {
 		return []string{completeFiles}
 	}
 	if e != nil && strings.HasPrefix(prev, "--") && !strings.Contains(prev, "=") {
-		if p := param(e, strings.TrimPrefix(prev, "--")); p != nil {
+		if p, err := e.FlagParam(strings.TrimPrefix(prev, "--")); err == nil {
 			if p.Kind == table.Bool && strings.HasPrefix(cur, "-") {
 				return c.completeFlags(cur, e, first, tokens)
 			}
@@ -195,28 +200,31 @@ func (c *cli) complete(args []string) []string {
 	case "version", "man", "doctor", "help":
 		return nil
 	}
-	if e != nil {
-		return nil // a whole command: its flags come next
-	}
+	// The next word of a command, or the value of its next argument.
 	var cands []string
 	if len(words) == 0 {
 		for _, b := range builtins {
 			cands = append(cands, b.name)
 		}
 	}
-	for _, ch := range c.reg.Children(device, prefix) {
-		cands = append(cands, strings.TrimSuffix(ch[0], " ..."))
-	}
-	return match(cur, cands)
-}
-
-func param(e *table.Entry, name string) *table.Param {
-	for i := range e.Params {
-		if e.Params[i].Name == name {
-			return &e.Params[i]
+	next, _ := c.reg.Next(device, path)
+	for _, x := range next {
+		if x.Word != "" {
+			cands = append(cands, x.Word)
+			continue
+		}
+		for _, p := range x.Entry.Params {
+			if p.Name == x.Param {
+				vals := c.completeValue(cur, x.Entry, p, g, tokens)
+				if slices.Contains(vals, completeFiles) {
+					return []string{completeFiles}
+				}
+				cands = append(cands, vals...)
+			}
 		}
 	}
-	return nil
+	slices.Sort(cands)
+	return match(cur, slices.Compact(cands))
 }
 
 // completeFlags offers the global flags and the command's own, less the
@@ -228,7 +236,8 @@ func (c *cli) completeFlags(cur string, e *table.Entry, builtin string, tokens [
 	}
 	if e != nil {
 		for _, p := range e.Params {
-			if !slices.ContainsFunc(tokens, func(t string) bool { return t == "--"+p.Name || strings.HasPrefix(t, "--"+p.Name+"=") }) {
+			// Positional arguments' --name form is accepted but not shown.
+			if !e.Positional(p.Name) && !slices.ContainsFunc(tokens, func(t string) bool { return t == "--"+p.Name || strings.HasPrefix(t, "--"+p.Name+"=") }) {
 				cands = append(cands, "--"+p.Name)
 			}
 		}
@@ -257,7 +266,7 @@ func (c *cli) completeValue(cur string, e *table.Entry, p table.Param, g globals
 		}
 		return match(cur, names)
 	case table.Bool:
-		return match(cur, []string{"true", "false"})
+		return match(cur, []string{"on", "off", "true", "false"})
 	case table.File, table.OutFile, table.Dir:
 		return []string{completeFiles}
 	case table.Source:
