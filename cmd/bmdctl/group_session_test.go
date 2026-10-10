@@ -56,8 +56,15 @@ func TestSessionCommands(t *testing.T) {
 		}
 	}
 
-	if out := b.must(with("state", "--path", "mes.0.program.source")...); out != "value  1\n" {
-		t.Errorf("state leaf: %q", out)
+	// A leaf prints its bare value, for scripts; anything bigger, one
+	// dotted.key value line per leaf.
+	for path, want := range map[string]string{
+		"mes.0.program.source": "1\n", "inputs.1.name": "Camera 1\n", "inputs.1.default_name": "true\n",
+		"mes.0.program": "index   0\nsource  1\n",
+	} {
+		if out := b.must(with("state", "--path", path)...); out != want {
+			t.Errorf("state --path %s: %q, want %q", path, out, want)
+		}
 	}
 	if out := b.must(with("state", "--path", "MES.0.Program", "--json")...); !strings.Contains(out, `"result":{"index":0,"source":1}`) {
 		t.Errorf("state --json: %q", out)
@@ -174,7 +181,7 @@ func TestWatch(t *testing.T) {
 		t.Errorf("stderr %q", l)
 	}
 	b.must(with("program", "--source", "2")...)
-	if l := w.next(t); !strings.Contains(l, "  PrgI:0       {\"index\":0,\"source\":2}") {
+	if l := w.next(t); !strings.HasSuffix(l, "  program  ME1  CAM1 → CAM2") {
 		t.Errorf("human line %q", l)
 	}
 	<-done

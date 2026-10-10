@@ -130,6 +130,11 @@ var parsers = func() map[string]parser {
 	return m
 }()
 
+// PrettyName is atemwire's name for a state packet, the mixerstate key it
+// stores the packet under (the Recv class's PRETTY): "program-bus-input"
+// for PrgI. It is "" for an opcode atemwire doesn't parse.
+func PrettyName(opcode string) string { return parsers[opcode].name }
+
 // key is a Change.Key: the opcode and the packet's indices.
 func key(code string, idx ...any) string {
 	for _, i := range idx {
