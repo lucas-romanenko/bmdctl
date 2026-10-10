@@ -54,7 +54,7 @@ type Engine struct {
 	log     *slog.Logger
 	idle    time.Duration
 	started time.Time
-	ops     map[string]op
+	ops     map[string]operation
 
 	ctx      context.Context // ends when the engine stops
 	cancel   context.CancelFunc
@@ -211,7 +211,9 @@ func (e *Engine) serveConn(c io.ReadWriteCloser) {
 		cancel()
 	}()
 	resp := e.Handle(ctx, req, w)
-	w.response(resp)
+	if _, end := resp.Result.(streamEnd); !end {
+		w.response(resp)
+	}
 	if req.Device == "engine" && req.Path == "stop" && resp.OK {
 		go e.Stop()
 	}
@@ -287,6 +289,17 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	if req.Host == "" {
 		return nil, false, codeErr(CodeUsage, "no switcher named: give --host")
 	}
+	o, isOp := e.ops[entry.Path]
+	if entry.Operation && !isOp {
+		return nil, false, codeErr(CodeUsage, "%s %s has no implementation", req.Device, req.Path)
+	}
+	if o.noDial {
+		var err error
+		if c.args, err = entry.Parse(req.Params, atem.Resolver{FPS: req.FPS}); err != nil {
+			return nil, false, usageErr(err)
+		}
+		return o.run(c)
+	}
 	h, sess, release, err := e.acquire(ctx, req.Host)
 	if err != nil {
 		return nil, false, err
@@ -305,11 +318,7 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	if !entry.Operation {
 		return c.sendEntry()
 	}
-	run := e.ops[entry.Path]
-	if run == nil {
-		return nil, false, codeErr(CodeUsage, "%s %s has no implementation", req.Device, req.Path)
-	}
-	return run(c)
+	return o.run(c)
 }
 
 // CodeEngine: the engine can't serve this CLI (a protocol mismatch).

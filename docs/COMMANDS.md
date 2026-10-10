@@ -121,6 +121,14 @@ Give at least one optional parameter. Echo: `ColV:<generator>`.
 | `--saturation` | float, %, clamped to 0-100 | optional | saturation |
 | `--luma` | float, %, clamped to 0-100 | optional | luma |
 
+### `bmdctl atem connect`
+
+Open a session to the switcher and keep it open until disconnect.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--pin` | bool | default true | keep the session open until disconnect; false lets it close after 10 idle minutes |
+
 ### `bmdctl atem cut`
 
 Cut program and preview.
@@ -130,6 +138,10 @@ No echo.
 | parameter | value | | |
 |---|---|---|---|
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E (the library's ME field counts from 0) |
+
+### `bmdctl atem disconnect`
+
+Close the engine's session to the switcher, pinned or not.
 
 ### `bmdctl atem dsk auto`
 
@@ -426,6 +438,10 @@ Give at least one optional parameter. Echo: `RXMS:<slot>`.
 | `--address` | string | optional | deck IPv4 address; 0.0.0.0 clears the slot |
 | `--input` | source, 0-65535 | optional | switcher input the deck feeds |
 
+### `bmdctl atem info`
+
+Show the switcher's model, firmware, video mode and what it has.
+
 ### `bmdctl atem input`
 
 Rename an input.
@@ -580,6 +596,18 @@ Clear the saved power-on state.
 Make the current state the power-on state.
 
 **Unverified.** **Destructive.** No echo.
+
+### `bmdctl atem state`
+
+Print the switcher's state as the session holds it, or one part of it.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--path` | string | optional | dotted key into the state: mes.0.program, inputs.1.name, fairlight.master |
+
+### `bmdctl atem status`
+
+Show what is on air: program, preview, transitions, keyers, macros.
 
 ### `bmdctl atem streaming audio-bitrate`
 
@@ -998,3 +1026,14 @@ Change the video mode: outputs resync and clients may be dropped.
 | parameter | value | | |
 |---|---|---|---|
 | `--mode` | enum, 0-255: 525i5994=0 NTSC=0 625i50=1 PAL=1 NTSC_widescreen=2 PAL_widescreen=3 720p50=4 720p5994=5 1080i50=6 1080i5994=7 1080p2398=8 1080p24=9 1080p25=10 1080p2997=11 1080p50=12 1080p5994=13 2160p2398=14 2160p24=15 2160p25=16 2160p2997=17 2160p50=18 2160p5994=19 4320p2398=20 4320p24=21 4320p25=22 4320p2997=23 4320p50=24 4320p5994=25 1080p30=26 1080p60=27 720p60=28 1080i60=29 | required | video mode |
+
+### `bmdctl atem watch`
+
+Print each change the switcher reports, as it comes.
+
+Runs until interrupted.
+
+| parameter | value | | |
+|---|---|---|---|
+| `--filter` | list | optional | only keys starting with one of these: PrgI,KeOn:0 |
+| `--count` | uint | optional | stop after this many changes |
