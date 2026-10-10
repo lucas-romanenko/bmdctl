@@ -130,8 +130,13 @@ func (c *cli) doctorEngine(sock string, add func(name, status, format string, ar
 	var st engine.Status
 	json.Unmarshal(resp.Result.(json.RawMessage), &st)
 	add("engine", "ok", "running, pid %d, up %s", st.PID, time.Since(st.Started).Round(time.Second))
-	if mine := versionString(); st.Version != mine {
-		add("engine version", "warn", "the engine is %q, this bmdctl %q: restart it (bmdctl engine stop)", st.Version, mine)
+	switch mine := c.build(); {
+	case st.Build != "" && mine != "" && st.Build != mine && st.Background:
+		add("engine version", "warn", "the engine runs another build of bmdctl (%s); the next command restarts it", st.Version)
+	case st.Build != "" && mine != "" && st.Build != mine:
+		add("engine version", "warn", "the engine runs another build of bmdctl (%s), started by hand: restart it yourself", st.Version)
+	case st.Build == "" && st.Version != versionString():
+		add("engine version", "warn", "the engine is %q, this bmdctl %q: restart it (bmdctl engine stop)", st.Version, versionString())
 	}
 	return &st
 }

@@ -39,7 +39,7 @@ func sessionOperations() []operation {
 				{Name: "filter", Kind: table.List, Help: "only keys starting with one of these: PrgI,KeOn:0"},
 				{Name: "count", Kind: table.Uint, Help: "stop after this many changes"},
 				{Name: "all", Kind: table.Bool, Default: "false",
-					Help: "include the clock's Time packets, left out unless --filter names them"}}},
+					Help: "include the clock's Time packets and the index and Fairlight tallies, left out unless --filter names them"}}},
 			run: opWatch},
 	}
 }
@@ -375,6 +375,11 @@ type ChangeEvent struct {
 	Time   string `json:"time"`
 }
 
+// watchHidden are the packets watch leaves out unless --all or --filter
+// names them: the clock's ticks, and the tallies the tally-source line
+// already says (by index, and Fairlight's).
+var watchHidden = map[string]bool{"Time": true, "TlIn": true, "FMTl": true}
+
 // streamEnd is what a streaming operation returns when it has said all
 // it will: the engine sends no final response.
 type streamEnd struct{}
@@ -416,8 +421,8 @@ func opWatch(c *call) (any, bool, error) {
 				ev.Kind = "disconnected"
 			}
 			matches := slices.ContainsFunc(filters, func(f string) bool { return strings.HasPrefix(ch.Key, strings.TrimSpace(f)) })
-			if ev.Kind == "state" && (len(filters) > 0 && !matches || ch.Opcode == "Time" && !all && !matches) {
-				continue // the clock ticks: noise unless asked for
+			if ev.Kind == "state" && (len(filters) > 0 && !matches || watchHidden[ch.Opcode] && !all && !matches) {
+				continue // noise, or said already, unless asked for
 			}
 			if err := c.out.response(Response{OK: true, Result: ev, TookMS: time.Since(c.start).Milliseconds()}); err != nil {
 				return streamEnd{}, false, nil // the caller hung up

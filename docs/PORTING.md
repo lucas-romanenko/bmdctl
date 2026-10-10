@@ -1185,9 +1185,33 @@ lives until 10 minutes pass without a request, unless pinned.
   and exits quietly. `bmdctl engine` runs one in the foreground for
   systemd or Docker, logging to stderr as well. `bmdctl engine stop` asks
   it to stop and waits for the socket to go; `bmdctl engine status`
-  reports its version, pid, socket, log and sessions.
+  reports its version, build, pid, socket, log and sessions.
+- **An engine of another build restarts** (after the second hardware
+  run, when an engine kept serving the previous binary's table). Every
+  request carries the client's build (`build`), the Go toolchain's build
+  ID of the executable (what `go tool buildid` prints: from the ELF note,
+  or the marked string near the start of a Mach-O or PE file), or a
+  SHA-256 of the file when it has none; it changes whenever the code
+  does, and costs a few header reads, not a hash of the binary, on every
+  command. The engine runs with its own (`Config.BuildID`). A background
+  engine, one a command started (`Config.Background`), answers a device
+  request from another build `{ok:false, code: "stale"}` and stops; the
+  CLI waits for its socket to go, starts an engine (its own executable,
+  so its own build) and sends the request again, once: a second `stale`
+  is printed and exits 2. An engine run by hand (`bmdctl engine`, under
+  systemd or in a container, where the host's CLI may be another build
+  on purpose) answers every build: stopping it would leave the CLI
+  starting engines of its own beside it. Requests to the engine itself
+  (`status`, `stop`) are answered whatever the build, so `engine status`
+  shows an engine's build, marked when it isn't this bmdctl's, and
+  `doctor` warns. Completion sends its build too, so a Tab can stop a
+  stale engine, but never starts one. An engine that is stopping holds
+  its lock a moment after its socket has gone, so a background start
+  that finds the lock taken and nothing answering retries for up to 2 s.
+  The protocol version stays 1: `build` is optional, and an engine from
+  before it (which ignores the field) has to be stopped by hand once.
 - **Protocol.** One request per connection, one JSON object per line. In:
-  `{v, device, host, path, params, files, yes, fps, timeout_ms}`, `params`
+  `{v, device, host, path, params, files, yes, fps, timeout_ms, build}`, `params`
   being the `--name value` pairs as typed. Out: `{ok, confirmed, result,
   took_ms}` or `{ok:false, code, error}`, exactly those keys, preceded by
   any `{"file": {param, name, data}}` frames. A streaming command sends a
@@ -1217,8 +1241,8 @@ lives until 10 minutes pass without a request, unless pinned.
   `Send`, `confirmed` false, as atemwire's `send()` leaves it. The result
   is `{args, command, echo, state}`: the arguments for display, the
   opcode, the key waited for and the echoed packet.
-- **Codes.** `usage` (exit 1), `unreachable` and `engine` (2), `no_echo`
-  (3), `rejected` (4), `destructive` (5). Session errors (`ErrClosed`,
+- **Codes.** `usage` (exit 1), `unreachable`, `engine` and `stale` (2),
+  `no_echo` (3), `rejected` (4), `destructive` (5). Session errors (`ErrClosed`,
   `ErrDisconnected`, `ErrNotReady`) are `unreachable`; a command that
   won't encode is `usage`.
 - **Log.** `$XDG_STATE_HOME/bmdctl/engine.log` (`~/.local/state`;
@@ -1264,7 +1288,10 @@ comes back. Indexes in results count from 1, as the flags do
     starting with any of its prefixes, `--count` stops after that many.
     The clock's `Time` packets are left out unless `--all` is given or a
     `--filter` names them: on a switcher they drown everything else
-    (found on the first hardware run, docs/HARDWARE.md).
+    (found on the first hardware run, docs/HARDWARE.md). So are
+    `tally-index` (`TlIn`) and `fairlight-tally` (`FMTl`), whose news
+    the tally line, from `TlSr`, already gives (the second run). The
+    engine leaves them out, so `--json` doesn't have them either.
   - **watch's human form** (`cmd/bmdctl/watch.go`) prints each change as
     its time, the pretty key (atemwire's mixerstate name with the key's
     indices, `key-on-air:0:1`, through `atem.PrettyName`, a Go addition
@@ -1300,8 +1327,12 @@ comes back. Indexes in results count from 1, as the flags do
 - **Group c, keyers, aux, inputs, colour** (`ops_keyers.go`). `usk
   toggle` and `dsk toggle` are atemwire's `toggle_usk` and `toggle_dsk`:
   the on-air state read, inverted, sent. The rename is now `input
-  rename`, beside `input list` (every source with its names and port
-  type, named from `InPr`'s categories). `usk keyframe-run` no longer
+  rename`, beside `inputs` (every source, one per line: id, short name,
+  long name and the port type named from `InPr`'s categories; `--json`
+  has the availability flags too). `inputs` was `input list` until the
+  second hardware run; that name stays as a hidden alias
+  (`Registry.Alias` takes several words). A source name no input has
+  says `(bmdctl inputs lists them)`. `usk keyframe-run` no longer
   insists on `--direction`: its mask covers only the direction, and
   atemwire sends a plain run with a zero mask, so the table marks the
   entry `complete` rather than deriving "at least one".

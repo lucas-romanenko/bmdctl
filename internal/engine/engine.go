@@ -46,6 +46,14 @@ type Config struct {
 	IdleTimeout time.Duration
 	// Version, Socket and LogPath are reported by the status request.
 	Version, Socket, LogPath string
+	// BuildID is the build the engine runs, reported by status.
+	BuildID string
+	// Background: a command started the engine (engine --background), so
+	// a command can start it again. It stops for a device request from
+	// another build than BuildID, answering CodeStale, for that command
+	// to start an engine of its own build. An engine run by hand, under
+	// systemd or in a container, answers every build.
+	Background bool
 }
 
 // Engine runs requests against switcher sessions it keeps open.
@@ -127,7 +135,7 @@ func (e *Engine) Serve(l Listener) error {
 	}
 	e.listener = l
 	e.mu.Unlock()
-	e.log.Info("engine listening", "socket", l.Addr(), "pid", os.Getpid(), "version", e.cfg.Version)
+	e.log.Info("engine listening", "socket", l.Addr(), "pid", os.Getpid(), "version", e.cfg.Version, "build", e.cfg.BuildID)
 	for {
 		c, err := l.Accept()
 		if err != nil {
@@ -217,6 +225,10 @@ func (e *Engine) serveConn(c io.ReadWriteCloser) {
 	if req.Device == "engine" && req.Path == "stop" && resp.OK {
 		go e.Stop()
 	}
+	if resp.Code == CodeStale {
+		e.log.Info("a client of another build: stopping", "build", e.cfg.BuildID, "client", req.Build)
+		go e.Stop()
+	}
 }
 
 // sink takes what a request produces besides its response: files, and
@@ -271,6 +283,9 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	}
 	if req.Device == "engine" {
 		return e.engineRequest(req)
+	}
+	if e.cfg.Background && req.Build != "" && e.cfg.BuildID != "" && req.Build != e.cfg.BuildID {
+		return nil, false, codeErr(CodeStale, "the engine runs another build of bmdctl and stops, for this one to start its own")
 	}
 	if req.Device != "atem" {
 		return nil, false, codeErr(CodeUsage, "no commands for device %q", req.Device)
@@ -554,13 +569,17 @@ func waitReady(ctx context.Context, s *atem.Session) error {
 
 // Status is what the engine reports about itself.
 type Status struct {
-	Version  string          `json:"version"`
-	Protocol int             `json:"protocol"`
-	PID      int             `json:"pid"`
-	Started  time.Time       `json:"started"`
-	Socket   string          `json:"socket,omitempty"`
-	Log      string          `json:"log,omitempty"`
-	Sessions []SessionStatus `json:"sessions"`
+	Version  string `json:"version"`
+	Build    string `json:"build,omitempty"`
+	Protocol int    `json:"protocol"`
+	// Background: a command started it, and one of another build
+	// restarts it.
+	Background bool            `json:"background"`
+	PID        int             `json:"pid"`
+	Started    time.Time       `json:"started"`
+	Socket     string          `json:"socket,omitempty"`
+	Log        string          `json:"log,omitempty"`
+	Sessions   []SessionStatus `json:"sessions"`
 }
 
 // SessionStatus is one switcher session.
@@ -579,7 +598,7 @@ type SessionStatus struct {
 }
 
 func (e *Engine) status() Status {
-	st := Status{Version: e.cfg.Version, Protocol: Version, PID: os.Getpid(), Started: e.started,
+	st := Status{Version: e.cfg.Version, Build: e.cfg.BuildID, Protocol: Version, Background: e.cfg.Background, PID: os.Getpid(), Started: e.started,
 		Socket: e.cfg.Socket, Log: e.cfg.LogPath, Sessions: []SessionStatus{}}
 	e.mu.Lock()
 	type snap struct {

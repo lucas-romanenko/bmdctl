@@ -286,6 +286,16 @@ func TestAlias(t *testing.T) {
 			t.Errorf("%q: %#v", line, err)
 		}
 	}
+	// An alias may be several words.
+	if err := r.Alias("dev", "new list", "program"); err != nil {
+		t.Fatal(err)
+	}
+	if e, raw, err := r.ParseLine("dev", []string{"new", "list", "5"}, nil); err != nil || e.Path != "program" || raw["source"] != "5" {
+		t.Errorf("new list 5: %v %v %v", e, raw, err)
+	}
+	if next, _ := r.Next("dev", []string{"new"}); len(next) != 2 {
+		t.Errorf("after new: %v", next)
+	}
 	if next, _ := r.Next("dev", []string{"old"}); len(next) != 1 || next[0].Word != "master" {
 		t.Errorf("after old: %v", next)
 	}

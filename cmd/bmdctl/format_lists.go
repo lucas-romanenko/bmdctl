@@ -11,7 +11,7 @@ import (
 )
 
 func init() {
-	humanFormats["input list"] = formatInputList
+	humanFormats["inputs"] = formatInputs
 	humanFormats["audio meters"] = formatMeters
 	humanFormats["classic-audio meters"] = formatMeters
 	humanFormats["media list"] = formatMediaList
@@ -183,12 +183,14 @@ func formatTransfer(p *printer, r engine.Response, raw json.RawMessage) []string
 	return []string{fmt.Sprintf("%-24s %s %5d ms  %s", p.e.Path, status, r.TookMS, what)}
 }
 
-func formatInputList(p *printer, _ engine.Response, raw json.RawMessage) []string {
+// formatInputs is one source per line: id, short name, long name, port
+// type.
+func formatInputs(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var ins []engine.InputEntry
 	json.Unmarshal(raw, &ins)
 	rows := [][]string{}
 	for _, in := range ins {
-		rows = append(rows, []string{fmt.Sprint(in.Source), in.Long, in.Short, in.Type})
+		rows = append(rows, []string{fmt.Sprint(in.Source), in.Short, in.Long, in.Type})
 	}
 	return p.table(rows)
 }

@@ -279,7 +279,12 @@ func RegisterOperations(r *table.Registry) error {
 		e.Device, e.Operation = "atem", true
 		es = append(es, e)
 	}
-	return r.Add(es...)
+	if err := r.Add(es...); err != nil {
+		return err
+	}
+	// input list, inputs' name before the first hardware session's
+	// second run.
+	return r.Alias("atem", "input list", "inputs")
 }
 
 // operations lists every operation, group by group.

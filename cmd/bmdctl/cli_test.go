@@ -315,7 +315,7 @@ func TestJSONAndQuiet(t *testing.T) {
 	}
 	// A failure is {ok:false, code, error} on stdout with --json.
 	code, out, _ := b.run(with("--json", "program", "Nobody")...)
-	if code != exitUsage || out != `{"ok":false,"code":"usage","error":"source \"Nobody\": no input is named \"Nobody\""}`+"\n" {
+	if code != exitUsage || out != `{"ok":false,"code":"usage","error":"source \"Nobody\": no input is named \"Nobody\" (bmdctl inputs lists them)"}`+"\n" {
 		t.Errorf("json failure: %d %q", code, out)
 	}
 	// --quiet still says what went wrong, on stderr.
@@ -407,6 +407,94 @@ func TestCommandStartsTheEngine(t *testing.T) {
 	}
 	if code := c.run(with("program", "2")); code != 0 || spawned != 1 {
 		t.Fatalf("%d, %d spawns\n%s%s", code, spawned, o, e)
+	}
+}
+
+// An engine started from another build answers "stale" to a command and
+// stops; the command starts an engine of its own build and goes to it,
+// once.
+func TestStaleEngineRestarts(t *testing.T) {
+	b := newBench(t)
+	restart := func(build string, bg bool) *engine.Engine {
+		b.engine().Stop()
+		eventually(t, "the old engine to go", func() bool {
+			_, err := os.Stat(b.env["BMDCTL_SOCKET"])
+			return os.IsNotExist(err)
+		})
+		if err := b.startEngine(engine.Config{BuildID: build, Background: bg}); err != nil {
+			t.Fatal(err)
+		}
+		return b.engine()
+	}
+	// cli is a bmdctl of build b whose spawn starts an engine of build.
+	cli := func(build string) (*cli, *int, *bytes.Buffer) {
+		c, _, e := b.cli("")
+		c.build = func() string { return "build-b" }
+		spawned := new(int)
+		c.spawn = func(string, []string, []string) error {
+			*spawned++
+			go func() {
+				// As a background engine does, wait out the lock of
+				// the one stopping.
+				for range 100 {
+					err := b.startEngine(engine.Config{BuildID: build, Background: true})
+					if !errors.Is(err, engine.ErrRunning) {
+						if err != nil {
+							t.Error(err)
+						}
+						return
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			}()
+			return nil
+		}
+		return c, spawned, e
+	}
+	old := restart("build-a", true)
+	// Status and stop are the engine's own: answered whatever the build.
+	c, spawned, _ := cli("build-b")
+	var o bytes.Buffer
+	c.stdout = &o
+	if code := c.run([]string{"engine", "status"}); code != 0 || *spawned != 0 ||
+		!strings.Contains(o.String(), "build     build-a (not this bmdctl's: the next command restarts the engine)") {
+		t.Errorf("status: %d %d\n%s", code, *spawned, o.String())
+	}
+	// A command restarts it, once, and is sent to the new engine.
+	if code := c.run(with("program", "2")); code != 0 || *spawned != 1 {
+		t.Fatalf("program 2: %d, %d spawns", code, *spawned)
+	}
+	select {
+	case <-old.Done():
+	default:
+		t.Error("the engine of another build still runs")
+	}
+	if got := b.lastSent(t, "CPgI"); got != "00000002" || b.engine() == old {
+		t.Errorf("sent %s, new engine %v", got, b.engine() != old)
+	}
+	// The same build: nothing restarts.
+	now := b.engine()
+	if code := c.run(with("program", "1")); code != 0 || *spawned != 1 || b.engine() != now {
+		t.Errorf("same build: %d, %d spawns", code, *spawned)
+	}
+	// An engine still of another build after the restart: the command
+	// fails as unreachable, having started one engine.
+	restart("build-a", true)
+	c, spawned, errOut := cli("build-a")
+	if code := c.run(with("program", "2")); code != exitUnreachable || *spawned != 1 || !strings.Contains(errOut.String(), "another build") {
+		t.Errorf("still stale: %d, %d spawns, %q", code, *spawned, errOut)
+	}
+	// An engine run by hand (under systemd, in a container) answers
+	// every build, and status says so.
+	hand := restart("build-a", false)
+	c, spawned, _ = cli("build-b")
+	o.Reset()
+	c.stdout = &o
+	if code := c.run(with("program", "1")); code != 0 || *spawned != 0 || b.engine() != hand {
+		t.Errorf("engine run by hand: %d, %d spawns", code, *spawned)
+	}
+	if c.run([]string{"engine", "status"}); !strings.Contains(o.String(), "build-a (not this bmdctl's; started by hand, it answers every build)") {
+		t.Errorf("status:\n%s", o.String())
 	}
 }
 
