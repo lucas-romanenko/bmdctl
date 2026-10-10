@@ -77,9 +77,27 @@ func (p *printer) code() int {
 	case p.last == nil:
 		return exitUnreachable
 	case p.last.OK:
+		if f := resultCodes[p.e.Path]; f != nil {
+			raw, _ := p.last.Result.(json.RawMessage)
+			return f(raw)
+		}
 		return exitOK
 	}
 	return exitCode(p.last.Code)
+}
+
+// resultCodes give a successful response an exit status from its result,
+// by path: a restore that recorded errors applied only part of the
+// profile.
+var resultCodes = map[string]func(json.RawMessage) int{
+	"profile restore": func(raw json.RawMessage) int {
+		var r engine.ProfileResult
+		json.Unmarshal(raw, &r)
+		if len(r.Errors) > 0 {
+			return exitRejected
+		}
+		return exitOK
+	},
 }
 
 // colour wraps s in an ANSI colour when stdout is a terminal and the

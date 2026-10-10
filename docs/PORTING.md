@@ -1141,6 +1141,27 @@ else (keyers, DSKs, aux, slots) from 0.
   - The fake switcher models `MAct` and `MSRc` far enough for their
     state to show: running, stopped, recording, a recording stored as an
     empty macro under its name, a deletion.
+- **Group g, profiles** (`ops_profile.go`). `profile save` is
+  `profile.Save` with every `SaveOptions` flag; `profile restore` is
+  `Apply` with every `ApplyOptions` flag, atemwire's defaults included
+  (no program or preview, no fly keyframes), `--macros-only` starting
+  from `MacrosOnly()`, and is destructive. The per-M/E blocks are
+  `--mes` (from 1) and `--keyers` (from 0) with the five per-M/E flags
+  applied to each M/E chosen. A restore that records errors exits 4 and
+  lists them; one that aborts (atemwire raising) lists the abort too.
+  - **Images.** atemwire leaves media pool pixels to its caller:
+    `download_media_pool_images` beside save, and for apply "the caller
+    is expected to supply those bytes and push them into the media pool
+    through its own upload path after applying the rest"
+    (`restore_media_pool_images`). The engine is that caller. Save writes
+    each used still as `ATEM Media Pool/<name>.png` beside the XML (the
+    path the XML's `<Still>` names; `Slot<n>` for a still without one,
+    a failing slot skipped and reported, as atemwire logs and skips it);
+    `profile images` does only that, into `--dir`. Restore's CLI reads
+    each `<Still path>` it can find beside the XML and sends it; after
+    the apply the engine uploads each to its `index` under its `name`
+    (PNGs premultiplied, as `media upload` does), reporting the ones with
+    no file.
 - **Indices the switcher doesn't have** are refused before sending:
   `--me` beyond `_top`'s M/E count, `--keyer` beyond the M/E's `_MeC`,
   `--dsk` beyond `_top`'s. Only counts the switcher reported are used, not

@@ -11,10 +11,12 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
+	"github.com/lucas-romanenko/bmdctl/atem/profile"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
@@ -66,6 +68,9 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 		return c.fail(exitDestructive, "bmdctl %s: destructive: add --yes to run it", label)
 	}
 	files, err := c.readFiles(e, req.Params)
+	if err == nil && prepare[e.Path] != nil {
+		err = prepare[e.Path](req.Params, files)
+	}
 	if err != nil {
 		return c.fail(exitUsage, "bmdctl %s: %v", label, err)
 	}
@@ -201,10 +206,56 @@ func (c *cli) readFiles(e *table.Entry, raw map[string]string) (map[string][]byt
 		}
 		files[p.Name] = b
 	}
-	if len(files) == 0 {
-		return nil, nil
-	}
 	return files, nil
+}
+
+// prepare adds what a command sends besides its parameters' files, by
+// path.
+var prepare = map[string]func(params map[string]string, files map[string][]byte) error{
+	"profile restore": profileImages,
+}
+
+// profileImages reads the images a profile's <MediaPool> names, from
+// beside the profile, for the engine to upload after the rest: the part
+// atemwire leaves to its caller. A missing image is the engine's to
+// report, so it isn't an error here.
+func profileImages(params map[string]string, files map[string][]byte) error {
+	if v, ok := params["media-pool-images"]; ok && !isTrue(v) {
+		return nil
+	}
+	p, err := profile.FromXML(files["file"])
+	if err != nil {
+		return nil // the engine reports it
+	}
+	pool := p.Root().Find("MediaPool")
+	if pool == nil {
+		return nil
+	}
+	dir := "."
+	if f := params["file"]; f != "-" {
+		dir = filepath.Dir(f)
+	}
+	for _, s := range pool.FindAll("Stills/Still") {
+		index, err := strconv.Atoi(s.GetDefault("index", ""))
+		rel := s.GetDefault("path", "")
+		if err != nil || rel == "" || filepath.IsAbs(rel) {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		files[engine.ImageParam(index)] = b
+	}
+	return nil
+}
+
+func isTrue(s string) bool {
+	switch strings.ToLower(s) {
+	case "true", "on", "yes", "1":
+		return true
+	}
+	return false
 }
 
 // outPath is where a file frame goes: the OutFile parameter's path for
