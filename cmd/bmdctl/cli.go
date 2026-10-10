@@ -84,6 +84,8 @@ var builtins = []struct{ name, summary string }{
 	{"engine", "run the background engine in the foreground; engine stop|status"},
 	{"hosts", "name devices: hosts list|add|rm|default"},
 	{"exec", "run the commands in a file, one per line: exec FILE|-"},
+	{"completion", "print a shell completion script: completion bash|zsh|fish"},
+	{"man", "print the manual page, or write it with --dir"},
 	{"atem", "an ATEM switcher's commands (the default device)"},
 }
 
@@ -159,6 +161,12 @@ func (c *cli) run(args []string) int {
 		return c.hostsCommand(g, words[1:], tokens)
 	case "exec":
 		return c.execCommand(g, words[1:], tokens)
+	case "completion":
+		return c.completionCommand(g, words[1:])
+	case "__complete":
+		return c.completeCommand(args[1:])
+	case "man":
+		return c.manCommand(g, tokens)
 	}
 	// The device: named on the line, else the target host's type, else
 	// an ATEM.

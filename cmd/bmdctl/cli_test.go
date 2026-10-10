@@ -27,7 +27,7 @@ func TestCommandsDoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := reg.Markdown()
+	got := commandsDoc(reg)
 	path := "../../docs/COMMANDS.md"
 	if *update {
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {

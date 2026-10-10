@@ -959,6 +959,28 @@ and a zero value selects nothing.
   `--json` prints one response line per command. `exec`, `engine`,
   `completion`, `man` and `doctor` can't be lines.
 
+## Completion, man page, COMMANDS.md (`cmd/bmdctl`)
+
+- **Completion** is one hidden command, `bmdctl __complete WORDS...`,
+  which prints the candidates for the last word, one per line (or
+  `:files` to have the shell complete file names); the bash, zsh and
+  fish scripts `bmdctl completion SHELL` prints only call it and add
+  what it prints, so the three can't disagree. It completes built-ins,
+  command words, global and parameter flags (less those already given),
+  enum and flag names (after a comma too), bools, files, host names from
+  `hosts.yml` and, for a source parameter, the switcher's input names:
+  those it asks a running engine for (`input list`, one second at most)
+  and never starts one, so pressing Tab doesn't open a session to a
+  switcher. Matching ignores case.
+- **The man page** `bmdctl man` prints (or writes to `--dir`) is
+  bmdctl(1), rendered like `docs/COMMANDS.md` from the command table
+  plus the CLI's own reference (`reference.go`: flags, built-ins,
+  conventions, exit status, environment, files), in plain ASCII roff
+  (anything else as groff's `\[uXXXX]`), checked with `groff -ww` where
+  groff is installed.
+- **`docs/COMMANDS.md`** starts with that same CLI reference, then the
+  table.
+
 ## Hosts (`internal/hosts`, `cmd/bmdctl/hosts.go`)
 
 - **`hosts.yml`** lives in `$XDG_CONFIG_HOME/bmdctl` (`~/.config`;
