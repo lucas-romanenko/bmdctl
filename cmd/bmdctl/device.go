@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -81,7 +82,7 @@ func (c *cli) noticeOldForm(e *table.Entry, raw map[string]string, tokens []stri
 // prints what comes back.
 func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 	label := strings.TrimSpace(req.Device + " " + e.Path)
-	if e.Destructive && !g.yes {
+	if e.Destructive && !g.yes && !c.asks() {
 		if c.terminal() {
 			c.screenError(danger(e), termStep(exitDestructive))
 			return exitDestructive
@@ -153,6 +154,46 @@ var errStale = errors.New("the engine runs another build")
 // its place.
 func (c *cli) send(g globals, e *table.Entry, req engine.Request, out *printer, label string) int {
 	req.Notes = true
+	req.Ask = c.asks() && !req.Yes
+	code := c.sendOnce(g, e, req, out, label)
+	if out.confirm == nil || code != exitDestructive {
+		return code
+	}
+	// The engine said what it would affect: ask, and on yes send it
+	// again with --yes.
+	if !c.confirm(out) {
+		fmt.Fprintln(c.stdout, indent+c.colour(dim, "cancelled"))
+		return exitDestructive
+	}
+	req.Yes, req.Ask = true, false
+	out.last, out.confirm = nil, nil
+	return c.sendOnce(g, e, req, out, label)
+}
+
+// asks reports whether a destructive command may be confirmed by a
+// person: at a terminal, reading one on stdin. Otherwise it is refused
+// without --yes, as ever.
+func (c *cli) asks() bool { return c.terminal() && c.ttyIn }
+
+// confirm puts a destructive command's question, under the header: what
+// it would affect, then "clear it? [y/N] ". Only y or yes is a yes.
+func (c *cli) confirm(out *printer) bool {
+	out.show(view{})
+	fmt.Fprintln(c.stdout, fit(indent+out.confirm.Impact, lineWidth))
+	fmt.Fprintf(c.stdout, "%s%s [y/N] ", indent, out.confirm.Question)
+	line, _ := bufio.NewReader(c.stdin).ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true
+	}
+	if !strings.HasSuffix(line, "\n") {
+		fmt.Fprintln(c.stdout) // end of input: end the question's line
+	}
+	return false
+}
+
+// sendOnce sends a request to the engine once and prints its replies.
+func (c *cli) sendOnce(g globals, e *table.Entry, req engine.Request, out *printer, label string) int {
 	stop := c.spin(out.waiting())
 	defer stop()
 	// Starting the engine means opening a session too, unless the

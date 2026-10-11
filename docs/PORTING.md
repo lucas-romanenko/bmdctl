@@ -1070,7 +1070,20 @@ and a zero value selects nothing.
   - Otherwise the command goes to the engine (below), which parses it
     again against the switcher's state, sends it and waits for the echo.
     A destructive command without `--yes` is refused before that, and
-    again by the engine. An unverified one prints a line saying so on
+    again by the engine, unless a person can be asked (the terminal pass:
+    stdout and stdin both terminals, not `--json` or `--quiet`, and not a
+    line of `exec`, whose lines are checked for `--yes` before any
+    runs). Then the request carries `ask`; the engine dials, parses and
+    checks it as for sending, and, still without Yes, refuses it with a
+    `confirm` note first: what it would affect, from the switcher's
+    state (`slot 1 holds "logo", used by MP1 on program`; `video mode
+    1080p50 → 525i5994: every output resyncs`), and the question
+    (`clear it?`). The engine's own refusals (a used still or macro slot
+    replaced, `macro action` delete) note the same. The CLI prints them
+    under the header with `[y/N]`; `y` or `yes`, in any case, sends the
+    request again with Yes; anything else, Enter or the end of input
+    prints `cancelled` and exits 5. A video mode the switcher runs
+    already isn't asked about: nothing is sent (`already`). An unverified one prints a line saying so on
     stderr, unless `--json`.
 - **Output.** `--json` prints each engine response line exactly as
   received, and a failure the CLI finds itself (a usage error, a

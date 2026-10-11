@@ -35,7 +35,7 @@ func isTerminal(f *os.File) bool {
 
 func main() {
 	c := newCLI(os.Stdout, os.Stderr)
-	c.tty, c.ttyErr = isTerminal(os.Stdout), isTerminal(os.Stderr)
+	c.tty, c.ttyErr, c.ttyIn = isTerminal(os.Stdout), isTerminal(os.Stderr), isTerminal(os.Stdin)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	c.ctx = ctx
 	code := c.run(os.Args[1:])

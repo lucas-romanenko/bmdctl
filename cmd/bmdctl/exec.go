@@ -103,6 +103,7 @@ func (c *cli) execCommand(g globals, words, tokens []string) int {
 		}
 		sub := *c
 		sub.noRemember = true
+		sub.ttyIn = false // a cue doesn't stop to ask: its lines were checked for --yes
 		sub.stderr = &prefixWriter{w: c.stderr, prefix: fmt.Sprintf("line %d: ", l.n)}
 		code := sub.run(append(slices.Clone(common), l.args...))
 		if code != exitOK && first == exitOK {

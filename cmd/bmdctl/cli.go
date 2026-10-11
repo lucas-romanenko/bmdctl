@@ -57,6 +57,7 @@ type cli struct {
 	env            paths.Env
 	environ        func() []string // the environment a spawned engine gets
 	tty, ttyErr    bool            // stdout, stderr is a terminal: colour allowed
+	ttyIn          bool            // stdin is a terminal: a person can confirm a destructive command
 	noColor        bool            // --no-color
 	reg            *table.Registry
 	// spawn starts a background engine (engine.Spawn); tests replace it.
