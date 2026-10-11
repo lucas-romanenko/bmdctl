@@ -135,3 +135,51 @@ of it. The rules for hardware tests (which switchers, read-only unless
   `classic-audio meters`, a still that isn't premultiplied, a fit that
   shrinks the image or adds bars at the sides, and every other command
   that changes the switcher.
+
+## 2026-10-10: fifth run, the UX pass
+
+- **Commit:** `274d6a2`. The engine's log gives its version as
+  `v0.0.0-20261011010118-274d6a26df98+dirty`: Go marks a build dirty for
+  untracked files too, and the checkout had untracked scratch files;
+  `git status` after the commit showed no changed tracked file.
+- **Switcher:** the Constellation at 192.168.81.85, named "TEST ATEM 2"
+  in ATEM Setup: the engine's log reports an ATEM 1 M/E Constellation HD
+  at 1080p25. The report didn't restate the protocol version (2.30 on the
+  first run).
+- **Run:** the UX pass, end to end, in one second by the engine's log.
+  The engine of the previous build was stopped and one of this build
+  started. Then `preview`, to the host a version 1 hosts.yml named
+  `bench` (198 ms, the connect included); `bmdctl` alone; `preview`
+  again (21 ms); `status`; and `program cam1`, which the engine refused
+  before sending anything: the switcher has no input of that name. The
+  report says `--host` was given a prefix of the new name; the log
+  doesn't say for which command.
+- **Result:** all of it worked as designed.
+  - The first command printed the connecting line, then the model and
+    video mode.
+  - The switcher's own name replaced the hand-chosen one, with the
+    notice: hosts.yml is now version 2, `name: TEST ATEM 2`, `was:
+    bench`, and the last host `TEST ATEM 2`.
+  - The `preview` lines named the switcher and gave before → after by
+    the inputs' short names, and `--host` reached the switcher by the
+    prefix.
+  - `bmdctl` showed the engine and the host; `status` showed how long
+    the session had been idle and when it drops.
+  - `program cam1` ended with its next step: `(bmdctl inputs lists
+    them)`.
+- **Changed because of it** (`877d29a`): a write's before → after column
+  is as wide as a change between the switcher's two longest source names,
+  not a fixed 24; `bmdctl` and `status` show the git commit the engine
+  was built from, the build ID kept for the stale-engine check; `bmdctl`
+  prints `bmdctl help lists the commands` only when no hosts are
+  configured. In the commit that added this section, `docs/PORTING.md`
+  records the output conventions and the switcher naming its host as
+  verified on hardware.
+- **Not yet verified on hardware:** `hosts discover`; `hosts add` and
+  `--as` (the run renamed a host, it added none); a session that drops
+  and comes back (watch's `dropped` and `reconnected`, the connecting
+  line on a reconnect); a rename made in ATEM Setup while bmdctl is in
+  use; colour on a terminal; macro upload, profile restore,
+  `classic-audio meters`, a still that isn't premultiplied, a fit that
+  shrinks the image or adds bars at the sides, and every other command
+  that changes the switcher.

@@ -1076,7 +1076,9 @@ follows these; a new command does too, and says here where it can't.
 None of it reaches `--json` or `--quiet`: what the CLI shows that a
 response doesn't carry comes in note frames (Engine, "Notes"), which the
 CLI prints only for people, so every JSON line is byte for byte what it
-was.
+was. Verified on hardware (the fifth run, docs/HARDWARE.md): the
+connecting line, before → after with short names, the overview, the
+status idle countdown and an error's next step.
 
 - **The switcher is named first, as `<name> (<address>)`.** The name is
   the host's in hosts.yml, which is the switcher's own (Hosts, below)
@@ -1297,7 +1299,10 @@ was.
   file is written as version 2 then. Hand-chosen names are treated as
   provisional, not as `--as` names, because output is to show the
   switcher's own name unless `--as` was used; `hosts add ADDRESS --as
-  NAME` restores one on purpose. `hosts add NAME ADDRESS`, the old form,
+  NAME` restores one on purpose. Verified on hardware (the fifth run): a
+  version 1 hosts.yml's `bench` became `TEST ATEM 2`, the switcher's
+  ATEM Setup name, with `was: bench`, and a prefix of the new name
+  reached it. `hosts discover` is not yet verified on hardware. `hosts add NAME ADDRESS`, the old form,
   is read for one release as `hosts add ADDRESS --as NAME`, with a notice.
 - **Names** are any text a switcher could give itself: not empty, no
   spaces around it, no control characters, at most 100 characters. They
