@@ -90,6 +90,37 @@ messages are in `mcp-server-bmdctl.log` under `~/Library/Logs/Claude/`
 No authentication is involved: the server speaks only to the program
 that started it, over stdin and stdout.
 
+## The skill
+
+`skills/bmdctl/SKILL.md` teaches an agent to use bmdctl on a live show:
+when to use it, to read the state before writing and say what is on air
+before a cut, which commands are destructive and that a person, not the
+agent, says yes to them, why sequences go through `exec`, how to read
+`watch --json`, five recipes (keying a graphic, a pre-show reset, a
+scheduled content change, tally-driven routing, a HyperDeck playback
+cue), and that untested models need checking after each change. Install
+it beside the MCP server:
+
+- **Claude Code**, for every project: copy the directory to your skills,
+
+  ```sh
+  mkdir -p ~/.claude/skills && cp -r skills/bmdctl ~/.claude/skills/
+  ```
+
+  or, for one project, to its `.claude/skills/` (commit it, and everyone
+  who clones the project has it). Claude loads it when a request matches
+  its description.
+- **Claude Desktop and claude.ai**: zip the directory with `bmdctl/` at
+  the zip's top (`cd skills && zip -r bmdctl.zip bmdctl`), then in
+  Customize > Skills choose +, Create skill, Upload a skill, pick the zip
+  and turn it on. Skills need code execution on (Settings > Capabilities).
+
+The skill names the commands as the CLI types them; with the MCP server
+the same command is a tool (`bmdctl dsk on-air on` is `atem_dsk_on_air`
+with `{"on-air": true}`), and the skill says so. A test in
+`cmd/bmdctl/skill_test.go` checks that every command line in it is one
+bmdctl accepts.
+
 ## The HTTP API
 
 For an agent framework that speaks HTTP rather than MCP, `bmdctl serve`
