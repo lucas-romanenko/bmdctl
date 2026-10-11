@@ -222,13 +222,18 @@ func (p *printer) screen(r engine.Response) view {
 var screenFormats = map[string]func(p *printer, r engine.Response, raw json.RawMessage) view{}
 
 // writeView is a write's line: what was done and where, what changed,
-// and the time it took; sent when nothing confirms it, rejected when the
-// switcher answered with the value it already held.
+// and the time it took; already when the switcher held it and nothing
+// was sent, sent when nothing confirms it, rejected when the switcher
+// answered with the value it already held.
 func (p *printer) writeView(r engine.Response, raw json.RawMessage) view {
 	e, vals := p.sentEntry(raw)
 	verb, change := p.describeTerm(e, vals)
+	var res engine.CommandResult
+	json.Unmarshal(raw, &res)
 	status := took(r.TookMS)
 	switch {
+	case res.Already:
+		status = "already"
 	case !r.Confirmed:
 		status = "sent"
 	case kept(vals):

@@ -103,8 +103,9 @@ cut   # back on the show's switcher
 	if code != exitUsage || len(b.sent("CPgI")) != n+1 || !strings.Contains(errOut, `line 2: bmdctl atem program: source "Nobody"`) {
 		t.Errorf("stop: %d %d %q", code, len(b.sent("CPgI"))-n, errOut)
 	}
+	// Line 1's program 1 is on program already, so only line 3 sends.
 	code, _, _ = b.run("exec", stop, "--host", "studio", "--continue")
-	if code != exitUsage || len(b.sent("CPgI")) != n+3 {
+	if code != exitUsage || len(b.sent("CPgI")) != n+2 {
 		t.Errorf("--continue: %d %d", code, len(b.sent("CPgI"))-n)
 	}
 
