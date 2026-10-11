@@ -384,5 +384,6 @@ func operations() []operation {
 	ops = append(ops, macroOperations()...)
 	ops = append(ops, profileOperations()...)
 	ops = append(ops, systemOperations()...)
+	ops = append(ops, showOperation())
 	return ops
 }

@@ -79,14 +79,14 @@ $ bmdctl media list --all
   <dim>20</>  <dim>(empty)</>
 
 $ bmdctl macro list
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · 3 macro slots</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · 3 slots</>
 
   <dim>1</>  Open Show
   <dim>3</>  Half Time
   <dim>1 empty slot hidden · --all shows them</>
 
 $ bmdctl macro list --all
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · 3 macro slots</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · 3 slots</>
 
   <dim>1</>  Open Show
   <dim>2</>  <dim>(empty)</>

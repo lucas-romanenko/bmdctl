@@ -408,7 +408,7 @@ func screenMacroList(p *printer, _ engine.Response, raw json.RawMessage) view {
 	if len(cells) == 0 && hidden == 0 {
 		out = []string{indent + c.colour(dim, "no macros")}
 	}
-	return view{about: []string{count(len(r.Macros), "macro slot")}, gap: true, rows: out}
+	return view{about: []string{count(len(r.Macros), "slot")}, gap: true, rows: out}
 }
 
 func screenVideoModes(p *printer, _ engine.Response, raw json.RawMessage) view {

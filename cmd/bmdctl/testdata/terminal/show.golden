@@ -1,0 +1,65 @@
+$ bmdctl show keys
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms · keys</>
+
+  ME 1        1  luma  4 / 5  <red>on air</>  <dim>next · premultiplied</>
+              2  luma  0 / 0  <dim>off</>     <dim>clip 0 gain 0</>
+              3  luma  0 / 0  <dim>off</>     <dim>clip 0 gain 0</>
+              4  luma  0 / 0  <dim>off</>     <dim>clip 0 gain 0</>
+
+$ bmdctl show dsk
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · dsk</>
+
+  dsk 1       6 / 7  <red>on air</>  <dim>1:05 · masked · premultiplied</>
+  dsk 2       0 / 0  <dim>off</>     <dim>1:00 · clip 0 gain 0</>
+
+$ bmdctl show transition
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · transition</>
+
+  ME 1        dip 1:05 · next background+key1 · idle
+              mix      1:00
+              dip      1:05  COL1
+              wipe     0:20  RectangleIris · width 5
+              dve      0:15  style 2
+              stinger  1:00  MP1 · clip 6:00
+              FTB      2:00  off
+
+$ bmdctl show audio
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · audio · fairlight</>
+
+  master        -3.0 dB
+  CAM1          -6.0 dB  on
+  MP1          -12.0 dB  afv
+
+$ bmdctl show media
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · media · 20 stills</>
+
+  <dim> 1</>  still    <dim>MP1</>
+  <dim> 2</>  <dim>(empty)</>  <dim>MP2</>
+  <dim>18 empty slots hidden · --all shows them</>
+
+$ bmdctl show macros
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · macros · 3 slots</>
+
+  <dim>1</>  Open Show
+  <dim>3</>  Half Time
+  <dim>1 empty slot hidden · --all shows them</>
+
+$ bmdctl show aux
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · aux</>
+
+  aux 1       MP1
+  aux 2       PGM
+  aux 3       0
+
+$ bmdctl show hyperdecks
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · hyperdecks</>
+
+  <dim> 1</>  10.0.0.50  CAM2
+
+$ bmdctl show macros --all
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · macros · 3 slots</>
+
+  <dim>1</>  Open Show
+  <dim>2</>  <dim>(empty)</>
+  <dim>3</>  Half Time
+
