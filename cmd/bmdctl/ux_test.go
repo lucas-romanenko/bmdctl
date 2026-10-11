@@ -50,8 +50,9 @@ func TestWriteLines(t *testing.T) {
 		{[]string{"color", "2", "--hue", "120"}, []string{"color 2", "hue 300 → 120", "confirmed"}},
 		{[]string{"input", "rename", "Camera 2", "--long-name", "Stage Left", "--short-name", "STGL"},
 			[]string{"input rename CAM2", `long-name "Camera 2" → "Stage Left", short-name "CAM2" → "STGL"`, "confirmed"}},
-		// No echo: what it asks for, sent.
-		{[]string{"cut"}, []string{"cut", "ME1", "CAM1 → 5", "sent"}},
+		// No echo, but the switcher reports the swap: confirmed by it.
+		{[]string{"cut"}, []string{"cut", "ME1", "CAM1 → 5", "confirmed"}},
+		// No echo and nothing reported: what it asks for, sent.
 		{[]string{"ftb", "toggle"}, []string{"ftb toggle", "ME1", "off → black", "sent"}},
 		{[]string{"macro", "sleep", "25"}, []string{"macro sleep", "25", "sent"}},
 		// After is what the switcher reports: the fake answers a wipe with
@@ -83,8 +84,11 @@ func TestColour(t *testing.T) {
 		t.Errorf("preview: %q", out)
 	}
 	if out, _ := run(true, "cut"); !strings.Contains(out, "\x1b[31mCAM2\x1b[0m on program · \x1b[32mCAM1\x1b[0m on preview") ||
-		!strings.HasSuffix(out, "\x1b[2msent\x1b[0m\n") {
+		!regexp.MustCompile(`\x1b\[2m\d+ ms\x1b\[0m\n$`).MatchString(out) {
 		t.Errorf("cut: %q", out)
+	}
+	if out, _ := run(true, "ftb", "toggle"); !strings.HasSuffix(out, "\x1b[2msent\x1b[0m\n") {
+		t.Errorf("ftb toggle: %q", out)
 	}
 	if _, errOut := run(true, "program", "Nobody"); !strings.HasPrefix(errOut, "\x1b[31merror\x1b[0m  ") || strings.Contains(errOut, "atem program") {
 		t.Errorf("error: %q", errOut)

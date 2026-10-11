@@ -8,11 +8,11 @@ $ bmdctl preview mp1 --timestamps
 
 $ bmdctl -t cut
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
-  <dim>13:43:28</>  cut         <red>MP1</> on program · <green>CAM1</> on preview    <dim>sent</>
+  <dim>13:43:28</>  cut         <red>MP1</> on program · <green>CAM1</> on preview      <dim># ms</>
 
 $ bmdctl -t undo
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
-  <dim>13:43:28</>  undo        preview  MP1 → <green>CAM1</>                 <dim># ms</>
+  <dim>13:43:28</>  undo        preview  <green>CAM1</>                       <dim># ms</>
 
 $ bmdctl -t status
 <b>ATEM 1 M/E Constellation HD</>  <dim>1080p50 · session 0s, idle #s</>

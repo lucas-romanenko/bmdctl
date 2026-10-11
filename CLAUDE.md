@@ -9,11 +9,18 @@ make a new one.
 ## Build and test
 
 ```
-go build ./... && go vet ./... && go test ./...
+go build ./... && go vet ./... && go test -race ./...
 ```
 
-All three must be green after every commit. Nothing in the default build
-or test run touches the network beyond loopback.
+All three must be green after every commit. `-race` is what CI runs
+(`.github/workflows/ci.yml`); without it the timing differs, and CI
+failed on every push from `68fadb8` to `4d3c452` while a plain
+`go test ./...` passed. Nothing in the default build or test run touches
+the network beyond loopback.
+
+After every push, wait for CI and check it (`gh run watch`, then
+`gh run list --limit 1`) before reporting green. Local green is not
+green.
 
 `docs/COMMANDS.md` is generated from the command table; after changing a
 table entry, regenerate it with
