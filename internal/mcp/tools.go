@@ -2,16 +2,18 @@
 
 package mcp
 
-// The tools: one per command-table entry, named <device>_<words>
-// (atem_program, atem_usk_on_air, hyperdeck_play), their input schema
-// the entry's (internal/table/schema.go) with the host to send to, and
-// three of bmdctl's own: list_hosts, get_state, list_inputs.
+// The tools: one per command group of the table (atem.Groups,
+// hyperdeck.Groups: atem_switching, atem_usk, hyperdeck_transport, ...),
+// the subcommand a parameter whose enum is the group's commands, the
+// other parameters theirs; and list_hosts.
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
+	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,8 +28,9 @@ type tool struct {
 	InputSchema table.Schema   `json:"inputSchema"`
 	Annotations map[string]any `json:"annotations"`
 
-	entry   *table.Entry
-	special string // list_hosts, get_state, list_inputs
+	device  string
+	subs    map[string]*table.Entry // by subcommand
+	special string                  // list_hosts
 }
 
 // readOnly are the entries that change nothing on a device: they read
@@ -42,74 +45,185 @@ var readOnly = map[string]bool{
 	"hyperdeck connect": true, "hyperdeck disconnect": true,
 }
 
-// ToolName is an entry's tool name: atem_usk_on_air.
-func ToolName(e table.Entry) string {
-	return e.Device + "_" + strings.NewReplacer(" ", "_", "-", "_").Replace(e.Path)
+// asksFirst are the entries that are not destructive but can be, by
+// their arguments, and what then needs confirm.
+var asksFirst = map[string]string{
+	"atem media upload": "Over a used slot it needs confirm: true.",
+	"atem macro upload": "Over a used slot it needs confirm: true.",
+	"atem macro record": "Over a used slot it needs confirm: true.",
+	"atem macro action": "The delete action needs confirm: true.",
+}
+
+// ToolName is a group's tool name: atem_switching.
+func ToolName(device, group string) string {
+	return device + "_" + strings.NewReplacer(" ", "_", "-", "_").Replace(group)
+}
+
+// Subcommand is an entry's subcommand in its group's tool: its path
+// less the group's own word where it starts with it ("transition wipe"
+// in transition is "wipe"), else its path ("ftb toggle" in switching).
+func Subcommand(e table.Entry) string {
+	g := e.GroupName()
+	if rest, ok := strings.CutPrefix(e.Path, g+" "); ok {
+		return rest
+	}
+	return e.Path
 }
 
 var hostProp = table.Schema{"type": "string",
 	"description": "the device: a host's name from list_hosts (any case, or the start of one) or an address; the default host if left out"}
 
 func tools(reg *table.Registry) []tool {
-	ro := func(title string) map[string]any {
-		return map[string]any{"title": title, "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
-	}
-	out := []tool{
-		{Name: "list_hosts", Title: "List hosts", special: "list_hosts",
-			Description: "The devices bmdctl knows (hosts.yml): each one's name, address and type (atem, hyperdeck, videohub, ultimatte), and the default host. Call it first to learn what a host argument can be.",
-			InputSchema: table.Schema{"type": "object", "properties": table.Schema{}, "additionalProperties": false},
-			Annotations: ro("List hosts")},
-		{Name: "get_state", Title: "Get a device's state", special: "get_state",
-			Description: "The state the engine's session holds of a device, as JSON, or one part of it by a dotted path. An ATEM's indexes count from 0 here (mes.0 is M/E 1), as the switcher's own state does; atem_status is the readable summary.",
-			InputSchema: table.Schema{"type": "object", "properties": table.Schema{"host": hostProp,
-				"path": table.Schema{"type": "string", "description": "a dotted key into the state: mes.0.program, inputs.1.name, transport.status (a HyperDeck)"}},
-				"additionalProperties": false},
-			Annotations: ro("Get a device's state")},
-		{Name: "list_inputs", Title: "List an ATEM's inputs", special: "list_inputs",
-			Description: "An ATEM's sources: id, short and long name, port type. A source argument takes any of these, or an alias (cam2, mp1, bars, black).",
-			InputSchema: table.Schema{"type": "object", "properties": table.Schema{"host": hostProp,
-				"all": table.Schema{"type": "boolean", "description": "include outputs, key masks and media player keys"}},
-				"additionalProperties": false},
-			Annotations: ro("List an ATEM's inputs")},
-	}
+	out := []tool{{Name: "list_hosts", Title: "List hosts", special: "list_hosts",
+		Description: "The devices bmdctl knows (hosts.yml): each one's name, address and type (atem, hyperdeck, videohub, ultimatte), and the default host. Call it first to learn what a host argument can be, and which tools a host takes: an atem host the atem_ tools, a hyperdeck host the hyperdeck_ tools.",
+		InputSchema: table.Schema{"type": "object", "properties": table.Schema{}, "additionalProperties": false},
+		Annotations: map[string]any{"title": "List hosts", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}}
 	for _, d := range reg.Devices() {
-		for _, e := range reg.Entries(d) {
-			e := e
-			schema := e.InputSchema()
-			props := maps.Clone(schema["properties"].(table.Schema))
-			props["host"] = hostProp
-			for _, p := range e.Params {
-				switch p.Kind {
-				case table.File:
-					props[p.Name] = withDesc(props[p.Name], "a path on this machine; the server reads the file and sends it")
-				case table.OutFile, table.Dir:
-					props[p.Name] = withDesc(props[p.Name], "a path on this machine the server writes to")
-				}
-			}
-			if e.Destructive {
-				props["yes"] = table.Schema{"type": "boolean",
-					"description": "true only once the operator has agreed; without it nothing is done and the result says what it would affect"}
-			}
-			if e.Stream {
-				props["seconds"] = table.Schema{"type": "integer", "minimum": 1, "maximum": 60,
-					"description": "how long to collect changes for (default 5); count stops sooner"}
-			}
-			schema["properties"] = props
-			name := engine.DeviceNames[d] + " " + e.Path
-			readonly := readOnly[d+" "+e.Path]
-			ann := map[string]any{"title": name, "readOnlyHint": readonly, "destructiveHint": e.Destructive, "openWorldHint": false}
-			if readonly {
-				ann["idempotentHint"] = true
-			}
-			desc := e.Describe()
-			if e.Stream {
-				desc += " As a tool it collects the changes for a few seconds and returns them; to follow a device, subscribe to its bmdctl://hosts/{host}/state resource."
-			}
-			out = append(out, tool{Name: ToolName(e), Title: name, Description: desc + " For " + article(d) + " host.",
-				InputSchema: schema, Annotations: ann, entry: &e})
+		for _, g := range reg.Groups(d) {
+			out = append(out, groupTool(d, g, reg.GroupEntries(d, g.Name)))
 		}
 	}
 	return out
+}
+
+// variant is one schema a parameter has, the subcommands that give it
+// so, and those of them that require it.
+type variant struct {
+	schema         table.Schema
+	subs, required []string
+}
+
+// describe is a variant's schema, saying which subcommands take it
+// (where not all of the tool's do) and which require it.
+func (v variant) describe(all int) table.Schema {
+	s := v.schema
+	if len(v.subs) < all {
+		s = withPrefix(s, "for "+strings.Join(v.subs, ", "))
+	}
+	switch {
+	case len(v.required) == 0:
+	case len(v.required) == all:
+		s = withDesc(s, "required")
+	default:
+		s = withDesc(s, "required by "+strings.Join(v.required, ", "))
+	}
+	return s
+}
+
+// groupTool is a group's tool: its subcommands, the union of their
+// parameters (each saying which subcommands take it, where not all do;
+// one that differs between them a choice of its schemas), the host, and
+// confirm where a subcommand is destructive or can be.
+func groupTool(device string, g table.Group, es []table.Entry) tool {
+	t := tool{Name: ToolName(device, g.Name), Title: engine.DeviceNames[device] + " " + g.Name, device: device,
+		subs: map[string]*table.Entry{}}
+	var names, lines, destructive, streams []string
+	asks := false
+	params := map[string][]variant{}
+	var order []string
+	allRead := true
+	for i := range es {
+		e := &es[i]
+		sub := Subcommand(*e)
+		names = append(names, sub)
+		t.subs[sub] = e
+		line := fmt.Sprintf("%s: %s. Usage: %s.", sub, strings.TrimSuffix(e.Summary, "."), e.Usage())
+		if e.Destructive {
+			destructive = append(destructive, sub)
+			line += " Destructive: needs confirm: true."
+		}
+		if a := asksFirst[device+" "+e.Path]; a != "" {
+			asks = true
+			line += " " + a
+		}
+		if e.Unverified {
+			line += " Unverified on hardware."
+		}
+		if e.Stream {
+			streams = append(streams, sub)
+			line += " Collects changes for seconds (default 5)."
+		}
+		lines = append(lines, line)
+		allRead = allRead && readOnly[device+" "+e.Path]
+		for _, p := range e.Params {
+			ps := p.Schema()
+			switch p.Kind {
+			case table.File:
+				ps = withDesc(ps, "a path on this machine; the server reads the file and sends it")
+			case table.OutFile, table.Dir:
+				ps = withDesc(ps, "a path on this machine the server writes to")
+			}
+			vs := params[p.Name]
+			if vs == nil {
+				order = append(order, p.Name)
+			}
+			k := slices.IndexFunc(vs, func(v variant) bool { return sameSchema(v.schema, ps) })
+			if k < 0 {
+				vs = append(vs, variant{schema: ps})
+				k = len(vs) - 1
+			}
+			vs[k].subs = append(vs[k].subs, sub)
+			if p.Required {
+				vs[k].required = append(vs[k].required, sub)
+			}
+			params[p.Name] = vs
+		}
+	}
+	props := table.Schema{
+		"subcommand": table.Schema{"type": "string", "enum": names,
+			"description": "what to do; the other arguments are the chosen subcommand's: " + strings.Join(names, ", ")},
+		"host": hostProp,
+	}
+	for _, name := range order {
+		vs := params[name]
+		if len(vs) == 1 {
+			props[name] = vs[0].describe(len(es))
+			continue
+		}
+		var alts []any
+		for _, v := range vs {
+			alts = append(alts, v.describe(len(es)))
+		}
+		props[name] = table.Schema{"anyOf": alts, "description": "differs by subcommand: see each choice"}
+	}
+	if len(destructive) > 0 || asks {
+		var what []string
+		if len(destructive) > 0 {
+			what = append(what, strings.Join(destructive, ", "))
+		}
+		if asks {
+			what = append(what, "the subcommands whose line below says so")
+		}
+		props["confirm"] = table.Schema{"type": "boolean",
+			"description": "true only once the operator has agreed, for this one call: " + strings.Join(what, " and ") +
+				" do nothing without it, and say what they would affect"}
+	}
+	if len(streams) > 0 {
+		props["seconds"] = table.Schema{"type": "integer", "minimum": 1, "maximum": 60,
+			"description": "for " + strings.Join(streams, ", ") + ": how long to collect changes (default 5); count stops sooner"}
+	}
+	t.InputSchema = table.Schema{"type": "object", "properties": props, "required": []string{"subcommand"}, "additionalProperties": false}
+	desc := []string{g.Summary, "For " + article(device) + " host. Subcommands:"}
+	desc = append(desc, lines...)
+	t.Description = strings.Join(desc, "\n")
+	t.Annotations = map[string]any{"title": t.Title, "readOnlyHint": allRead, "destructiveHint": len(destructive) > 0, "openWorldHint": false}
+	if allRead {
+		t.Annotations["idempotentHint"] = true
+	}
+	return t
+}
+
+// sameSchema reports whether two parameter schemas say the same.
+func sameSchema(a, b table.Schema) bool { return reflect.DeepEqual(a, b) }
+
+func withPrefix(s table.Schema, prefix string) table.Schema {
+	s = maps.Clone(s)
+	if d, _ := s["description"].(string); d != "" {
+		s["description"] = prefix + ": " + d
+	} else {
+		s["description"] = prefix
+	}
+	return s
 }
 
 func article(device string) string {
@@ -132,7 +246,7 @@ func toolError(code, msg string, extra map[string]any) map[string]any {
 	maps.Copy(out, extra)
 	text := "Error (" + code + "): " + msg
 	if c, ok := extra["confirm"].(*engine.Confirm); ok {
-		text = fmt.Sprintf("Not done: this is destructive. %s. %s Ask the operator; only if they agree, call it again with yes: true.", c.Impact, c.Question)
+		text = fmt.Sprintf("Not done: this is destructive. %s. %s Ask the operator; only if they agree, call it again with confirm: true.", c.Impact, c.Question)
 	}
 	b, _ := json.Marshal(out)
 	return map[string]any{"content": []any{map[string]any{"type": "text", "text": text + "\n" + string(b)}},
@@ -145,43 +259,33 @@ func toolOK(out map[string]any) map[string]any {
 		"structuredContent": out, "isError": false}
 }
 
-// call runs a tool and returns its result.
+// call runs a tool and returns its result: list_hosts, or the
+// subcommand of a group's tool, with its arguments.
 func (s *Server) call(ctx context.Context, t *tool, args map[string]any) map[string]any {
-	host, _ := args["host"].(string)
-	target, err := s.cfg.Target(host)
-	if err != nil && t.special != "list_hosts" {
-		return toolError(engine.CodeUsage, err.Error(), nil)
-	}
-	switch t.special {
-	case "list_hosts":
+	if t.special == "list_hosts" {
 		f, err := s.cfg.Hosts()
 		if err != nil {
 			return toolError(engine.CodeUsage, err.Error(), nil)
 		}
 		return toolOK(map[string]any{"ok": true, "status": "done", "result": f})
-	case "get_state":
-		req := engine.Request{Device: deviceOr(target.Device), Host: target.Address, Path: "state"}
-		if p, _ := args["path"].(string); p != "" {
-			req.Params = map[string]string{"path": p}
-		}
-		return s.result(ctx, nil, req)
-	case "list_inputs":
-		if d := deviceOr(target.Device); d != "atem" {
-			return toolError(engine.CodeUsage, fmt.Sprintf("%s is %s: it has no inputs (hyperdeck_clips lists a deck's clips)", target.Label, article(d)), nil)
-		}
-		req := engine.Request{Device: "atem", Host: target.Address, Path: "inputs", Params: map[string]string{}}
-		if all, _ := args["all"].(bool); all {
-			req.Params["all"] = "true"
-		}
-		return s.result(ctx, nil, req)
 	}
-	e := t.entry
+	sub, _ := args["subcommand"].(string)
+	e := t.subs[sub]
+	if e == nil {
+		names := slices.Sorted(maps.Keys(t.subs))
+		return toolError(engine.CodeUsage, fmt.Sprintf("%s: subcommand %q is not one of %s", t.Name, sub, strings.Join(names, ", ")), nil)
+	}
+	host, _ := args["host"].(string)
+	target, err := s.cfg.Target(host)
+	if err != nil {
+		return toolError(engine.CodeUsage, err.Error(), nil)
+	}
 	if target.Device != "" && target.Device != e.Device {
 		return toolError(engine.CodeUsage, fmt.Sprintf("%s is %s: use the %s_ tools", target.Label, article(target.Device), target.Device), nil)
 	}
 	params, files := map[string]string{}, map[string][]byte{}
 	for name, v := range args {
-		if name == "host" || name == "yes" && e.Destructive || name == "seconds" && e.Stream {
+		if name == "subcommand" || name == "host" || name == "confirm" || name == "seconds" && e.Stream {
 			continue
 		}
 		var p *table.Param
@@ -191,7 +295,15 @@ func (s *Server) call(ctx context.Context, t *tool, args map[string]any) map[str
 			}
 		}
 		if p == nil {
-			return toolError(engine.CodeUsage, fmt.Sprintf("%s takes no %q", t.Name, name), nil)
+			var takes []string
+			for _, q := range e.Params {
+				takes = append(takes, q.Name)
+			}
+			what := "nothing more"
+			if len(takes) > 0 {
+				what = strings.Join(takes, ", ")
+			}
+			return toolError(engine.CodeUsage, fmt.Sprintf("%s %s takes no %q; it takes %s", t.Name, sub, name, what), nil)
 		}
 		if v == nil {
 			continue
@@ -217,13 +329,35 @@ func (s *Server) call(ctx context.Context, t *tool, args map[string]any) map[str
 		}
 		params[name] = str
 	}
-	yes, _ := args["yes"].(bool)
+	confirm, _ := args["confirm"].(bool)
 	req := engine.Request{Device: e.Device, Host: target.Address, Path: e.Path, Params: params, Files: files,
-		Yes: yes, Ask: !yes, Notes: true}
+		Yes: confirm, Ask: !confirm, Notes: true}
+	var out map[string]any
 	if e.Stream {
-		return s.stream(ctx, req, args)
+		out = s.stream(ctx, req, args)
+	} else {
+		out = s.result(ctx, e, req)
 	}
-	return s.result(ctx, e, req)
+	return withSubcommand(out, sub)
+}
+
+// withSubcommand adds the subcommand to a result, in its structured
+// content and the JSON that ends its text.
+func withSubcommand(out map[string]any, sub string) map[string]any {
+	sc, ok := out["structuredContent"].(map[string]any)
+	if !ok {
+		return out
+	}
+	sc["subcommand"] = sub
+	b, _ := json.Marshal(sc)
+	c := out["content"].([]any)[0].(map[string]any)
+	text := c["text"].(string)
+	if i := strings.LastIndex(text, "\n"); i >= 0 {
+		c["text"] = text[:i+1] + string(b)
+	} else {
+		c["text"] = string(b)
+	}
+	return out
 }
 
 // result runs a request and says how it went: ok, status (confirmed,

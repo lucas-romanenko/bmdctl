@@ -1831,26 +1831,59 @@ add it to Claude Code and Claude Desktop is docs/AGENTS.md.
   `initialize` negotiates the client's handshake version (or 2025-11-25),
   and either may be used on one stdio stream. Which era Claude Code and
   Claude Desktop open with is theirs to choose; both work.
-- **A tool per command-table entry**, every device's, named
-  `<device>_<words>` with spaces and hyphens as underscores
-  (`atem_program`, `atem_usk_on_air`, `hyperdeck_play`; at most 64
-  characters, unique, checked), its title `ATEM program`, its
-  description the entry's summary, what it is (destructive, unverified,
-  streaming), usage and examples (`Entry.Describe`), its input schema the
-  entry's (`InputSchema`, shared with serve: ranges from 1 for an index,
-  units and defaults in each description), plus `host` (a host's name,
-  the start of one or an address; the default host left out), `yes` for
-  a destructive entry and `seconds` for a stream. Three of bmdctl's own:
-  `list_hosts` (hosts.yml), `get_state` (the session's state, `path` as
-  `state --path`) and `list_inputs` (an ATEM's sources).
+- **A tool per command group**, fifteen in all: each device declares
+  its groups (`atem.Groups`, `hyperdeck.Groups`: a name, a summary, the
+  order a reader meets them) and every entry names its own
+  (`Entry.Group`, by its first word through `GroupOf`; `Registry.Groups`
+  and `GroupEntries`), so the tools come from the table and a new
+  command joins its group's tool. The ATEM's twelve are switching
+  (program, preview, cut, auto, tbar, undo, aux, ftb), transition, usk,
+  dsk, audio (with classic-audio), media, macro, profile, sources
+  (inputs, input, color, camera, hyperdeck-slot), outputs (multiviewer,
+  supersource, recording, streaming), system (info, video modes,
+  startup, time) and session (connect, disconnect, status, state, show,
+  watch); a HyperDeck's two are transport and session. A tool is named
+  `<device>_<group>` (`atem_switching`, `hyperdeck_transport`; at most
+  64 characters, unique, checked), titled `ATEM switching`; it takes
+  `subcommand` (required, an enum of the group's commands less the
+  group's own word: `wipe` in transition, `ftb toggle` in switching),
+  `host` (a host's name, the start of one or an address; the default
+  host left out), the union of its subcommands' parameters (each
+  `InputSchema` property, shared with serve, its description prefixed
+  `for wipe, dve:` where not every subcommand takes it, and saying which
+  require it), `confirm` where a subcommand is destructive or can be,
+  and `seconds` where one streams. Its description is the group's
+  summary and a line per subcommand: summary, usage, and whether it is
+  destructive, unverified or streams. A tool per entry, 122 of them,
+  costs a model's context more than it gives and is harder to choose
+  from than fifteen groups; before the first release this replaced
+  that, and `get_state` and `list_inputs`, which are now `atem_session`
+  `state` and `atem_sources` `inputs`; `list_hosts` stays.
+- **The schema is flat, the subcommand its discriminator.** A
+  discriminated union (`oneOf` of one object per subcommand) would say
+  exactly which arguments each takes, but Claude's API accepts no
+  `oneOf`, `anyOf` or `allOf` at the top of a tool's `input_schema`,
+  and clients differ in what they pass through. So the top level is one
+  object, `additionalProperties: false`; a parameter whose schema
+  differs between subcommands (`slot`'s range in media, `source` in
+  transition) is an `anyOf` of its schemas, each saying whose it is, at
+  the property, which every client takes. The exact check is the
+  table's: the call is validated against the chosen subcommand's
+  entry, and an argument it doesn't take is a tool error naming what it
+  does take (`atem_switching program takes no "nonsense"; it takes me,
+  source`), as is an unknown subcommand.
 - **Annotations are set explicitly**, since the protocol's defaults call
   every tool not marked otherwise destructive: `readOnlyHint` for the
-  reads (status, info, state, inputs, show, lists, meters, downloads,
-  profile save, decode and encode, watch, connect and disconnect, which
-  change nothing on a device), `destructiveHint` exactly for the table's
-  destructive entries (video mode, startup save and clear, both still
-  clears, macro delete, profile restore), `idempotentHint` for the reads, `openWorldHint` false
-  (the devices bmdctl knows, not the internet).
+  groups whose every subcommand reads (atem_session and
+  hyperdeck_session: status, state, show, watch, connect and disconnect
+  change nothing on a device), `destructiveHint` exactly for the groups
+  holding one of the table's destructive entries (system: video mode,
+  startup save and clear; media: both still clears; macro: delete;
+  profile: restore), `idempotentHint` for the reading groups,
+  `openWorldHint` false (the devices bmdctl knows, not the internet).
+  The per-entry read-only list (`readOnly`) still decides a result's
+  status: done for a read, confirmed, sent, already or rejected for a
+  write.
 - **A result says whether anything changed.** Its structured content
   (and, for clients that read only text, the same JSON in a text block)
   is `{ok, status, confirmed, result, took_ms, device, changed,
@@ -1862,13 +1895,17 @@ add it to Claude Code and Claude Desktop is docs/AGENTS.md.
   tool error (`isError`, `{ok: false, status: "error", code, error}`),
   which a model can act on; an unknown tool or malformed call is a
   protocol error.
-- **Destructive tools ask for a person.** Without `yes: true` the
-  request asks (`Ask`), the engine refuses it with its confirm note, and
-  the result says what it would affect and that the operator must agree
-  before it is called again with `yes: true` (`Not done: this is
-  destructive. video mode 1080p50 → 525i5994: every output resyncs.
-  ...`). The skill (skills/bmdctl) tells the agent never to pass `yes`
-  on its own.
+- **Destructive subcommands ask for a person.** Without `confirm: true`
+  the request asks (`Ask`), the engine refuses it with its confirm note,
+  and the result says what it would affect and that the operator must
+  agree before it is called again with `confirm: true` (`Not done: this
+  is destructive. video mode 1080p50 → 525i5994: every output resyncs.
+  ...`). The same holds for what is destructive only by its arguments:
+  `media upload`, `macro upload` and `macro record` over a used slot,
+  `macro action` delete (each says so on its line). `confirm` is the
+  CLI's `--yes` (`Yes`), named for the agent's side of it; on a
+  subcommand that never asks it is ignored. The skill (skills/bmdctl)
+  tells the agent never to pass it on its own.
 - **Files are this machine's**, as the CLI's are: a file a tool sends is
   read from the path given (relative to the server's working directory),
   one it produces written where its `file` or `dir` says (`outPath`, the
@@ -1883,20 +1920,24 @@ add it to Claude Code and Claude Desktop is docs/AGENTS.md.
   250 ms (an ATEM's changes come in bursts); the client reads the
   resource for what changed. A modern subscription is acknowledged once
   its watches run, every notification carries its id, and one the client
-  cancels gets nothing more. The `atem_watch` and `hyperdeck_watch` tools
-  collect a stream's changes for `seconds` (5 by default, at most 60) or
+  cancels gets nothing more. The `watch` subcommands of `atem_session`
+  and `hyperdeck_session` collect a stream's changes for `seconds` (5 by default, at most 60) or
   `count` (20) and return them.
 - **Concurrency.** Each request runs on its own goroutine, answers are
   written whole under a lock, and `notifications/cancelled` cancels the
   request it names (a stream, a transfer).
 - **Tests.** `cmd/bmdctl/mcp_test.go` drives `bmdctl mcp` over pipes
-  against the bench's engine: the handshake, the tool list (names,
-  schemas, annotations), confirmed, already and sent writes, a
-  destructive refusal and then `yes`, reads, the three own tools, a
-  deck's tools and a switcher's tool sent to a deck, files both ways,
-  resources and both kinds of subscription, the modern revision's
-  discover, `resultType`, version error and cancellation.
-  `internal/mcp` checks that every entry is a tool by a unique name.
+  against the bench's engine: the handshake, the tool list (about
+  fifteen; names, schemas, annotations), confirmed, already and sent
+  writes, a destructive refusal and then `confirm`, an upload over a
+  used slot both ways, reads, `list_hosts`, a deck's tools and a
+  switcher's tool sent to a deck, files both ways, unknown arguments and
+  subcommands, resources and both kinds of subscription, the modern
+  revision's discover, `resultType`, version error and cancellation.
+  `internal/mcp` checks that every entry is a subcommand of exactly one
+  tool and in a group its device declares, that no schema has a
+  top-level `oneOf`, `anyOf` or `allOf`, and that `destructiveHint` and
+  `confirm` go with the destructive groups.
   Nothing here has been tried with Claude Code or Claude Desktop
   themselves.
 
@@ -1907,13 +1948,15 @@ Phase 4: what an agent needs to run a live show with bmdctl, in under
 use bmdctl; read the state before writing, and say what is on air before
 a cut or an auto; how results read (confirmed, sent, already, rejected;
 `--json`'s shape; exit codes); the destructive commands, and that the
-agent asks the operator and never passes `--yes` (`yes: true`) itself, one
+agent asks the operator and never passes `--yes` (`confirm: true`) itself, one
 yes per command; sequences through `exec`, whose lines are all checked
 before any is sent; five recipes in the owner's order (load and key a
 graphic, a pre-show reset, a scheduled content change, tally-driven
 routing, a HyperDeck playback cue); how to read `watch --json`; caution
 on models nobody has tried; COMMANDS.md for everything else. It speaks
-CLI lines, which the MCP tools mirror one for one. Its description is
+CLI lines; an MCP tool is the line's group with the rest as
+`subcommand` (`bmdctl dsk on-air on` is `atem_dsk {"subcommand": "on-air",
+"on-air": true}`). Its description is
 under 200 characters, claude.ai's limit for an uploaded skill.
 `TestSkillCommands` runs every line of its code blocks through the checks
 a typed line gets, so a renamed flag fails the build rather than misleads

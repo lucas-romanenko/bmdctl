@@ -23,10 +23,13 @@ import (
 
 // RegisterCommands adds every ATEM command to r.
 func RegisterCommands(r *table.Registry) error {
+	if err := r.AddGroups("atem", Groups...); err != nil {
+		return err
+	}
 	var entries []table.Entry
 	for _, s := range commandSpecs() {
 		e := s.entry()
-		e.Examples = examples[s.path]
+		e.Examples, e.Group = examples[s.path], GroupOf(s.path)
 		entries = append(entries, e)
 	}
 	if err := r.Add(entries...); err != nil {

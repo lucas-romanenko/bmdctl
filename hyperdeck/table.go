@@ -57,7 +57,10 @@ func RegisterCommands(r *table.Registry) error {
 	speedMin, speedMax := table.Bounds(-5000, 5000)
 	one, most := table.Bounds(1, 255)
 	clipMin, clipMax := table.Bounds(1, 1<<31-1)
-	return r.Add(
+	if err := r.AddGroups("hyperdeck", Groups...); err != nil {
+		return err
+	}
+	return addGrouped(r,
 		table.Entry{Device: "hyperdeck", Path: "play", Echo: ack, Summary: "Start playback, or change the one under way.",
 			Params: []table.Param{
 				{Name: "speed", Kind: table.Int, Min: speedMin, Max: speedMax, Unit: "%",
@@ -100,4 +103,12 @@ func RegisterCommands(r *table.Registry) error {
 			},
 			Examples: []string{"slot 2"}},
 	)
+}
+
+// addGrouped adds entries, each in its group (GroupOf).
+func addGrouped(r *table.Registry, es ...table.Entry) error {
+	for i := range es {
+		es[i].Group = GroupOf(es[i].Path)
+	}
+	return r.Add(es...)
 }

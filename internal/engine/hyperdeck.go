@@ -49,7 +49,7 @@ func deckOperations() []operation {
 				Help: "a timeline clip: its number, or its name or the start of it, in any case; or a timecode, HH:MM:SS:FF"}}},
 			run: opDeckGoto},
 		{entry: table.Entry{Path: "loop", Summary: "Turn looping on or off for the playback under way.",
-			Params: []table.Param{{Name: "on", Kind: table.Bool, Required: true, Help: "on loops the timeline, or the clip with play --single-clip"}},
+			Params:     []table.Param{{Name: "on", Kind: table.Bool, Required: true, Help: "on loops the timeline, or the clip with play --single-clip"}},
 			Unverified: true},
 			run: opDeckLoop},
 		{entry: table.Entry{Path: "clips", Summary: "List the timeline's clips, or a disk's.",
@@ -93,7 +93,7 @@ func registerDeckOperations(r *table.Registry) error {
 	var es []table.Entry
 	for _, o := range deckOperations() {
 		e := o.entry
-		e.Device, e.Operation, e.Examples = "hyperdeck", true, deckExamples[e.Path]
+		e.Device, e.Operation, e.Examples, e.Group = "hyperdeck", true, deckExamples[e.Path], hyperdeck.GroupOf(e.Path)
 		es = append(es, e)
 	}
 	return r.Add(es...)
