@@ -1974,32 +1974,50 @@ builds everything into `dist/` without publishing.
   tag (`bmdctl version` says `bmdctl v0.1.0 (<commit>, <date>)`), a
   snapshot's own version for a snapshot; `main.commit` and `main.date`
   as before.
-- **Archives:** `bmdctl_<version>_<os>_<arch>.tar.gz` (`.zip` on
-  Windows; version without the `v`, as GoReleaser names it), holding
-  bmdctl, the alias links (copies on Windows), README.md and the
-  licences. **Checksums:** `checksums.txt`.
+- **Archives:** `bmdctl_<os>_<arch>.tar.gz` (`.zip` on Windows), the
+  same name in every release, so `releases/latest/download/<name>` is
+  always the latest release's (the Scoop manifest's url); the tag is in
+  the release's URL, and `bmdctl version` says it. Each holds bmdctl,
+  the alias links (copies on Windows), README.md and the licences.
+  **Checksums:** `checksums.txt`. (They were named with the version
+  until the Scoop change below, before any release.)
 - **deb and rpm** (nfpm): bmdctl in `/usr/bin` with the aliases linked to
   it, the man page (`bmdctl man`, made by a before hook) and the bash,
   zsh and fish completions (bash's linked for each alias), the licences
-  under `/usr/share/doc/bmdctl`. The maintainer is the GitHub account's
-  no-reply address: a package must name one, and no address of the
-  owner's is put in a package without being asked.
+  under `/usr/share/doc/bmdctl`. The maintainer is
+  `Lucas Romanenko <lucas@romanenko.com>`, the owner's choice (it was
+  the GitHub no-reply address until they named one).
 - **The image**, `ghcr.io/lucas-romanenko/bmdctl` (linux amd64 and arm64,
   `<version>` and `latest`), is scratch with the binary, `HOME`,
   `XDG_CONFIG_HOME` and `XDG_STATE_HOME` under the `/data` volume (scratch
   has no home), the socket in the `/run/bmdctl` volume, and `engine
   --serve` as its command: the engine in the foreground with the HTTP
   API on 127.0.0.1:8880, for `--network host`.
-- **Scoop:** no bucket repository. GoReleaser writes the manifest into
-  this repository's `scoop/bmdctl.json` at each release (a commit to main
-  by the release workflow), with that release's archive, its hash and the
-  five binaries, so Windows installs from the raw URL. The file committed
-  before v0.1.0 names v0.1.0's archive without its hash, which only the
-  release can know; GoReleaser replaces it whole. No Homebrew tap.
+- **Scoop:** no bucket repository, and no step of the release writes
+  one: GoReleaser's `scoops` publish committed the manifest to main at
+  each release, which the owner dropped before v0.1.0. `scoop/bmdctl.json`
+  is written once: its url is
+  `releases/latest/download/bmdctl_windows_amd64.zip`, with no hash
+  (only a release knows it, and the url's archive changes with each),
+  and its version `nightly`, which is how Scoop is told the url isn't
+  pinned (checked against Scoop's source, `lib/install.ps1` and
+  `libexec/scoop-update.ps1`, October 2026): it skips the hash check
+  rather than warn that none is given, installs as `nightly-<date>`, and
+  `scoop update bmdctl` fetches the latest again once the date has
+  changed. A fixed version (`0.1.0`) with that url would be wrong after
+  the next release and never update: Scoop compares the manifest's
+  version, and its cache would hand back the old archive. The download
+  is HTTPS from GitHub's release, which is what the hash would have
+  vouched for. `checkver` (the GitHub release) and `autoupdate`
+  (`releases/download/v$version/bmdctl_windows_amd64.zip`, its hash
+  from that release's `checksums.txt`) are there so a bucket can pin a
+  release with Scoop's own `checkver.ps1 -u`. No Homebrew tap.
 - **install.sh**, for macOS and Linux, is POSIX sh: it maps `uname -s`
-  and `uname -m` to the archive's names, takes the latest release from
-  the `/releases/latest` redirect (no API call, no rate limit) or
-  `BMDCTL_VERSION`, downloads the archive and `checksums.txt` with curl
+  and `uname -m` to the archive's names, takes the latest release's tag
+  from the `/releases/latest` redirect (no API call, no rate limit) or
+  `BMDCTL_VERSION`, downloads the archive and `checksums.txt` from that
+  tag's release (not `latest/download`, so a release published between
+  the two downloads can't pair one's archive with the other's checksums) with curl
   or wget, refuses an archive whose SHA-256 (sha256sum or shasum)
   doesn't match, installs to `BMDCTL_INSTALL_DIR`, else
   `/usr/local/bin` as root and `~/.local/bin` otherwise, by rename so a
@@ -2017,6 +2035,12 @@ builds everything into `dist/` without publishing.
   but nothing here can run them. A tagged build in a throwaway clone
   printed `bmdctl v0.1.0`. `internal/release` tests install.sh against a
   release served on loopback, and the manifest against the config.
+  After the Scoop change it ran again (`--skip=docker`): the archives
+  are `bmdctl_<os>_<arch>`, no manifest is written, the deb's and the
+  rpm's maintainer is lucas@romanenko.com, the Windows zip holds the
+  five executables at its top (the manifest's `bin`), and install.sh
+  installed bmdctl and its aliases from the Linux amd64 archive and
+  `checksums.txt` served on loopback.
 
 ## Engine (`internal/engine`)
 

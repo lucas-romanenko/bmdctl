@@ -34,7 +34,7 @@ func fakeRelease(t *testing.T, tag string, corrupt bool) *httptest.Server {
 	}
 	tw.Close()
 	gz.Close()
-	archive := fmt.Sprintf("bmdctl_%s_%s_%s.tar.gz", strings.TrimPrefix(tag, "v"), runtime.GOOS, runtime.GOARCH)
+	archive := fmt.Sprintf("bmdctl_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	sum := sha256.Sum256(buf.Bytes())
 	if corrupt {
 		sum[0] ^= 1

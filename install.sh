@@ -65,9 +65,8 @@ if [ -z "$tag" ]; then
 	[ -n "$tag" ] || die "can't find the latest release at $BASE/latest"
 fi
 case $tag in v*) ;; *) tag=v$tag ;; esac
-version=${tag#v}
 
-archive=bmdctl_${version}_${os}_${arch}.tar.gz
+archive=bmdctl_${os}_${arch}.tar.gz
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 trap 'exit 1' INT TERM

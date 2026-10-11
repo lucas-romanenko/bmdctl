@@ -2,7 +2,9 @@
 # Binaries: macOS arm64/amd64, Windows amd64, Linux amd64/arm64, attached to
 # the GitHub release, each archive with the alias binaries (atemctl, hdctl,
 # vhctl, ultctl). Image: ghcr.io/lucas-romanenko/bmdctl (linux amd64 and
-# arm64 under one manifest).
+# arm64 under one manifest). The release commits nothing: scoop/bmdctl.json
+# names the latest release's archive, which keeps its name from one release
+# to the next.
 version: 2
 
 project_name: bmdctl
@@ -55,11 +57,14 @@ builds:
     id: ultctl-windows
     binary: ultctl
 
+# Archives are named without the version (bmdctl_linux_amd64.tar.gz), so
+# releases/latest/download/<name> is always the latest release's: the Scoop
+# manifest's url, and a link that never goes stale.
 archives:
   - id: bmdctl
     ids: [bmdctl]
     formats: [tar.gz]
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     files:
       - src: build/aliases/*
         strip_parent: true
@@ -71,7 +76,7 @@ archives:
   - id: bmdctl-windows
     ids: [bmdctl-windows, atemctl-windows, hdctl-windows, vhctl-windows, ultctl-windows]
     formats: [zip]
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
       - LICENSE
@@ -92,7 +97,7 @@ nfpms:
     formats: [deb, rpm]
     vendor: Lucas Romanenko
     homepage: https://github.com/lucas-romanenko/bmdctl
-    maintainer: Lucas Romanenko <lucas-romanenko@users.noreply.github.com>
+    maintainer: Lucas Romanenko <lucas@romanenko.com>
     description: |-
       Control Blackmagic Design ATEM switchers and HyperDeck recorders from the
       command line, over HTTP (bmdctl serve) and from AI agents (bmdctl mcp).
@@ -140,22 +145,6 @@ nfpms:
         dst: /usr/share/doc/bmdctl/atem/LICENSE-gpl3.txt
       - src: atem/NOTICE
         dst: /usr/share/doc/bmdctl/atem/NOTICE
-
-# The Scoop manifest, written into this repository's scoop/ (not a bucket
-# repository) at each release, so Windows installs from its raw URL:
-#   scoop install https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/scoop/bmdctl.json
-scoops:
-  - ids: [bmdctl-windows]
-    name: bmdctl
-    repository:
-      owner: lucas-romanenko
-      name: bmdctl
-      branch: main
-    directory: scoop
-    commit_msg_template: "chore(scoop): bmdctl {{ .Tag }}"
-    homepage: https://github.com/lucas-romanenko/bmdctl
-    description: Control Blackmagic Design ATEM switchers and HyperDeck recorders from the command line.
-    license: MIT AND LGPL-3.0-only
 
 dockers_v2:
   - id: bmdctl
