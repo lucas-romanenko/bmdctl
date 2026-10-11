@@ -88,5 +88,6 @@ changed because of it. Never rewrite an earlier section.
 - `internal/hosts/`: hosts.yml. `internal/paths/`: where files live.
   `internal/mdns/`: the Bonjour browse behind `hosts discover`.
 - `cmd/bmdctl/`: the CLI.
-- `.github/banner.png`, `.github/mark/`: the README banner and the mark.
+- `.github/banner.gif` (`banner.png` is its still), `.github/mark/`: the
+  README banner and the mark.
   `docs/BRAND.md` is their spec; follow it for anything branded.
