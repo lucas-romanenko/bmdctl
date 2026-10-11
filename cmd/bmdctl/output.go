@@ -41,6 +41,7 @@ type printer struct {
 	// this request opened it. A terminal's header says both.
 	live        *engine.OnAir
 	connectedIn time.Duration
+	saved       remembered // what connect ADDRESS did to hosts.yml
 }
 
 func (p *printer) label() string { return strings.TrimSpace(p.e.Device + " " + p.e.Path) }
@@ -95,6 +96,9 @@ func (p *printer) note(n engine.Note) {
 
 func (p *printer) response(line []byte, r engine.Response) {
 	p.last = &r
+	if r.OK && p.e.Path == "connect" && p.typed["address"] != "" {
+		p.saved = p.c.remember(p.g, p.t, p.sw)
+	}
 	switch {
 	case p.g.json:
 		if !p.g.quiet && !p.stdoutUsed {

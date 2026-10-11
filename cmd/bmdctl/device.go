@@ -53,6 +53,10 @@ func (c *cli) runDevice(g globals, device string, words, tokens []string) int {
 	if g.dryRun {
 		return c.dryRun(device, e, raw, g)
 	}
+	if a := raw["address"]; e.Path == "connect" && a != "" {
+		// connect ADDRESS goes to that switcher, as --host would.
+		g.host, g.hostSet = a, true
+	}
 	req := engine.Request{Device: device, Path: e.Path, Params: raw, Yes: g.yes, FPS: g.fps,
 		TimeoutMS: g.timeout.Milliseconds()}
 	return c.request(g, e, req)

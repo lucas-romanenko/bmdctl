@@ -22,9 +22,13 @@ func sessionOperations() []operation {
 	return []operation{
 		{entry: table.Entry{Path: "status", Summary: "Show what is on air: program, preview, transitions, keyers, macros."},
 			run: opStatus},
-		{entry: table.Entry{Path: "connect", Summary: "Open a session to the switcher and keep it open until disconnect.",
-			Params: []table.Param{{Name: "pin", Kind: table.Bool, Default: "true",
-				Help: "keep the session open until disconnect; false lets it close after 10 idle minutes"}}},
+		{entry: table.Entry{Path: "connect", Summary: "Connect to a switcher and keep the session open; an address is saved as the default host.",
+			Syntax: "connect [address]",
+			Params: []table.Param{
+				{Name: "address", Kind: table.String,
+					Help: "the switcher: an address (saved to hosts.yml, by the name it gives itself, as the default) or a host's name; else the default"},
+				{Name: "pin", Kind: table.Bool, Default: "true",
+					Help: "keep the session open until disconnect; false lets it close after 10 idle minutes"}}},
 			run: opConnect},
 		{entry: table.Entry{Path: "disconnect", Summary: "Close the engine's session to the switcher, pinned or not."},
 			run: opDisconnect, noDial: true},

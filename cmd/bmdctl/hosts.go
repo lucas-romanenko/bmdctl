@@ -178,7 +178,8 @@ const hostsUsage = `usage: bmdctl hosts [list]
        bmdctl hosts default [NAME]
 
 Names the switchers you use, in $XDG_CONFIG_HOME/bmdctl/hosts.yml, by
-the names they give themselves. 'hosts add' connects to the switcher at
+the names they give themselves. 'bmdctl connect ADDRESS' adds one and
+makes it the default. 'hosts add' connects to the switcher at
 ADDRESS and asks its name: the one set in ATEM Setup, else its model.
 --as gives it another, for two switchers with one name; a HyperDeck,
 Videohub or Ultimatte needs one, as bmdctl can't ask them yet. Adding an
@@ -572,4 +573,79 @@ func shellQuote(s string) string {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// remembered is what connect ADDRESS did to hosts.yml.
+type remembered struct {
+	added, defaulted bool
+	name             string
+}
+
+// remember makes the switcher connect ADDRESS reached the default host:
+// added by the name it gives itself, if no host has its address, and the
+// host commands go to now. A name another host goes by is said, with the
+// --as that fixes it.
+func (c *cli) remember(g globals, t target, sw *engine.Switcher) remembered {
+	f, path, err := c.loadHosts()
+	if err != nil {
+		c.notice("hosts.yml: %v", err)
+		return remembered{}
+	}
+	var r remembered
+	h := f.FindAddress(t.Address)
+	if h == nil && t.Host != nil {
+		h = f.Named(t.Host.Label())
+	}
+	if h == nil {
+		if sw == nil || sw.Name == "" {
+			return r
+		}
+		nh := hosts.Host{Name: sw.Name, Address: t.Address, Device: "atem"}
+		if err := f.Add(nh); err != nil {
+			if f.Named(nh.Label()) != nil {
+				c.notice("not saved: %q is another host's name", nh.Label())
+			} else {
+				c.notice("not saved: %v", err)
+			}
+			c.notice("bmdctl hosts add %s --as NAME saves it", shortAddress(t.Address))
+			return r
+		}
+		h, r.added = f.Named(nh.Label()), true
+	}
+	r.name = h.Label()
+	if !strings.EqualFold(f.Default, r.name) {
+		f.Default, r.defaulted = r.name, true
+	}
+	if r.added || r.defaulted {
+		if err := f.Save(path); err != nil {
+			c.notice("hosts.yml: %v", err)
+			return remembered{}
+		}
+	}
+	c.setLastHost(r.name) // commands go to it now
+	return r
+}
+
+// tellOnce reports whether key hasn't been told before on this machine,
+// and marks it told: for the hints a person needs once ever.
+func (c *cli) tellOnce(key string) bool {
+	d, err := paths.State(c.env)
+	if err != nil {
+		return false
+	}
+	path := filepath.Join(d, "told")
+	b, _ := os.ReadFile(path)
+	if slices.Contains(strings.Split(string(b), "\n"), key) {
+		return false
+	}
+	if os.MkdirAll(d, 0o700) != nil {
+		return false
+	}
+	fh, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return false
+	}
+	defer fh.Close()
+	_, err = fmt.Fprintln(fh, key)
+	return err == nil
 }

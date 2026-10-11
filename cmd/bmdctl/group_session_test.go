@@ -201,3 +201,29 @@ func TestWatch(t *testing.T) {
 	}
 	<-done
 }
+
+// connect ADDRESS saves the switcher, by the name it gives itself, as
+// the default host, and the next command goes there; a pipe's line is
+// what connect always printed.
+func TestConnectSaves(t *testing.T) {
+	b := newBench(t)
+	if out := b.must("connect", "192.0.2.10"); out != "ATEM 1 M/E Constellation HD (192.0.2.10)  connected, pinned: open until disconnect\n" {
+		t.Errorf("connect: %q", out)
+	}
+	hosts := b.must("hosts", "--json")
+	if !strings.Contains(hosts, `"default":"ATEM 1 M/E Constellation HD"`) || !strings.Contains(hosts, `"address":"192.0.2.10"`) {
+		t.Errorf("hosts.yml: %s", hosts)
+	}
+	if out := b.must("program", "1"); !strings.HasPrefix(out, "ATEM 1 M/E Constellation HD (192.0.2.10)  program") {
+		t.Errorf("then: %q", out)
+	}
+	// connect alone goes to the default.
+	b.must("disconnect")
+	if out := b.must("connect"); !strings.HasPrefix(out, "ATEM 1 M/E Constellation HD (192.0.2.10)  connected") {
+		t.Errorf("connect alone: %q", out)
+	}
+	// --json is the session's status, as ever.
+	if out := b.must("connect", "192.0.2.10", "--json"); !strings.Contains(out, `"host":"192.0.2.10:9910"`) {
+		t.Errorf("--json: %q", out)
+	}
+}

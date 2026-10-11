@@ -1,0 +1,29 @@
+$ bmdctl connect 192.0.2.10
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms</>
+  <b>saved as "ATEM 1 M/E Constellation HD", now the default</>
+  <dim>tab completes input names</>
+
+$ bmdctl program cam1
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
+  program     CAM2 → <red>CAM1</>                                   <dim># ms</>
+
+$ bmdctl disconnect
+<b>ATEM 1 M/E Constellation HD</>  disconnected
+
+$ bmdctl connect
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms</>
+  connect     pinned until disconnect
+
+$ bmdctl connect 192.0.2.10
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  connect     pinned until disconnect
+
+$ bmdctl connect 192.0.2.11
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms</>
+  connect     pinned until disconnect
+!   <dim>not saved: "ATEM 1 M/E Constellation HD" is another host's name</>
+!   <dim>bmdctl hosts add 192.0.2.11 --as NAME saves it</>
+
+$ bmdctl disconnect
+<b>ATEM 1 M/E Constellation HD</>  disconnected
+

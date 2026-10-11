@@ -369,12 +369,13 @@ Give at least one flag. Echo: `ColV:<generator>`.
 | `--saturation` | float, %, clamped to 0-100 | optional | saturation |
 | `--luma` | float, %, clamped to 0-100 | optional | luma |
 
-### `bmdctl atem connect`
+### `bmdctl atem connect [address]`
 
-Open a session to the switcher and keep it open until disconnect.
+Connect to a switcher and keep the session open; an address is saved as the default host.
 
 | argument | value | | |
 |---|---|---|---|
+| `[address]` | string | optional | the switcher: an address (saved to hosts.yml, by the name it gives itself, as the default) or a host's name; else the default |
 | `--pin` | bool | default true | keep the session open until disconnect; false lets it close after 10 idle minutes |
 
 ### `bmdctl atem cut`

@@ -207,14 +207,30 @@ func auxRows(aux []engine.AuxStatus) []string {
 	return out
 }
 
+// screenConnect is connect: the header, then what connect ADDRESS saved
+// (and, the first time ever, that Tab completes the switcher's names), or
+// how long the session stays open.
 func screenConnect(p *printer, _ engine.Response, raw json.RawMessage) view {
 	var s engine.SessionStatus
 	json.Unmarshal(raw, &s)
-	state := "pinned until disconnect"
-	if !s.Pinned {
-		state = fmt.Sprintf("closes after %v idle", time.Duration(s.IdleCloseS)*time.Second)
+	c := p.c
+	var out []string
+	switch {
+	case p.saved.added:
+		out = append(out, indent+c.colour(bold, fmt.Sprintf("saved as %q, now the default", p.saved.name)))
+	case p.saved.defaulted:
+		out = append(out, indent+c.colour(bold, fmt.Sprintf("%q is now the default", p.saved.name)))
+	default:
+		state := "pinned until disconnect"
+		if !s.Pinned {
+			state = fmt.Sprintf("closes after %v idle", time.Duration(s.IdleCloseS)*time.Second)
+		}
+		out = append(out, c.resultLine("connect", state, ""))
 	}
-	return view{rows: []string{p.c.resultLine("connect", state, "")}}
+	if p.saved.name != "" && c.tellOnce("tab-completion") {
+		out = append(out, indent+c.colour(dim, "tab completes input names"))
+	}
+	return view{rows: out}
 }
 
 func screenDisconnect(p *printer, _ engine.Response, raw json.RawMessage) view {
