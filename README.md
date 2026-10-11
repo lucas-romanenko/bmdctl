@@ -58,6 +58,16 @@ docker run --network host -v /run/bmdctl:/run/bmdctl \
 BMDCTL_SOCKET=/run/bmdctl/bmdctl.sock bmdctl status
 ```
 
+### HTTP
+
+`bmdctl serve` serves every command over HTTP/JSON, through the engine:
+`POST /hosts/studio/program` with `{"source": "cam2"}`, `GET
+/hosts/studio/state`, `GET /hosts/studio/events` (server-sent events), and
+`GET /openapi.json`, generated from the command table. It listens on
+127.0.0.1:8880 and has no authentication, as WebATEM: whoever can reach it
+controls the devices. `bmdctl engine --serve` serves it from the engine's
+own process.
+
 | package     | ports                           | licence        |
 |-------------|---------------------------------|----------------|
 | `atem`      | `atemwire` (UDP 9910)           | LGPL-3.0-only  |

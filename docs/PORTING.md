@@ -1733,6 +1733,75 @@ bmdctl is `bmdctl <device>`: atem, hyperdeck, videohub, ultimatte.
   `internal/release` runs `install.sh` against a release served on
   loopback (its archive, checksums.txt, /latest's redirect).
 
+## serve (`internal/serve`, `cmd/bmdctl/serve.go`)
+
+Phase 4: the command table over HTTP/JSON. `bmdctl serve [--listen
+ADDRESS]` runs it in the foreground, its requests sent to the engine
+over its socket (started if none runs); `bmdctl engine --serve [--listen
+ADDRESS]` runs it in the engine's own process, which sends them over
+the same socket, for the container. Off unless asked for.
+
+- **Routes** (Go's `net/http` patterns): `GET /hosts` (hosts.yml, as
+  `bmdctl hosts --json` prints it), `GET /hosts/{host}/state` (`?path=`
+  as `state --path`), `GET /hosts/{host}/events`, `POST
+  /hosts/{host}/{command...}`, `GET /openapi.json`, `GET /` (where the
+  rest are). Anything else is a 404 in the error shape.
+- **The host** is resolved as `--host` is (a name in any case, the start
+  of one, `was`, an address, a DNS name); its device type says which
+  device's command the path names. The device's word may lead the path
+  (`/hosts/x/hyperdeck/play`), as on the command line; one that disagrees
+  with the host's type is refused, and a command the host's device lacks
+  but another has says whose it is.
+- **A command's path is its words**, not its arguments: `POST
+  /hosts/studio/usk/on-air` with `{"keyer": 1, "on-air": true}`. The body
+  is a JSON object (or nothing): strings as typed, numbers in their
+  shortest form (`json.Number`, so 12 is "12"), booleans true or false,
+  arrays joined with commas (lists and flags), null left out; an unknown
+  name is a usage error, as an unknown flag is. A command that sends a
+  file takes `multipart/form-data`: the file's part named for its
+  parameter (its file name standing for the path the CLI would send),
+  the other arguments as fields. A stream (watch) is `GET .../events`.
+  The CLI's global flags are the query: `?yes=true`, `?timeout=2s`,
+  `?fps=25`; anything else there is refused, so an argument can't be put
+  in the wrong place unnoticed.
+- **The answer is the engine's response, as `--json` prints it**, byte
+  for byte where nothing is added, with an HTTP status for its code:
+  200, usage 400, destructive 409, rejected 422, no_echo 504,
+  unreachable, engine and stale 502. Two keys are added after the
+  engine's: `files`, what a command writes (`media download`, `profile
+  save`: param, name and base64 data, the frames the CLI writes to
+  disk), and `confirm`, what a destructive command refused for want of
+  `?yes=true` would affect (the engine's confirm note: the request asks,
+  as a terminal does).
+- **Events** are server-sent: each of watch's frames, exactly as
+  `--json` prints it, a `data:` line each, the first
+  `{"kind":"watching"}`, a comment every 15 s to keep proxies from
+  closing an idle stream. The query is watch's arguments (`count`, and
+  an ATEM's `filter` and `all`). The client hanging up cancels the
+  engine's watch.
+- **OpenAPI 3.1, from the table:** a POST per command that isn't a
+  stream, at `/hosts/{host}/<words>` for an ATEM's and
+  `/hosts/{host}/hyperdeck/<words>` for a HyperDeck's (both forms work
+  for a deck host; the document gives each command one path), its body
+  the entry's `InputSchema` (`internal/table/schema.go`, which mcp uses
+  too: a JSON Schema per parameter kind with its range, from 1 for an
+  index, and a description saying help, range, unit and default),
+  `multipart/form-data` where a file is sent, `x-destructive` and
+  `x-unverified`, and the entry's summary, usage and examples. The
+  ATEM's `state` command shares its path with the GET.
+- **No authentication.** It listens on 127.0.0.1:8880 unless `--listen`
+  says otherwise, as WebATEM does; a terminal says there is none, and
+  an address other machines can reach is said on stderr each time.
+  Requests are logged one line each on stdout (method, path, status,
+  time; at a terminal in the result's columns), not with `--quiet` or
+  `--json`, where only the address is printed.
+- **Tests.** `cmd/bmdctl/serve_test.go` drives every route on loopback
+  against the bench's engine (writes, refusals and their statuses, a
+  destructive command's confirm, an upload as multipart, a download's
+  file, events, a deck's commands, `bmdctl serve` itself);
+  `internal/serve` checks the OpenAPI document (every command a path,
+  unique operation ids, typed properties) and the value conversion.
+
 ## Engine (`internal/engine`)
 
 A background process holding one `atem.Session` per switcher, so a

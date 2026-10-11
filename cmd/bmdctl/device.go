@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -231,6 +232,11 @@ func (c *cli) sendOnce(g globals, e *table.Entry, req engine.Request, out *print
 // An engine started from another build answers "stale" and stops; the
 // request then goes, once, to a new engine of this build.
 func (c *cli) call(req engine.Request, spawned func(), onFrame func(engine.Frame) error) error {
+	return c.callCtx(c.ctx, req, spawned, onFrame)
+}
+
+// callCtx is call until ctx ends: an HTTP request's, for serve and mcp.
+func (c *cli) callCtx(ctx context.Context, req engine.Request, spawned func(), onFrame func(engine.Frame) error) error {
 	req.Build = c.build()
 	err := errStale
 	for tries := 0; errors.Is(err, errStale); tries++ {
@@ -241,7 +247,7 @@ func (c *cli) call(req engine.Request, spawned func(), onFrame func(engine.Frame
 		if conn, err = c.connectEngine(spawned); err != nil {
 			return err
 		}
-		_, err = engine.Call(c.ctx, conn, req, func(f engine.Frame) error {
+		_, err = engine.Call(ctx, conn, req, func(f engine.Frame) error {
 			if f.Response != nil && f.Response.Code == engine.CodeStale && tries == 0 {
 				return errStale
 			}

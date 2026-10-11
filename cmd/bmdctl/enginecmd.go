@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -82,7 +83,7 @@ func (c *cli) logPath() string {
 	return filepath.Join(d, "engine.log")
 }
 
-const engineUsage = `usage: bmdctl engine [--log-level debug|info|warn|error]
+const engineUsage = `usage: bmdctl engine [--log-level debug|info|warn|error] [--serve [--listen ADDRESS]]
        bmdctl engine stop
        bmdctl engine status [--json]
 
@@ -94,6 +95,10 @@ Docker, logging to stderr as well as its log file, which answers every
 build. A session closes after 10 minutes without a command unless
 'connect' pinned it.
 
+--serve also serves every command over HTTP/JSON from the engine's own
+process (bmdctl serve --help says what), on --listen, 127.0.0.1:8880
+unless given: the container's command. It has no authentication.
+
 The socket is $BMDCTL_SOCKET, else $XDG_RUNTIME_DIR/bmdctl.sock (a named
 pipe on Windows); the log is $XDG_STATE_HOME/bmdctl/engine.log, rotated.
 `
@@ -101,7 +106,8 @@ pipe on Windows); the log is $XDG_STATE_HOME/bmdctl/engine.log, rotated.
 // engineFlags are "bmdctl engine"'s own flags.
 type engineFlags struct {
 	logLevel string
-	bg       bool // started by a command: log to the file only
+	bg       bool   // started by a command: log to the file only
+	serve    string // --serve: the HTTP API's address, "" for none
 }
 
 func (c *cli) engineCommand(g globals, words, tokens []string) int {
@@ -117,11 +123,20 @@ func (c *cli) engineCommand(g globals, words, tokens []string) int {
 		return c.fail(exitUsage, "bmdctl engine %s: unexpected %q", sub, words[1])
 	}
 	var f engineFlags
+	listen, listenGiven, tokens, err := listenFlag("engine", tokens)
+	if err != nil {
+		return c.fail(exitUsage, "%v", err)
+	}
+	if listenGiven && (sub != "" || !slices.Contains(tokens, "--serve")) {
+		return c.fail(exitUsage, "bmdctl engine: --listen goes with --serve")
+	}
 	for i := 0; i < len(tokens); i++ {
 		name, value, hasValue := strings.Cut(strings.TrimPrefix(tokens[i], "--"), "=")
 		switch {
 		case sub == "" && name == "background" && !hasValue:
 			f.bg = true
+		case sub == "" && name == "serve" && !hasValue:
+			f.serve = listen
 		case sub == "" && name == "log-level":
 			if !hasValue {
 				if i+1 == len(tokens) {
@@ -197,6 +212,17 @@ func (c *cli) serveEngine(g engineFlags) int {
 		Commit: commitString(), BuildID: c.build(), Background: g.bg, Socket: sock, LogPath: logPath}))
 	stop := context.AfterFunc(c.ctx, e.Stop)
 	defer stop()
+	if g.serve != "" {
+		// The HTTP API, in this process: its requests come to this
+		// engine over its own socket.
+		stopAPI, err := c.startAPI(globals{quiet: g.bg}, g.serve)
+		if err != nil {
+			e.Stop()
+			return c.fail(exitUsage, "bmdctl engine --serve: %v", err)
+		}
+		defer stopAPI()
+		logger.Info("serving the HTTP API", "listen", g.serve)
+	}
 	err = e.Serve(l)
 	e.Stop()
 	logger.Info("engine stopped")

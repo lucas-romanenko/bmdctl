@@ -135,6 +135,7 @@ var builtins = []struct{ name, summary string }{
 	{"completion", "print a shell completion script: completion bash|zsh|fish"},
 	{"man", "print the manual page, or write it with --dir"},
 	{"doctor", "check the engine, its socket, the hosts and that each answers"},
+	{"serve", "serve every command over HTTP/JSON on 127.0.0.1:8880: serve [--listen ADDRESS]"},
 }
 
 // deviceGroups say what each device's commands are, for help.
@@ -279,6 +280,8 @@ func (c *cli) run(args []string) int {
 		return c.manCommand(g, tokens)
 	case "doctor":
 		return c.doctorCommand(g, words[1:], tokens)
+	case "serve":
+		return c.serveCommand(g, words[1:], tokens)
 	}
 	// The device: named on the line, else the target host's type, else
 	// an ATEM. connect ADDRESS asks the address (connect.go).
