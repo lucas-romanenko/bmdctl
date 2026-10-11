@@ -287,6 +287,10 @@ func (p *printer) screenError(r engine.Response) {
 	if hint == "" {
 		hint = termStep(code)
 	}
+	if p.failed != nil {
+		p.stepFailed(msg, hint)
+		return
+	}
 	p.c.screenError(msg, hint)
 }
 

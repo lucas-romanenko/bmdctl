@@ -10,7 +10,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -508,17 +507,19 @@ func screenTransfer(p *printer, r engine.Response, raw json.RawMessage) view {
 	return view{rows: []string{c.resultLine(verb, strings.Join(parts, "  "), took(r.TookMS))}}
 }
 
-// screenProfile is a profile's line: the file and what it held, then a
-// row per error and per image that failed.
+// screenProfile is a profile's line: the file and what it held (what
+// each step did, where it had steps), then a row per error and per image
+// that failed. A step that failed is said in place first.
 func screenProfile(p *printer, r engine.Response, raw json.RawMessage) view {
 	var pr engine.ProfileResult
 	json.Unmarshal(raw, &pr)
 	c := p.c
-	failed := slices.IndexFunc(pr.Images, func(im engine.ImageResult) bool { return im.Error != "" }) >= 0
-	stills := 0
+	stills, failed := 0, false
 	for _, im := range pr.Images {
 		if im.Error == "" {
 			stills++
+		} else {
+			failed = true
 		}
 	}
 	var verb, what string
@@ -527,17 +528,27 @@ func screenProfile(p *printer, r engine.Response, raw json.RawMessage) view {
 	case "profile save":
 		verb, what = "profile", p.params["file"]
 		about = append(about, size(int64(pr.Bytes)))
+		if p.steps != nil {
+			about = append(about, p.details...)
+		} else if len(pr.Images) > 0 {
+			about = append(about, count(stills, "still"))
+		}
 	case "profile restore":
 		verb, what = "restore", p.params["file"]
-		about = append(about, nonEmpty(pr.Summary)...)
+		if p.steps != nil && p.failed == nil {
+			about = p.details[min(1, len(p.details)):] // the setup's said already, above
+		} else {
+			about = nonEmpty(pr.Summary)
+		}
 	case "profile images":
 		verb, what = "images", p.params["dir"]
 		if what == "" {
 			what = engine.MediaPoolDir
 		}
+		about = []string{count(stills, "still")}
 	}
-	if len(pr.Images) > 0 || p.e.Path == "profile images" {
-		about = append(about, fmt.Sprintf("%d still%s", stills, plural(stills)))
+	if p.failed != nil {
+		p.stepFailed(p.failed.Error, "")
 	}
 	out := []string{c.resultLine(verb, strings.TrimSpace(what+"  "+strings.Join(about, " · ")), took(r.TookMS))}
 	for _, e := range pr.Errors {
@@ -546,7 +557,7 @@ func screenProfile(p *printer, r engine.Response, raw json.RawMessage) view {
 	if failed {
 		for _, im := range pr.Images {
 			if im.Error != "" {
-				out = append(out, labelled(c.colour(red, "error"), fmt.Sprintf("still %v %s: %s", im.Slot, im.Name, im.Error)))
+				out = append(out, labelled(c.colour(red, "error"), fmt.Sprintf("slot %v %q: %s", im.Slot, im.Name, im.Error)))
 			}
 		}
 	}

@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"image/color"
 	"image/png"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lucas-romanenko/bmdctl/internal/engine"
+	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
@@ -128,5 +131,28 @@ func TestMediaCommands(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "x.txt"), []byte("not an image"), 0o644)
 	if code, _, errOut := b.run(with("media", "upload", "6", filepath.Join(dir, "x.txt"))...); code != exitUsage || !strings.Contains(errOut, "not a PNG, JPEG or GIF") {
 		t.Errorf("not an image: %d %q", code, errOut)
+	}
+}
+
+// A transfer notes how far it has come, for a person's progress bar:
+// at least once, at its end.
+func TestTransferProgressNotes(t *testing.T) {
+	b := newBench(t)
+	conn, err := engine.Dial(context.Background(), b.env["BMDCTL_SOCKET"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var last *engine.Progress
+	resp, err := engine.Call(context.Background(), conn, engine.Request{Device: "atem", Host: fakeatem.Address, Path: "media upload",
+		Params: map[string]string{"slot": "3", "file": "logo.png"}, Files: map[string][]byte{"file": testPNG(t)}, Notes: true},
+		func(f engine.Frame) error {
+			if f.Note != nil && f.Note.Progress != nil {
+				last = f.Note.Progress
+			}
+			return nil
+		})
+	if err != nil || !resp.OK || last == nil || last.Done != last.Total || !last.Bytes {
+		t.Errorf("%v %+v, last progress %+v", err, resp, last)
 	}
 }

@@ -154,6 +154,13 @@ type Note struct {
 	// NoInput: a source typed names no input; sent before the failure,
 	// with the inputs it could have been.
 	NoInput *NoInput `json:"no_input,omitempty"`
+	// Progress is how far a transfer has come (progress.go); at most
+	// ten a second.
+	Progress *Progress `json:"progress,omitempty"`
+	// Steps announces an operation's steps; a Step note says each one
+	// begun, then done or failed.
+	Steps []string `json:"steps,omitempty"`
+	Step  *Step    `json:"step,omitempty"`
 }
 
 // Alias is a source an alias named, and the input whose name it shadowed.

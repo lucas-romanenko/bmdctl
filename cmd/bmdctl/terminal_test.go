@@ -20,6 +20,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
+	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
 // What a person sees at a terminal is snapshot-tested against the golden
@@ -117,10 +118,14 @@ func normalise(s string) string {
 	return s
 }
 
+// goldenDir is where the golden files are, whatever directory a test
+// moves to.
+var goldenDir, _ = filepath.Abs(filepath.Join("testdata", "terminal"))
+
 // golden compares got with a golden file, or rewrites it with -update.
 func golden(t *testing.T, name, got string) {
 	t.Helper()
-	path := filepath.Join("testdata", "terminal", name)
+	path := filepath.Join(goldenDir, name)
 	if *update {
 		os.MkdirAll(filepath.Dir(path), 0o755)
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
@@ -189,6 +194,49 @@ func TestTerminalConnect(t *testing.T) {
 	if len(hs.Hosts) != 1 || hs.Default != "ATEM 1 M/E Constellation HD" || hs.Hosts[0].Address != "192.0.2.10" {
 		t.Errorf("hosts.yml: %+v", hs)
 	}
+}
+
+// Transfers and profiles: a transfer's line says what moved; a profile
+// shows a line per step as it finishes (✓), then what it all came to.
+// (Progress draws on stderr, after 200 ms: TestTerminalSpinner.)
+func TestTerminalTransfers(t *testing.T) {
+	dump := bytes.Clone(fixtures.Bytes(t, "dump/initial-dump.bin"))
+	dump[bytes.Index(dump, []byte("VidM"))+4] = 0 // NTSC: small stills
+	b := newBenchDump(t, dump)
+	t.Chdir(t.TempDir())
+	os.WriteFile("logo.png", testPNG(t), 0o644)
+	os.WriteFile("ops.json", []byte(testOps), 0o644)
+	tr := &transcript{b: b}
+	tr.run("media", "upload", "3", "logo.png")
+	tr.run("media", "upload", "3", "logo.png", "--yes", "--name", "Logo")
+	tr.run("media", "download", "3", "out.png")
+	tr.run("macro", "upload", "5", "ops.json", "--name", "Cams")
+	tr.run("macro", "download", "5", "cams.xml")
+	tr.run("profile", "save", "show.xml")
+	tr.run("profile", "images", "--dir", "stills")
+	tr.run("profile", "restore", "show.xml", "--yes", "--video-mode", "false")
+	tr.run("media", "clear", "3", "--yes")
+	golden(t, "transfers.golden", tr.out.String())
+}
+
+// A step that fails says so in place, with what to do next, and the
+// steps it left undone are listed as skipped.
+func TestTerminalStepFails(t *testing.T) {
+	var o, e bytes.Buffer
+	c := newCLI(&o, &e)
+	c.env = func(string) string { return "" }
+	c.tty, c.ttyErr = true, true
+	reg := c.reg
+	p := &printer{c: c, e: reg.Find("atem", "profile save"), params: map[string]string{"file": "show.xml"},
+		t: target{Address: "192.0.2.10:9910"}, sw: &engine.Switcher{Name: "studio"}}
+	p.note(engine.Note{OnAir: &engine.OnAir{Program: "CAM1", Preview: "CAM2"}})
+	p.note(engine.Note{Steps: []string{"setup", "stills", "upload"}})
+	p.note(engine.Note{Step: &engine.Step{Index: 0}})
+	p.note(engine.Note{Step: &engine.Step{Index: 0, Done: true, Detail: "6 macros", TookMS: 1900}})
+	p.note(engine.Note{Step: &engine.Step{Index: 1}})
+	p.note(engine.Note{Step: &engine.Step{Index: 1, Error: "the session closed"}})
+	p.response(nil, engine.Response{Code: engine.CodeUnreachable, Error: "the session closed"})
+	golden(t, "steps.golden", visible(o.String()+e.String()))
 }
 
 // fit cuts a line to its columns, colour codes and all.
@@ -386,6 +434,13 @@ func TestTerminalSpinner(t *testing.T) {
 		step(150 * time.Millisecond)
 		step(61 * time.Second)
 		s.set(strings.Repeat("x", 80)) // cut, so the line doesn't wrap
+		step(time.Second)
+		// A transfer's progress: a bar, the share, the bytes moved.
+		s.set("uploading sponsor.png → slot 10")
+		step(250 * time.Millisecond)
+		s.progress(engine.Progress{Done: 816_000, Total: 1_200_000, Bytes: true})
+		step(550 * time.Millisecond)
+		s.progress(engine.Progress{Done: 3500, Total: 6000, Item: "still 4 of 6"})
 		step(time.Second)
 		close(s.done) // run never ran
 		s.close()

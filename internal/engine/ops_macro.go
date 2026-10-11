@@ -282,7 +282,7 @@ func opMacroUpload(c *call) (any, bool, error) {
 	}
 	ctx, cancel := c.transferCtx()
 	defer cancel()
-	if err := c.sess.UploadMacro(ctx, slot, m.Name, m.Description, m.Bytecode); err != nil {
+	if err := c.sess.UploadMacro(c.withProgress(ctx, bytesMoved), slot, m.Name, m.Description, m.Bytecode); err != nil {
 		return nil, false, transferErr(err)
 	}
 	return r, true, nil
