@@ -566,3 +566,35 @@ func screenProfile(p *printer, r engine.Response, raw json.RawMessage) view {
 
 // count is n things: "1 still", "20 stills".
 func count(n int, thing string) string { return fmt.Sprintf("%d %s%s", n, thing, plural(n)) }
+
+func init() { screenFormats["undo"] = screenUndo }
+
+// screenUndo is undo as a write: the verb undo, what it put back, before
+// → after, the time; or that there was nothing to undo, dim.
+func screenUndo(p *printer, r engine.Response, raw json.RawMessage) view {
+	var u engine.UndoResult
+	json.Unmarshal(raw, &u)
+	if !u.Undone {
+		return view{rows: []string{indent + p.c.colour(dim, "nothing to undo")}}
+	}
+	return view{rows: []string{p.c.resultLine("undo", strings.TrimSpace(u.What+"  "+p.undoChange(u)), took(r.TookMS))}}
+}
+
+// undoChange is what undo changed: before → after, the after in its
+// tally colour.
+func (p *printer) undoChange(u engine.UndoResult) string {
+	for _, v := range p.vals {
+		after := v.After
+		switch {
+		case v.Param == "program", v.Param == "on-air" && v.After == "on":
+			after = p.c.colour(red, after)
+		case v.Param == "preview":
+			after = p.c.colour(green, after)
+		}
+		if v.Before != nil && *v.Before != v.After {
+			return *v.Before + " → " + after
+		}
+		return after
+	}
+	return ""
+}

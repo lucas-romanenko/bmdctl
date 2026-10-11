@@ -141,11 +141,13 @@ func (c *call) sendBuilt(cmd atem.Command, change ...Value) (any, bool, error) {
 		c.noteValues(true, change)
 		return CommandResult{Command: cmd.Opcode(), Echo: cmd.EchoKey(), Args: c.displayArgs(), Already: true}, true, nil
 	}
+	undoable := c.remember()
 	r, confirmed, err := c.send(cmd)
 	r.Args = c.displayArgs()
 	if err != nil {
 		return nil, false, err
 	}
+	undoable()
 	c.noteValues(confirmed, change)
 	return r, confirmed, nil
 }

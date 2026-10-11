@@ -287,6 +287,27 @@ func writePNG(t *testing.T, b *bench) string {
 	return path
 }
 
+// undo puts back the last program, preview, aux, keyer or DSK change
+// made from this machine, as a write; with nothing to undo it says so.
+func TestTerminalUndo(t *testing.T) {
+	b := newBench(t)
+	tr := &transcript{b: b}
+	tr.run("undo")
+	tr.run("program", "cam1")
+	tr.run("preview", "mp1")
+	tr.run("program", "cam1") // already: nothing to undo
+	tr.run("aux", "3", "cam2")
+	tr.run("usk", "2", "on-air", "on")
+	tr.run("dsk", "toggle", "--dsk", "2")
+	for range 6 {
+		tr.run("undo")
+	}
+	golden(t, "undo.golden", tr.out.String())
+	if out := b.must(with("undo")...); out != "ATEM 1 M/E Constellation HD (192.0.2.10)  nothing to undo\n" {
+		t.Errorf("pipe: %q", out)
+	}
+}
+
 // fit cuts a line to its columns, colour codes and all.
 func TestFit(t *testing.T) {
 	for _, c := range []struct {

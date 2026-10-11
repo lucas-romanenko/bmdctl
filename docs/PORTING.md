@@ -1642,6 +1642,20 @@ comes back. Indexes in results count from 1, as the flags do
     bit).
   - `connect` opens the session and pins it (`--pin false` only opens
     it); `disconnect` closes it, pinned or not, and never dials one.
+    `connect ADDRESS` (the terminal pass) goes to that address, as
+    `--host` would, and the CLI then adds the switcher to hosts.yml by
+    the name it gives itself, if no host has the address, and makes it
+    the default and the last host.
+  - `undo` (the terminal pass; bmdwire has none) puts back the last
+    change this engine sent to program, preview, an aux output, or a
+    keyer's or DSK's on air (`program`, `preview`, `aux`, `usk on-air`,
+    `usk toggle`, `dsk on-air`, `dsk toggle`, `dsk auto`): before each is
+    sent, the value it replaces is kept, per session key, twenty deep,
+    and pushed once it is sent; a change the switcher held already sent
+    nothing and isn't kept. `undo` pops one and sends it back (a direct
+    on-air for a DSK, not an auto), waiting for the echo; one that fails
+    goes back on the stack. The stacks outlive sessions but not the
+    engine. Nothing to undo is `{"undone": false}`, exit 0.
   - `info` is identity and size: product and model, the name set in ATEM
     Setup, the firmware's protocol version, the video mode with its
     resolution and display rate, counts from `_top`, `_MeC` and `_mpl`,

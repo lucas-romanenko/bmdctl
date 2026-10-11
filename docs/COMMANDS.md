@@ -1153,6 +1153,10 @@ Give at least one flag. Echo: `TWpP:<me>`.
 | `--reverse` | bool | optional | reverse direction |
 | `--flip-flop` | bool | optional | flip flop |
 
+### `bmdctl atem undo`
+
+Undo the last program, preview, aux, keyer or DSK on-air change made from this machine.
+
 ### `bmdctl atem usk <keyer> chroma`
 
 Set an advanced chroma key.
