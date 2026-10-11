@@ -91,3 +91,39 @@ changed because of it. Never rewrite an earlier section.
 - `.github/banner.gif` (`banner.png` is its still), `.github/mark/`: the
   README banner and the mark.
   `docs/BRAND.md` is their spec; follow it for anything branded.
+
+## Terminal output
+
+Every command a person runs at a terminal follows these rules
+(`docs/terminal-mock.html` is the picture, `docs/PORTING.md`
+"Terminal" the record). A new command follows them too; if it can't,
+say why there.
+
+- Only at a terminal. A pipe gets the old line format (`docs/PORTING.md`,
+  "Output conventions") byte for byte; `--json` and `--quiet` never
+  change. Anything a terminal needs that a response doesn't carry comes
+  in a note frame (`engine.Note`), which `--json` never prints; don't add
+  fields to a result for it.
+- The switcher is named once per invocation, in the header
+  (`printer.show`): bold name, then dim `PGM x · PVW y`, and model, mode
+  and `connected N ms` only when this invocation opened the session.
+  Never put the name or IP on a result line.
+- Results are `c.resultLine(verb, change, status)`: two-space indent,
+  verb padded to 10, `before → after`, status right-aligned and dim.
+  Status is the time, or `sent`, `already`, `rejected`; never
+  `confirmed`. A cut or auto shows both buses.
+- Nothing over 72 columns: `fit` cuts with `…`, never wrap.
+- Colour: the value now on program red, on preview green, bold for the
+  switcher's name and bmdctl's own lines, dim for ids, timings, hints,
+  empties and the banner. Nothing else.
+- Collapse repeats (`aux 1–6  PGM`), count empty slots instead of
+  listing them (`--all` lists them), hide what people rarely want
+  behind `--all`.
+- Errors: `c.screenError(msg, hint)`: red `error`, the message without
+  the command path, the next step dim under it.
+- Waits over 200 ms show the spinner on stderr; a transfer of known
+  size sends `progress` notes for a bar; several steps send `steps` and
+  `step` notes and print `✓` lines. Destructive commands describe their
+  impact in a `confirm` note so a terminal can ask `[y/N]`.
+- Every table entry has one to three `Examples` (`TestExamples`).
+- Every new view gets a golden in `cmd/bmdctl/testdata/terminal/`.
