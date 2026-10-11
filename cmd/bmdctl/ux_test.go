@@ -117,7 +117,7 @@ func TestColour(t *testing.T) {
 	// exec passes --no-color to its lines.
 	script := b.dir + "/cue.txt"
 	os.WriteFile(script, []byte("program cam1\ncut\n"), 0o644)
-	if out, _ := run(true, "exec", script, "--no-color"); strings.Contains(out, "\x1b[") || strings.Count(out, "\n") != 3 {
+	if out, _ := run(true, "exec", script, "--no-color"); strings.Contains(out, "\x1b[") || strings.Count(out, "\n") != 4 {
 		t.Errorf("exec --no-color: %q", out)
 	}
 }

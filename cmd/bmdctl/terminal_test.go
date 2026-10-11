@@ -48,6 +48,7 @@ func (tr *transcript) run(args ...string) {
 	}
 	c, o, e := tr.b.cli(in)
 	c.tty, c.ttyErr, c.ttyIn = true, true, tr.in != nil
+	c.now = func() time.Time { return time.Date(2026, 10, 11, 13, 43, 28, 0, time.Local) }
 	tr.in = nil
 	// A terminal echoes what is typed after the question: so does the
 	// transcript.
@@ -343,6 +344,25 @@ func TestTerminalTimestamps(t *testing.T) {
 	if got := run(false, "-t", "program", "cam2"); strings.Contains(got, "13:43:28") {
 		t.Errorf("pipe: %q", got)
 	}
+}
+
+// exec at a terminal: one header saying the file, a numbered line per
+// command (its line in the file), the failed one's error and next step in
+// place, and how it went.
+func TestTerminalExec(t *testing.T) {
+	b := newBench(t)
+	write := func(name, s string) string {
+		path := filepath.Join(b.dir, name)
+		os.WriteFile(path, []byte(s), 0o644)
+		return path
+	}
+	tr := &transcript{b: b}
+	tr.run("exec", write("open.cue", "# the open\npreview mp1\ntransition mix 1:00\n\nauto\nusk 1 fill cam1\nusk 1 on-air off\n"))
+	stop := write("stop.cue", "program cam1\nprogram nowhere\ncut\n")
+	tr.run("exec", stop)
+	tr.run("exec", stop, "--continue")
+	tr.run("exec", write("t.cue", "preview cam2\n"), "-t")
+	golden(t, "exec.golden", strings.ReplaceAll(tr.out.String(), b.dir, "DIR"))
 }
 
 // fit cuts a line to its columns, colour codes and all.
