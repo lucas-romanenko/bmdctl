@@ -1,41 +1,65 @@
 $ bmdctl program cam1
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  program  ME1            CAM2 → <red>CAM1</>  confirmed <dim>  # ms</>
-! connected to <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>: 1080p50  <dim># ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1 · connected # ms</>
+  program     CAM2 → <red>CAM1</>                                   <dim># ms</>
 
 $ bmdctl preview cam2
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  preview  ME1            CAM1 → <green>CAM2</>  confirmed <dim>  # ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
+  preview     CAM1 → <green>CAM2</>                                   <dim># ms</>
 
 $ bmdctl usk 2 on-air on
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  usk 2 on-air  ME1       off → <red>on</>     confirmed <dim>  # ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
+  usk 2 on-air  off → <red>on</>                                    <dim># ms</>
 
 $ bmdctl usk 2 on-air off
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  usk 2 on-air  ME1       on → off     confirmed <dim>  # ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
+  usk 2 on-air  on → off                                    <dim># ms</>
 
 $ bmdctl dsk auto
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  dsk auto  DSK1          on → off     <dim>sent     </> <dim>  # ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
+  dsk auto    on → off                                      <dim>sent</>
 
 $ bmdctl cut
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  cut  ME1                CAM1 → <red>CAM2</>  <dim>sent     </> <dim>  # ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  cut         <red>CAM2</> on program · <green>CAM1</> on preview             <dim>sent</>
 
 $ bmdctl ftb toggle
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ftb toggle  ME1         off → <red>black</>  <dim>sent     </> <dim>  # ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
+  ftb toggle  off → <red>black</>                                   <dim>sent</>
 
 $ bmdctl aux 2 cam1
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  aux 2                   PGM → CAM1   confirmed <dim>  # ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  aux 2       PGM → CAM1                                    <dim># ms</>
 
 $ bmdctl transition mix 0:12
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  transition mix  ME1     1:00 → 0:12  confirmed <dim>  # ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  transition mix  1:00 → 0:12                               <dim># ms</>
 
 $ bmdctl color 2 --hue 120
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  color 2                 hue 300 → 120  confirmed <dim>  # ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  color 2     hue 300 → 120                                 <dim># ms</>
+
+$ bmdctl transition wipe --rate 10
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  transition wipe  rate 0:20                            <dim>rejected</>
+
+$ bmdctl program cam1 --me 1
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
+  program ME1  CAM2 → <red>CAM1</>                                  <dim># ms</>
 
 $ bmdctl connect
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  connected, pinned: open until disconnect
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
+  connect     pinned until disconnect
 
 $ bmdctl disconnect
-<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  disconnected
+<b>ATEM 1 M/E Constellation HD</>  disconnected
 
 $ bmdctl program cam2
-> ATEM 1 M/E Constellation HD (192.0.2.10)  program  ME1            CAM2         confirmed  # ms
-! connected to ATEM 1 M/E Constellation HD (192.0.2.10): 1080p50  # ms
+ATEM 1 M/E Constellation HD  PGM CAM2 · PVW CAM1 · connected # ms
+  program     CAM2                                          # ms
+
+$ bmdctl exec DIR/cue.txt
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW MP1</>
+  preview     CAM1 → <green>MP1</>                                    <dim># ms</>
+  cut         <red>MP1</> on program · <green>CAM2</> on preview              <dim>sent</>
+  aux 1       MP1 → CAM1                                    <dim># ms</>
 

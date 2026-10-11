@@ -28,6 +28,9 @@ type call struct {
 	sess  *atem.Session
 	state atem.State // as the request found it
 	res   atem.Resolver
+	// predicted is M/E 1's program and preview as a cut or an auto
+	// transition asks for them, which no echo confirms.
+	predicted *OnAir
 }
 
 // op runs an operation: its result, whether the switcher confirmed it,

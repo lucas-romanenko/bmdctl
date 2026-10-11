@@ -30,7 +30,9 @@ func slotParam(max float64, help string) table.Param {
 
 func mediaOperations() []operation {
 	return []operation{
-		{entry: table.Entry{Path: "media list", Summary: "List the media pool's stills and what each media player shows."},
+		{entry: table.Entry{Path: "media list", Summary: "List the media pool's stills and what each media player shows.",
+			Params: []table.Param{{Name: "all", Kind: table.Bool, Default: "false",
+				Help: "at a terminal, the empty slots too (a pipe and --json always have them)"}}},
 			run: opMediaList},
 		{entry: table.Entry{Path: "media upload", Summary: "Upload a PNG, JPEG or GIF to a still slot, fitted to the video mode.",
 			Echo: "MPfe:<slot>",

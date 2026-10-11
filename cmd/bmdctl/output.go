@@ -25,8 +25,9 @@ type printer struct {
 	c      *cli
 	g      globals
 	e      *table.Entry
-	params map[string]string
-	t      target // where the request went
+	params map[string]string // as sent
+	typed  map[string]string // as typed: a terminal may ask for more
+	t      target            // where the request went
 
 	last       *engine.Response
 	written    []string // files written, in order
@@ -35,6 +36,11 @@ type printer struct {
 	sw         *engine.Switcher // the switcher, from the engine's note
 	vals       []engine.Value   // what the command set, from its note
 	connected  bool             // this request opened the session
+	// live is what M/E 1 has on program and preview, from the engine's
+	// latest note; connectedIn how long opening the session took, when
+	// this request opened it. A terminal's header says both.
+	live        *engine.OnAir
+	connectedIn time.Duration
 }
 
 func (p *printer) label() string { return strings.TrimSpace(p.e.Device + " " + p.e.Path) }
@@ -78,10 +84,12 @@ func (p *printer) note(n engine.Note) {
 		p.c.adopt(p.g, &p.t, *n.Switcher)
 		if p.c.connecting && p.human() {
 			name, addr := p.whoParts()
-			p.c.sayConnected(name, addr, *n.Switcher, p.waiting())
+			p.connectedIn = p.c.sayConnected(name, addr, *n.Switcher, p.waiting())
 		}
 	case n.Values != nil:
 		p.vals = n.Values
+	case n.OnAir != nil:
+		p.live = n.OnAir
 	}
 }
 
@@ -92,8 +100,12 @@ func (p *printer) response(line []byte, r engine.Response) {
 		if !p.g.quiet && !p.stdoutUsed {
 			fmt.Fprintf(p.c.stdout, "%s\n", line)
 		}
+	case !r.OK && p.c.terminal():
+		p.screenError(r)
 	case !r.OK:
 		p.c.errorf(exitCode(r.Code), "bmdctl %s: %s", p.label(), r.Error)
+	case !p.g.quiet && !p.stdoutUsed && p.c.terminal():
+		p.show(p.screen(r))
 	case !p.g.quiet && !p.stdoutUsed:
 		lines := p.humanLines(r)
 		if reports[p.e.Path] && len(lines) > 0 && !(p.e.Path == "state" && !isTable(r)) {
@@ -161,26 +173,26 @@ func (p *printer) header() string {
 }
 
 // waiting is what the spinner says while a request waits on the
-// switcher: what it does, to which switcher.
+// switcher: what it moves, or whom it waits for.
 func (p *printer) waiting() string {
-	who, slot := p.who(), p.params["slot"]
+	slot, file := p.params["slot"], p.params["file"]
 	switch p.e.Path {
 	case "media upload":
-		return fmt.Sprintf("uploading still %s to %s", slot, who)
+		return fmt.Sprintf("uploading %s → slot %s", file, slot)
 	case "media download":
-		return fmt.Sprintf("downloading still %s from %s", slot, who)
+		return fmt.Sprintf("downloading slot %s", slot)
 	case "macro upload":
-		return fmt.Sprintf("uploading macro %s to %s", slot, who)
+		return fmt.Sprintf("uploading %s → macro %s", file, slot)
 	case "macro download":
-		return fmt.Sprintf("downloading macro %s from %s", slot, who)
+		return fmt.Sprintf("downloading macro %s", slot)
 	case "profile save":
-		return "saving the profile of " + who
+		return "saving the profile to " + file
 	case "profile restore":
-		return "restoring the profile to " + who
+		return "restoring " + file
 	case "profile images":
-		return "downloading the stills from " + who
+		return "downloading the stills"
 	}
-	return p.label() + ": waiting for " + who
+	return "waiting for " + p.name()
 }
 
 func nonEmpty(s ...string) []string {
@@ -263,13 +275,23 @@ func (p *printer) humanLines(r engine.Response) []string {
 // (classic-audio master for audio master) is shown as itself, with the
 // notice an unverified one gets.
 func (p *printer) commandLine(r engine.Response, raw json.RawMessage) string {
+	e, vals := p.sentEntry(raw)
+	what, where, change := p.describe(e, vals, false)
+	return p.writeLine(what, where, change, r.Confirmed, r.TookMS)
+}
+
+// sentEntry is the entry of the command a result says was sent (the one
+// asked for, or the one the engine sent in its place, with the notice an
+// unverified one gets) and its values: from the engine's note, else as
+// the result says it sent them.
+func (p *printer) sentEntry(raw json.RawMessage) (*table.Entry, []engine.Value) {
 	var res engine.CommandResult
 	json.Unmarshal(raw, &res)
 	e := p.e
 	if sent := p.c.reg.Find(e.Device, res.Sent); sent != nil {
 		e = sent
 		if e.Unverified {
-			p.c.notice("%s %s is unverified on hardware: atemwire restored it from pyatem without checking it on a switcher", e.Device, e.Path)
+			p.c.unverified(e.Device + " " + e.Path)
 		}
 	}
 	vals := p.vals
@@ -282,8 +304,7 @@ func (p *printer) commandLine(r engine.Response, raw json.RawMessage) string {
 			}
 		}
 	}
-	what, where, change := p.describe(e, vals)
-	return p.writeLine(what, where, change, r.Confirmed, r.TookMS)
+	return e, vals
 }
 
 // writeLine lays a write's result out in columns, so the lines of exec
@@ -308,8 +329,8 @@ func (p *printer) writeLine(what, where, change string, confirmed bool, took int
 	if p.sw != nil && p.sw.NameWidth > 0 {
 		changeWidth = 2*p.sw.NameWidth + width(" → ")
 	}
-	return c.result(fmt.Sprintf("%s  %s  %s  %s %s", p.whoOut(), padRight(head, 22), padRight(change, changeWidth), status,
-		c.colour(dim, fmt.Sprintf("%5d ms", took))))
+	return fmt.Sprintf("%s  %s  %s  %s %s", p.whoOut(), padRight(head, 22), padRight(change, changeWidth), status,
+		c.colour(dim, fmt.Sprintf("%5d ms", took)))
 }
 
 // describe splits a command's values into what was done (its words, with
@@ -318,7 +339,11 @@ func (p *printer) writeLine(what, where, change string, confirmed bool, took int
 // and what changed: "CAM2 → CAM5" for a command's one value, else "rate
 // 1:00 → 0:12, width 25 → 50", a value the switcher already held, or
 // whose before the state doesn't say, alone.
-func (p *printer) describe(e *table.Entry, vals []engine.Value) (what, where, change string) {
+//
+// At a terminal (term) a flag that says where is shown only when typed:
+// the header has named the switcher, and ME1 on a one-M/E switcher is
+// noise.
+func (p *printer) describe(e *table.Entry, vals []engine.Value, term bool) (what, where, change string) {
 	byParam := map[string]engine.Value{}
 	for _, v := range vals {
 		byParam[v.Param] = v
@@ -352,9 +377,10 @@ func (p *printer) describe(e *table.Entry, vals []engine.Value) (what, where, ch
 		switch {
 		case locates(prm) && e.Positional(v.Param):
 		case locates(prm):
-			if tag := flagTag(v.Param, v.After); tag != "" {
+			_, given := p.params[v.Param]
+			if tag := flagTag(v.Param, v.After); tag != "" && (given || !term) {
 				tags = append(tags, tag)
-			} else if _, given := p.params[v.Param]; given {
+			} else if tag == "" && given {
 				tags = append(tags, v.Param+" "+v.After)
 			}
 		default:

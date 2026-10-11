@@ -10,8 +10,8 @@ import (
 	"unicode/utf8"
 )
 
-// spinner says what a request waits on while it waits, on one line of
-// stderr that whatever comes next replaces: drawn once a wait passes
+// spinner says what a request waits on while it waits, on one dim,
+// indented line of stderr that whatever comes next replaces: drawn once a wait passes
 // spinAfter, redrawn every spinEvery with the time so far, and cleared
 // before anything else is written to stdout or stderr (spinWriter), so
 // it leaves nothing behind. Only at a terminal (cli.spins).
@@ -39,9 +39,8 @@ const (
 	// the return, where the next text does.
 	clearLine = "\x1b[2K\r"
 	// spinLabel is the longest label shown, in characters, so the line
-	// doesn't wrap on an 80-column terminal: a wrapped line can't be
-	// cleared.
-	spinLabel = 60
+	// stays within lineWidth: a wrapped line can't be cleared.
+	spinLabel = 56
 )
 
 func newSpinner(out io.Writer, paint func(code, s string) string, after time.Duration, label string) *spinner {
@@ -75,7 +74,7 @@ func (s *spinner) tick() {
 	}
 	glyph := spinFrames[s.frame%len(spinFrames)]
 	s.frame++
-	fmt.Fprintf(s.out, "%s%s %s  %s", clearLine, s.paint(bold, glyph), s.label, s.paint(dim, seconds(d)))
+	fmt.Fprintf(s.out, "%s%s", clearLine, s.paint(dim, fit(indent+glyph+" "+s.label+" · "+seconds(d), lineWidth)))
 	s.shown = true
 }
 
@@ -128,10 +127,10 @@ func (w spinWriter) Write(b []byte) (int, error) {
 	return w.w.Write(b)
 }
 
-// seconds is a wait as the spinner shows it: 0.4s, 12.0s, 1m05s.
+// seconds is a wait as the spinner shows it: 0.4 s, 12.0 s, 1m05s.
 func seconds(d time.Duration) string {
 	if d < time.Minute {
-		return fmt.Sprintf("%.1fs", d.Seconds())
+		return fmt.Sprintf("%.1f s", d.Seconds())
 	}
 	return since(d)
 }

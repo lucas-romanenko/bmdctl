@@ -84,6 +84,11 @@ type cli struct {
 	connecting bool
 	// bannered: the banner has been printed; shared with exec's lines.
 	bannered *bool
+	// scr is what has been laid out at a terminal (screen.go); shared
+	// with exec's lines, so they share one header.
+	scr *screenState
+	// connectAt is when "connecting to ..." was said.
+	connectAt time.Time
 	// spinner is the one a request shows while it waits (spin), if any;
 	// spinAfter is how long a wait goes before it shows (tests lengthen
 	// it, so a slow machine can't draw one).
@@ -106,7 +111,7 @@ func newCLI(stdout, stderr io.Writer) *cli {
 	return &cli{stdin: os.Stdin, stdout: stdout, stderr: stderr, env: os.Getenv, environ: os.Environ,
 		reg: reg, spawn: engine.Spawn, build: sync.OnceValue(buildID), engineConfig: func(c engine.Config) engine.Config { return c },
 		ctx: context.Background(), dialATEM: atem.Dial, said: map[string]bool{}, discover: browse,
-		bannered: new(bool), spinAfter: spinAfter,
+		bannered: new(bool), scr: &screenState{}, spinAfter: spinAfter,
 		dialTCP: func(ctx context.Context, addr string) (net.Conn, error) { return d.DialContext(ctx, "tcp", addr) }}
 }
 
@@ -190,6 +195,10 @@ func (c *cli) run(args []string) int {
 		c.usage(c.stdout)
 		return exitOK
 	case "version":
+		if c.terminal() {
+			c.versionScreen()
+			return exitOK
+		}
 		fmt.Fprintln(c.stdout, versionString())
 		return exitOK
 	case "engine":
@@ -247,9 +256,19 @@ func (c *cli) fail(code int, format string, args ...any) int {
 }
 
 // errorf prints an error on stderr, ending with the next step for its
-// exit status (nextStep), laid out for a terminal by printError.
+// exit status (nextStep); at a terminal, the next step under it
+// (termStep), unless the message names its own.
 func (c *cli) errorf(code int, format string, args ...any) {
-	c.printError(c.stderr, nextStep(code, fmt.Sprintf(format, args...)))
+	msg := fmt.Sprintf(format, args...)
+	if c.terminal() {
+		msg, hint := splitHint(stripLabel(msg))
+		if hint == "" {
+			hint = termStep(code)
+		}
+		c.screenError(msg, hint)
+		return
+	}
+	c.printError(c.stderr, nextStep(code, msg))
 }
 
 // nextStep ends an error with what to do next, by its exit status:
@@ -272,13 +291,27 @@ func nextStep(code int, msg string) string {
 	return msg + " (" + step + ")"
 }
 
-// notice prints a line for a person on stderr, prefixed "bmdctl: ";
-// never with --json or --quiet.
+// notice prints a line for a person on stderr, prefixed "bmdctl: "; at
+// a terminal dim and indented, as a hint. Never with --json or --quiet.
 func (c *cli) notice(format string, args ...any) {
 	if c.json || c.quiet {
 		return
 	}
+	if c.terminal() {
+		fmt.Fprintln(c.stderr, fit(indent+c.colourErr(dim, fmt.Sprintf(format, args...)), lineWidth))
+		return
+	}
 	fmt.Fprintf(c.stderr, "bmdctl: "+format+"\n", args...)
+}
+
+// unverified says on stderr that a command is unverified on hardware:
+// at a terminal in a few words, dim.
+func (c *cli) unverified(label string) {
+	if c.terminal() {
+		c.notice("%s is unverified on hardware", label)
+		return
+	}
+	fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: atemwire restored it from pyatem without checking it on a switcher\n", label)
 }
 
 // sayConnecting prints "connecting to <who> ..." on stderr, once per
@@ -290,7 +323,7 @@ func (c *cli) sayConnecting(g globals, who string) {
 	if g.json || g.quiet || c.said[who] {
 		return
 	}
-	c.said[who], c.connecting = true, true
+	c.said[who], c.connecting, c.connectAt = true, true, time.Now()
 	if c.spinner != nil {
 		c.spinner.set("connecting to " + who)
 		return
@@ -298,26 +331,21 @@ func (c *cli) sayConnecting(g globals, who string) {
 	fmt.Fprintf(c.stderr, "connecting to %s …\n", who)
 }
 
-// sayConnected follows sayConnecting once the session is ready: the
-// model and video mode, on stderr. While the spinner shows, the line
-// takes the place of its "connecting to ...": "connected to <who>:
-// <model>, <video mode>  <time>", a switcher named by its model not
-// named twice; and the spinner goes on, saying next.
-func (c *cli) sayConnected(name, addr string, sw engine.Switcher, next string) {
+// sayConnected follows sayConnecting once the session is ready, and
+// returns how long connecting took. Off a terminal it prints the model
+// and video mode on stderr; at one the header says them (screen.go), and
+// the spinner goes on, saying next.
+func (c *cli) sayConnected(name, addr string, sw engine.Switcher, next string) time.Duration {
 	c.connecting = false
-	about := nonEmpty(sw.Product, sw.VideoMode)
-	s := c.spinner
-	if s == nil {
-		fmt.Fprintln(c.stderr, strings.Join(about, ", "))
-		return
+	took := max(time.Since(c.connectAt), time.Millisecond)
+	if c.terminal() {
+		if c.spinner != nil {
+			c.spinner.set(next)
+		}
+		return took
 	}
-	if name == sw.Product {
-		about = nonEmpty(sw.VideoMode)
-	}
-	took := s.elapsed().Milliseconds()
-	s.set(next)
-	fmt.Fprintf(c.stderr, "connected to %s: %s  %s\n", paintWho(c.colourErr, name, addr), strings.Join(about, ", "),
-		c.colourErr(dim, fmt.Sprintf("%d ms", took)))
+	fmt.Fprintln(c.stderr, strings.Join(nonEmpty(sw.Product, sw.VideoMode), ", "))
+	return took
 }
 
 // codeName is the engine's error code for an exit status.
@@ -363,6 +391,36 @@ func versionString() string {
 		return "bmdctl " + v
 	}
 	return fmt.Sprintf("bmdctl %s (%s)", v, strings.Join(extra, ", "))
+}
+
+// versionScreen is bmdctl version at a terminal: the version, then the
+// commit it was built from, the hosts file and the engine, which bmdctl
+// alone no longer shows.
+func (c *cli) versionScreen() {
+	fmt.Fprintln(c.stdout, "bmdctl "+shortVersion())
+	row := func(label, value string) { fmt.Fprintln(c.stdout, fit(labelled(label, value), lineWidth)) }
+	if cm := commitString(); cm != "" {
+		row("commit", c.colour(dim, cm))
+	}
+	if date != "" {
+		row("built", date)
+	}
+	if path, err := c.hostsPath(); err == nil {
+		row("hosts", tildePath(path, c.env("HOME")))
+	}
+	st := c.runningEngine()
+	if st == nil {
+		row("engine", c.colour(dim, "not running · the next command starts it"))
+		return
+	}
+	parts := []string{"running", fmt.Sprintf("pid %d", st.PID), "up " + ago(time.Since(st.Started)), count(len(st.Sessions), "session")}
+	if st.Commit != "" {
+		parts = append(parts, "commit "+c.colour(dim, st.Commit))
+	}
+	if mine := c.build(); st.Build != "" && mine != "" && mine != st.Build {
+		parts = append(parts, "another build")
+	}
+	row("engine", strings.Join(parts, " · "))
 }
 
 // commitString is the git commit this binary was built from, short as

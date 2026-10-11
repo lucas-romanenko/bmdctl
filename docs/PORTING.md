@@ -1534,7 +1534,13 @@ lives until 10 minutes pass without a request, unless pinned.
   as it skips file frames, so its output is unchanged. `Call` hands each
   frame to its callback as an `engine.Frame`. The protocol version stays
   1: an engine from before the field ignores it, and the CLI falls back
-  to what responses carry. The engine's status carries `commit` too
+  to what responses carry. Two more (the terminal pass, "Terminal"):
+  `on_air`, M/E 1's program and preview by id and short name, sent
+  after the `switcher` note and again once a command is done (for a cut
+  or an auto transition, which nothing confirms, what it asked for), so a
+  terminal's header shows what is live; and a value's `kept`, set when
+  the switcher confirmed a command but answered with the value it
+  already held, not the one sent. The engine's status carries `commit` too
   (`Config.Commit`), beside `build`. An `overview` engine request answers `{engine,
   switchers}`, the engine's status and a `Switcher` per session, for
   `bmdctl` alone; `status` is unchanged.

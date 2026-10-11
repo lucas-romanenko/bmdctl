@@ -82,10 +82,11 @@ func TestColour(t *testing.T) {
 	if out, _ := run(true, "preview", "cam2"); !strings.Contains(out, "CAM1 → \x1b[32mCAM2\x1b[0m") {
 		t.Errorf("preview: %q", out)
 	}
-	if out, _ := run(true, "cut"); !strings.Contains(out, "\x1b[2msent     \x1b[0m") {
+	if out, _ := run(true, "cut"); !strings.Contains(out, "\x1b[31mCAM2\x1b[0m on program · \x1b[32mCAM1\x1b[0m on preview") ||
+		!strings.HasSuffix(out, "\x1b[2msent\x1b[0m\n") {
 		t.Errorf("cut: %q", out)
 	}
-	if _, errOut := run(true, "program", "Nobody"); !strings.HasPrefix(errOut, "\x1b[31merror:\x1b[0m bmdctl atem program: ") {
+	if _, errOut := run(true, "program", "Nobody"); !strings.HasPrefix(errOut, "\x1b[31merror\x1b[0m  ") || strings.Contains(errOut, "atem program") {
 		t.Errorf("error: %q", errOut)
 	}
 	for _, c := range []struct {
@@ -116,7 +117,7 @@ func TestColour(t *testing.T) {
 	// exec passes --no-color to its lines.
 	script := b.dir + "/cue.txt"
 	os.WriteFile(script, []byte("program cam1\ncut\n"), 0o644)
-	if out, _ := run(true, "exec", script, "--no-color"); strings.Contains(out, "\x1b[") || strings.Count(out, "\n") != 2 {
+	if out, _ := run(true, "exec", script, "--no-color"); strings.Contains(out, "\x1b[") || strings.Count(out, "\n") != 3 {
 		t.Errorf("exec --no-color: %q", out)
 	}
 }

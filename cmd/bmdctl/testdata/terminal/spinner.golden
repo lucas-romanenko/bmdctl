@@ -1,20 +1,20 @@
 prefixed false:
 
-<clear><cr><b>⠋</> connecting to studio (192.0.2.10)  <dim>0.2s</>
-<clear><cr><b>⠙</> connecting to studio (192.0.2.10)  <dim>0.3s</>
-<clear><cr>connected to studio (192.0.2.10): ATEM 1 M/E Constellation HD, 1080p50  312 ms
+<clear><cr><dim>  ⠋ connecting to studio (192.0.2.10) · 0.2 s</>
+<clear><cr><dim>  ⠙ connecting to studio (192.0.2.10) · 0.3 s</>
+<clear><cr>studio  PGM CAM1 · PVW CAM2 · connected 312 ms
 
-<clear><cr><b>⠹</> uploading still 3 to studio (192.0.2.10)  <dim>0.2s</>
-<clear><cr><b>⠸</> uploading still 3 to studio (192.0.2.10)  <dim>1m01s</>
-<clear><cr><b>⠼</> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  <dim>1.0s</>
+<clear><cr><dim>  ⠹ uploading logo.png → slot 3 · 0.2 s</>
+<clear><cr><dim>  ⠸ uploading logo.png → slot 3 · 1m01s</>
+<clear><cr><dim>  ⠼ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx… · 1.0 s</>
 <clear><cr>
 prefixed true:
 line 2: 
-<clear><cr>line 2: <b>⠋</> connecting to studio (192.0.2.10)  <dim>0.2s</>
-<clear><cr>line 2: <b>⠙</> connecting to studio (192.0.2.10)  <dim>0.3s</>
-<clear><cr>line 2: connected to studio (192.0.2.10): ATEM 1 M/E Constellation HD, 1080p50  312 ms
+<clear><cr>line 2: <dim>  ⠋ connecting to studio (192.0.2.10) · 0.2 s</>
+<clear><cr>line 2: <dim>  ⠙ connecting to studio (192.0.2.10) · 0.3 s</>
+<clear><cr>line 2: studio  PGM CAM1 · PVW CAM2 · connected 312 ms
 line 2: 
-<clear><cr>line 2: <b>⠹</> uploading still 3 to studio (192.0.2.10)  <dim>0.2s</>
-<clear><cr>line 2: <b>⠸</> uploading still 3 to studio (192.0.2.10)  <dim>1m01s</>
-<clear><cr>line 2: <b>⠼</> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  <dim>1.0s</>
+<clear><cr>line 2: <dim>  ⠹ uploading logo.png → slot 3 · 0.2 s</>
+<clear><cr>line 2: <dim>  ⠸ uploading logo.png → slot 3 · 1m01s</>
+<clear><cr>line 2: <dim>  ⠼ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx… · 1.0 s</>
 <clear><cr>

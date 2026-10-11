@@ -1,24 +1,24 @@
 $ bmdctl program Nobody
-! connected to <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>: 1080p50  <dim># ms</>
-! <red>error:</> bmdctl atem program: source "Nobody": no input is named "Nobody"
-! <dim>       bmdctl inputs lists them</>
+! <red>error</>  source "Nobody": no input is named "Nobody"
+!        <dim>bmdctl inputs lists them</>
 [exit 1]
 
 $ bmdctl program
-! <red>error:</> bmdctl atem program: missing <source>: program <source>
+! <red>error</>  missing <source>: program <source>
 [exit 1]
 
 $ bmdctl media clear 1
-! <red>error:</> bmdctl atem media clear: destructive: add --yes to run it
+! <red>error</>  media clear empties a still slot
+!        <dim>add --yes to do it</>
 [exit 5]
 
 $ bmdctl program Nobody
-! error: bmdctl atem program: source "Nobody": no input is named "Nobody"
+! error  source "Nobody": no input is named "Nobody"
 !        bmdctl inputs lists them
 [exit 1]
 
 $ bmdctl --host 192.0.2.99 program 1
-! <red>error:</> bmdctl atem program: no route to host
-! <dim>       bmdctl doctor says why</>
+! <red>error</>  192.0.2.99 did not answer
+!        <dim>no route to host · bmdctl doctor checks the network</>
 [exit 2]
 

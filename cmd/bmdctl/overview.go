@@ -78,11 +78,77 @@ func (c *cli) overview(g globals) int {
 		fmt.Fprintf(c.stdout, "%s\n", b)
 		return exitOK
 	}
-	c.banner()
-	for _, l := range c.overviewLines(ov, list, len(f.Hosts) == 0) {
+	lines := c.overviewLines(ov, list, len(f.Hosts) == 0)
+	if c.terminal() {
+		c.banner()
+		lines = c.overviewScreen(ov, list)
+	}
+	for _, l := range lines {
 		fmt.Fprintln(c.stdout, l)
 	}
 	return exitOK
+}
+
+// overviewScreen is the overview at a terminal: a row per switcher, its
+// name bold, its address, model and video mode, and its session: how
+// long it has been open, or not connected, dim. The engine is bmdctl
+// version's.
+func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string {
+	out := []string{""}
+	if len(list) == 0 {
+		out = append(out, indent+c.colour(dim, "no switchers yet"), "",
+			indent+c.colour(dim, "bmdctl hosts add ADDRESS adds one"))
+		return out
+	}
+	var cells [][]string
+	for _, h := range list {
+		row := []string{c.colour(bold, h.Name), shortAddress(h.Address), "", "", c.colour(dim, "not connected")}
+		if h.Name == "" {
+			row[0] = c.colour(bold, shortAddress(h.Address))
+		}
+		if h.Device != "atem" {
+			row[2], row[4] = h.Device, c.colour(dim, "no commands yet")
+		}
+		if s := h.Session; s != nil {
+			if s.Product != h.Name {
+				row[2] = s.Product
+			}
+			row[3] = s.VideoMode
+			switch {
+			case s.Error != "":
+				row[4] = c.colour(red, "failed") + " " + c.colour(dim, s.Error)
+			case !s.Ready:
+				row[4] = c.colour(dim, "connecting")
+			default:
+				row[4] = "●"
+				if since := sessionSince(ov, s.Host); since != nil {
+					row[4] += " " + ago(time.Since(*since))
+				}
+				if s.Pinned {
+					row[4] += c.colour(dim, " pinned")
+				}
+			}
+		}
+		cells = append(cells, row)
+	}
+	out = append(out, rows(cells)...)
+	if mine := c.build(); ov != nil && ov.Engine.Build != "" && mine != "" && mine != ov.Engine.Build {
+		out = append(out, "", indent+c.colour(dim, "the engine runs another build of bmdctl · bmdctl engine stop"))
+	}
+	return append(out, "", indent+c.colour(dim, "bmdctl help"))
+}
+
+// sessionSince is when the engine opened its session to host.
+func sessionSince(ov *engine.Overview, host string) *time.Time {
+	if ov == nil {
+		return nil
+	}
+	for _, s := range ov.Engine.Sessions {
+		if s.Host == host {
+			return s.Since
+		}
+	}
+	return nil
 }
 
 // overviewLines are the overview for a person: the engine, then a line

@@ -333,6 +333,7 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	}
 	c.state = sess.State()
 	c.note(Note{Switcher: e.switcherNote(h, c.state, idle)})
+	c.noteOnAir(c.state)
 	c.res = atem.Resolver{State: c.state, FPS: req.FPS}
 	c.args, err = entry.Parse(req.Params, c.res)
 	if err != nil {
@@ -349,10 +350,17 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 			return nil, false, err
 		}
 	}
+	var result any
+	var confirmed bool
 	if !entry.Operation {
-		return c.sendEntry()
+		result, confirmed, err = c.sendEntry()
+	} else {
+		result, confirmed, err = o.run(c)
 	}
-	return o.run(c)
+	if err == nil && !entry.Stream {
+		c.noteOnAir(sess.State())
+	}
+	return result, confirmed, err
 }
 
 // CodeEngine: the engine can't serve this CLI (a protocol mismatch).

@@ -1,80 +1,104 @@
 $ bmdctl info
-<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
-<dim>product</>       ATEM 1 M/E Constellation HD (model 27)
-<dim>protocol</>      2.30
-<dim>video mode</>    1080p50 (mode 12), 1920x1080, rates counted at 25 fps
-<dim>m/es</>          1, upstream keyers 4
-<dim>dsks</>          2
-<dim>aux</>           6
-<dim>media</>         2 players, 20 stills, 0 clips
-<dim>macros</>        3
-<dim>supersources</>  0
-<dim>multiviewers</>  1
-<dim>hyperdecks</>    10
-<dim>inputs</>        8
-<dim>audio</>         fairlight
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+
+  product     ATEM 1 M/E Constellation HD <dim>model 27</>
+  protocol    2.30
+  video       1080p50 · 1920×1080 · rates at 25 fps
+  m/e         1 · keyers 4 · dsk 2 · aux 6
+  media       2 players · 20 stills · 0 clips · 3 macros
+  outputs     1 multiviewer · 0 supersources · 10 hyperdecks
+  inputs      8
+  audio       fairlight
 
 $ bmdctl status
-<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
-<dim>session</>     ready, idle #s, pinned: open until disconnect
-<dim>me 1</>        <dim>program</> <red>2 (Camera 2)</>                       <dim>preview</> <green>1 (Camera 1)</>
-<dim>me 1</>        transition dip 1:05, next background+key1  idle
-<dim>me 1</>        ftb off                                    rate 50 frames
-<dim>me 1 key 1</>  <red>on air</>                                     luma, fill 4, key 5
-<dim>me 1 key 2</>  off air                                    luma, fill 0, key 0
-<dim>me 1 key 3</>  off air                                    luma, fill 0, key 0
-<dim>me 1 key 4</>  off air                                    luma, fill 0, key 0
-<dim>dsk 1</>       <red>on air</>                                     fill 6, key 7
-<dim>dsk 2</>       off air                                    fill 0, key 0
-<dim>aux 1</>       3010 (Media Player 1)
-<dim>aux 2</>       10010 (ME 1 Program)
-<dim>aux 3</>       0
-<dim>macro</>       idle
+<b>ATEM 1 M/E Constellation HD</>  <dim>1080p50 · session 0s, idle #s, pinned</>
+
+  ME 1        <red>PGM  CAM2</>           <green>PVW  CAM1</>
+              dip 1:05 · next background+key1 · FTB off
+  keys        1  luma  4 / 5  <red>on air</>
+              2  luma  0 / 0  <dim>off</>
+              3  luma  0 / 0  <dim>off</>
+              4  luma  0 / 0  <dim>off</>
+  dsk 1       6 / 7           <red>on air</>
+  dsk 2       0 / 0           <dim>off</>
+  aux 1–3     PGM
+  macro       <dim>idle</>
 
 $ bmdctl inputs
-<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
-1      <green>CAM1</>  <green>Camera 1</>            external
-2      <red>CAM2</>  <red>Camera 2</>            external
-1000   Bars  Color Bars          bars
-2001   COL1  Color 1             colour
-3010   <green>MP1</>   <green>Media Player 1</>      media player
-3011   MP1K  Media Player 1 Key  media player key
-8001   AUX1  Auxiliary 1         aux output
-10010  PGM   ME 1 Program        m/e output
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+
+  <dim>  1</>  CAM1  Camera 1        <green>○ PVW</>
+  <dim>  2</>  CAM2  Camera 2        <red>● PGM</>
+  <dim>   </>  Bars  Color Bars
+  <dim>   </>  COL1  Color 1
+  <dim>   </>  MP1   Media Player 1
+
+  <dim>bmdctl inputs --all adds outputs, masks and keys</>
+
+$ bmdctl inputs --all
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+
+  <dim>  1</>  CAM1  Camera 1            <green>○ PVW</>
+  <dim>  2</>  CAM2  Camera 2            <red>● PGM</>
+  <dim>   </>  Bars  Color Bars
+  <dim>   </>  COL1  Color 1
+  <dim>   </>  MP1   Media Player 1
+  <dim>   </>  MP1K  Media Player 1 Key
+  <dim>   </>  AUX1  Auxiliary 1
+  <dim>   </>  PGM   ME 1 Program
 
 $ bmdctl media list
-<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
-<dim>still 1</>   still  000102030405060708090a0b0c0d0e0f
-<dim>still 2</>   <dim>-</>
-<dim>still 3</>   <dim>-</>
-<dim>still 4</>   <dim>-</>
-<dim>still 5</>   <dim>-</>
-<dim>still 6</>   <dim>-</>
-<dim>still 7</>   <dim>-</>
-<dim>still 8</>   <dim>-</>
-<dim>still 9</>   <dim>-</>
-<dim>still 10</>  <dim>-</>
-<dim>still 11</>  <dim>-</>
-<dim>still 12</>  <dim>-</>
-<dim>still 13</>  <dim>-</>
-<dim>still 14</>  <dim>-</>
-<dim>still 15</>  <dim>-</>
-<dim>still 16</>  <dim>-</>
-<dim>still 17</>  <dim>-</>
-<dim>still 18</>  <dim>-</>
-<dim>still 19</>  <dim>-</>
-<dim>still 20</>  <dim>-</>
-<dim>player 1</>  <green>still 1</>  <green>still</>
-<dim>player 2</>  still 2
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · 20 stills</>
+
+  <dim> 1</>  still    <dim>MP1</>
+  <dim> 2</>  <dim>(empty)</>  <dim>MP2</>
+  <dim>18 empty slots hidden · --all shows them</>
+
+$ bmdctl media list --all
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · 20 stills</>
+
+  <dim> 1</>  still    <dim>MP1</>
+  <dim> 2</>  <dim>(empty)</>  <dim>MP2</>
+  <dim> 3</>  <dim>(empty)</>
+  <dim> 4</>  <dim>(empty)</>
+  <dim> 5</>  <dim>(empty)</>
+  <dim> 6</>  <dim>(empty)</>
+  <dim> 7</>  <dim>(empty)</>
+  <dim> 8</>  <dim>(empty)</>
+  <dim> 9</>  <dim>(empty)</>
+  <dim>10</>  <dim>(empty)</>
+  <dim>11</>  <dim>(empty)</>
+  <dim>12</>  <dim>(empty)</>
+  <dim>13</>  <dim>(empty)</>
+  <dim>14</>  <dim>(empty)</>
+  <dim>15</>  <dim>(empty)</>
+  <dim>16</>  <dim>(empty)</>
+  <dim>17</>  <dim>(empty)</>
+  <dim>18</>  <dim>(empty)</>
+  <dim>19</>  <dim>(empty)</>
+  <dim>20</>  <dim>(empty)</>
+
+$ bmdctl macro list
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · 3 macro slots</>
+
+  <dim>1</>  Open Show
+  <dim>3</>  Half Time
+  <dim>1 empty slot hidden · --all shows them</>
 
 $ bmdctl macro list --all
-<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
-<dim>macro 1</>  Open Show
-<dim>macro 2</>             <dim>-</>
-<dim>macro 3</>  Half Time
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · 3 macro slots</>
+
+  <dim>1</>  Open Show
+  <dim>2</>  <dim>(empty)</>
+  <dim>3</>  Half Time
 
 $ bmdctl video-modes
-<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
-12  1080p50   <b>current</>
-0   525i5994
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+
+  <dim>12</>  1080p50   current
+  <dim> 0</>  525i5994
+
+$ bmdctl time
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  time        10:20:30:05 · free run
 

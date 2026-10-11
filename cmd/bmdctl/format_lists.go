@@ -78,9 +78,6 @@ func formatProfile(p *printer, r engine.Response, raw json.RawMessage) []string 
 	case "profile images":
 		lines = append(lines, fmt.Sprintf("%s  saved the media pool's stills in %s", p.whoOut(), p.params["dir"]))
 	}
-	if len(lines) > 0 {
-		lines[0] = p.c.result(lines[0])
-	}
 	var rows [][]string
 	for _, e := range pr.Errors {
 		rows = append(rows, []string{p.c.colour(red, "error"), e})
@@ -135,7 +132,7 @@ func formatMacroDecode(p *printer, _ engine.Response, raw json.RawMessage) []str
 func formatMacroEncode(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var r engine.MacroResult
 	json.Unmarshal(raw, &r)
-	return []string{p.c.result(fmt.Sprintf("encoded %s, %d bytes, to %s", r.Source, r.Bytes, strings.Join(p.written, ", ")))}
+	return []string{fmt.Sprintf("encoded %s, %d bytes, to %s", r.Source, r.Bytes, strings.Join(p.written, ", "))}
 }
 
 // formatMediaList is a line per still slot, then per media player: a

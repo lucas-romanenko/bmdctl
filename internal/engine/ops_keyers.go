@@ -28,7 +28,9 @@ func keyerOperations() []operation {
 			Syntax: "usk <keyer> toggle", Echo: "KeOn:<me>:<keyer>", Params: []table.Param{pME, pKeyer}}, run: opUSKToggle},
 		{entry: table.Entry{Path: "dsk toggle", Summary: "Put a downstream keyer on air if it is off, or off if it is on.",
 			Echo: "DskS:<dsk>", Params: []table.Param{pDSK}}, run: opDSKToggle},
-		{entry: table.Entry{Path: "inputs", Summary: "List the switcher's sources, one per line: id, short name, long name and port type."},
+		{entry: table.Entry{Path: "inputs", Summary: "List the switcher's sources, one per line: id, short name, long name and port type.",
+			Params: []table.Param{{Name: "all", Kind: table.Bool, Default: "false",
+				Help: "at a terminal, the outputs, key masks and media player keys too (a pipe and --json always have them)"}}},
 			run: opInputList},
 	}
 }

@@ -409,7 +409,7 @@ func (c *cli) identify(g globals, addr string) (*engine.Switcher, error) {
 	defer stop()
 	var sw *engine.Switcher
 	var resp *engine.Response
-	spawned := func() { c.banner(); c.sayConnecting(g, who) }
+	spawned := func() { c.sayConnecting(g, who) }
 	err := c.call(engine.Request{Device: "atem", Host: addr, Path: "info", Notes: true}, spawned,
 		func(f engine.Frame) error {
 			switch {

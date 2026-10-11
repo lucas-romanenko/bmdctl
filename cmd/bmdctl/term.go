@@ -2,10 +2,10 @@
 
 package main
 
-// What a person at a terminal sees besides the words (docs/PORTING.md,
-// "Terminal"): the palette, the prompt before a result, the banner, an
-// error's layout and columns measured as they show. None of it reaches
-// a pipe, --json or --quiet.
+// What a person at a terminal sees besides the layout (screen.go;
+// docs/PORTING.md, "Terminal"): the palette, the banner, an error's
+// layout and columns measured as they show. None of it reaches a pipe,
+// --json or --quiet.
 
 import (
 	"fmt"
@@ -22,34 +22,21 @@ import (
 // terminal's own text, bold or dim. No other hue (docs/BRAND.md), and
 // nothing beyond the 16 colours, so every terminal shows it alike.
 const (
-	red   = "31" // program and on air; errors
-	green = "32" // preview, and nothing else
-	bold  = "1"  // the prompt, the switcher's name, bmdctl's own lines
-	dim   = "2"  // labels, addresses, times, sent, empty slots, next steps
+	red   = "31" // the value now on program, a keyer on air; errors
+	green = "32" // the value now on preview, and nothing else
+	bold  = "1"  // the switcher's name, bmdctl's own lines
+	dim   = "2"  // ids, timings, hints, empties, the banner
 )
 
-// prompt starts a result on a terminal: the mark's chevron, bold in the
-// terminal's own colour as the mark's cursor is white.
-const prompt = ">"
-
 // terminal reports whether a person reads stdout at a terminal, and not
-// through --json or --quiet: only then does a result take the prompt,
-// an error its next step on a line of its own, and the banner and the
-// spinner show. Colour is checked per stream (colours).
+// through --json or --quiet: only then is a result laid out under a
+// header (screen.go), an error given its next step on a line of its own,
+// and the spinner shown. Colour is checked per stream (colours).
 func (c *cli) terminal() bool { return c.tty && !c.json && !c.quiet }
 
 // spins reports whether a wait shows the spinner: on a terminal, with
 // stderr one too (it is drawn there), that can clear a line.
 func (c *cli) spins() bool { return c.terminal() && c.ttyErr && c.env("TERM") != "dumb" }
-
-// result is a result line as stdout shows it: after the prompt on a
-// terminal, else as it is.
-func (c *cli) result(line string) string {
-	if !c.terminal() {
-		return line
-	}
-	return c.colour(bold, prompt) + " " + line
-}
 
 // paintWho is "<name> (<address>)" with the name bold and the address
 // dim; an address alone is bold, being the name.
@@ -60,33 +47,14 @@ func paintWho(paint func(code, s string) string, name, addr string) string {
 	return paint(bold, name) + " " + paint(dim, "("+addr+")")
 }
 
-// banner prints bmdctl's two lines, once per invocation: the wordmark,
-// "bmd" dim and "ctl" bold after the prompt, then the version, the commit
-// and the hosts file, dim. On bmdctl alone and when a command starts
-// the engine; on stdout, only at a terminal.
+// banner is bmdctl's one line, dim, on bmdctl alone at a terminal:
+// "bmdctl <version>". The commit and the hosts file are bmdctl version's.
 func (c *cli) banner() {
 	if !c.terminal() || *c.bannered {
 		return
 	}
 	*c.bannered = true
-	hosts, _ := c.hostsPath()
-	for _, l := range bannerLines(c.colour, shortVersion(), commitString(), tildePath(hosts, c.env("HOME"))) {
-		fmt.Fprintln(c.stdout, l)
-	}
-}
-
-func bannerLines(paint func(code, s string) string, version, commit, hosts string) []string {
-	about := []string{version}
-	if commit != "" {
-		about = append(about, "commit "+commit)
-	}
-	if hosts != "" {
-		about = append(about, "hosts "+hosts)
-	}
-	return []string{
-		paint(bold, prompt) + " " + paint(dim, "bmd") + paint(bold, "ctl"),
-		"  " + paint(dim, strings.Join(about, ", ")),
-	}
+	fmt.Fprintln(c.stdout, c.colour(dim, "bmdctl "+shortVersion()))
 }
 
 // shortVersion is the version alone: GoReleaser's, else the module's
@@ -117,10 +85,10 @@ func tildePath(path, home string) string {
 	return path
 }
 
-// printError is an error on stderr. At a terminal: "error:" in red, the
-// message, then its next step dim on a line of its own, under the
-// message. Otherwise the message alone, its first line red where stderr
-// takes colour.
+// printError is an error on stderr. At a terminal: "error" in red, the
+// message without the command it came from (the person just typed it),
+// and under it, dim, its next step (screenError). Otherwise the message
+// alone, its first line red where stderr takes colour.
 func (c *cli) printError(w io.Writer, msg string) {
 	if !c.terminal() {
 		first, rest, _ := strings.Cut(msg, "\n")
@@ -130,11 +98,8 @@ func (c *cli) printError(w io.Writer, msg string) {
 		}
 		return
 	}
-	msg, step := splitStep(msg)
-	fmt.Fprintln(w, c.colourErr(red, "error:")+" "+msg)
-	if step != "" {
-		fmt.Fprintln(w, c.colourErr(dim, strings.Repeat(" ", len("error: "))+step))
-	}
+	msg, hint := splitHint(stripLabel(msg))
+	c.screenErrorTo(w, msg, hint)
 }
 
 // splitStep takes an error's next step off its end: " (bmdctl ...)",
