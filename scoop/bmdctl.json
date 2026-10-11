@@ -1,19 +1,32 @@
 {
-    "##": "Install with: scoop install https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/scoop/bmdctl.json . GoReleaser rewrites this file at each release (.goreleaser.yml, scoops), with that release's archive and its hash.",
-    "version": "0.1.0",
-    "architecture": {
-        "64bit": {
-            "url": "https://github.com/lucas-romanenko/bmdctl/releases/download/v0.1.0/bmdctl_0.1.0_windows_amd64.zip",
-            "bin": [
-                "bmdctl.exe",
-                "atemctl.exe",
-                "hdctl.exe",
-                "vhctl.exe",
-                "ultctl.exe"
-            ]
-        }
-    },
+    "##": "Install with: scoop install https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/scoop/bmdctl.json . It installs the latest release, and nothing rewrites it at a release: the url is releases/latest/download, whose archive keeps its name, and there is no pinned hash. version 'nightly' is how Scoop is told the url isn't pinned: it skips the hash check, and scoop update bmdctl fetches the latest again (once a day; bmdctl version says which release it is). checkver and autoupdate let a bucket pin a release: checkver.ps1 -u writes its version, url and hash from checksums.txt.",
+    "version": "nightly",
+    "description": "Control Blackmagic Design ATEM switchers and HyperDeck recorders from the command line.",
     "homepage": "https://github.com/lucas-romanenko/bmdctl",
     "license": "MIT AND LGPL-3.0-only",
-    "description": "Control Blackmagic Design ATEM switchers and HyperDeck recorders from the command line."
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/lucas-romanenko/bmdctl/releases/latest/download/bmdctl_windows_amd64.zip"
+        }
+    },
+    "bin": [
+        "bmdctl.exe",
+        "atemctl.exe",
+        "hdctl.exe",
+        "vhctl.exe",
+        "ultctl.exe"
+    ],
+    "checkver": {
+        "github": "https://github.com/lucas-romanenko/bmdctl"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/lucas-romanenko/bmdctl/releases/download/v$version/bmdctl_windows_amd64.zip"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/checksums.txt"
+        }
+    }
 }

@@ -26,6 +26,9 @@ against the release's `checksums.txt` and prints the next step
 
 - **Windows** ([Scoop](https://scoop.sh)):
   `scoop install https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/scoop/bmdctl.json`
+  installs the latest release (Scoop lists it as `nightly`, since the
+  manifest follows the latest release rather than pinning one);
+  `scoop update bmdctl` fetches it again.
 - **Debian, Ubuntu, Fedora:** the `.deb` and `.rpm` on the
   [releases page](https://github.com/lucas-romanenko/bmdctl/releases)
   (`sudo apt install ./bmdctl_*.deb`), with the man page and completions.
@@ -133,7 +136,8 @@ go run ./cmd/bmdctl version
 Go 1.27. The device packages use only the standard library. Releases are
 GoReleaser's (`.goreleaser.yml`): pushing a `v*` tag runs
 `.github/workflows/release.yml`, which builds the archives, packages,
-image and checksums and rewrites `scoop/bmdctl.json`;
+image and checksums (it commits nothing: `scoop/bmdctl.json` always
+names the latest release's archive);
 `goreleaser release --snapshot --clean` builds them all locally into
 `dist/` without publishing.
 
