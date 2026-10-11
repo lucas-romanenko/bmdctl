@@ -92,11 +92,21 @@ func visible(s string) string {
 }
 
 // normalise replaces what changes from run to run: times taken, the
-// clock, the engine's pid and uptime.
+// clock, the engine's pid and uptime. A result's time is right-aligned,
+// so it keeps the column it ends in.
 func normalise(s string) string {
+	s = regexp.MustCompile(`( *)(<dim>)?(\d+ ms|\d+\.\d s)`).ReplaceAllStringFunc(s, func(m string) string {
+		lead := len(m) - len(strings.TrimLeft(m, " "))
+		rest := strings.TrimLeft(m, " ")
+		tag := ""
+		if strings.HasPrefix(rest, "<dim>") {
+			tag, rest = "<dim>", rest[len("<dim>"):]
+		}
+		return strings.Repeat(" ", max(1, lead+len([]rune(rest))-len("# ms"))) + tag + "# ms"
+	})
 	for _, r := range []struct{ re, with string }{
-		{` +\d+ ms`, "  # ms"}, // a write's time, padded to five
-		{`\d+ ms`, "# ms"},
+		{`connected +# ms`, "connected # ms"},
+		{`\d+\.\d s`, "# s"},
 		{`idle \d+s`, "idle #s"},
 		{`up \d+s`, "up #s"},
 		{`pid \d+`, "pid #"},
@@ -142,16 +152,53 @@ func TestTerminalWrites(t *testing.T) {
 	tr.run("aux", "2", "cam1")
 	tr.run("transition", "mix", "0:12")
 	tr.run("color", "2", "--hue", "120")
+	// The fake answers a wipe with the settings it holds: the switcher
+	// kept its rate.
+	tr.run("transition", "wipe", "--rate", "10")
+	tr.run("program", "cam1", "--me", "1")
 	tr.run("connect")
 	tr.run("disconnect")
 	// Without colour, at a terminal: the same lines, plain.
 	tr.env = map[string]string{"NO_COLOR": "1"}
 	tr.run("program", "cam2")
-	golden(t, "writes.golden", tr.out.String())
+	tr.env = nil
+	// exec's lines share one header.
+	script := filepath.Join(tr.b.dir, "cue.txt")
+	os.WriteFile(script, []byte("preview mp1\ncut\naux 1 cam1\n"), 0o644)
+	tr.run("exec", script)
+	golden(t, "writes.golden", strings.ReplaceAll(tr.out.String(), tr.b.dir, "DIR"))
 }
 
-// Reads: labels dim, values plain, empty slots a dim -, program and on
-// air red, preview green.
+// fit cuts a line to its columns, colour codes and all.
+func TestFit(t *testing.T) {
+	for _, c := range []struct {
+		s    string
+		n    int
+		want string
+	}{
+		{"program", 10, "program"},
+		{"programme", 5, "prog…"},
+		{"\x1b[31mCAM1\x1b[0m → CAM2", 6, "\x1b[31mCAM1\x1b[0m …"},
+		{"\x1b[2mmedia pool · 20 stills\x1b[0m", 8, "\x1b[2mmedia p…\x1b[0m"},
+		{"Cam → Ca2", 9, "Cam → Ca2"},
+	} {
+		if got := fit(c.s, c.n); got != c.want || width(got) > c.n {
+			t.Errorf("fit(%q, %d) = %q", c.s, c.n, got)
+		}
+	}
+	c := newCLI(io.Discard, io.Discard)
+	c.env = func(string) string { return "" }
+	if got := c.resultLine("program", "CAM2 → CAM1", "32 ms"); got != "  program     CAM2 → CAM1"+strings.Repeat(" ", 64-25-5)+"32 ms" {
+		t.Errorf("%q", got)
+	}
+	long := c.resultLine("transition wipe", strings.Repeat("rate 1:00 → 0:12, ", 6), "rejected")
+	if width(long) != lineWidth || !strings.HasSuffix(long, "…  rejected") {
+		t.Errorf("%q", long)
+	}
+}
+
+// Reads: ids dim, labels and values plain, empty slots counted unless
+// --all, repeats collapsed, program and on air red, preview green.
 func TestTerminalReads(t *testing.T) {
 	b := newBench(t)
 	tr := &transcript{b: b}
@@ -162,7 +209,11 @@ func TestTerminalReads(t *testing.T) {
 	// program, CAM1 and media player 1 on preview.
 	b.switchers()[0].Send(fakeatem.Command("TlSr", []byte{0, 3, 0, 2, 1, 0, 1, 2, 0x0b, 0xc2, 2, 0}))
 	eventually(t, "the tally", func() bool { return b.must(with("state", "--path", "tally.source")...) != "null\n" })
-	for _, line := range [][]string{{"info"}, {"status"}, {"inputs"}, {"media", "list"}, {"macro", "list", "--all"}, {"video-modes"}} {
+	// Aux outputs on one source collapse into one row.
+	b.must(with("aux", "1", "pgm")...)
+	b.must(with("aux", "3", "pgm")...)
+	for _, line := range [][]string{{"info"}, {"status"}, {"inputs"}, {"inputs", "--all"}, {"media", "list"}, {"media", "list", "--all"},
+		{"macro", "list"}, {"macro", "list", "--all"}, {"video-modes"}, {"time"}} {
 		tr.run(line...)
 	}
 	golden(t, "reads.golden", tr.out.String())
@@ -184,52 +235,38 @@ func TestTerminalErrors(t *testing.T) {
 	golden(t, "errors.golden", tr.out.String())
 }
 
-// The banner: on bmdctl alone, and once when a command starts the
-// engine; never otherwise, nor on a pipe.
+// The banner: one dim line on bmdctl alone, never otherwise, nor on a
+// pipe; bmdctl version has the commit, the hosts file and the engine.
 func TestTerminalBanner(t *testing.T) {
 	b := newBench(t)
 	b.must("hosts", "add", "192.0.2.10", "--as", "studio")
 	b.must("hosts", "add", "192.0.2.11", "--as", "spare")
+	b.must("hosts", "add", "192.0.2.20", "--as", "deck", "--device", "hyperdeck")
 	b.must("hosts", "default", "studio")
+	b.must("--host", "spare", "disconnect")
 	tr := &transcript{b: b}
-	run := func(c *cli, o, e *bytes.Buffer, args ...string) {
-		c.tty, c.ttyErr, c.spinAfter = true, true, time.Hour
-		tr.record(args, c.run(args), o.String(), e.String())
-	}
-	c, o, e := b.cli("")
-	run(c, o, e)
+	tr.run()
 	tr.run("program", "cam1") // an ordinary command: no banner
-	// A command that starts the engine.
+	tr.run("version")
+	// A command that starts the engine: no banner either.
 	b.engine().Stop()
 	eventually(t, "the engine to go", func() bool { _, err := os.Stat(b.env["BMDCTL_SOCKET"]); return os.IsNotExist(err) })
-	c, o, e = b.cli("")
-	c.spawn = func(string, []string, []string) error { return b.startEngine(engine.Config{}) }
-	run(c, o, e, "--host", "studio", "program", "cam2")
-	golden(t, "banner.golden", tr.out.String())
-
-	// Once per invocation: an exec whose first line starts the engine.
-	b.engine().Stop()
-	eventually(t, "the engine to go", func() bool { _, err := os.Stat(b.env["BMDCTL_SOCKET"]); return os.IsNotExist(err) })
-	script := filepath.Join(b.dir, "cue.txt")
-	os.WriteFile(script, []byte("program cam1\npreview cam2\n"), 0o644)
-	c, o, _ = b.cli("")
+	c, o, e := b.cli("")
 	c.tty, c.ttyErr, c.spinAfter = true, true, time.Hour
 	c.spawn = func(string, []string, []string) error { return b.startEngine(engine.Config{}) }
-	if code := c.run([]string{"--host", "studio", "exec", script}); code != 0 || strings.Count(o.String(), "bmd\x1b[0m\x1b[1mctl") != 1 {
-		t.Errorf("exec: %d %q", code, o)
-	}
+	args := []string{"--host", "studio", "program", "cam2"}
+	tr.record(args, c.run(args), o.String(), e.String())
+	golden(t, "banner.golden", strings.ReplaceAll(tr.out.String(), shortVersion(), "VERSION"))
 	// Not on a pipe.
 	if out := b.must(); !strings.HasPrefix(out, "engine  ") {
 		t.Errorf("pipe: %q", out)
 	}
+	if out := b.must("version"); strings.Count(out, "\n") != 1 || !strings.HasPrefix(out, "bmdctl ") {
+		t.Errorf("pipe version: %q", out)
+	}
 }
 
-func TestBannerLines(t *testing.T) {
-	plain := func(_, s string) string { return s }
-	got := strings.Join(bannerLines(plain, "v1.4.0", "877d29a", "~/.config/bmdctl/hosts.yml"), "\n")
-	if want := "> bmdctl\n  v1.4.0, commit 877d29a, hosts ~/.config/bmdctl/hosts.yml"; got != want {
-		t.Errorf("%q", got)
-	}
+func TestTildePath(t *testing.T) {
 	if got := tildePath("/home/x/.config/bmdctl/hosts.yml", "/home/x"); got != filepath.FromSlash("~/.config/bmdctl/hosts.yml") {
 		t.Errorf("tilde: %q", got)
 	}
@@ -244,8 +281,8 @@ func TestBannerLines(t *testing.T) {
 	}
 }
 
-// watch: the time dim, program red and preview green, the session's own
-// lines bold.
+// watch: the time of day dim, program red and preview green, keyers and
+// DSKs on air red, the session's own lines bold.
 func TestTerminalWatch(t *testing.T) {
 	var st atem.State
 	json.Unmarshal([]byte(`{"mes":[{"program":{"index":0,"source":3},"preview":{"index":0,"source":5},
@@ -266,12 +303,15 @@ func TestTerminalWatch(t *testing.T) {
 		event("TrPs", "TrPs:0", "12:00:01.000", atem.TransitionPositionField{InTransition: true}),
 		event("TrPs", "TrPs:0", "12:00:02.000", atem.TransitionPositionField{}),
 		event("KeOn", "KeOn:0:1", "12:00:03.000", map[string]any{"index": 0, "keyer": 1, "enabled": true}),
+		event("DskS", "DskS:0", "12:00:03.500", map[string]any{"index": 0, "on_air": true, "is_transitioning": true}),
+		event("DskS", "DskS:0", "12:00:03.600", map[string]any{"index": 0, "on_air": true, "is_transitioning": true}),
+		event("InPr", "InPr:3", "12:00:03.700", map[string]any{"index": 3, "name": "Camera 3", "short_name": "CAM3", "port_type": 0}),
 		{Kind: "disconnected", Time: "12:00:04.000"},
 		event("PrgI", "PrgI:0", "12:00:09.000", map[string]int{"index": 0, "source": 3}),
 		{Kind: "ready", Time: "12:00:09.000"},
 	} {
 		raw, _ := json.Marshal(ev)
-		for _, l := range formatWatch(p, engine.Response{}, raw) {
+		for _, l := range screenWatch(p, engine.Response{}, raw).rows {
 			fmt.Fprintf(&out, "%s\n", visible(l))
 		}
 	}
@@ -299,8 +339,8 @@ func TestTerminalSpinner(t *testing.T) {
 		step(100 * time.Millisecond) // not yet
 		step(100 * time.Millisecond)
 		step(100 * time.Millisecond)
-		spinWriter{s, w}.Write([]byte("connected to studio (192.0.2.10): ATEM 1 M/E Constellation HD, 1080p50  312 ms\n"))
-		s.set("uploading still 3 to studio (192.0.2.10)")
+		spinWriter{s, w}.Write([]byte("studio  PGM CAM1 · PVW CAM2 · connected 312 ms\n"))
+		s.set("uploading logo.png → slot 3")
 		step(100 * time.Millisecond) // a new wait: not yet
 		step(150 * time.Millisecond)
 		step(61 * time.Second)
@@ -314,7 +354,8 @@ func TestTerminalSpinner(t *testing.T) {
 }
 
 // A wait that goes past 200 ms shows the spinner on stderr, and leaves
-// nothing of it: what follows clears its line.
+// nothing of it: what follows clears its line. The header says how long
+// connecting took.
 func TestSpinnerRuns(t *testing.T) {
 	b := newBench(t)
 	b.onDial = func(*fakeatem.Switcher) { time.Sleep(500 * time.Millisecond) }
@@ -324,24 +365,22 @@ func TestSpinnerRuns(t *testing.T) {
 		t.Fatalf("exit %d: %q", code, e)
 	}
 	errOut := e.String()
-	frames := strings.Count(errOut, clearLine+"\x1b[1m")
-	connected := strings.LastIndex(errOut, clearLine+"connected to ")
-	if frames < 2 || !strings.Contains(errOut, " connecting to 192.0.2.10  \x1b[2m0.") || connected < 0 ||
-		!strings.HasSuffix(errOut, "1080p50  \x1b[2m"+regexp.MustCompile(`\d+ ms`).FindString(errOut[connected:])+"\x1b[0m\n") {
+	frames := strings.Count(errOut, clearLine+"\x1b[2m  ⠋") + strings.Count(errOut, clearLine+"\x1b[2m  ⠙")
+	if frames < 2 || !strings.Contains(errOut, " connecting to 192.0.2.10 · 0.") || !strings.HasSuffix(errOut, clearLine) {
 		t.Errorf("stderr: %q", errOut)
 	}
-	if !strings.HasPrefix(o.String(), "\x1b[1m>\x1b[0m ") {
+	if !regexp.MustCompile(`^\x1b\[1mATEM 1 M/E Constellation HD\x1b\[0m  \x1b\[2mPGM CAM1 · PVW CAM1 · (1080p50 · )?connected \d{3,} ms\x1b\[0m\n  program  `).MatchString(o.String()) {
 		t.Errorf("stdout: %q", o)
 	}
-	// TERM=dumb can't clear a line: no spinner, and the connecting line
-	// as on a pipe.
+	// TERM=dumb can't clear a line: no spinner, the connecting line as
+	// on a pipe, and the header says the rest.
 	b.must(with("disconnect")...)
 	b.env["TERM"] = "dumb"
-	c, _, e = b.cli("")
+	c, o, e = b.cli("")
 	c.tty, c.ttyErr = true, true
 	c.run(with("program", "cam2"))
-	if e.String() != "connecting to 192.0.2.10 …\nATEM 1 M/E Constellation HD, 1080p50\n" {
-		t.Errorf("dumb: %q", e)
+	if e.String() != "connecting to 192.0.2.10 …\n" || !strings.Contains(o.String(), " · connected ") {
+		t.Errorf("dumb: %q %q", e, o)
 	}
 	// Interrupted while it waits: its line is cleared all the same.
 	delete(b.env, "TERM")
@@ -352,7 +391,7 @@ func TestSpinnerRuns(t *testing.T) {
 	defer cancel()
 	c.ctx = ctx
 	c.run(with("program", "cam1"))
-	if s := e.String(); !strings.Contains(s, "\x1b[1m") || !strings.Contains(s[strings.LastIndex(s, "\x1b[1m"):], clearLine) {
+	if s := e.String(); !strings.Contains(s, "⠋") || !strings.Contains(s[strings.LastIndex(s, "⠋"):], clearLine) {
 		t.Errorf("interrupted: %q", s)
 	}
 }

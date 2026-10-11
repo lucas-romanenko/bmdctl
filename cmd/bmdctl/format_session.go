@@ -159,16 +159,16 @@ func formatConnect(p *printer, _ engine.Response, raw json.RawMessage) []string 
 		at := time.Now().Add(time.Duration(s.IdleCloseS) * time.Second)
 		state += fmt.Sprintf(", drops at %s if unused", at.Format("15:04"))
 	}
-	return []string{p.c.result(p.whoOut() + "  " + state)}
+	return []string{p.whoOut() + "  " + state}
 }
 
 func formatDisconnect(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var r engine.DisconnectResult
 	json.Unmarshal(raw, &r)
 	if !r.Closed {
-		return []string{p.c.result(p.whoOut() + "  no session to close")}
+		return []string{p.whoOut() + "  no session to close"}
 	}
-	return []string{p.c.result(p.whoOut() + "  disconnected")}
+	return []string{p.whoOut() + "  disconnected"}
 }
 
 func formatInfo(p *printer, _ engine.Response, raw json.RawMessage) []string {

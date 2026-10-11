@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bmdctl terminal mock</title>
+<style>
+  :root { --bg:#0E0F10; --panel:#141618; --chrome:#1E2124; --border:#26292C; --text:#EDEDEA; --dim:#7E8386; --mid:#9A9E9F; --pgm:#FF4A3A; --pvw:#2FD07A; --err:#FF4A3A; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"IBM Plex Mono","JetBrains Mono",Menlo,Consolas,monospace; font-size:14px; line-height:1.55; padding:24px 16px; }
+  .term { max-width:760px; margin:0 auto 28px; background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .bar { background:var(--chrome); padding:8px 14px; color:var(--mid); font-size:12px; border-bottom:1px solid var(--border); }
+  pre { margin:0; padding:16px 18px; white-space:pre; overflow-x:auto; }
+  .p { color:var(--mid); }            /* shell prompt */
+  .c { color:var(--text); }           /* typed command */
+  .b { font-weight:700; color:var(--text); }
+  .d { color:var(--dim); }
+  .pgm { color:var(--pgm); font-weight:700; }
+  .pvw { color:var(--pvw); font-weight:700; }
+  .err { color:var(--err); font-weight:700; }
+  h2 { font-weight:500; font-size:13px; color:var(--mid); max-width:760px; margin:0 auto 8px; letter-spacing:.04em; text-transform:uppercase; }
+  .note { max-width:760px; margin:0 auto 28px; color:var(--mid); font-size:13px; line-height:1.5; }
+</style>
+</head>
+<body>
+
+<h2>1 · First command of the day (cold engine)</h2>
+<div class="term"><div class="bar">keeper@dev-server: ~</div><pre><span class="p">$</span> <span class="c">bmdctl preview mp1</span>
+<span class="b">TEST ATEM 2</span>  <span class="d">1 M/E Constellation HD · 1080p25 · connected 330 ms</span>
+  preview   Ca2 → <span class="pvw">MP1</span>                                      <span class="d">32 ms</span>
+
+<span class="p">$</span> <span class="c">bmdctl program 2</span>
+<span class="b">TEST ATEM 2</span>
+  program   lkkk → <span class="pgm">Ca2</span>                                     <span class="d">21 ms</span>
+
+<span class="p">$</span> <span class="c">bmdctl cut</span>
+<span class="b">TEST ATEM 2</span>
+  cut       <span class="pgm">MP1</span> on program · <span class="pvw">Ca2</span> on preview               <span class="d">sent</span>
+
+<span class="p">$</span> <span class="c">bmdctl preview mp1</span>
+<span class="b">TEST ATEM 2</span>
+  preview   <span class="pvw">MP1</span>                                       <span class="d">already</span></pre></div>
+<p class="note">Switcher name once as a header, bold. Results indented under it. Only the value now on the bus is coloured. The word "confirmed" is never printed; it's the default. Exceptions (sent, already, rejected) are one dim word where the timing goes. Connection details appear once, on the line where the connection happened, then never again.</p>
+
+<h2>2 · Errors</h2>
+<div class="term"><div class="bar">keeper@dev-server: ~</div><pre><span class="p">$</span> <span class="c">bmdctl program cam1</span>
+<span class="err">error</span>  no input named "cam1"
+       <span class="d">bmdctl inputs lists them</span>
+
+<span class="p">$</span> <span class="c">bmdctl --host studio-b cut</span>
+<span class="err">error</span>  STUDIO B (192.168.81.86) did not answer
+       <span class="d">bmdctl doctor checks the network</span>
+
+<span class="p">$</span> <span class="c">bmdctl video mode 1080p50</span>
+<span class="err">error</span>  video mode resyncs every output
+       <span class="d">add --yes to do it</span></pre></div>
+<p class="note">No "bmdctl atem program:" prefix; the user just typed it. One red word, the message, one dim hint.</p>
+
+<h2>3 · Overview, status, inputs</h2>
+<div class="term"><div class="bar">keeper@dev-server: ~</div><pre><span class="p">$</span> <span class="c">bmdctl</span>
+<span class="d">bmdctl 0.1.0</span>
+
+  <span class="b">TEST ATEM 2</span>   192.168.81.85   1 M/E Constellation HD   1080p25   <span class="pvw">●</span> 4m
+  <span class="b">STUDIO B</span>      192.168.81.86   <span class="d">not connected</span>
+
+  <span class="d">bmdctl help</span>
+
+<span class="p">$</span> <span class="c">bmdctl status</span>
+<span class="b">TEST ATEM 2</span>  <span class="d">1 M/E Constellation HD · 1080p25 · session 4m, idle 12s</span>
+
+  ME 1      <span class="pgm">PGM  Ca2</span>            <span class="pvw">PVW  MP1</span>
+            mix 1:00 · next background · FTB off
+  keys      1  luma  Cam_1 / CaM 23          <span class="d">off</span>
+            2  luma  MP1 / MP1K              <span class="d">off</span>
+            3  luma  MP1 / MP1K              <span class="d">off</span>
+            4  luma  MP1 / MP1K              <span class="d">off</span>
+  dsk 1     MP2 / MP2K                       <span class="d">off</span>
+  aux 1–6   PGM
+  macro     <span class="d">idle</span>
+
+<span class="p">$</span> <span class="c">bmdctl inputs</span>
+<span class="b">TEST ATEM 2</span>
+
+  <span class="d">  1</span>  lkkk  Cam_1
+  <span class="d">  2</span>  Ca2   CaM 23              <span class="pgm">● PGM</span>
+  <span class="d">  3</span>  LOLL  cam69
+  <span class="d">  4</span>  Cam4  Camera 4
+  <span class="d">  5</span>  Cam5  Camera 5
+  <span class="d">  6</span>  Cam6  Camera 6
+  <span class="d">  7</span>  Cam7  Camera 7
+  <span class="d">  8</span>  Cam8  Camera 8
+  <span class="d">  9</span>  CAM9  Camera 9
+  <span class="d"> 10</span>  CM10  Camera 10
+  <span class="d">    </span>  BARS  Color Bars
+  <span class="d">    </span>  COL1  Color 1
+  <span class="d">    </span>  COL2  Color 2
+  <span class="d">    </span>  MP1   Media Player 1      <span class="pvw">○ PVW</span>
+  <span class="d">    </span>  MP2   Media Player 2
+
+  <span class="d">bmdctl inputs --all adds outputs, masks and keys</span></pre></div>
+<p class="note">Short names everywhere; the long name only in <code>inputs</code>. Identical rows collapse (aux 1–6). Internal sources have no number column because nobody types 3010. Outputs and masks hidden unless asked.</p>
+
+<h2>4 · Media and transfers</h2>
+<div class="term"><div class="bar">keeper@dev-server: ~</div><pre><span class="p">$</span> <span class="c">bmdctl media upload 10 sponsor.png</span>
+<span class="b">TEST ATEM 2</span>
+  <span class="d">⠸ uploading sponsor.png to slot 10 · 1920×1080 · 0.8 s</span>
+<span class="d">  ↑ replaced in place when done by:</span>
+  upload    slot 10  sponsor  1920×1080                <span class="d">1.1 s</span>
+
+<span class="p">$</span> <span class="c">bmdctl media list</span>
+<span class="b">TEST ATEM 2</span>  <span class="d">media pool · 20 stills</span>
+
+  <span class="d"> 1</span>  slot1_Japanese_bac_background     <span class="d">MP1</span>
+  <span class="d">10</span>  sponsor
+  <span class="d">20</span>  <span class="d">(empty)</span>                           <span class="d">MP2</span>
+  <span class="d">17 empty slots hidden · --all shows them</span>
+
+<span class="p">$</span> <span class="c">bmdctl media clear 10 --yes</span>
+<span class="b">TEST ATEM 2</span>
+  clear     slot 10  <span class="d">was "sponsor"</span>                       <span class="d">19 ms</span></pre></div>
+
+<h2>5 · watch</h2>
+<div class="term"><div class="bar">keeper@dev-server: ~</div><pre><span class="p">$</span> <span class="c">bmdctl watch</span>
+<span class="b">TEST ATEM 2</span>  <span class="d">watching · ctrl-c to stop</span>
+
+  <span class="d">13:43:28</span>  program     MP1 → <span class="pgm">lkkk</span>
+  <span class="d">13:43:30</span>  preview     MP1 → <span class="pvw">BLK</span>
+  <span class="d">13:43:42</span>  cut         <span class="pgm">MP1</span> on program · <span class="pvw">lkkk</span> on preview
+  <span class="d">13:44:01</span>  key 1       <span class="pgm">on air</span>
+  <span class="d">13:44:05</span>  transition  mix 1:00  running
+  <span class="d">13:44:06</span>  transition  done
+  <span class="d">13:46:12</span>  <span class="b">session dropped</span>
+  <span class="d">13:46:19</span>  <span class="b">reconnected</span>  <span class="d">program and preview unchanged</span></pre></div>
+
+<h2>6 · exec (cue list)</h2>
+<div class="term"><div class="bar">keeper@dev-server: ~</div><pre><span class="p">$</span> <span class="c">bmdctl exec open.cue</span>
+<span class="b">TEST ATEM 2</span>  <span class="d">open.cue · 5 lines</span>
+  1  preview      Ca2 → <span class="pvw">MP1</span>                                <span class="d">18 ms</span>
+  2  transition   mix 1:00                                 <span class="d">22 ms</span>
+  3  auto         <span class="pgm">MP1</span> on program · <span class="pvw">Ca2</span> on preview           <span class="d">sent</span>
+  4  key 1 fill   <span class="pgm">Cam_1</span>                                    <span class="d">20 ms</span>
+  5  key 1        <span class="pgm">on air</span>                                   <span class="d">24 ms</span>
+  <span class="d">done · 5 ok</span></pre></div>
+
+<p class="note">Rules behind all of it: nothing wider than 72 columns; context (which switcher) stated once per invocation as a header, never per line; verbs in a fixed 10-char column so eyes land on the same spot; only the current bus value coloured; secondary information dim; timings right-aligned; empty and repeated rows collapsed.</p>
+
+</body>
+</html>

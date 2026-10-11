@@ -61,17 +61,17 @@ func TestWatchLines(t *testing.T) {
 		{watchEvent{Kind: "disconnected"}, "session to Studio (192.0.2.10) dropped"},
 		{watchEvent{Kind: "ready"}, "reconnected"},
 	} {
-		if got := v.line(c.ev); got != c.want {
+		if got := v.line(c.ev).text(); got != c.want {
 			t.Errorf("%s: %q, want %q", c.ev.Key, got, c.want)
 		}
 	}
 	// With nothing known, a change shows alone.
 	v = newWatchView(nil)
-	if got := v.line(event("PrgI", "PrgI:0", "", map[string]int{"index": 0, "source": 4})); got != "program  ME1  4" {
+	if got := v.line(event("PrgI", "PrgI:0", "", map[string]int{"index": 0, "source": 4})).text(); got != "program  ME1  4" {
 		t.Errorf("no snapshot: %q", got)
 	}
 	if got := v.line(event("TlSr", "TlSr", "", atem.TallySourceField{Num: 2, Tally: map[uint16]atem.TallyLamps{
-		1: {}, 4: {Program: true}}})); got != "tally  4 pgm" {
+		1: {}, 4: {Program: true}}})).text(); got != "tally  4 pgm" {
 		t.Errorf("first tally: %q", got)
 	}
 }

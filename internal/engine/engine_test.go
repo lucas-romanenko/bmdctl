@@ -269,8 +269,8 @@ func TestSocketMode(t *testing.T) {
 	}
 }
 
-// Notes go only to a request that asks: the connect, the switcher, and a
-// command's values before and after. The response is the same either way.
+// Notes go only to a request that asks: the connect, the switcher, what
+// is live before and after, and a command's values before and after. The response is the same either way.
 func TestNotes(t *testing.T) {
 	r := newRig(t, Config{})
 	frames := func(req Request) ([]Note, string) {
@@ -294,9 +294,15 @@ func TestNotes(t *testing.T) {
 	}
 	req := Request{Device: "atem", Host: fakeatem.Address, Path: "program", Params: map[string]string{"source": "1"}, Notes: true}
 	notes, resp := frames(req)
-	if len(notes) != 3 || notes[0].Connecting != "192.0.2.10:9910" || notes[1].Switcher == nil || len(notes[2].Values) != 2 {
+	// What is live comes before the command and after it.
+	if len(notes) != 5 || notes[0].Connecting != "192.0.2.10:9910" || notes[1].Switcher == nil || notes[2].OnAir == nil ||
+		len(notes[3].Values) != 2 || notes[4].OnAir == nil {
 		t.Fatalf("notes: %+v", notes)
 	}
+	if was, now := *notes[2].OnAir, *notes[4].OnAir; was != (OnAir{"CAM2", "CAM1", 2, 1}) || now != (OnAir{"CAM1", "CAM1", 1, 1}) {
+		t.Errorf("on air: %+v, then %+v", was, now)
+	}
+	notes = append(notes[:2], notes[3])
 	sw := notes[1].Switcher
 	if sw.Name != "ATEM 1 M/E Constellation HD" || sw.Product != sw.Name || sw.VideoMode != "1080p50" || !sw.Ready || sw.DropS != 600 {
 		t.Errorf("switcher: %+v", sw)
@@ -306,7 +312,7 @@ func TestNotes(t *testing.T) {
 		t.Errorf("values: %+v", v)
 	}
 	// A warm session: no connect; no notes at all unless asked.
-	if notes, _ := frames(req); len(notes) != 2 || notes[0].Switcher == nil {
+	if notes, _ := frames(req); len(notes) != 4 || notes[0].Switcher == nil {
 		t.Errorf("warm: %+v", notes)
 	}
 	req.Notes = false

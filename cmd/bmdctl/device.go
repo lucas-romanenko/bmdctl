@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -77,6 +78,10 @@ func (c *cli) noticeOldForm(e *table.Entry, raw map[string]string, tokens []stri
 func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 	label := strings.TrimSpace(req.Device + " " + e.Path)
 	if e.Destructive && !g.yes {
+		if c.terminal() {
+			c.screenError(danger(e), termStep(exitDestructive))
+			return exitDestructive
+		}
 		return c.fail(exitDestructive, "bmdctl %s: destructive: add --yes to run it", label)
 	}
 	files, err := c.readFiles(e, req.Params)
@@ -88,9 +93,18 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 	}
 	req.Files = files
 	if e.Unverified && !g.json {
-		fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: atemwire restored it from pyatem without checking it on a switcher\n", label)
+		c.unverified(label)
 	}
-	out := &printer{c: c, g: g, e: e, params: req.Params}
+	out := &printer{c: c, g: g, e: e, params: req.Params, typed: req.Params}
+	if _, all := req.Params["all"]; c.terminal() && e.Path == "macro list" && !all {
+		// A terminal counts the empty slots it hides.
+		req.Params = maps.Clone(req.Params)
+		if req.Params == nil {
+			req.Params = map[string]string{}
+		}
+		req.Params["all"] = "true"
+		out.params = req.Params
+	}
 	if !e.Local {
 		var err error
 		if out.t, err = c.resolveTarget(g); err != nil {
@@ -140,7 +154,6 @@ func (c *cli) send(g globals, e *table.Entry, req engine.Request, out *printer, 
 	// Starting the engine means opening a session too, unless the
 	// command opens none.
 	spawned := func() {
-		c.banner()
 		if e.Path != "disconnect" {
 			c.sayConnecting(g, out.who())
 		}

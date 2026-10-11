@@ -144,6 +144,19 @@ type Note struct {
 	// Values are what a command sets, each before and after, in the
 	// units it takes. The CLI shows a write from them.
 	Values []Value `json:"values,omitempty"`
+	// OnAir is what M/E 1 has on program and preview: sent with the
+	// Switcher note, and again once a command is done, so a terminal's
+	// header shows what is live.
+	OnAir *OnAir `json:"on_air,omitempty"`
+}
+
+// OnAir is M/E 1's program and preview sources: by id, and by name as a
+// line shows them (short name, else long name, else id).
+type OnAir struct {
+	Program   string `json:"program"`
+	Preview   string `json:"preview"`
+	ProgramID int    `json:"program_id"`
+	PreviewID int    `json:"preview_id"`
 }
 
 // Switcher is a switcher as the engine's session to it knows it.
@@ -181,6 +194,9 @@ type Value struct {
 	// After is what the switcher reported back for a confirmed command,
 	// else what was sent.
 	After string `json:"after"`
+	// Kept: the switcher confirmed the command but kept the value it
+	// held, not the one sent (a terminal says "rejected").
+	Kept bool `json:"kept,omitempty"`
 }
 
 // frame is one line from the engine: a file, a note or a response.

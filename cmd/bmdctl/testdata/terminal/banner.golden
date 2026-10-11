@@ -1,16 +1,22 @@
 $ bmdctl 
-<b>></> <dim>bmd</><b>ctl</>
-  <dim>(devel), hosts ~/config/bmdctl/hosts.yml</>
-<dim>engine</>  running, pid #, up #s, 2 sessions
-<b>studio</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50  ready, idle #s  <dim>(default)</>
-<b>spare</> <dim>(192.0.2.11)</>   ATEM 1 M/E Constellation HD  1080p50  ready, idle #s
+<dim>bmdctl VERSION</>
+
+  <b>studio</>  192.0.2.10  ATEM 1 M/E Constellation HD  1080p50  ● 0s
+  <b>spare</>   192.0.2.11                                        <dim>not connected</>
+  <b>deck</>    192.0.2.20  hyperdeck                             <dim>no commands yet</>
+
+  <dim>bmdctl help</>
 
 $ bmdctl program cam1
-<b>></> <b>studio</> <dim>(192.0.2.10)</>  program  ME1            CAM2 → <red>CAM1</>  confirmed <dim>  # ms</>
+<b>studio</>  <dim>PGM CAM1 · PVW CAM1</>
+  program     CAM2 → <red>CAM1</>                                   <dim># ms</>
+
+$ bmdctl version
+bmdctl VERSION
+  hosts       ~/config/bmdctl/hosts.yml
+  engine      running · pid # · up #s · 1 session
 
 $ bmdctl --host studio program cam2
-<b>></> <dim>bmd</><b>ctl</>
-  <dim>(devel), hosts ~/config/bmdctl/hosts.yml</>
-<b>></> <b>studio</> <dim>(192.0.2.10)</>  program  ME1            <red>CAM2</>         confirmed <dim>  # ms</>
-! connected to <b>studio</> <dim>(192.0.2.10)</>: ATEM 1 M/E Constellation HD, 1080p50  <dim># ms</>
+<b>studio</>  <dim>PGM CAM2 · PVW CAM1 · 1080p50 · connected # ms</>
+  program     <red>CAM2</>                                          <dim># ms</>
 
