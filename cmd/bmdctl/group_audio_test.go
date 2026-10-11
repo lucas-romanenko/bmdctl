@@ -146,7 +146,7 @@ func TestAudioFollowsMixer(t *testing.T) {
 			if code != 0 || len(b.sent("CAMM")) != n+1 || b.lastSent(t, "CAMM") != "0500402700000100" {
 				t.Fatalf("audio master: %d %q %q", code, out, errOut)
 			}
-			if !strings.HasPrefix(out, "classic-audio master") || !strings.Contains(out, "volume 16423, afv true") ||
+			if !strings.Contains(out, "  classic-audio master  ") || !strings.Contains(out, "volume 16423, afv on") ||
 				!strings.Contains(errOut, "classic-audio master is unverified") {
 				t.Errorf("audio master: %q %q", out, errOut)
 			}

@@ -12,6 +12,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -34,13 +35,20 @@ type watchEvent struct {
 // watchView is what the human form remembers: names to show sources by,
 // and the values a change is shown against.
 type watchView struct {
-	names      map[int]string // source: short name, else long name
-	program    map[int]int    // M/E: source
+	who        string                      // the switcher, for the line saying its session dropped
+	paint      func(code, s string) string // colours program red, preview green
+	names      map[int]string              // source: short name, else long name
+	program    map[int]int                 // M/E: source
 	preview    map[int]int
 	tally      map[int]atem.TallyLamps // source: lamps
 	tallyKnown bool
 	style      map[int]int       // M/E: transition style
 	started    map[int]time.Time // M/E: when its transition began
+	// away: the session dropped. The switcher's state dump when it comes
+	// back isn't news; it updates the view quietly, and program and
+	// preview as they were when it dropped show what changed meanwhile.
+	away               bool
+	awayProg, awayPrev map[int]int
 }
 
 var transitionStyles = []string{"mix", "dip", "wipe", "dve", "stinger"}
@@ -49,7 +57,8 @@ var transitionStyles = []string{"mix", "dip", "wipe", "dve", "stinger"}
 // starts from nothing.
 func newWatchView(st *atem.State) *watchView {
 	v := &watchView{names: map[int]string{}, program: map[int]int{}, preview: map[int]int{},
-		tally: map[int]atem.TallyLamps{}, style: map[int]int{}, started: map[int]time.Time{}}
+		tally: map[int]atem.TallyLamps{}, style: map[int]int{}, started: map[int]time.Time{},
+		paint: func(_, s string) string { return s }}
 	if st == nil {
 		return v
 	}
@@ -104,7 +113,17 @@ func prettyKey(ev watchEvent) string {
 
 // line renders one change, without its time.
 func (v *watchView) line(ev watchEvent) string {
-	if ev.Kind != "state" {
+	switch ev.Kind {
+	case "disconnected":
+		who := v.who
+		if who == "" {
+			who = "the switcher"
+		}
+		return "session to " + who + " dropped"
+	case "ready":
+		return "reconnected"
+	case "state":
+	default:
 		return ev.Kind
 	}
 	at, _ := time.Parse("15:04:05.000", ev.Time)
@@ -115,16 +134,17 @@ func (v *watchView) line(ev watchEvent) string {
 			Source int `json:"source"`
 		}
 		json.Unmarshal(ev.Value, &f)
-		label, last := "program", v.program
+		label, last, colour := "program", v.program, red
 		if ev.Opcode == "PrvI" {
-			label, last = "preview", v.preview
+			label, last, colour = "preview", v.preview, green
 		}
 		was, known := last[f.Index]
 		last[f.Index] = f.Source
+		now := v.paint(colour, v.source(f.Source))
 		if known && was != f.Source {
-			return fmt.Sprintf("%s  ME%v  %s → %s", label, table.Index(f.Index), v.source(was), v.source(f.Source))
+			return fmt.Sprintf("%s  ME%v  %s → %s", label, table.Index(f.Index), v.source(was), now)
 		}
-		return fmt.Sprintf("%s  ME%v  %s", label, table.Index(f.Index), v.source(f.Source))
+		return fmt.Sprintf("%s  ME%v  %s", label, table.Index(f.Index), now)
 	case "TlSr":
 		var f atem.TallySourceField
 		json.Unmarshal(ev.Value, &f)
@@ -161,7 +181,14 @@ func (v *watchView) line(ev watchEvent) string {
 			if was := v.tally[s]; was == now && (v.tallyKnown || now == atem.TallyLamps{}) {
 				continue
 			}
-			changed = append(changed, v.source(s)+" "+lamps(now))
+			entry := v.source(s) + " " + lamps(now)
+			switch {
+			case now.Program:
+				entry = v.paint(red, entry)
+			case now.Preview:
+				entry = v.paint(green, entry)
+			}
+			changed = append(changed, entry)
 		}
 		v.tally, v.tallyKnown = map[int]atem.TallyLamps{}, true
 		for s, l := range f.Tally {
@@ -235,6 +262,30 @@ func lamps(l atem.TallyLamps) string {
 	return "off"
 }
 
+// dropped marks the session gone: the view holds what it last knew.
+func (v *watchView) dropped() {
+	v.away, v.awayProg, v.awayPrev = true, maps.Clone(v.program), maps.Clone(v.preview)
+}
+
+// back is what to say when the session is back: that it is, then each
+// program and preview that changed while it was away.
+func (v *watchView) back() []string {
+	v.away = false
+	out := []string{"reconnected"}
+	for _, bus := range []struct {
+		label    string
+		was, now map[int]int
+		colour   string
+	}{{"program", v.awayProg, v.program, red}, {"preview", v.awayPrev, v.preview, green}} {
+		for _, me := range slices.Sorted(maps.Keys(bus.now)) {
+			if was, ok := bus.was[me]; ok && was != bus.now[me] {
+				out = append(out, fmt.Sprintf("%s  ME%v  %s → %s", bus.label, table.Index(me), v.source(was), v.paint(bus.colour, v.source(bus.now[me]))))
+			}
+		}
+	}
+	return out
+}
+
 func formatWatch(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var ev watchEvent
 	json.Unmarshal(raw, &ev)
@@ -246,10 +297,27 @@ func formatWatch(p *printer, _ engine.Response, raw json.RawMessage) []string {
 			p.watch = newWatchView(&st)
 		}
 		fmt.Fprintln(p.c.stderr, "watching; Ctrl-C to stop")
-		return nil
+		return []string{p.header()}
 	}
 	if p.watch == nil {
 		p.watch = newWatchView(nil)
 	}
-	return []string{ev.Time + "  " + p.watch.line(ev)}
+	v := p.watch
+	v.who, v.paint = p.who(), p.c.colour
+	var lines []string
+	switch {
+	case ev.Kind == "disconnected":
+		lines = []string{v.line(ev)}
+		v.dropped()
+	case ev.Kind == "ready" && v.away:
+		lines = v.back()
+	case v.away:
+		v.line(ev) // the dump coming back: the view follows it, quietly
+	default:
+		lines = []string{v.line(ev)}
+	}
+	for i := range lines {
+		lines[i] = ev.Time + "  " + lines[i]
+	}
+	return lines
 }

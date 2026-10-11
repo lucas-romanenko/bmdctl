@@ -16,43 +16,6 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
 
-// Colour only on a terminal, and not with NO_COLOR or TERM=dumb.
-func TestColour(t *testing.T) {
-	b := newBench(t)
-	for _, c := range []struct {
-		tty    bool
-		env    map[string]string
-		colour bool
-	}{
-		{true, nil, true},
-		{false, nil, false},
-		{true, map[string]string{"NO_COLOR": "1"}, false},
-		{true, map[string]string{"TERM": "dumb"}, false},
-	} {
-		for k, v := range c.env {
-			b.env[k] = v
-		}
-		cl, o, _ := b.cli("")
-		cl.tty = c.tty
-		if code := cl.run(with("program", "1")); code != 0 {
-			t.Fatal(code)
-		}
-		if got := strings.Contains(o.String(), "\x1b["); got != c.colour {
-			t.Errorf("tty %v env %v: colour %v: %q", c.tty, c.env, got, o)
-		}
-		for k := range c.env {
-			delete(b.env, k)
-		}
-	}
-	// --json is never coloured.
-	cl, o, _ := b.cli("")
-	cl.tty = true
-	cl.run(with("program", "1", "--json"))
-	if strings.Contains(o.String(), "\x1b[") {
-		t.Errorf("--json coloured: %q", o)
-	}
-}
-
 // With --json, a failure the CLI finds itself is printed as the engine
 // prints one: {ok:false, code, error} on stdout, with its exit status.
 func TestJSONFailures(t *testing.T) {

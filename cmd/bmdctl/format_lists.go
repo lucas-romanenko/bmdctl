@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
@@ -66,13 +67,15 @@ func formatProfile(p *printer, r engine.Response, raw json.RawMessage) []string 
 	switch p.e.Path {
 	case "profile save":
 		file := p.params["file"]
-		lines = append(lines, fmt.Sprintf("saved %s: %s %s, %d bytes", file, pr.Product, pr.VideoMode, pr.Bytes))
+		lines = append(lines, fmt.Sprintf("%s  saved %s: %s %s, %d bytes", p.who(), file, pr.Product, pr.VideoMode, pr.Bytes))
 	case "profile restore":
-		status := p.c.colour(green, pr.Summary)
+		status := pr.Summary
 		if len(pr.Errors) > 0 {
 			status = p.c.colour(red, pr.Summary)
 		}
-		lines = append(lines, fmt.Sprintf("restored %s (%s): %s", p.params["file"], strings.TrimSpace(pr.Product+" "+pr.VideoMode), status))
+		lines = append(lines, fmt.Sprintf("%s  restored %s (%s): %s", p.who(), p.params["file"], strings.TrimSpace(pr.Product+" "+pr.VideoMode), status))
+	case "profile images":
+		lines = append(lines, fmt.Sprintf("%s  saved the media pool's stills in %s", p.who(), p.params["dir"]))
 	}
 	var rows [][]string
 	for _, e := range pr.Errors {
@@ -148,39 +151,42 @@ func formatMediaList(p *printer, _ engine.Response, raw json.RawMessage) []strin
 	return p.table(rows)
 }
 
-// formatTransfer is a transfer's line: what moved where.
+// formatTransfer is a transfer's line, laid out as a write's: the
+// switcher, the command and its slot, what moved where, the status.
 func formatTransfer(p *printer, r engine.Response, raw json.RawMessage) []string {
 	var t engine.TransferResult
 	json.Unmarshal(raw, &t)
-	status := p.c.colour(green, padRight("confirmed", 9))
-	if !r.Confirmed {
-		status = p.c.colour(yellow, padRight("sent", 9))
-	}
-	what := fmt.Sprintf("slot %d", t.Slot)
+	change := ""
 	if t.Name != "" {
-		what += fmt.Sprintf(" %q", t.Name)
+		change = strconv.Quote(t.Name)
+	}
+	add := func(sep, s string) {
+		if change != "" {
+			s = sep + s
+		}
+		change += s
 	}
 	switch p.e.Path {
 	case "media upload", "macro upload":
 		if t.Source != "" {
-			what += fmt.Sprintf(" from %s", t.Source)
+			add(" ", "from "+t.Source)
 		}
 		if t.Replaced != "" {
-			what += fmt.Sprintf(", replacing %q", t.Replaced)
+			add(", ", fmt.Sprintf("replacing %q", t.Replaced))
 		}
 	case "media download", "macro download":
 		if len(p.written) > 0 {
-			what += " to " + strings.Join(p.written, ", ")
+			add(" ", "to "+strings.Join(p.written, ", "))
 		}
 		if t.Width > 0 {
-			what += fmt.Sprintf(", %dx%d", t.Width, t.Height)
+			add(", ", fmt.Sprintf("%dx%d", t.Width, t.Height))
 		}
 	case "media clear":
 		if t.Replaced != "" {
-			what += fmt.Sprintf(", was %q", t.Replaced)
+			add(", ", fmt.Sprintf("was %q", t.Replaced))
 		}
 	}
-	return []string{fmt.Sprintf("%-24s %s %5d ms  %s", p.e.Path, status, r.TookMS, what)}
+	return []string{p.writeLine(fmt.Sprintf("%s %d", p.e.Path, t.Slot), "", change, r.Confirmed, r.TookMS)}
 }
 
 // formatInputs is one source per line: id, short name, long name, port

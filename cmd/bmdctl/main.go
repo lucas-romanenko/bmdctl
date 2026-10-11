@@ -2,9 +2,10 @@
 
 // Command bmdctl controls Blackmagic Design devices from the command line.
 //
-//	bmdctl version
-//	bmdctl --help
-//	bmdctl --host 10.0.0.20 program --source "Camera 2"
+//	bmdctl
+//	bmdctl help
+//	bmdctl hosts add 10.0.0.20
+//	bmdctl --host studio program "Camera 2"
 //	bmdctl --dry-run transition wipe --width 50
 //
 // Commands run through a background engine (internal/engine) that keeps
@@ -27,11 +28,14 @@ var (
 	date    = ""
 )
 
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
 func main() {
 	c := newCLI(os.Stdout, os.Stderr)
-	if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
-		c.tty = true
-	}
+	c.tty, c.ttyErr = isTerminal(os.Stdout), isTerminal(os.Stderr)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	c.ctx = ctx
 	code := c.run(os.Args[1:])

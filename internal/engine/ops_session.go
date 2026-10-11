@@ -239,6 +239,9 @@ func opDisconnect(c *call) (any, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	if h, s := c.e.session(key); s != nil {
+		c.note(Note{Switcher: c.e.switcherNote(h, s.State(), 0)})
+	}
 	closed, err := c.e.disconnect(key)
 	return DisconnectResult{Host: key, Closed: closed}, false, err
 }

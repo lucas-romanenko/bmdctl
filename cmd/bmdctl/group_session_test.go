@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -21,8 +22,15 @@ func TestSessionCommands(t *testing.T) {
 	b.must(with("preview", "Camera 2")...)
 
 	out := b.must(with("status")...)
-	for _, want := range []string{"session     192.0.2.10:9910", "ATEM 1 M/E Constellation HD", "1080p50",
-		"program 1 (Camera 1)", "preview 2 (Camera 2)", "me 1 key 1  on air", "me 1 key 4  off air", "dsk 1       on air",
+	// A header names the switcher, its model and video mode; the session
+	// says how long it was idle and when it drops.
+	if !strings.HasPrefix(out, "ATEM 1 M/E Constellation HD (192.0.2.10)  ATEM 1 M/E Constellation HD  1080p50\n") {
+		t.Errorf("status header:\n%s", out)
+	}
+	if !regexp.MustCompile(`\nsession     ready, idle \ds, drops at \d\d:\d\d if unused\n`).MatchString(out) {
+		t.Errorf("status session:\n%s", out)
+	}
+	for _, want := range []string{"program 1 (Camera 1)", "preview 2 (Camera 2)", "me 1 key 1  on air", "me 1 key 4  off air", "dsk 1       on air",
 		"dsk 2       off air", "aux 1       3010 (Media Player 1)", "macro"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status lacks %q:\n%s", want, out)
@@ -49,7 +57,8 @@ func TestSessionCommands(t *testing.T) {
 	}
 
 	out = b.must(with("info")...)
-	for _, want := range []string{"product       ATEM 1 M/E Constellation HD (model 27)", "video mode    1080p50 (mode 12), 1920x1080",
+	for _, want := range []string{"ATEM 1 M/E Constellation HD (192.0.2.10)  ATEM 1 M/E Constellation HD  1080p50\n",
+		"product       ATEM 1 M/E Constellation HD (model 27)", "video mode    1080p50 (mode 12), 1920x1080",
 		"m/es          1, upstream keyers 4", "audio         fairlight", "inputs        8"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("info lacks %q:\n%s", want, out)
@@ -57,10 +66,10 @@ func TestSessionCommands(t *testing.T) {
 	}
 
 	// A leaf prints its bare value, for scripts; anything bigger, one
-	// dotted.key value line per leaf.
+	// dotted.key value line per leaf, after the header.
 	for path, want := range map[string]string{
 		"mes.0.program.source": "1\n", "inputs.1.name": "Camera 1\n", "inputs.1.default_name": "true\n",
-		"mes.0.program": "index   0\nsource  1\n",
+		"mes.0.program": "ATEM 1 M/E Constellation HD (192.0.2.10)  ATEM 1 M/E Constellation HD  1080p50\nindex   0\nsource  1\n",
 	} {
 		if out := b.must(with("state", "--path", path)...); out != want {
 			t.Errorf("state --path %s: %q, want %q", path, out, want)
@@ -80,16 +89,19 @@ func TestSessionCommands(t *testing.T) {
 
 	// connect pins the session; disconnect closes it; the next command
 	// opens a new one.
-	if out := b.must(with("connect")...); !strings.Contains(out, "connected  192.0.2.10:9910  ready, pinned") {
+	if out := b.must(with("connect")...); out != "ATEM 1 M/E Constellation HD (192.0.2.10)  connected, pinned: open until disconnect\n" {
 		t.Errorf("connect: %q", out)
+	}
+	if out := b.must(with("status")...); !strings.Contains(out, "\nsession     ready, idle 0s, pinned: open until disconnect\n") {
+		t.Errorf("status when pinned:\n%s", out)
 	}
 	if out := b.must("engine", "status"); !strings.Contains(out, "ready, pinned") {
 		t.Errorf("engine status after connect:\n%s", out)
 	}
-	if out := b.must(with("disconnect")...); out != "disconnected 192.0.2.10:9910\n" {
+	if out := b.must(with("disconnect")...); out != "ATEM 1 M/E Constellation HD (192.0.2.10)  disconnected\n" {
 		t.Errorf("disconnect: %q", out)
 	}
-	if out := b.must(with("disconnect")...); out != "no session to 192.0.2.10:9910\n" {
+	if out := b.must(with("disconnect")...); out != "192.0.2.10  no session to close\n" {
 		t.Errorf("disconnect again: %q", out)
 	}
 	if n := len(b.switchers()); n != 1 {
@@ -99,7 +111,7 @@ func TestSessionCommands(t *testing.T) {
 	if n := len(b.switchers()); n != 2 {
 		t.Errorf("%d sessions after disconnect", n)
 	}
-	if out := b.must(with("connect", "--pin", "false")...); !strings.Contains(out, "closes after") {
+	if out := b.must(with("connect", "--pin", "false")...); !regexp.MustCompile(`  connected, drops at \d\d:\d\d if unused\n$`).MatchString(out) {
 		t.Errorf("connect --pin false: %q", out)
 	}
 }
@@ -179,6 +191,9 @@ func TestWatch(t *testing.T) {
 	go func() { done <- c.run(with("watch", "--filter", "PrgI", "--count", "1")) }()
 	if l := ew.next(t); l != "watching; Ctrl-C to stop" {
 		t.Errorf("stderr %q", l)
+	}
+	if l := w.next(t); l != "ATEM 1 M/E Constellation HD (192.0.2.10)  ATEM 1 M/E Constellation HD  1080p50" {
+		t.Errorf("header %q", l)
 	}
 	b.must(with("program", "2")...)
 	if l := w.next(t); !strings.HasSuffix(l, "  program  ME1  CAM1 → CAM2") {

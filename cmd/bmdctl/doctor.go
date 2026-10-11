@@ -117,8 +117,7 @@ func (c *cli) doctorEngine(sock string, add func(name, status, format string, ar
 	defer conn.Close()
 	ctx, cancel := context.WithTimeout(c.ctx, 3*time.Second)
 	defer cancel()
-	resp, err := engine.Call(ctx, conn, engine.Request{Device: "engine", Path: "status"},
-		func([]byte, *engine.FileFrame, *engine.Response) error { return nil })
+	resp, err := engine.Call(ctx, conn, engine.Request{Device: "engine", Path: "status"}, nil)
 	if err != nil {
 		add("engine", "fail", "%s accepts connections but doesn't answer: %v", sock, err)
 		return nil
@@ -239,7 +238,7 @@ func (c *cli) doctorHosts(add func(name, status, format string, args ...any)) *h
 		return nil
 	}
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		add("hosts", "ok", "%s: none yet (bmdctl hosts add NAME ADDRESS)", path)
+		add("hosts", "ok", "%s: none yet (bmdctl hosts add ADDRESS, or bmdctl hosts discover)", path)
 	} else if errs := f.Check(); len(errs) > 0 {
 		for _, e := range errs {
 			add("hosts", "fail", "%s: %v", path, e)
@@ -255,8 +254,8 @@ func (c *cli) doctorHosts(add func(name, status, format string, args ...any)) *h
 		if v.spec == "" {
 			continue
 		}
-		if f.Find(v.spec) == nil && hosts.CheckAddress(v.spec) != nil {
-			add(v.name, "fail", "%q is neither a host in hosts.yml nor an address", v.spec)
+		if _, _, err := f.Resolve(v.spec); err != nil {
+			add(v.name, "fail", "%v", err)
 		} else {
 			add(v.name, "ok", "%s", v.spec)
 		}
@@ -291,7 +290,7 @@ func (c *cli) doctorReach(f *hosts.File, st *engine.Status, add func(name, statu
 	}
 	wg.Wait()
 	for i, h := range f.Hosts {
-		add("host "+h.Name, results[i].status, "%s %s: %s", h.Device, h.Address, results[i].detail)
+		add("host "+h.Label(), results[i].status, "%s %s: %s", h.Device, h.Address, results[i].detail)
 	}
 }
 

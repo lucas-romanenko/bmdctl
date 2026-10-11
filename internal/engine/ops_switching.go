@@ -78,7 +78,11 @@ func opTransitionNext(c *call) (any, bool, error) {
 		return nil, false, codeErr(CodeUsage, "--next %d does not fit", mask)
 	}
 	m := uint8(mask)
-	return c.sendBuilt(atem.TransitionSettings{ME: me, NextTransition: &m})
+	next := c.entry.Params[slicesIndex(c.entry.Params, "next")]
+	fps := atem.DisplayFPS(c.state)
+	change := Value{Param: "next", Before: ptr(showValue(next, selection(c.state, int(me)), c.state, fps)),
+		After: showValue(next, mask, c.state, fps)}
+	return c.sendBuilt(atem.TransitionSettings{ME: me, NextTransition: &m}, change)
 }
 
 // opTransitionRate is set_transition_rate: the rate goes to whichever
@@ -110,12 +114,19 @@ func opTransitionRate(c *call) (any, bool, error) {
 	default:
 		return nil, false, codeErr(CodeUsage, "unknown transition style %d", style)
 	}
-	return c.sendBuilt(cmd)
+	fps := c.args.FPS
+	if fps <= 0 {
+		fps = atem.DisplayFPS(c.state)
+	}
+	change := Value{Param: "rate", Before: ptr(atem.FormatRate(c.state.ActiveTransitionRate(int(me)), fps)),
+		After: atem.FormatRate(int(frames), fps)}
+	return c.sendBuilt(cmd, change)
 }
 
 // sendBuilt validates a command an operation built and sends it, its
-// result shaped like a wire command's.
-func (c *call) sendBuilt(cmd atem.Command) (any, bool, error) {
+// result shaped like a wire command's. change, if given, is what it
+// changes, for the note; else the note is its arguments'.
+func (c *call) sendBuilt(cmd atem.Command, change ...Value) (any, bool, error) {
 	if v, ok := cmd.(atem.Validator); ok {
 		if err := v.Validate(); err != nil {
 			return nil, false, usageErr(err)
@@ -126,5 +137,6 @@ func (c *call) sendBuilt(cmd atem.Command) (any, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	c.noteValues(confirmed, change)
 	return r, confirmed, nil
 }

@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -44,7 +45,7 @@ func TestMediaCommands(t *testing.T) {
 	os.WriteFile(logo, testPNG(t), 0o644)
 
 	out := b.must(with("media", "upload", "3", logo)...)
-	if !strings.Contains(out, "confirmed") || !strings.Contains(out, `slot 3 "logo" from 64x36 png`) {
+	if !regexp.MustCompile(`  media upload 3 +"logo" from 64x36 png +confirmed `).MatchString(out) {
 		t.Errorf("upload: %q", out)
 	}
 	out = b.must(with("media", "list")...)

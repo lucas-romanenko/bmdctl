@@ -22,8 +22,8 @@ import (
 const spawnWait = 5 * time.Second
 
 // connectEngine connects to the engine, starting one in the background
-// if none is listening.
-func (c *cli) connectEngine() (io.ReadWriteCloser, error) {
+// if none is listening, and then calling spawned (if not nil).
+func (c *cli) connectEngine(spawned func()) (io.ReadWriteCloser, error) {
 	sock := paths.Socket(c.env)
 	conn, err := engine.Dial(c.ctx, sock)
 	if err == nil {
@@ -38,6 +38,9 @@ func (c *cli) connectEngine() (io.ReadWriteCloser, error) {
 	}
 	if err := c.spawn(exe, []string{"engine", "--background"}, c.environ()); err != nil {
 		return nil, exitf(exitUnreachable, "starting the engine: %v", err)
+	}
+	if spawned != nil {
+		spawned()
 	}
 	deadline := time.Now().Add(spawnWait)
 	for wait := 10 * time.Millisecond; ; wait = min(2*wait, 200*time.Millisecond) {
@@ -278,9 +281,9 @@ func (c *cli) engineCall(conn io.ReadWriteCloser, path string, g globals) (engin
 	defer conn.Close()
 	ctx, cancel := context.WithTimeout(c.ctx, 10*time.Second)
 	defer cancel()
-	return engine.Call(ctx, conn, engine.Request{Device: "engine", Path: path}, func(line []byte, _ *engine.FileFrame, _ *engine.Response) error {
-		if g.json && !g.quiet {
-			fmt.Fprintf(c.stdout, "%s\n", line)
+	return engine.Call(ctx, conn, engine.Request{Device: "engine", Path: path}, func(f engine.Frame) error {
+		if g.json && !g.quiet && f.Response != nil {
+			fmt.Fprintf(c.stdout, "%s\n", f.Line)
 		}
 		return nil
 	})

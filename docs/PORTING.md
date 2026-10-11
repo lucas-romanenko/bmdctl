@@ -59,8 +59,9 @@ it. When you make a new decision, add it here in the same commit.
 - `internal/fixtures/` holds bytes and files copied from atemwire's test
   suite, so it carries atemwire's licence as well.
 - Everything else (the CLI, the other device packages, `internal/table`,
-  `internal/fakeatem`, `internal/engine`, `internal/paths`) is MIT, as
-  bmdwire's non-ATEM packages are.
+  `internal/fakeatem`, `internal/engine`, `internal/hosts`,
+  `internal/mdns`, `internal/paths`) is MIT, as bmdwire's non-ATEM
+  packages are.
 
 ## Fixtures (`internal/fixtures`)
 
@@ -1037,7 +1038,7 @@ and a zero value selects nothing.
   optional (`bmdctl program ...` is `bmdctl atem program ...`); help is
   `--help` at any level. Global flags are accepted anywhere on the line:
   `--host`, `--json`, `--quiet`/`-q`, `--yes`/`-y`, `--dry-run`, `--fps`,
-  `--timeout`, `--help`/`-h`. One-letter forms are single-dash only,
+  `--timeout`, `--no-color`, `--help`/`-h`. One-letter forms are single-dash only,
   because parameters named `q` (EQ Q) and `y` (SuperSource, chroma
   cursor) exist; a test keeps parameter names off the global flags. A
   bool flag given alone (`--fly`) is true; a positional bool takes on,
@@ -1055,13 +1056,9 @@ and a zero value selects nothing.
   destructive command without `--yes`, no host) in the same
   `{ok:false, code, error}` shape on stdout, so a script reads one form.
   `--quiet` prints nothing on stdout, `--json` or not; errors still go to
-  stderr. Otherwise a result is one line: a wire command (or an
-  operation that sends one) is its path, `confirmed` or `sent`, the time
-  taken and the arguments as sent (indexes from 1, sources with their names,
-  enums by name), in fixed columns so the lines of `exec` line up.
-  Operations print one aligned line per row of their result. Colour (the
-  status, what is on air) only when stdout is a terminal, and never with
-  `NO_COLOR` set or `TERM=dumb`, nor with `--json`.
+  stderr. What people see otherwise is set out under "Output conventions"
+  below; the UX pass after the fourth hardware run left `--json` and
+  `--quiet` exactly as they were.
 - **Every command runs.** `TestEveryCommandRuns` sends every entry in the
   table, with sample arguments, through an engine to the fake switcher
   and requires it to succeed (the one exception, `media
@@ -1071,6 +1068,89 @@ and a zero value selects nothing.
   unreachable, 3 sent but not confirmed in time, 4 refused by the
   switcher, 5 destructive without `--yes`. Phase 2's were 0, 1 refused or
   unreachable, 2 usage.
+
+## Output conventions (`cmd/bmdctl/output.go`)
+
+The UX pass after the fourth hardware run. Every command a person runs
+follows these; a new command does too, and says here where it can't.
+None of it reaches `--json` or `--quiet`: what the CLI shows that a
+response doesn't carry comes in note frames (Engine, "Notes"), which the
+CLI prints only for people, so every JSON line is byte for byte what it
+was.
+
+- **The switcher is named first, as `<name> (<address>)`.** The name is
+  the host's in hosts.yml, which is the switcher's own (Hosts, below)
+  unless `--as` gave one; for an address no host has, the name the
+  switcher gives itself, from the session's note; the address alone when
+  neither is known (an error before any session, `disconnect` with none).
+  The address drops ATEM's default port, `:9910`.
+- **A write is one line** (`printer.writeLine`), in columns so the lines
+  of `exec` to one switcher line up: the switcher; what was done, as said,
+  with the positional arguments that say where (`usk 2 on-air`, `aux 2`,
+  `audio strip CAM1`), and where given by a flag (`ME1`, `DSK2`, `MV1`,
+  `SS1`; another flag that says where only when typed); what changed;
+  `confirmed` or `sent`; the time. An argument says where when the
+  entry's echo key names it (`KeOn:<me>:<keyer>`), or, for an entry
+  without an echo, when it is an index. What changed is in watch's form:
+  `CAM2 → CAM5` for an entry's one required argument (or a value it has
+  no argument for, as `cut`'s program), else `rate 1:00 → 0:12, width 25
+  → 50`; a value the switcher already held, or whose before the state
+  doesn't hold, alone. Values read as watch shows them: sources by short
+  name (else long name, else id), indexes from 1, enums by name, flags
+  joined with `+`, booleans `on`/`off`, rates as seconds:frames, strings
+  quoted.
+- **Before and after come from the engine** (`internal/engine/notes.go`).
+  Before is read from the state the command found, through atemwire's
+  readers (`readers`, one per path): bmdwire v1.3.0 pairs each reader with
+  the operation that sets the same value, so the units are the
+  argument's (percent, dB, frames). After is read the same way from the
+  state the echo left, so a confirmed line shows what the switcher
+  reported, clamps and refusals included: against the fake switcher,
+  whose `mirror.go` answers with the state it holds, a wipe shows its old
+  rate. A command with no echo shows what it sent; `cut`, `auto`, `ftb
+  toggle` and `dsk auto` show what they ask for (`moves`), marked `sent`.
+  A command with no reader shows its arguments as sent. An operation that
+  sends one command says what it changes itself (`sendBuilt`'s change:
+  the toggles, `transition next`, `transition rate`, the macro slot).
+  Readers now cover the switching, transition, keyer, DSK, fade to black,
+  colour, media player, multiviewer input, input name, video mode and
+  Fairlight master commands; the DVE and chroma keys, Fairlight strips
+  and the rest show what was sent until someone adds theirs.
+- **A read starts with a header**, `<name> (<address>)  <model>  <video
+  mode>`, then its rows: `status`, `info`, `state` (but not a path to one
+  value, which prints the value alone, for scripts), `inputs`, `media
+  list`, `macro list`, `video-modes`, `time`, the meters, and `watch`
+  once it watches (`reports`). Transfers and profile save, restore and
+  images are one line starting with the switcher, as a write's.
+- **Opening a session says so, on stderr**: `connecting to <name>
+  (<address>) …` when a command starts the engine (`connectEngine`'s
+  `spawned`), when the engine dials for the request or makes it wait for
+  another request's dial, and when it waits for a session re-handshaking
+  after a silence; then `<model>, <video mode>` once it is ready. Once
+  per switcher per invocation, so `exec` says it at most once per host;
+  nothing when the session is warm; nothing with `--json` or `--quiet`.
+- **Colour only on a terminal**, stdout and stderr each checked for
+  themselves: program red and preview green (as tally lamps: the source
+  put on program or preview in a write's line, watch's program, preview
+  and tally lines, status, a running macro), errors red, `sent` dim,
+  headers bold. `--no-color` (new, global, passed by `exec` to its
+  lines), `NO_COLOR` and `TERM=dumb` turn it off; `--json` never has it.
+  `confirmed` is uncoloured, so green means preview alone.
+- **Errors end with the next step** (`nextStep`), on stderr only:
+  unreachable (exit 2) ends `(bmdctl doctor says why)`, not confirmed (3)
+  `(bmdctl status shows what the switcher holds now)`, destructive (5)
+  with `--yes` (every such message names it already); an unknown source
+  already ends `(bmdctl inputs lists them)` and an unknown host `(bmdctl
+  hosts lists them)`. The `{ok:false, code, error}` of `--json` keeps the
+  engine's message unchanged.
+- **`bmdctl` alone** (`overview.go`) prints the engine (running or not,
+  pid, uptime, sessions, the start of its build and whether it is this
+  bmdctl's) and a line per host: model, video mode, `ready, idle 2m10s`
+  (or pinned, connecting, failed, no session), `(default)`; then the
+  engines' sessions to addresses no host has, by the switcher's name. It
+  asks a running engine (the `overview` request) and never starts one.
+  `--json` has the same as `{engine, hosts}`. `bmdctl help` is the help,
+  which bare `bmdctl` printed (exit 1) before.
 - **`docs/COMMANDS.md`** is generated by `Registry.Markdown`; the golden test
   in `cmd/bmdctl` fails when it is stale and `-update` rewrites it.
 
@@ -1094,7 +1174,9 @@ and a zero value selects nothing.
 - **In order, stopping at the first failure** with its exit status, or
   with `--continue` running every line and exiting with the first
   failure's status. Human output is each command's line, in fixed
-  columns so they align; errors go to stderr prefixed `line N:`.
+  columns so the lines to one switcher align (the switcher's name leads
+  each line, so lines to two differ); errors, and the connecting lines,
+  go to stderr prefixed `line N:`. `--no-color` goes on every line.
   `--json` prints one response line per command. `exec`, `engine`,
   `completion`, `man` and `doctor` can't be lines.
 
@@ -1157,24 +1239,66 @@ and a zero value selects nothing.
 ## Hosts (`internal/hosts`, `cmd/bmdctl/hosts.go`)
 
 - **`hosts.yml`** lives in `$XDG_CONFIG_HOME/bmdctl` (`~/.config`;
-  `%AppData%\bmdctl` on Windows): a `default` and a `hosts` list of
-  `name`, `address` (`host` or `host:port`) and `device` (`atem`,
-  `hyperdeck`, `videohub`, `ultimatte`; `atem` when left out). The
-  standard library has no YAML reader, so `internal/hosts` reads exactly
-  this shape of YAML (block list, plain or quoted scalars, comments,
-  items at the key's indent or deeper) and refuses anything else with a
-  line number; it writes the same shape back atomically. `bmdctl hosts
-  add|rm|list|default` edit it.
-- **Names** are a letter, then letters, digits, `-` and `_`, matched
-  without regard to case, so no name reads as an address. Addresses are
-  an IP literal or a DNS name, with an optional port.
-- **Which host.** `--host` (a name, else an address), else
-  `$BMDCTL_HOST`, else the host the last `--host` named, else the default.
-  Only `--host` sets "last used" (`$XDG_STATE_HOME/bmdctl/last-host`), and
-  only when the switcher was reached; `hosts default NAME` sets it too,
-  so commands go to the new default at once. The default is the
-  configured, portable choice; last used is this machine's memory of
-  the most recent explicit one.
+  `%AppData%\bmdctl` on Windows): `version: 2`, a `default` and a
+  `hosts` list of `name`, optional `as` and `was`, `address` (`host` or
+  `host:port`) and `device` (`atem`, `hyperdeck`, `videohub`,
+  `ultimatte`; `atem` when left out). The standard library has no YAML
+  reader, so `internal/hosts` reads exactly this shape of YAML (block
+  list, plain or quoted scalars, comments, items at the key's indent or
+  deeper) and refuses anything else with a line number; it writes the
+  same shape back atomically. `bmdctl hosts add|rm|list|default|discover`
+  edit it.
+- **Hosts are named by their switchers** (the UX pass). `name` is what
+  the switcher calls itself: the name set in ATEM Setup (WhoI), else its
+  product name (`_pin`), as bmdwire v1.3.0's `atem_name`. `hosts add
+  ADDRESS` asks it through the engine's `info` (so the session stays warm
+  for the next command, and the connecting lines show) and stores that.
+  `--as NAME` gives a name of its own, which the host goes by instead
+  (`as`): for two switchers that call themselves the same, as two of one
+  model without ATEM Setup names do; the second `hosts add` without it
+  fails saying so. A HyperDeck, Videohub or Ultimatte needs `--as`, since
+  bmdctl can't ask them yet; a switcher that doesn't answer is an error
+  pointing at doctor, unless `--as` names it, which adds it anyway.
+  Adding an address that is a host already asks it again: it goes by its
+  switcher's name, or by `--as`. Output names a host by the name it goes
+  by: its switcher's, unless `--as`.
+- **Renames follow the switcher.** Every request's switcher note carries
+  the name the switcher gives itself; when it differs from the host's
+  `name`, the CLI (`adopt`) renames the host in hosts.yml, keeps the old
+  name as `was`, moves the default and the last host to the new one, and
+  says so on stderr (not with `--json` or `--quiet`, which rename all the
+  same). A host that goes by `--as` keeps it; the change is said. A new
+  name another host goes by isn't taken, and that is said, with the
+  `--as` to fix it, until it is fixed. `--host` still takes `was`, so a
+  script or `BMDCTL_HOST` naming the old name keeps working; one `was` is
+  kept, the latest.
+- **Migration.** A hosts.yml without `version` is bmdctl's earlier form,
+  names chosen by hand, and reads as it is: it is the new form with no
+  `as` or `was`. Each hand-chosen name stands until its switcher's next
+  command, which renames it as above (`bench (192.168.81.85) calls itself
+  "..." now: hosts.yml updated, and --host "bench" still works`); the
+  file is written as version 2 then. Hand-chosen names are treated as
+  provisional, not as `--as` names, because output is to show the
+  switcher's own name unless `--as` was used; `hosts add ADDRESS --as
+  NAME` restores one on purpose. `hosts add NAME ADDRESS`, the old form,
+  is read for one release as `hosts add ADDRESS --as NAME`, with a notice.
+- **Names** are any text a switcher could give itself: not empty, no
+  spaces around it, no control characters, at most 100 characters. They
+  match without regard to case, and go by (`Label`) `as`, else `name`;
+  two hosts can't go by one name.
+- **Which host.** `--host`, else `$BMDCTL_HOST`, else the host the last
+  `--host` named, else the default. Each is resolved (`File.Resolve`): a
+  host's name in any case; else the name one went by (`was`); else an IP
+  address (with any port), finding the host at it if there is one; else
+  any unambiguous start of a host's name (an ambiguous one lists the
+  names it could be); else a DNS name, an address. A bare address that is
+  a host's shows the host's name. Only `--host` sets "last used"
+  (`$XDG_STATE_HOME/bmdctl/last-host`), and only when the switcher was
+  reached, as the host's name, not the start of it typed (a host added
+  later could make that ambiguous); `hosts default NAME` sets it too, so
+  commands go to the new default at once. The default is the
+  configured, portable choice; last used is this machine's memory of the
+  most recent explicit one.
 - **Which device.** A device word on the line (`bmdctl atem ...`) wins;
   else a named host's `device`; else ATEM, so a bare address is an ATEM.
   A device word that disagrees with the named host's type is refused.
@@ -1182,6 +1306,27 @@ and a zero value selects nothing.
   is `hyperdeck-slot`, not `hyperdeck`, which is the HyperDeck device
   (phase 4); a test keeps every command's first word off the device
   names.
+- **`hosts discover`** (`internal/mdns`, `cmd/bmdctl/discover.go`) adds
+  every switcher that announces itself within `--for` (2 s), by its own
+  name. ATEM switchers announce DNS-SD `_switcher_ctrl._udp` with the
+  name set in ATEM Setup as the instance name, the service ATEM Software
+  Control browses; WebATEM's `discovery.py` (atem-web-control) found it
+  on a VLAN of 250 switchers, and found `_blackmagic._tcp` to be the
+  other Blackmagic devices', which bmdctl leaves alone until it has
+  commands for them (phase 4). The standard library has no mDNS, so
+  `internal/mdns` (MIT) sends one PTR query to 224.0.0.251:5353 from an
+  ephemeral port (RFC 6762 §6.7, a "legacy unicast" query: responders
+  answer that port, so a system responder holding 5353 doesn't matter),
+  collects answers, asks once more halfway for any instance's missing
+  SRV, TXT or A, and parses compressed names with a bound on pointers.
+  An instance's address is its SRV target's A record, else the
+  responder's. One switcher seen twice is one (TXT `unique id`, else the
+  address). Discovery opens no session: the next command to each
+  switcher checks the name, as for any host. A switcher at a host's
+  address with a new name renames it; one whose name another host goes
+  by is skipped, saying so. Tests replace the browse (`cli.discover`) and
+  give `mdns.Browse` an in-memory `PacketConn`; nothing leaves the
+  machine.
 
 ## Engine (`internal/engine`)
 
@@ -1245,6 +1390,23 @@ lives until 10 minutes pass without a request, unless pinned.
   up. `v` is the protocol version (1); another is refused with code
   `engine`, so a CLI and an engine built from different code can't
   misread each other. The caller hanging up cancels its request.
+- **Notes** (the UX pass). A request with `notes` also gets `{"note":
+  {...}}` frames before its response, each with one of: `connecting`
+  (the session's key, when the request opens the session, waits for
+  another request's dial, or waits for one re-handshaking), `switcher`
+  (`engine.Switcher`: the name the switcher gives itself, which is WhoI's
+  name, else `_pin`'s product name, as bmdwire v1.3.0's state.py
+  `atem_name` is; product, video mode, pinned, how long the session had
+  been idle before the request, how long it may stay idle after; every
+  request that uses a session gets one), or `values` (a command's
+  `{param, before, after}`, "Output conventions"). The CLI always asks
+  and prints them only for people; `--json` prints response lines alone,
+  as it skips file frames, so its output is unchanged. `Call` hands each
+  frame to its callback as an `engine.Frame`. The protocol version stays
+  1: an engine from before the field ignores it, and the CLI falls back
+  to what responses carry. An `overview` engine request answers `{engine,
+  switchers}`, the engine's status and a `Switcher` per session, for
+  `bmdctl` alone; `status` is unchanged.
 - **Files travel in the frames.** The engine may run where the caller's
   files aren't (a container, a service), so the CLI reads every `file`
   parameter and sends its bytes, and writes what comes back in file
@@ -1288,7 +1450,9 @@ comes back. Indexes in results count from 1, as the flags do
 (`table.Index`, above).
 
 - **Group a, the session** (`ops_session.go`).
-  - `status` reads the state through atemwire's readers: per M/E program
+  - `status` (its `session` row, from the switcher note: idle before
+    this request, or connected just now, and the time it drops unless
+    pinned) reads the state through atemwire's readers: per M/E program
     and preview with input names, the transition (style, rate as
     seconds:frames, next layers, position, preview), fade to black and
     each keyer; each DSK, aux output, the macro player and recorder, and
@@ -1332,7 +1496,13 @@ comes back. Indexes in results count from 1, as the flags do
     takes once the engine says it watches, kept up to date by the
     changes themselves (`InPr` renames included); a change in the moment
     between the two shows as the new value alone. `--json` prints the
-    engine's frames, unchanged.
+    engine's frames, unchanged. It starts with the read header, colours
+    program red and preview green, and (the UX pass) says `session to
+    <name> (<address>) dropped` and `reconnected` inline. The state dump
+    a switcher sends when the session comes back isn't news: the human
+    form takes it in quietly, then prints `reconnected` and a line for
+    each program and preview that changed while it was away, where
+    before it printed every packet of the dump.
     A stream that ends normally sends no final response; the CLI exits 0
     on `--count` or Ctrl-C, 2 if the session closes.
 - **Group b, switching** (`ops_switching.go`). The wire commands keep

@@ -69,14 +69,14 @@ func (c *cli) execCommand(g globals, words, tokens []string) int {
 	var common []string
 	if t, err := c.resolveTarget(g); err == nil {
 		common = append(common, "--host", t.Address)
-		if t.Name != "" {
-			common[1] = t.Name
+		if t.Host != nil {
+			common[1] = t.Host.Label()
 		}
 	}
 	for _, f := range []struct {
 		on   bool
 		flag string
-	}{{g.json, "--json"}, {g.quiet, "--quiet"}, {g.yes, "--yes"}} {
+	}{{g.json, "--json"}, {g.quiet, "--quiet"}, {g.yes, "--yes"}, {g.noColor, "--no-color"}} {
 		if f.on {
 			common = append(common, f.flag)
 		}

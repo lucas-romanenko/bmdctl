@@ -21,23 +21,27 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 
 ### Flags, accepted anywhere on the line
 
-- `--host H`: The device: a name from `bmdctl hosts`, or host[:port] (UDP 9910 by default). Without it: $BMDCTL_HOST, else the host the last --host named, else the default host.
+- `--host H`: The device: a name from `bmdctl hosts` in any case, any unambiguous start of one, or host[:port] (UDP 9910 by default). Without it: $BMDCTL_HOST, else the host the last --host named, else the default host.
 - `--json`: Print the engine's JSON response as it is: {ok, confirmed, result, took_ms} or {ok:false, code, error}, one per line.
 - `--quiet, -q`: Print nothing on stdout; the exit status tells. Errors still go to stderr.
 - `--yes, -y`: Allow a destructive command.
 - `--dry-run`: Print a wire command's bytes, header included, and send nothing.
 - `--fps N`: The frame rate for rates given as seconds:frames (default: the switcher's display rate; 25 with --dry-run).
 - `--timeout D`: How long to wait for the switcher's echo (default 5s), or for a transfer to finish (default: the library's).
+- `--no-color`: No colour, even on a terminal.
 - `--help, -h`: Help for the command line so far.
 
 ### Built-in commands
 
+- `bmdctl`: Show the engine (running or not, its sessions, its build) and a line per host: its model, video mode, how long its session has been idle, and which is the default. Never starts the engine.
+- `bmdctl help`: Print the help.
 - `bmdctl version`: Print bmdctl's version.
 - `bmdctl engine [--log-level L]`: Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running, and restarts one it started from another build of bmdctl; one run with bmdctl engine answers every build.
 - `bmdctl engine stop`: Stop the running engine; its sessions say goodbye to their switchers.
 - `bmdctl engine status`: Show the engine's version, build, pid, socket, log and sessions.
-- `bmdctl hosts [list]`: List the named hosts.
-- `bmdctl hosts add NAME ADDRESS [--device D]`: Name a device: atem (the default), hyperdeck, videohub or ultimatte.
+- `bmdctl hosts [list]`: List the hosts.
+- `bmdctl hosts add ADDRESS [--as NAME] [--device D]`: Add the switcher at ADDRESS by the name it gives itself: the one set in ATEM Setup, else its model. --as gives it another, for two switchers with one name. A hyperdeck, videohub or ultimatte (--device) needs --as: bmdctl can't ask them yet. An address added again is asked again.
+- `bmdctl hosts discover [--for D]`: Add every switcher that announces itself on the network (Bonjour, _switcher_ctrl._udp) within D (2s), by its own name.
 - `bmdctl hosts rm NAME`: Forget a host.
 - `bmdctl hosts default [NAME]`: Show the default host, or make NAME the default and the host commands go to now.
 - `bmdctl exec FILE|- [--continue]`: Run one command per line, in order, to one host. Every line is checked before the first is sent; it stops at the first failure unless --continue.
@@ -49,6 +53,8 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 
 - Arguments: A command's required arguments follow its words in the order they're said: `program 5`, `usk 1 fill cam3`, `media upload 10 logo.png`. Optional ones are --name flags, which may be shortened to any unambiguous prefix (--sat for --saturation); `[file]` in a syntax may be left out.
 - Devices: A command without a device word goes to the device type of its host, an ATEM for a bare address. `bmdctl atem ...` names the device.
+- Hosts: A host goes by the name its switcher gives itself, unless --as gave it one. When a switcher is renamed in ATEM Setup, the next command to it renames its host in hosts.yml and says so; --host still takes the name it had.
+- Output: A command that changes something prints one line: the switcher as `name (address)`, the command and where (ME1, `usk 2`), what changed as before → after, `confirmed` (the switcher reported it back) or `sent` (it has no such report), and the time. A command that reads prints a line naming the switcher, its model and video mode, then what it read. Opening a session prints `connecting to ...` and then the model and video mode on stderr. Colour only on a terminal: program red, preview green, errors red, `sent` dim. --json and --quiet print none of this.
 - Indexes: M/Es, upstream and downstream keyers, aux outputs, media and macro slots, media players, colour generators, multiviewers and their windows, SuperSources and their boxes, HyperDeck slots and EQ bands count from 1, as ATEM Software Control and the panels count them: on the command line, in --help and in results, --json included. The atem library counts them from 0, and so do the switcher state `state` and `watch` print (and `state --path` reads) and the index attributes of ATEM Software Control's XML files.
 - Sources: A source is an id or one of the switcher's input names, long or short, in any case.
 - Rates: A rate is a frame count or seconds:frames at the switcher's display rate (half the field rate from 48 fps up).
@@ -67,7 +73,7 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 - `BMDCTL_HOST`: The host a command goes to when --host doesn't name one.
 - `BMDCTL_SOCKET`: The engine's socket (a pipe name on Windows), instead of $XDG_RUNTIME_DIR/bmdctl.sock.
 - `XDG_CONFIG_HOME, XDG_STATE_HOME, XDG_RUNTIME_DIR`: Where hosts.yml, the engine's log and last host, and the socket live.
-- `NO_COLOR`: Set to anything: no colour, even on a terminal.
+- `NO_COLOR`: Set to anything: no colour, even on a terminal, as --no-color.
 
 ### Files
 

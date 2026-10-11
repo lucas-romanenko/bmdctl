@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -192,7 +193,6 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 		{[]string{"--dry-run", "transition"}, 1, "missing a subcommand"},
 		{[]string{"--fps", "0", "cut"}, 1, "--fps"},
 		{[]string{"--json=yes", "cut"}, 1, "takes no value"},
-		{nil, 1, "usage"},
 	} {
 		code, _, errOut := runCLI(c.args...)
 		if code != c.code || !strings.Contains(errOut, c.msg) {
@@ -206,7 +206,8 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 func TestSendThroughTheEngine(t *testing.T) {
 	b := newBench(t)
 	out := b.must(with("program", "5")...)
-	if !strings.HasPrefix(out, "program") || !strings.Contains(out, "confirmed") || !strings.Contains(out, "me 1, source 5") {
+	if !strings.HasPrefix(out, "ATEM 1 M/E Constellation HD (192.0.2.10)  program  ME1  ") || !strings.Contains(out, "CAM2 → 5 ") ||
+		!strings.Contains(out, " confirmed ") {
 		t.Errorf("program: %q", out)
 	}
 	if c := b.sent("CPgI"); len(c) != 1 || fmt.Sprintf("%x", c[0]) != "000c000043506749"+"00000005" {
@@ -234,18 +235,23 @@ func TestSendThroughTheEngine(t *testing.T) {
 // case; the result shows the name.
 func TestSourceNames(t *testing.T) {
 	b := newBench(t)
-	for name, id := range map[string]string{"camera 2": "0002", "CAM1": "0001", "color bars": "03e8", "mp1": "0bc2"} {
-		out := b.must(with("preview", name)...)
-		c := b.sent("CPvI")
-		if got := fmt.Sprintf("%x", c[len(c)-1][10:12]); got != id {
-			t.Errorf("%q: sent source %s, want %s", name, got, id)
+	for _, c := range []struct{ name, id, short string }{
+		{"camera 2", "0002", "CAM2"}, {"CAM1", "0001", "CAM1"}, {"color bars", "03e8", "Bars"}, {"mp1", "0bc2", "MP1"},
+	} {
+		out := b.must(with("preview", c.name)...)
+		sent := b.sent("CPvI")
+		if got := fmt.Sprintf("%x", sent[len(sent)-1][10:12]); got != c.id {
+			t.Errorf("%q: sent source %s, want %s", c.name, got, c.id)
 		}
-		if !strings.Contains(out, "(") {
-			t.Errorf("%q: %q", name, out)
+		// Shown as watch shows it: by short name, the one it replaced
+		// before it.
+		if !strings.Contains(out, "→ "+c.short+" ") {
+			t.Errorf("%q: %q", c.name, out)
 		}
 	}
-	if !strings.Contains(b.must(with("preview", "camera 2")...), "source 2 (Camera 2)") {
-		t.Error("name not shown")
+	// The same source again: nothing changed, so no arrow.
+	if out := b.must(with("preview", "mp1")...); !regexp.MustCompile(`  preview  ME1 +MP1 +confirmed `).MatchString(out) {
+		t.Errorf("unchanged: %q", out)
 	}
 	code, _, errOut := b.run(with("program", "Camera 9")...)
 	if code != exitUsage || !strings.Contains(errOut, `no input is named "Camera 9"`) {
@@ -330,7 +336,7 @@ func TestExitCodes(t *testing.T) {
 	b.onDial = func(sw *fakeatem.Switcher) { sw.Unanswered("CTWp") }
 	// 3: sent, but the switcher doesn't echo it.
 	code, _, errOut := b.run(with("--timeout", "200ms", "transition", "wipe", "--rate", "10")...)
-	if code != exitNoEcho || !strings.Contains(errOut, "did not report TWpP:0 within 200ms") {
+	if code != exitNoEcho || !strings.Contains(errOut, "did not report TWpP:0 within 200ms (bmdctl status shows what the switcher holds now)") {
 		t.Errorf("no echo: %d %q", code, errOut)
 	}
 	if len(b.sent("CTWp")) != 1 {
@@ -338,17 +344,17 @@ func TestExitCodes(t *testing.T) {
 	}
 	// 5: destructive without --yes, refused before the engine is asked.
 	code, _, errOut = b.run(with("video-mode", "1080p50")...)
-	if code != exitDestructive || !strings.Contains(errOut, "--yes") || len(b.sent("CVdM")) != 0 {
+	if code != exitDestructive || !strings.HasSuffix(errOut, "add --yes to run it\n") || len(b.sent("CVdM")) != 0 {
 		t.Errorf("destructive: %d %q", code, errOut)
 	}
 	// The engine refuses it too.
 	c, o, _ := b.cli("")
-	conn, err := c.connectEngine()
+	conn, err := c.connectEngine(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp, err := engine.Call(c.ctx, conn, engine.Request{Device: "atem", Host: fakeatem.Address, Path: "video-mode",
-		Params: map[string]string{"mode": "1080p50"}}, func([]byte, *engine.FileFrame, *engine.Response) error { return nil })
+		Params: map[string]string{"mode": "1080p50"}}, nil)
 	conn.Close()
 	if err != nil || resp.OK || resp.Code != engine.CodeDestructive || o.Len() != 0 {
 		t.Errorf("engine: %+v %v", resp, err)
@@ -362,7 +368,7 @@ func TestExitCodes(t *testing.T) {
 	b.dialErr = errors.New("atem: dial 192.0.2.99:9910: context deadline exceeded")
 	b.mu.Unlock()
 	code, _, errOut = b.run("--host", "192.0.2.99", "cut")
-	if code != exitUnreachable || !strings.Contains(errOut, "192.0.2.99") {
+	if code != exitUnreachable || !strings.Contains(errOut, "192.0.2.99") || !strings.HasSuffix(errOut, "(bmdctl doctor says why)\n") {
 		t.Errorf("unreachable: %d %q", code, errOut)
 	}
 }
@@ -370,7 +376,7 @@ func TestExitCodes(t *testing.T) {
 // Without an engine and unable to start one, a command is unreachable.
 func TestNoEngine(t *testing.T) {
 	code, _, errOut := runCLI("--host", fakeatem.Address, "cut")
-	if code != exitUnreachable || !strings.Contains(errOut, "starting the engine") {
+	if code != exitUnreachable || !strings.Contains(errOut, "starting the engine") || !strings.Contains(errOut, "bmdctl doctor says why") {
 		t.Errorf("%d %q", code, errOut)
 	}
 	if code, out, _ := runCLI("engine", "stop"); code != 0 || out != "no engine running\n" {
@@ -407,6 +413,11 @@ func TestCommandStartsTheEngine(t *testing.T) {
 	}
 	if code := c.run(with("program", "2")); code != 0 || spawned != 1 {
 		t.Fatalf("%d, %d spawns\n%s%s", code, spawned, o, e)
+	}
+	// Starting the engine is connecting: said once, then the model and
+	// video mode once the session is ready.
+	if e.String() != "connecting to 192.0.2.10 …\nATEM 1 M/E Constellation HD, 1080p50\n" {
+		t.Errorf("stderr %q", e)
 	}
 }
 

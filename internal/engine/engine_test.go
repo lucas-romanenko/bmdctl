@@ -74,7 +74,7 @@ func (r *rig) call(ctx context.Context, req Request) (Response, error) {
 		return Response{}, err
 	}
 	defer conn.Close()
-	return Call(ctx, conn, req, func([]byte, *FileFrame, *Response) error { return nil })
+	return Call(ctx, conn, req, nil)
 }
 
 func (r *rig) must(req Request) Response {
@@ -266,5 +266,60 @@ func TestSocketMode(t *testing.T) {
 	}
 	if fi.Mode().Perm() != 0o600 {
 		t.Errorf("mode %v", fi.Mode())
+	}
+}
+
+// Notes go only to a request that asks: the connect, the switcher, and a
+// command's values before and after. The response is the same either way.
+func TestNotes(t *testing.T) {
+	r := newRig(t, Config{})
+	frames := func(req Request) ([]Note, string) {
+		conn, err := Dial(context.Background(), r.sock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		var notes []Note
+		var resp []byte
+		Call(context.Background(), conn, req, func(f Frame) error {
+			if f.Note != nil {
+				notes = append(notes, *f.Note)
+			}
+			if f.Response != nil {
+				resp = f.Line
+			}
+			return nil
+		})
+		return notes, string(resp)
+	}
+	req := Request{Device: "atem", Host: fakeatem.Address, Path: "program", Params: map[string]string{"source": "1"}, Notes: true}
+	notes, resp := frames(req)
+	if len(notes) != 3 || notes[0].Connecting != "192.0.2.10:9910" || notes[1].Switcher == nil || len(notes[2].Values) != 2 {
+		t.Fatalf("notes: %+v", notes)
+	}
+	sw := notes[1].Switcher
+	if sw.Name != "ATEM 1 M/E Constellation HD" || sw.Product != sw.Name || sw.VideoMode != "1080p50" || !sw.Ready || sw.DropS != 600 {
+		t.Errorf("switcher: %+v", sw)
+	}
+	before, after := *notes[2].Values[1].Before, notes[2].Values[1].After
+	if v := notes[2].Values; v[0].Param != "me" || v[0].After != "1" || v[1].Param != "source" || before != "CAM2" || after != "CAM1" {
+		t.Errorf("values: %+v", v)
+	}
+	// A warm session: no connect; no notes at all unless asked.
+	if notes, _ := frames(req); len(notes) != 2 || notes[0].Switcher == nil {
+		t.Errorf("warm: %+v", notes)
+	}
+	req.Notes = false
+	notes, plain := frames(req)
+	strip := func(s string) string { return s[:strings.Index(s, `"took_ms"`)] }
+	if len(notes) != 0 || strip(plain) != strip(resp) {
+		t.Errorf("unasked: %+v\n%s\n%s", notes, plain, resp)
+	}
+	// The overview: the engine and the session.
+	o := r.must(Request{Device: "engine", Path: "overview"})
+	var ov Overview
+	json.Unmarshal(o.Result.(json.RawMessage), &ov)
+	if len(ov.Switchers) != 1 || ov.Switchers[0].Name != "ATEM 1 M/E Constellation HD" || !ov.Switchers[0].Ready || ov.Engine.PID == 0 {
+		t.Errorf("overview: %+v", ov)
 	}
 }
