@@ -311,8 +311,10 @@ func TestNotes(t *testing.T) {
 	if v := notes[2].Values; v[0].Param != "me" || v[0].After != "1" || v[1].Param != "source" || before != "CAM2" || after != "CAM1" {
 		t.Errorf("values: %+v", v)
 	}
-	// A warm session: no connect; no notes at all unless asked.
-	if notes, _ := frames(req); len(notes) != 4 || notes[0].Switcher == nil {
+	// A warm session: no connect; no notes at all unless asked. (Source
+	// 1 is on program now, so these are answered "already".)
+	notes, resp = frames(req)
+	if len(notes) != 4 || notes[0].Switcher == nil {
 		t.Errorf("warm: %+v", notes)
 	}
 	req.Notes = false
