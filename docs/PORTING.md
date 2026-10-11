@@ -1802,6 +1802,96 @@ the same socket, for the container. Off unless asked for.
   `internal/serve` checks the OpenAPI document (every command a path,
   unique operation ids, typed properties) and the value conversion.
 
+## mcp (`internal/mcp`, `cmd/bmdctl/mcp.go`)
+
+Phase 4: `bmdctl mcp`, a Model Context Protocol server on stdin and
+stdout (newline-delimited JSON-RPC 2.0; logs on stderr), its requests
+sent to the engine as any command's are (started if none runs). How to
+add it to Claude Code and Claude Desktop is docs/AGENTS.md.
+
+- **Both eras of the protocol** (checked against the specification at
+  modelcontextprotocol.io in October 2026): the current revision,
+  2026-07-28, has no handshake (each request's `_meta` carries
+  `io.modelcontextprotocol/protocolVersion`, `server/discover` is
+  mandatory, results carry `resultType: "complete"` and list results
+  `ttlMs` and `cacheScope`, and subscriptions are a
+  `subscriptions/listen` stream); the handshake revisions 2025-11-25 back
+  to 2024-11-05 open with `initialize` and subscribe with
+  `resources/subscribe`. The server is dual-era, as the specification
+  allows: a request with the modern `_meta` is served by the current
+  revision (another version is `-32022` with the versions supported), an
+  `initialize` negotiates the client's handshake version (or 2025-11-25),
+  and either may be used on one stdio stream. Which era Claude Code and
+  Claude Desktop open with is theirs to choose; both work.
+- **A tool per command-table entry**, every device's, named
+  `<device>_<words>` with spaces and hyphens as underscores
+  (`atem_program`, `atem_usk_on_air`, `hyperdeck_play`; at most 64
+  characters, unique, checked), its title `ATEM program`, its
+  description the entry's summary, what it is (destructive, unverified,
+  streaming), usage and examples (`Entry.Describe`), its input schema the
+  entry's (`InputSchema`, shared with serve: ranges from 1 for an index,
+  units and defaults in each description), plus `host` (a host's name,
+  the start of one or an address; the default host left out), `yes` for
+  a destructive entry and `seconds` for a stream. Three of bmdctl's own:
+  `list_hosts` (hosts.yml), `get_state` (the session's state, `path` as
+  `state --path`) and `list_inputs` (an ATEM's sources).
+- **Annotations are set explicitly**, since the protocol's defaults call
+  every tool not marked otherwise destructive: `readOnlyHint` for the
+  reads (status, info, state, inputs, show, lists, meters, downloads,
+  profile save, decode and encode, watch, connect and disconnect, which
+  change nothing on a device), `destructiveHint` exactly for the table's
+  destructive entries (video mode, startup save and clear, both still
+  clears, macro delete, profile restore), `idempotentHint` for the reads, `openWorldHint` false
+  (the devices bmdctl knows, not the internet).
+- **A result says whether anything changed.** Its structured content
+  (and, for clients that read only text, the same JSON in a text block)
+  is `{ok, status, confirmed, result, took_ms, device, changed,
+  written}`: `status` confirmed (the device reported it back), sent (no
+  confirmation exists for it), already (the device held it; nothing was
+  sent), rejected (it confirmed but kept its value) for a write, done
+  for a read; `changed` the engine's values note, `{param, before,
+  after}`; `result` the engine's, as `--json` has it. A failure is a
+  tool error (`isError`, `{ok: false, status: "error", code, error}`),
+  which a model can act on; an unknown tool or malformed call is a
+  protocol error.
+- **Destructive tools ask for a person.** Without `yes: true` the
+  request asks (`Ask`), the engine refuses it with its confirm note, and
+  the result says what it would affect and that the operator must agree
+  before it is called again with `yes: true` (`Not done: this is
+  destructive. video mode 1080p50 → 525i5994: every output resyncs.
+  ...`). The skill (skills/bmdctl) tells the agent never to pass `yes`
+  on its own.
+- **Files are this machine's**, as the CLI's are: a file a tool sends is
+  read from the path given (relative to the server's working directory),
+  one it produces written where its `file` or `dir` says (`outPath`, the
+  CLI's), the paths in `written`. `-` is refused: stdout carries the
+  protocol.
+- **Watching.** Each host's state is a resource,
+  `bmdctl://hosts/{host}/state` (`resources/list` from hosts.yml, a
+  template for any address; `resources/read` is `state`). Subscribing
+  (`resources/subscribe`, or `subscriptions/listen` with
+  `resourceSubscriptions`) runs the engine's watch for it and sends
+  `notifications/resources/updated` on each change, at most one per
+  250 ms (an ATEM's changes come in bursts); the client reads the
+  resource for what changed. A modern subscription is acknowledged once
+  its watches run, every notification carries its id, and one the client
+  cancels gets nothing more. The `atem_watch` and `hyperdeck_watch` tools
+  collect a stream's changes for `seconds` (5 by default, at most 60) or
+  `count` (20) and return them.
+- **Concurrency.** Each request runs on its own goroutine, answers are
+  written whole under a lock, and `notifications/cancelled` cancels the
+  request it names (a stream, a transfer).
+- **Tests.** `cmd/bmdctl/mcp_test.go` drives `bmdctl mcp` over pipes
+  against the bench's engine: the handshake, the tool list (names,
+  schemas, annotations), confirmed, already and sent writes, a
+  destructive refusal and then `yes`, reads, the three own tools, a
+  deck's tools and a switcher's tool sent to a deck, files both ways,
+  resources and both kinds of subscription, the modern revision's
+  discover, `resultType`, version error and cancellation.
+  `internal/mcp` checks that every entry is a tool by a unique name.
+  Nothing here has been tried with Claude Code or Claude Desktop
+  themselves.
+
 ## Engine (`internal/engine`)
 
 A background process holding one `atem.Session` per switcher, so a
