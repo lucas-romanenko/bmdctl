@@ -271,3 +271,43 @@ of it. The rules for hardware tests (which switchers, read-only unless
   and a terminal says `already` where the time goes. The seventh run
   verified `already` on hardware.
 - **Not yet verified on hardware:** as after the fifth run.
+
+## 2026-10-11: eighth run, cut and auto confirmation, undo
+
+- **Commit:** `63c6d37`. The engine's log gives its version as
+  `v0.0.0-20261011153407-63c6d37d2e0a+dirty`: the checkout's untracked
+  files, as in the seventh run.
+- **Switcher:** the Constellation at 192.168.81.85, "Studio ATEM": the
+  engine's log reports an ATEM 1 M/E Constellation HD at 1080p25. The
+  report didn't restate the protocol version (2.30 on the first run).
+- **Run:** in under a second by the engine's log, at 11:45:51. The
+  engine of the previous build was stopped and one of this build
+  started. Then `connect` (528 ms), `preview` (27 ms), `cut` (30 ms),
+  `undo` (31 ms), `auto` (29 ms), `undo` again 8 ms after the auto
+  answered, and `disconnect`.
+- **Result:** all of it worked as designed, and no command waited out
+  its timeout.
+  - The cut answered confirmed in 30 ms: the switcher reported `PrgI`
+    and `PrvI` well inside the 5 s the engine waits. That was the risk
+    the seventh run's section left open.
+  - The undo put the cut back in 31 ms. The buses were as the cut left
+    them, so by the undo's rule it cut again; the log doesn't name the
+    command sent.
+  - The auto answered confirmed in 29 ms, when the transition started
+    (`TrPs`), not when it ended. The undo sent 8 ms later found M/E 1
+    mid-transition and was refused with `M/E 1 is mid-transition: undo
+    once it is done`.
+- **Changed because of it:** nothing in the code. In the commit that
+  added this section, `docs/PORTING.md` records the confirmation of a
+  cut and an auto, the undo of a cut, and undo's refusal mid-transition
+  as verified on hardware.
+- **Not yet verified on hardware:** undo of an auto once its transition
+  is done (the refused undo's entry was kept, but the run disconnected
+  before trying again); undo's other path, which sets each bus back
+  after a change from a panel; the header and column-72 layout, and a
+  bar drawn for a slow transfer (not in the report); `hosts discover`;
+  `hosts add` and `--as`; a session that drops and comes back; a rename
+  made in ATEM Setup while bmdctl is in use; macro upload, profile
+  restore, `classic-audio meters`, a still that isn't premultiplied, a
+  fit that shrinks the image or adds bars at the sides, and every other
+  command that changes the switcher.

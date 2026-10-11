@@ -1751,7 +1751,10 @@ lives until 10 minutes pass without a request, unless pinned.
   as before: sent, `confirmed` false, no error. `echo` stays empty.
   `ftb toggle`, `dsk auto` and the macro commands are still sent and
   left. atemwire's `send()` waits for nothing; this is the engine's,
-  not the port's.
+  not the port's. Verified on hardware (the eighth run,
+  docs/HARDWARE.md): on the Constellation a cut answered confirmed in
+  30 ms, its `PrgI` and `PrvI` well inside the timeout, and an auto in
+  29 ms, when the transition started rather than when it ended.
 - **A write the switcher holds already sends nothing** (the terminal
   pass). Where a command's reader (notes.go, `readers`) holds every
   value it sets equal to the argument (an argument the echo key names,
@@ -1821,6 +1824,10 @@ comes back. Indexes in results count from 1, as the flags do
     differ). An auto is undone by a cut too, not another auto: undo
     puts the buses back at once. While the M/E is mid-transition undo
     refuses (`usage`) and keeps the entry, to try once it is done.
+    Verified on hardware (the eighth run): undo straight after a cut put
+    both buses back in 31 ms, and undo during an auto's transition was
+    refused. An auto undone once its transition is done, and the path
+    that sets each bus back, are not yet verified on hardware.
   - `show <area>` (the terminal pass) reads one area through the
     readers and returns it for the CLI to lay out: `keys` (each keyer's
     type, sources, on air, in the next transition, fly, mask, luma
