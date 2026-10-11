@@ -56,9 +56,26 @@ The cursor is drawn at 32px and above.
 All set in IBM Plex Mono, always lowercase because bmdctl is a binary
 name.
 
+**The title** is the name typed at a prompt: `$ bmdctl` and a block
+cursor. It heads the banner, a docs site's hero and slide titles; the
+plain wordmarks below go in lockups and anywhere small.
+
+- `$` and a space: Plex Mono 600, `#2FD07A`.
+- `bmd` 400 `#9A9E9F`, `ctl` 600 `#EDEDEA`, `letter-spacing: -0.04em`.
+- The cursor: a solid `#EDEDEA` block about 0.53em wide and 0.83em tall,
+  on the baseline, 0.15em after the `l`. Where CSS runs it blinks at
+  1.1s with `steps(1)`; in an image it is solid.
+- The tagline is a shell comment, `# control Blackmagic devices from the
+  command line`, in Plex Mono 400, `#7E8386`.
+
+Two other titles were studied and not chosen: a bitmap one (a pixel-grid
+chevron, the VT323 font, scanlines) and a TUI panel (the name set into a
+box-drawn frame over a reverse-video status bar). Only the shell prompt
+ships.
+
 | Form | Spec | Use |
 |---|---|---|
-| `bmdctl` (primary) | `bmd` 400 `#9A9E9F`, `ctl` 600 `#EDEDEA`, `letter-spacing: -0.04em`, `line-height: 1` | Lockups, the banner |
+| `bmdctl` (primary) | `bmd` 400 `#9A9E9F`, `ctl` 600 `#EDEDEA`, `letter-spacing: -0.04em`, `line-height: 1` | Lockups, and the name in the title |
 | `bmd/ctl` | Plex Mono 600, the slash in `#2FD07A` | Docs, headings |
 | `$ bmdctl` | Plex Mono 500, the `$` in `#2FD07A` | README prose, terminal screenshots |
 
@@ -67,7 +84,7 @@ On a light ground: `bmd` is `#6E706C`, `ctl` is `#111312` and accents are
 
 **Lockup:** the mark on the left, the wordmark on the right, vertically
 centred. A 56px mark has a 20px gap and a 34px wordmark; scale it in
-proportion (the banner: a 168px mark, a 60px gap, a 102px wordmark).
+proportion.
 
 ## Colour
 
@@ -93,12 +110,10 @@ proportion (the banner: a 168px mark, a 60px gap, a 102px wordmark).
 Used as is. To regenerate it:
 
 - 2560×520 on `#0A0B0C`, 160px padding at each side.
-- The lockup on the left.
-- On the right, right-aligned:
-  - "Control Blackmagic devices / from the command line." in Plex Mono
-    400, 44px, `#C8CCCD`, on two lines.
-  - `$ bmdctl  ·  single Go binary  ·  scripts and AI agents` in Plex Mono
-    500, 34px: the `$` green, `bmdctl` `#EDEDEA`, the rest `#9A9E9F`.
+- On the left, the 168px mark, then a 72px gap, then the title at 120px
+  with a 64×100 cursor. The tagline is 28px below it, at 40px, `#7E8386`.
+- At the far right, right-aligned, in Plex Mono 400, 36px, `#9A9E9F`, on
+  two lines: `single Go binary` and `terminal · scripts · AI agents`.
 
 ## Legal
 
