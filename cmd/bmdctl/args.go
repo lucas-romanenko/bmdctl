@@ -20,7 +20,8 @@ type globals struct {
 	dryRun  bool
 	help    bool
 	noColor bool
-	fps     int // 0: the switcher's
+	stamp   bool // -t: results start with the time of day, at a terminal
+	fps     int  // 0: the switcher's
 	timeout time.Duration
 }
 
@@ -28,12 +29,12 @@ type globals struct {
 // A command's parameters can't use these names.
 var globalFlags = map[string]bool{
 	"host": true, "fps": true, "timeout": true,
-	"json": false, "quiet": false, "yes": false, "dry-run": false, "help": false, "no-color": false,
+	"json": false, "quiet": false, "yes": false, "dry-run": false, "help": false, "no-color": false, "timestamps": false,
 }
 
 // shortFlags are the one-letter forms (-q), which never clash with a
 // parameter: parameters are always --name.
-var shortFlags = map[string]string{"q": "quiet", "y": "yes", "h": "help"}
+var shortFlags = map[string]string{"q": "quiet", "y": "yes", "h": "help", "t": "timestamps"}
 
 // splitLine separates a command line into the global flags, the leading
 // words (the command's path, and a built-in's arguments) and the
@@ -121,6 +122,8 @@ func (g *globals) set(name, value string) error {
 		g.help = true
 	case "no-color":
 		g.noColor = true
+	case "timestamps":
+		g.stamp = true
 	}
 	return nil
 }

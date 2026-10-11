@@ -1,0 +1,32 @@
+$ bmdctl -t program cam1
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1 · connected # ms</>
+  <dim>13:43:28</>  program     CAM2 → <red>CAM1</>                         <dim># ms</>
+
+$ bmdctl preview mp1 --timestamps
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  <dim>13:43:28</>  preview     CAM1 → <green>MP1</>                          <dim># ms</>
+
+$ bmdctl -t cut
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
+  <dim>13:43:28</>  cut         <red>MP1</> on program · <green>CAM1</> on preview    <dim>sent</>
+
+$ bmdctl -t undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
+  <dim>13:43:28</>  undo        preview  MP1 → <green>CAM1</>                 <dim># ms</>
+
+$ bmdctl -t status
+<b>ATEM 1 M/E Constellation HD</>  <dim>1080p50 · session 0s, idle #s</>
+
+  ME 1        <red>PGM  MP1</>            <green>PVW  CAM1</>
+              dip 1:05 · next background+key1 · FTB off
+  keys        1  luma  4 / 5  <red>on air</>
+              2  luma  0 / 0  <dim>off</>
+              3  luma  0 / 0  <dim>off</>
+              4  luma  0 / 0  <dim>off</>
+  dsk 1       6 / 7           <red>on air</>
+  dsk 2       0 / 0           <dim>off</>
+  aux 1       MP1
+  aux 2       PGM
+  aux 3       0
+  macro       <dim>idle</>
+

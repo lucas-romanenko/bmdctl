@@ -76,7 +76,7 @@ func (c *cli) execCommand(g globals, words, tokens []string) int {
 	for _, f := range []struct {
 		on   bool
 		flag string
-	}{{g.json, "--json"}, {g.quiet, "--quiet"}, {g.yes, "--yes"}, {g.noColor, "--no-color"}} {
+	}{{g.json, "--json"}, {g.quiet, "--quiet"}, {g.yes, "--yes"}, {g.noColor, "--no-color"}, {g.stamp, "-t"}} {
 		if f.on {
 			common = append(common, f.flag)
 		}

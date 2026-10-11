@@ -55,10 +55,12 @@ type cli struct {
 	stdin          io.Reader
 	stdout, stderr io.Writer
 	env            paths.Env
-	environ        func() []string // the environment a spawned engine gets
-	tty, ttyErr    bool            // stdout, stderr is a terminal: colour allowed
-	ttyIn          bool            // stdin is a terminal: a person can confirm a destructive command
-	noColor        bool            // --no-color
+	environ        func() []string  // the environment a spawned engine gets
+	tty, ttyErr    bool             // stdout, stderr is a terminal: colour allowed
+	ttyIn          bool             // stdin is a terminal: a person can confirm a destructive command
+	noColor        bool             // --no-color
+	stamp          bool             // -t
+	now            func() time.Time // the clock -t reads; tests stop it
 	reg            *table.Registry
 	// spawn starts a background engine (engine.Spawn); tests replace it.
 	spawn func(exe string, args, env []string) error
@@ -112,7 +114,7 @@ func newCLI(stdout, stderr io.Writer) *cli {
 	return &cli{stdin: os.Stdin, stdout: stdout, stderr: stderr, env: os.Getenv, environ: os.Environ,
 		reg: reg, spawn: engine.Spawn, build: sync.OnceValue(buildID), engineConfig: func(c engine.Config) engine.Config { return c },
 		ctx: context.Background(), dialATEM: atem.Dial, said: map[string]bool{}, discover: browse,
-		bannered: new(bool), scr: &screenState{}, spinAfter: spinAfter,
+		bannered: new(bool), scr: &screenState{}, spinAfter: spinAfter, now: time.Now,
 		dialTCP: func(ctx context.Context, addr string) (net.Conn, error) { return d.DialContext(ctx, "tcp", addr) }}
 }
 
@@ -162,6 +164,8 @@ func globalHelp(w io.Writer) {
                  (default: the switcher's; 25 with --dry-run)
   --timeout D    how long to wait for the switcher's echo (default 5s)
   --no-color     no colour, even on a terminal (so does $NO_COLOR)
+  --timestamps, -t
+                 at a terminal, start each result with the time of day
   --help, -h     help for the command line so far
 
 Exit status: 0 done, 1 usage, 2 switcher or engine unreachable, 3 sent but
@@ -175,6 +179,7 @@ func (c *cli) run(args []string) int {
 	g, words, tokens, err := splitLine(args)
 	c.json, c.quiet = g.json, g.quiet
 	c.noColor = c.noColor || g.noColor
+	c.stamp = c.stamp || g.stamp
 	if err != nil {
 		return c.fail(exitUsage, "bmdctl: %v", err)
 	}

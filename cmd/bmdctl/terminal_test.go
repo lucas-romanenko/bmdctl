@@ -323,6 +323,28 @@ func TestTerminalShow(t *testing.T) {
 	}
 }
 
+// -t starts each result with the time of day, dim; a read's rows and a
+// pipe are as they were.
+func TestTerminalTimestamps(t *testing.T) {
+	b := newBench(t)
+	at := time.Date(2026, 10, 11, 13, 43, 28, 0, time.Local)
+	run := func(tty bool, args ...string) string {
+		c, o, _ := b.cli("")
+		c.tty, c.ttyErr, c.spinAfter = tty, tty, time.Hour
+		c.now = func() time.Time { return at }
+		c.run(with(args...))
+		return visible(o.String())
+	}
+	var out strings.Builder
+	for _, line := range [][]string{{"-t", "program", "cam1"}, {"preview", "mp1", "--timestamps"}, {"-t", "cut"}, {"-t", "undo"}, {"-t", "status"}} {
+		fmt.Fprintf(&out, "$ bmdctl %s\n%s\n", strings.Join(line, " "), normalise(run(true, line...)))
+	}
+	golden(t, "timestamps.golden", out.String())
+	if got := run(false, "-t", "program", "cam2"); strings.Contains(got, "13:43:28") {
+		t.Errorf("pipe: %q", got)
+	}
+}
+
 // fit cuts a line to its columns, colour codes and all.
 func TestFit(t *testing.T) {
 	for _, c := range []struct {
