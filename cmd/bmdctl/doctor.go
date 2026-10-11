@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
+	"github.com/lucas-romanenko/bmdctl/hyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/hosts"
 	"github.com/lucas-romanenko/bmdctl/internal/paths"
@@ -303,6 +304,9 @@ func (c *cli) doctorReach(f *hosts.File, st *engine.Status, add func(name, statu
 func (c *cli) reach(h hosts.Host, st *engine.Status) (status, detail string) {
 	ctx, cancel := context.WithTimeout(c.ctx, doctorTimeout)
 	defer cancel()
+	if h.Device == "hyperdeck" {
+		return c.reachDeck(ctx, h, st)
+	}
 	if h.Device != "atem" {
 		port, ok := devicePorts[h.Device]
 		if !ok {
@@ -339,6 +343,36 @@ func (c *cli) reach(h hosts.Host, st *engine.Status) (status, detail string) {
 		mode = m.Label()
 	}
 	return "ok", strings.TrimSpace(state.ProductName("an ATEM") + " " + mode)
+}
+
+// reachDeck checks a HyperDeck: through the engine's session if it has
+// one, else by reading its greeting and device info.
+func (c *cli) reachDeck(ctx context.Context, h hosts.Host, st *engine.Status) (status, detail string) {
+	addr := h.Address
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		addr = net.JoinHostPort(addr, fmt.Sprint(hyperdeck.DefaultPort))
+	}
+	if st != nil {
+		for _, s := range st.Sessions {
+			if hosts.SameAddress(s.Host, addr) && s.Device == "hyperdeck" && s.Ready {
+				return "ok", fmt.Sprintf("the engine's session is ready: %s", strings.Join(nonEmpty(s.Product, s.VideoMode), " "))
+			}
+		}
+	}
+	d := hyperdeck.Dialer{Bare: true, DialContext: func(ctx context.Context, _, a string) (net.Conn, error) { return c.dialTCP(ctx, a) }}
+	s, err := d.Dial(ctx, addr)
+	if err != nil {
+		return "unreachable", unwrapNet(err).Error()
+	}
+	defer s.Close()
+	if g := s.Greeting(); g.Code != 500 {
+		return "fail", fmt.Sprintf("TCP %s answers, but not as a HyperDeck: %d %s", addr, g.Code, g.Text)
+	}
+	detail = strings.TrimSpace(s.Model() + ", protocol " + s.ProtocolVersion())
+	if info, err := s.DeviceInfo(ctx); err == nil && info["software version"] != "" {
+		detail += ", software " + info["software version"]
+	}
+	return "ok", detail
 }
 
 // hostKeyOf is the engine's session key for an address.

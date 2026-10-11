@@ -168,6 +168,9 @@ type Note struct {
 	// Confirm: what a destructive command would affect, before it is
 	// refused for want of Yes, to a request that may ask (Ask).
 	Confirm *Confirm `json:"confirm,omitempty"`
+	// Deck is a HyperDeck's transport as the request found it, sent
+	// once before the command, as OnAir is for a switcher.
+	Deck *DeckLive `json:"deck,omitempty"`
 }
 
 // Alias is a source an alias named, and the input whose name it shadowed.
@@ -196,6 +199,9 @@ type OnAir struct {
 // Switcher is a switcher as the engine's session to it knows it.
 type Switcher struct {
 	Host string `json:"host"` // the session's key, host:port
+	// Device is what it is: atem, or hyperdeck. Empty means atem (an
+	// engine from before phase 4).
+	Device string `json:"device,omitempty"`
 	// Name is what the switcher calls itself: the name set in ATEM
 	// Setup (WhoI), else its product name (_pin), as bmdwire v1.3.0's
 	// state.py atem_name is.

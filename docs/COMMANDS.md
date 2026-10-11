@@ -1946,3 +1946,188 @@ Runs until interrupted.
 | `--filter` | list | optional | only keys starting with one of these: PrgI,KeOn:0 |
 | `--count` | uint | optional | stop after this many changes |
 | `--all` | bool | default false | include the clock's Time packets and the index and Fairlight tallies, left out unless --filter names them |
+
+## hyperdeck
+
+### `bmdctl hyperdeck clips`
+
+List the timeline's clips, or a disk's.
+
+```
+bmdctl clips
+bmdctl clips --disk
+bmdctl clips --slot 2
+```
+
+| argument | value | | |
+|---|---|---|---|
+| `--disk` | bool | default false | the active slot's disk, not the timeline |
+| `--slot` | uint | optional | this slot's disk (implies --disk) |
+
+### `bmdctl hyperdeck connect [address]`
+
+Connect to a HyperDeck and keep the session open; an address is saved as the default host.
+
+```
+bmdctl connect 192.168.81.90
+bmdctl connect
+bmdctl connect --pin false
+```
+
+| argument | value | | |
+|---|---|---|---|
+| `[address]` | string | optional | an address (saved to hosts.yml by the name the deck gives itself, as the default) or a host's name; else the default |
+| `--pin` | bool | default true | keep the session open until disconnect; false lets it close after 10 idle minutes |
+| `--type` | string | optional | what the device is, without asking it: atem, hyperdeck, videohub or ultimatte |
+
+### `bmdctl hyperdeck disconnect`
+
+Close the engine's session to the deck, pinned or not.
+
+```
+bmdctl disconnect
+```
+
+### `bmdctl hyperdeck goto <clip>`
+
+Go to a timeline clip or a timecode, without playing.
+
+```
+bmdctl goto 2
+bmdctl goto interview
+bmdctl goto 00:01:30:00
+```
+
+| argument | value | | |
+|---|---|---|---|
+| `<clip>` | string | required | a timeline clip: its number, or its name or the start of it, in any case; or a timecode, HH:MM:SS:FF |
+
+### `bmdctl hyperdeck loop <on>`
+
+Turn looping on or off for the playback under way.
+
+```
+bmdctl loop on
+bmdctl loop off
+```
+
+**Unverified.**
+
+| argument | value | | |
+|---|---|---|---|
+| `<on>` | bool | required | on loops the timeline, or the clip with play --single-clip |
+
+### `bmdctl hyperdeck next`
+
+Go to the start of the next clip on the timeline.
+
+```
+bmdctl next
+```
+
+**Unverified.** Echo: `200 ok`.
+
+### `bmdctl hyperdeck play`
+
+Start playback, or change the one under way.
+
+```
+bmdctl play
+bmdctl play --speed 200
+bmdctl play --clip 2 --loop --single-clip
+```
+
+Echo: `200 ok`.
+
+| argument | value | | |
+|---|---|---|---|
+| `--speed` | int, -5000 to 5000, % | optional | 100 is normal speed, 200 double, -100 backwards, 0 holds the frame |
+| `--loop` | bool | optional | loop: the timeline, or the clip with --single-clip; false plays to the end |
+| `--single-clip` | bool | optional | play the current clip only |
+| `--clip` | uint, 1-2147483647 | optional | start at this timeline clip (clips lists them) |
+
+### `bmdctl hyperdeck prev`
+
+Go to the start of the previous clip on the timeline.
+
+```
+bmdctl prev
+```
+
+**Unverified.** Echo: `200 ok`.
+
+### `bmdctl hyperdeck record [name]`
+
+Start recording on the active slot, into a clip named as given.
+
+```
+bmdctl record
+bmdctl record "Interview 2"
+```
+
+**Unverified.** Echo: `200 ok`.
+
+| argument | value | | |
+|---|---|---|---|
+| `[name]` | string | optional | the clip's name; the deck names it from its record prefix otherwise |
+
+### `bmdctl hyperdeck slot <slot>`
+
+Make a slot the active one: its disk is what plays and records.
+
+```
+bmdctl slot 2
+```
+
+Echo: `200 ok`.
+
+| argument | value | | |
+|---|---|---|---|
+| `<slot>` | uint, 1-255 | required | the slot, as the deck numbers them: 1 or 2 on a HyperDeck Studio |
+
+### `bmdctl hyperdeck state`
+
+Print what the session holds of the deck, or one part of it.
+
+```
+bmdctl state
+bmdctl state --path transport.status
+```
+
+| argument | value | | |
+|---|---|---|---|
+| `--path` | string | optional | dotted key into the state: transport.status, slots.1 |
+
+### `bmdctl hyperdeck status`
+
+Show the transport, timecode, clip, slots and recording time left.
+
+```
+bmdctl status
+```
+
+### `bmdctl hyperdeck stop`
+
+Stop playback or recording; the deck holds the last frame.
+
+```
+bmdctl stop
+```
+
+Echo: `200 ok`.
+
+### `bmdctl hyperdeck watch`
+
+Print each change the deck reports, as it comes.
+
+```
+bmdctl watch
+bmdctl watch --count 5
+bmdctl watch --json
+```
+
+Runs until interrupted.
+
+| argument | value | | |
+|---|---|---|---|
+| `--count` | uint | optional | stop after this many changes |

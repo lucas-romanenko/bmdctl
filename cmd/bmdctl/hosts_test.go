@@ -254,7 +254,7 @@ func TestHostResolution(t *testing.T) {
 		t.Errorf("default without last-host: %s", got)
 	}
 	// A host's device type decides the device; it must match one named.
-	if code, _, errOut := b.run("--host", "deck", "cut"); code != exitUsage || !strings.Contains(errOut, "deck (192.0.2.20) is a HyperDeck; bmdctl has no HyperDeck commands yet") {
+	if code, _, errOut := b.run("--host", "deck", "cut"); code != exitUsage || !strings.Contains(errOut, "deck (192.0.2.20) is a HyperDeck; bmdctl hyperdeck --help") {
 		t.Errorf("hyperdeck host: %d %q", code, errOut)
 	}
 	if code, _, errOut := b.run("atem", "--host", "deck", "cut"); code != exitUsage || !strings.Contains(errOut, "deck (192.0.2.20) is a HyperDeck, not an ATEM") {

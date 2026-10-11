@@ -303,7 +303,11 @@ func (c *cli) dryRun(device string, e *table.Entry, raw map[string]string, g glo
 	if e.Unverified {
 		fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware\n", label)
 	}
-	if !g.quiet {
+	switch {
+	case g.quiet:
+	case device == "hyperdeck":
+		fmt.Fprint(c.stdout, string(cmd.Encode())) // a text protocol: the line itself
+	default:
 		fmt.Fprintf(c.stdout, "%x\n", cmd.Encode())
 	}
 	return exitOK

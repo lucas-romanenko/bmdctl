@@ -33,6 +33,7 @@ type printer struct {
 	written    []string // files written, in order
 	stdoutUsed bool     // a file went to stdout: print nothing else there
 	watch      *watchView
+	deckWatch  *deckWatch // a HyperDeck's watch (deck.go)
 	sw         *engine.Switcher // the switcher, from the engine's note
 	vals       []engine.Value   // what the command set, from its note
 	connected  bool             // this request opened the session
@@ -41,6 +42,7 @@ type printer struct {
 	// connectedIn how long opening the session took, when this request
 	// opened it. A terminal's header says both.
 	live        *engine.OnAir
+	deckLive    *engine.DeckLive // a HyperDeck's transport, as live is a switcher's
 	connectedIn time.Duration
 	saved       remembered      // what connect ADDRESS did to hosts.yml
 	noInput     *engine.NoInput // a source typed that names nothing
@@ -104,6 +106,10 @@ func (p *printer) note(n engine.Note) {
 		if p.live == nil {
 			p.live = n.OnAir
 		}
+	case n.Deck != nil:
+		if p.deckLive == nil {
+			p.deckLive = n.Deck
+		}
 	case n.NoInput != nil:
 		p.noInput = n.NoInput
 	case n.Progress != nil:
@@ -162,7 +168,7 @@ func (p *printer) response(line []byte, r engine.Response) {
 		p.show(p.screen(r))
 	case !p.g.quiet && !p.stdoutUsed:
 		lines := p.humanLines(r)
-		if reports[p.e.Path] && len(lines) > 0 && !(p.e.Path == "state" && !isTable(r)) {
+		if reports[formatKey(p.e)] && len(lines) > 0 && !(p.e.Path == "state" && !isTable(r)) {
 			fmt.Fprintln(p.c.stdout, p.header())
 		}
 		for _, l := range lines {
@@ -265,7 +271,7 @@ func (p *printer) code() int {
 	case p.last == nil:
 		return exitUnreachable
 	case p.last.OK:
-		if f := resultCodes[p.e.Path]; f != nil {
+		if f := resultCodes[formatKey(p.e)]; f != nil {
 			raw, _ := p.last.Result.(json.RawMessage)
 			return f(raw)
 		}
@@ -313,7 +319,7 @@ func (c *cli) colourErr(code, s string) string {
 // humanLines renders a response as lines: one per result.
 func (p *printer) humanLines(r engine.Response) []string {
 	raw, _ := r.Result.(json.RawMessage)
-	if f := humanFormats[p.e.Path]; f != nil {
+	if f := humanFormats[formatKey(p.e)]; f != nil {
 		return f(p, r, raw)
 	}
 	if !p.e.Operation || isCommandResult(raw) {
@@ -447,7 +453,8 @@ func (p *printer) describe(e *table.Entry, vals []engine.Value, term bool) (what
 		after := v.After
 		switch {
 		case e.Path == "program" && v.Param == "source", v.Param == "program",
-			v.Param == "on-air" && v.After == "on", v.Param == "ftb" && v.After == "black":
+			v.Param == "on-air" && v.After == "on", v.Param == "ftb" && v.After == "black",
+			e.Device == "hyperdeck" && v.Param == "transport" && v.After == "record":
 			after = p.c.colour(red, after)
 		case e.Path == "preview" && v.Param == "source":
 			after = p.c.colour(green, after)
@@ -484,10 +491,10 @@ func flagTag(name, v string) string {
 	return ""
 }
 
-// shortAddress is an address as a line shows it: without the ATEM's
-// default port.
+// shortAddress is an address as a line shows it: without the ATEM's or
+// the HyperDeck's default port.
 func shortAddress(addr string) string {
-	return strings.TrimSuffix(addr, ":9910")
+	return strings.TrimSuffix(strings.TrimSuffix(addr, ":9910"), ":9993")
 }
 
 // since is a duration as a person reads it: 12s, 3m12s, 1h04m.

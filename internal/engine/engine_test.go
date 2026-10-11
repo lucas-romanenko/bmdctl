@@ -5,6 +5,8 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
+	"github.com/lucas-romanenko/bmdctl/hyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
@@ -44,6 +47,21 @@ func newRig(t *testing.T, cfg Config) *rig {
 		t.Fatal(err)
 	}
 	cfg.Registry = reg
+	// Nothing reaches the network: a test that needs a deck or a probe
+	// gives its own.
+	if cfg.DialHyperDeck == nil {
+		cfg.DialHyperDeck = func(context.Context, string) (*hyperdeck.Session, error) {
+			return nil, errors.New("this rig dials no deck")
+		}
+	}
+	if cfg.ProbeATEM == nil {
+		cfg.ProbeATEM = func(context.Context, string) error { return atem.ErrNoSwitcher }
+	}
+	if cfg.ProbeDial == nil {
+		cfg.ProbeDial = func(context.Context, string, string) (net.Conn, error) {
+			return nil, errors.New("this rig dials nothing")
+		}
+	}
 	cfg.Dial = func(ctx context.Context, addr string) (*atem.Session, error) {
 		r.dials.Add(1)
 		if r.gate != nil {
@@ -226,7 +244,8 @@ func TestRefusals(t *testing.T) {
 		req  Request
 		code string
 	}{
-		{Request{Device: "hyperdeck", Host: "x", Path: "play"}, CodeUsage},
+		{Request{Device: "videohub", Host: "x", Path: "routes"}, CodeUsage},
+		{Request{Device: "hyperdeck", Host: "x", Path: "nonsense"}, CodeUsage},
 		{Request{Device: "atem", Host: fakeatem.Address, Path: "nonsense"}, CodeUsage},
 		{Request{Device: "atem", Path: "cut"}, CodeUsage},
 		{Request{Device: "engine", Path: "dance"}, CodeUsage},

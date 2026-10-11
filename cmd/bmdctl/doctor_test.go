@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
+	"github.com/lucas-romanenko/bmdctl/internal/fakehyperdeck"
 )
 
 // doctor checks against the bench: its reachability checks go to the
@@ -24,9 +25,7 @@ func (b *bench) doctor(args ...string) (int, string) {
 	c.dialATEM = b.dial
 	c.dialTCP = func(ctx context.Context, addr string) (net.Conn, error) {
 		if strings.HasPrefix(addr, "192.0.2.20:") {
-			a, z := net.Pipe()
-			z.Close()
-			return a, nil
+			return fakehyperdeck.New().Dial(ctx, "tcp", addr)
 		}
 		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
 	}
@@ -54,7 +53,7 @@ func TestDoctor(t *testing.T) {
 		"ok last host studio",
 		"host studio atem 192.0.2.10: the engine's session is ready: ATEM 1 M/E Constellation HD 1080p50",
 		"host spare atem 192.0.2.12: the engine's session is ready: ATEM 1 M/E Constellation HD 1080p50",
-		"host deck hyperdeck 192.0.2.20: TCP 192.0.2.20:9993 answers",
+		"ok host deck hyperdeck 192.0.2.20: HyperDeck Studio HD Mini, protocol 1.13, software 8.1.1",
 		"unreachable host hub videohub 192.0.2.21: nothing answers on TCP 192.0.2.21:9990: connection refused",
 	} {
 		if !strings.Contains(out, want) {
