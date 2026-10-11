@@ -1557,9 +1557,12 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   `--as NAME` gives a name of its own, which the host goes by instead
   (`as`): for two switchers that call themselves the same, as two of one
   model without ATEM Setup names do; the second `hosts add` without it
-  fails saying so. A HyperDeck, Videohub or Ultimatte needs `--as`, since
-  bmdctl can't ask them yet; a switcher that doesn't answer is an error
-  pointing at doctor, unless `--as` names it, which adds it anyway.
+  fails saying so. Since phase 4 `hosts add ADDRESS` first asks what
+  answers there (Device probe, below; `--device` says it instead): an
+  ATEM is asked its name as above, a HyperDeck, Videohub or Ultimatte
+  says its own to the probe (`--as` where it says none); an address where
+  nothing answers is an error, unless `--as` names it, which adds it
+  anyway as an ATEM.
   Adding an address that is a host already asks it again: it goes by its
   switcher's name, or by `--as`. Output names a host by the name it goes
   by: its switcher's, unless `--as`.
@@ -1604,8 +1607,14 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   configured, portable choice; last used is this machine's memory of the
   most recent explicit one.
 - **Which device.** A device word on the line (`bmdctl atem ...`) wins;
-  else a named host's `device`; else ATEM, so a bare address is an ATEM.
-  A device word that disagrees with the named host's type is refused.
+  else a named host's `device`; else ATEM, so a bare address is an ATEM
+  (except `connect ADDRESS`, which asks: Device probe, below). A device
+  word that disagrees with the named host's type is refused (`deck
+  (192.0.2.20) is a HyperDeck, not an ATEM`). A command the host's device
+  hasn't but another has says what the host is: `DECK 1 (192.0.2.20) is a
+  HyperDeck; bmdctl hyperdeck --help`, the step dim under it at a
+  terminal; a host of a device with no commands (a Videohub, an Ultimatte
+  until phase 5) says `...; bmdctl has no Videohub commands yet`.
   Device words are reserved: the ATEM command that binds a HyperDeck slot
   is `hyperdeck-slot`, not `hyperdeck`, which is the HyperDeck device
   (phase 4); a test keeps every command's first word off the device
@@ -1631,6 +1640,66 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   by is skipped, saying so. Tests replace the browse (`cli.discover`) and
   give `mdns.Browse` an in-memory `PacketConn`; nothing leaves the
   machine.
+
+## Device probe (`internal/engine/probe.go`, `atem/probe.go`, `cmd/bmdctl/connect.go`)
+
+Phase 4: `connect ADDRESS` (and `hosts add ADDRESS`) find out what is
+there instead of taking every address for an ATEM.
+
+- **Four questions at once, 2 s at most** (`ProbeTimeout`): an ATEM's
+  UDP handshake on 9910, a HyperDeck's greeting on TCP 9993 (`500
+  connection info`), a Videohub's preamble on TCP 9990 (`PROTOCOL
+  PREAMBLE:`, then its `VIDEOHUB DEVICE:` block, read to its blank line,
+  as videohubwire's `_read_preamble` reads it) and an Ultimatte's prelude
+  on TCP 9998 (to `END PRELUDE:`, as ultimattewire's `read_preamble`
+  reads it). The first to answer wins; nothing answering in time is
+  `unreachable` (exit 2), the message naming the four ports. An address
+  with a port is asked each way on that port; there the Videohub's
+  device block, or the Ultimatte's `Label:`, must be in what is sent,
+  since both start `PROTOCOL PREAMBLE:` and only the port tells them
+  apart otherwise.
+- **The ATEM's question** (`atem.Probe`, `Dialer.Probe`) sends the SYN
+  Dial sends and waits for the switcher's SYN reply, and never ACKs it:
+  the handshake is left half done, so no session opens, and the
+  switcher forgets it. atemwire's `probe()` connects fully through the
+  pool, which takes the whole dump; bmdctl's real connect follows anyway.
+  Whether a half-done handshake holds a client slot on a switcher for a
+  while is not yet seen on hardware.
+- **Names, where the probe can ask:** a HyperDeck's from `device info`
+  (its `name`, else its model; the deck is dialled `Bare` and closed),
+  a Videohub's `Friendly name` (model `Model name`), an Ultimatte's
+  `Label` (videohubwire and ultimattewire read the same fields). An
+  ATEM's needs its state: the connect that follows has it, as before.
+- **In the engine,** as the engine request `probe` (`device: engine`),
+  which answers whatever the client's build: the engine is what reaches
+  devices, and may run where the CLI's network isn't the same.
+  `Config.ProbeATEM` and `Config.ProbeDial` are its two ways of asking;
+  tests point them at `internal/fakenet`, a network of the fakes
+  (`fakeatem` for the handshake, `fakehyperdeck`, and the Videohub
+  preamble and Ultimatte prelude of videohubwire's and ultimattewire's
+  tests), so nothing leaves the process.
+- **The CLI's connect** (`connectCommand`): the device is the line's
+  device word, else `--type` (connect's parameter: atem, hyperdeck,
+  videohub or ultimatte, which also retypes a host already at that
+  address), else the type hosts.yml has for the address, else what the
+  probe says. A device with commands runs its connect as before, and
+  `remember` saves the host as that device. A Videohub or Ultimatte,
+  which bmdctl has no commands for until phase 5, is saved by the name
+  it gave (the address, where it gave none) and made the default; a
+  terminal shows the header (its name bold, its model and what it is
+  dim), `saved as "Test Hub", now the default` and, dim, `bmdctl has no
+  Videohub commands yet`; a pipe one line; `--json` the probe's result
+  with what was saved. At a terminal the spinner says `asking ADDRESS
+  what it is`; nothing answering is `error  nothing answered at ADDRESS
+  within 2s`, with `bmdctl connect ADDRESS --type DEVICE connects
+  without asking` under it (the ports are the pipe's message).
+- **help** lists the device groups hosts.yml has a host of (`atem`,
+  `hyperdeck`, ...), each with what it does, then one dim line naming
+  the others (`also videohub, ultimatte (none in hosts.yml)`; with no
+  host yet, all four).
+- **Not verified on hardware:** any of it. The HyperDeck's greeting is
+  hyperdeckwire's hardware-verified form; the Videohub's and Ultimatte's
+  are their libraries' test samples.
 
 ## Engine (`internal/engine`)
 

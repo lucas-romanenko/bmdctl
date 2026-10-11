@@ -77,7 +77,7 @@ func TestHostsFile(t *testing.T) {
 		args []string
 		msg  string
 	}{
-		{[]string{"hosts", "add", "192.0.2.21", "--device", "videohub"}, "can't ask a videohub its name yet: give it one with --as NAME"},
+		{[]string{"hosts", "add", "192.0.2.21", "--device", "videohub"}, "192.0.2.21 didn't say its name: give it one with --as NAME"},
 		{[]string{"hosts", "add", "192.0.2.12", "--as", "backup"}, `another host goes by "Backup"`},
 		{[]string{"hosts", "add", "192.0.2.12", "--as", " padded"}, "no spaces around it"},
 		{[]string{"hosts", "add", "not an address"}, "not an IP address"},
@@ -254,10 +254,10 @@ func TestHostResolution(t *testing.T) {
 		t.Errorf("default without last-host: %s", got)
 	}
 	// A host's device type decides the device; it must match one named.
-	if code, _, errOut := b.run("--host", "deck", "cut"); code != exitUsage || !strings.Contains(errOut, "no hyperdeck commands yet") {
+	if code, _, errOut := b.run("--host", "deck", "cut"); code != exitUsage || !strings.Contains(errOut, "deck (192.0.2.20) is a HyperDeck; bmdctl has no HyperDeck commands yet") {
 		t.Errorf("hyperdeck host: %d %q", code, errOut)
 	}
-	if code, _, errOut := b.run("atem", "--host", "deck", "cut"); code != exitUsage || !strings.Contains(errOut, "deck (192.0.2.20) is a hyperdeck, not an atem") {
+	if code, _, errOut := b.run("atem", "--host", "deck", "cut"); code != exitUsage || !strings.Contains(errOut, "deck (192.0.2.20) is a HyperDeck, not an ATEM") {
 		t.Errorf("mismatch: %d %q", code, errOut)
 	}
 	if code, _, errOut := b.run("--host", "no such host!", "cut"); code != exitUsage || !strings.Contains(errOut, "neither a host") {

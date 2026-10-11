@@ -41,6 +41,12 @@ type Config struct {
 	// Dial opens a session; nil means atem.Dialer with Logger. Tests
 	// point it at internal/fakeatem.
 	Dial func(ctx context.Context, addr string) (*atem.Session, error)
+	// ProbeATEM and ProbeDial are the device probe's ways of asking an
+	// address (probe.go): an ATEM's handshake, and a TCP connection for
+	// the others. Nil means atem.Probe and a net.Dialer's; tests point
+	// them at the fakes.
+	ProbeATEM func(ctx context.Context, addr string) error
+	ProbeDial func(ctx context.Context, network, addr string) (net.Conn, error)
 	// Logger receives the engine's log; nil discards it.
 	Logger *slog.Logger
 	// IdleTimeout overrides IdleTimeout when positive.
@@ -109,6 +115,13 @@ func New(cfg Config) *Engine {
 	if e.cfg.Dial == nil {
 		d := atem.Dialer{Logger: e.log}
 		e.cfg.Dial = d.Dial
+	}
+	if e.cfg.ProbeATEM == nil {
+		e.cfg.ProbeATEM = atem.Probe
+	}
+	if e.cfg.ProbeDial == nil {
+		var d net.Dialer
+		e.cfg.ProbeDial = d.DialContext
 	}
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	return e
@@ -289,7 +302,7 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 		return nil, false, codeErr(CodeEngine, "the engine speaks protocol %d, this request %d: stop the engine (bmdctl engine stop) and retry", Version, req.V)
 	}
 	if req.Device == "engine" {
-		return e.engineRequest(req)
+		return e.engineRequest(ctx, req)
 	}
 	if e.cfg.Background && req.Build != "" && e.cfg.BuildID != "" && req.Build != e.cfg.BuildID {
 		return nil, false, codeErr(CodeStale, "the engine runs another build of bmdctl and stops, for this one to start its own")
@@ -755,8 +768,11 @@ func (e *Engine) session(addr string) (*host, *atem.Session) {
 	return h, h.sess
 }
 
-func (e *Engine) engineRequest(req Request) (any, bool, error) {
+func (e *Engine) engineRequest(ctx context.Context, req Request) (any, bool, error) {
 	switch req.Path {
+	case "probe":
+		r, err := e.probe(ctx, req.Host)
+		return r, false, err
 	case "overview":
 		return Overview{Engine: e.status(), Switchers: e.switchers()}, false, nil
 	case "status", "ping":

@@ -1,0 +1,25 @@
+$ bmdctl connect 192.0.2.30
+<b>Test Hub</>  <dim>Blackmagic Smart Videohub 40 x 40 · Videohub</>
+  <b>saved as "Test Hub", now the default</>
+  <dim>bmdctl has no Videohub commands yet</>
+
+$ bmdctl connect 192.0.2.40
+<b>Keyer A</>  <dim>Ultimatte</>
+  <b>saved as "Keyer A", now the default</>
+  <dim>bmdctl has no Ultimatte commands yet</>
+
+$ bmdctl connect 192.0.2.30
+<b>Test Hub</>  <dim>Blackmagic Smart Videohub 40 x 40 · Videohub</>
+  <b>"Test Hub" is now the default</>
+  <dim>bmdctl has no Videohub commands yet</>
+
+$ bmdctl connect 192.0.2.99
+! <red>error</>  nothing answered at 192.0.2.99 within 2s
+!        <dim>bmdctl connect ADDRESS --type DEVICE connects without asking</>
+[exit 2]
+
+$ bmdctl --host test hub program 2
+! <red>error</>  Test Hub (192.0.2.30) is a Videohub
+!        <dim>bmdctl has no Videohub commands yet</>
+[exit 1]
+

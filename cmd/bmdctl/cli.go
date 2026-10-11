@@ -100,6 +100,9 @@ type cli struct {
 	spinAfter time.Duration
 	// discover browses for switchers (mdns); tests replace it.
 	discover func(ctx context.Context, wait time.Duration) ([]mdns.Instance, error)
+	// probed is what answered at connect ADDRESS's address, when the
+	// engine was asked (connect.go).
+	probed *engine.ProbeResult
 	// dialATEM and dialTCP are doctor's reachability checks; tests
 	// replace them.
 	dialATEM func(ctx context.Context, addr string) (*atem.Session, error)
@@ -129,25 +132,66 @@ var builtins = []struct{ name, summary string }{
 	{"completion", "print a shell completion script: completion bash|zsh|fish"},
 	{"man", "print the manual page, or write it with --dir"},
 	{"doctor", "check the engine, its socket, the hosts and that each answers"},
-	{"atem", "an ATEM switcher's commands (the default device)"},
+}
+
+// deviceGroups say what each device's commands are, for help.
+var deviceGroups = map[string]string{
+	"atem":      "an ATEM switcher's commands: program, cut, auto, usk, media, macro, ...",
+	"hyperdeck": "a HyperDeck's commands: play, stop, record, goto, clips, slot, ...",
+	"videohub":  "a Videohub router (no commands yet)",
+	"ultimatte": "an Ultimatte keyer (no commands yet)",
+}
+
+// presentDevices are the device types hosts.yml has a host of, in
+// hosts.Devices' order.
+func (c *cli) presentDevices() []string {
+	f, _, err := c.loadHosts()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, d := range hosts.Devices {
+		if slices.ContainsFunc(f.Hosts, func(h hosts.Host) bool { return h.Device == d }) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 func (c *cli) usage(w io.Writer) {
-	fmt.Fprint(w, `usage: bmdctl [--host H] [--json|--quiet] [--yes] <command> [arguments] [--flag value ...]
+	fmt.Fprint(w, `usage: bmdctl [--host H] [--json|--quiet] [--yes] [device] <command> [arguments] [--flag value ...]
 
 Commands run through a background engine that keeps a session open to
-each switcher; the first command starts it. A command without a device
-word goes to the ATEM named by --host. 'bmdctl' alone shows the engine
-and each switcher.
+each device; the first command starts it. A command without a device
+word goes to the device --host names, as its type in hosts.yml says (an
+ATEM for an address no host has). 'bmdctl' alone shows the engine and
+each device.
 
 Commands:
 `)
+	present := c.presentDevices()
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, b := range builtins {
 		fmt.Fprintf(tw, "  %s\t%s\n", b.name, b.summary)
 	}
+	for _, d := range present {
+		fmt.Fprintf(tw, "  %s\t%s\n", d, deviceGroups[d])
+	}
 	tw.Flush()
-	fmt.Fprintf(w, "\nRun 'bmdctl atem --help' for the switcher's commands.\n\n")
+	var others []string
+	for _, d := range hosts.Devices {
+		if !slices.Contains(present, d) {
+			others = append(others, d)
+		}
+	}
+	if len(others) > 0 {
+		what := "none in hosts.yml"
+		if len(present) == 0 {
+			what = "no host in hosts.yml yet"
+		}
+		fmt.Fprintf(w, "  %s\n", c.colour(dim, fmt.Sprintf("also %s (%s)", strings.Join(others, ", "), what)))
+	}
+	fmt.Fprintf(w, "\nRun 'bmdctl <device> --help' for a device's commands.\n\n")
 	globalHelp(w)
 }
 
@@ -224,23 +268,49 @@ func (c *cli) run(args []string) int {
 		return c.doctorCommand(g, words[1:], tokens)
 	}
 	// The device: named on the line, else the target host's type, else
-	// an ATEM.
+	// an ATEM. connect ADDRESS asks the address (connect.go).
 	device, named := "", false
 	if slices.Contains(hosts.Devices, first) {
 		device, words, named = first, words[1:], true
-	} else {
+	}
+	if len(words) > 0 && words[0] == "connect" {
+		return c.connectCommand(g, device, words, tokens)
+	}
+	t, terr := c.resolveTarget(g)
+	byHost := !named && terr == nil && t.Device != ""
+	if !named {
 		device = "atem"
-		if t, err := c.resolveTarget(g); err == nil && t.Device != "" {
+		if byHost {
 			device = t.Device
 		}
 	}
 	if !slices.Contains(c.reg.Devices(), device) {
-		return c.fail(exitUsage, "bmdctl: no %s commands yet; this version controls ATEM switchers", device)
+		if byHost {
+			return c.fail(exitUsage, "bmdctl: %s is %s %s; bmdctl has no %s commands yet",
+				t.label(), engine.DeviceArticle(device), engine.DeviceNames[device], engine.DeviceNames[device])
+		}
+		return c.fail(exitUsage, "bmdctl: no %s commands yet", device)
 	}
 	if !named && len(words) > 0 && !c.isCommandWord(device, words[0]) {
+		if c.deviceWith(words[0]) != "" && byHost {
+			// Another device's command: say what this host is.
+			return c.fail(exitUsage, "bmdctl: %s is %s %s; bmdctl %s --help",
+				t.label(), engine.DeviceArticle(device), engine.DeviceNames[device], device)
+		}
 		return c.fail(exitUsage, "bmdctl: unknown command %q (bmdctl --help lists them)", first)
 	}
 	return c.runDevice(g, device, words, tokens)
+}
+
+// deviceWith returns the first device one of whose commands starts with
+// word, or "".
+func (c *cli) deviceWith(word string) string {
+	for _, d := range c.reg.Devices() {
+		if c.isCommandWord(d, word) {
+			return d
+		}
+	}
+	return ""
 }
 
 // isCommandWord reports whether word starts one of device's commands.
