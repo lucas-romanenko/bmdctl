@@ -167,14 +167,18 @@ func checkMacroRecord(c *call) error { return c.overwriteMacro(int(c.args.Value(
 // macro delete.
 func checkMacroAction(c *call) error {
 	if c.args.Value("action").(uint64) == uint64(atem.MacroDelete) && !c.req.Yes {
-		return codeErr(CodeDestructive, "deleting a macro is destructive: add --yes")
+		impact := "the macro running"
+		if c.args.Has("slot") {
+			impact = c.macroImpact(int(c.args.Value("slot").(uint64)))
+		}
+		return c.refuse(impact, "delete it?", "deleting a macro is destructive: add --yes")
 	}
 	return nil
 }
 
 func (c *call) overwriteMacro(slot int) error {
 	if e := c.state.MacroEntry(slot); e.IsUsed && !c.req.Yes {
-		return codeErr(CodeDestructive, "macro slot %v holds %q: add --yes to replace it", table.Index(slot), e.Name)
+		return c.refuse(c.macroImpact(slot), "replace it?", "macro slot %v holds %q: add --yes to replace it", table.Index(slot), e.Name)
 	}
 	return nil
 }

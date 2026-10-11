@@ -155,7 +155,7 @@ func opMediaUpload(c *call) (any, bool, error) {
 	r := TransferResult{Slot: table.Index(slot), Bytes: len(data), Source: fmt.Sprintf("%dx%d %s", img.Bounds().Dx(), img.Bounds().Dy(), format)}
 	if old := c.state.MediaplayerSlotInfo(slot); old.IsUsed {
 		if !c.req.Yes {
-			return nil, false, codeErr(CodeDestructive, "still slot %v holds %q: add --yes to replace it", table.Index(slot), old.Name)
+			return nil, false, c.refuse(c.stillImpact(slot), "replace it?", "still slot %v holds %q: add --yes to replace it", table.Index(slot), old.Name)
 		}
 		r.Replaced = old.Name
 	}

@@ -1,0 +1,42 @@
+$ bmdctl media clear 2
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
+  slot 2 holds "Logo", used by MP2
+  clear it? [y/N] y
+  clear       slot 2  <dim>was "Logo"</>                            <dim># ms</>
+
+$ bmdctl media upload 1 DIR/card.png
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
+  slot 1 holds "still", used by MP1 on program
+  replace it? [y/N] 
+  <dim>cancelled</>
+[exit 5]
+
+$ bmdctl macro delete 3
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
+  macro 3 is "Half Time"
+  delete it? [y/N] no
+  <dim>cancelled</>
+[exit 5]
+
+$ bmdctl video-mode 525i5994
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
+  video mode 1080p50 → 525i5994: every output resyncs
+  change it? [y/N] YES
+  video-mode  1080p50 → 525i5994                            <dim># ms</>
+
+$ bmdctl macro delete 1
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
+  macro 1 is "Open Show"
+  delete it? [y/N] 
+  <dim>cancelled</>
+[exit 5]
+
+$ bmdctl video-mode 525i5994
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
+  video-mode  525i5994                                   <dim>already</>
+
+$ bmdctl startup save
+! <red>error</>  startup save replaces what the switcher starts up with
+!        <dim>add --yes to do it</>
+[exit 5]
+

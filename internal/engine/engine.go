@@ -301,7 +301,7 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 		return nil, false, codeErr(CodeUsage, "%s has no command %q", req.Device, req.Path)
 	}
 	c := &call{ctx: ctx, e: e, req: req, entry: entry, out: out, start: start}
-	if entry.Destructive && !req.Yes {
+	if entry.Destructive && !req.Yes && !req.Ask {
 		return nil, false, codeErr(CodeDestructive, "%s %s is destructive: add --yes to run it", req.Device, req.Path)
 	}
 	if entry.Local {
@@ -352,6 +352,9 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 		if err := check(c); err != nil {
 			return nil, false, err
 		}
+	}
+	if entry.Destructive && !req.Yes && !c.alreadyHeld() {
+		return nil, false, c.refuseEntry() // a person may be asked
 	}
 	var result any
 	var confirmed bool

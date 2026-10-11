@@ -36,6 +36,10 @@ type Request struct {
 	Files map[string][]byte `json:"files,omitempty"`
 	// Yes allows a destructive command.
 	Yes bool `json:"yes,omitempty"`
+	// Ask: a person can be asked to confirm a destructive command, so
+	// one without Yes is looked at against the switcher, and what it
+	// would affect said in a Confirm note, before it is refused.
+	Ask bool `json:"ask,omitempty"`
 	// FPS, if set, is the display rate for "seconds:frames" rates
 	// instead of the switcher's.
 	FPS int `json:"fps,omitempty"`
@@ -161,6 +165,9 @@ type Note struct {
 	// begun, then done or failed.
 	Steps []string `json:"steps,omitempty"`
 	Step  *Step    `json:"step,omitempty"`
+	// Confirm: what a destructive command would affect, before it is
+	// refused for want of Yes, to a request that may ask (Ask).
+	Confirm *Confirm `json:"confirm,omitempty"`
 }
 
 // Alias is a source an alias named, and the input whose name it shadowed.

@@ -49,6 +49,9 @@ type printer struct {
 	details []string
 	stepped int
 	failed  *engine.Step
+	// confirm is what a destructive command would affect, from the
+	// engine, for a person to be asked.
+	confirm *engine.Confirm
 }
 
 func (p *printer) label() string { return strings.TrimSpace(p.e.Device + " " + p.e.Path) }
@@ -111,6 +114,8 @@ func (p *printer) note(n engine.Note) {
 		}
 	case n.Step != nil:
 		p.step(*n.Step)
+	case n.Confirm != nil:
+		p.confirm = n.Confirm
 	case n.Alias != nil && p.c.terminal():
 		a := n.Alias
 		if p.c.tellOnce(fmt.Sprintf("alias %s %s %d", p.t.Address, strings.ToLower(a.Typed), a.Shadowed.ID)) {
@@ -140,6 +145,8 @@ func (p *printer) response(line []byte, r engine.Response) {
 		if !p.g.quiet && !p.stdoutUsed {
 			fmt.Fprintf(p.c.stdout, "%s\n", line)
 		}
+	case !r.OK && r.Code == engine.CodeDestructive && p.confirm != nil && p.c.asks():
+		// A person will be asked (cli.send).
 	case !r.OK && p.c.terminal():
 		p.screenError(r)
 	case !r.OK:

@@ -36,18 +36,31 @@ import (
 type transcript struct {
 	b   *bench
 	env map[string]string // set for the next line only
+	in  *string           // stdin for the next line only, a terminal
 	out strings.Builder
 }
 
 func (tr *transcript) run(args ...string) {
 	tr.b.t.Helper()
-	c, o, e := tr.b.cli("")
-	c.tty, c.ttyErr = true, true
+	in := ""
+	if tr.in != nil {
+		in = *tr.in
+	}
+	c, o, e := tr.b.cli(in)
+	c.tty, c.ttyErr, c.ttyIn = true, true, tr.in != nil
+	tr.in = nil
+	// A terminal echoes what is typed after the question: so does the
+	// transcript.
 	c.spinAfter = time.Hour // no frame: what a wait leaves is the point
 	for k, v := range tr.env {
 		tr.b.env[k] = v
 	}
 	code := c.run(with(args...))
+	if in != "" {
+		out := strings.Replace(o.String(), "[y/N] ", "[y/N] "+in, 1)
+		o.Reset()
+		o.WriteString(out)
+	}
 	for k := range tr.env {
 		delete(tr.b.env, k)
 	}
@@ -237,6 +250,41 @@ func TestTerminalStepFails(t *testing.T) {
 	p.note(engine.Note{Step: &engine.Step{Index: 1, Error: "the session closed"}})
 	p.response(nil, engine.Response{Code: engine.CodeUnreachable, Error: "the session closed"})
 	golden(t, "steps.golden", visible(o.String()+e.String()))
+}
+
+// A destructive command at a terminal, a person at the keyboard: what it
+// would affect, then the question; y or yes does it, anything else (and
+// Enter) cancels with exit 5. stdin not a terminal: refused, as ever.
+func TestTerminalConfirm(t *testing.T) {
+	b := newBench(t)
+	b.must(with("media", "upload", "2", writePNG(t, b), "--name", "Logo")...)
+	b.must(with("program", "mp1")...)
+	tr := &transcript{b: b}
+	answer := func(s string) { tr.in = &s }
+	answer("y\n")
+	tr.run("media", "clear", "2")
+	answer("\n")
+	tr.run("media", "upload", "1", writePNG(t, b))
+	answer("no\n")
+	tr.run("macro", "delete", "3")
+	answer("YES\n")
+	tr.run("video-mode", "525i5994")
+	answer("") // end of input
+	tr.run("macro", "delete", "1")
+	answer("y\n")
+	tr.run("video-mode", "525i5994") // already: nothing to ask
+	tr.run("startup", "save")        // stdin no terminal: refused
+	golden(t, "confirm.golden", strings.ReplaceAll(tr.out.String(), b.dir, "DIR"))
+	if n := len(b.sent("CVdM")); n != 1 {
+		t.Errorf("%d video mode changes", n)
+	}
+}
+
+// writePNG writes a small PNG into the bench's directory.
+func writePNG(t *testing.T, b *bench) string {
+	path := filepath.Join(b.dir, "card.png")
+	os.WriteFile(path, testPNG(t), 0o644)
+	return path
 }
 
 // fit cuts a line to its columns, colour codes and all.
