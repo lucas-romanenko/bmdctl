@@ -2592,23 +2592,26 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   timecode: HH:MM:SS:FF`, checked for that form), `Notify` and `Play`'s
   false loop and single clip. The CLI marks these unverified.
 - **Deliberate differences**, each a trap of SURFACE-hyperdeck.md §5.4
-  fixed rather than copied, with a test; not yet filed against bmdwire:
+  fixed rather than copied, with a test; the first four are filed
+  against bmdwire (label follow-up):
   - **A timeout ends the session** (§5.4 item 1): an answer later than
     its deadline would be read as the next command's. The owner checks
     the oldest waiter's deadline every 100 ms. `TestATimeoutEndsTheSession`;
     an abandoned wait's late answer is dropped, `TestALateAnswerIsDropped`.
+    bmdwire#18.
   - **An answer to no command is dropped** and logged (§5.4 item 2), not
     given to the next command. `TestAnAnswerToNothingIsDropped`. A
     malformed head is still the waiting command's error, as in
     hyperdeckwire, and one with no command waiting is dropped too.
+    bmdwire#19.
   - **A line break in a value is refused** (§5.4 item 5): every command is
     checked, and `ClipsAdd`, `Record`, `Notify`, `SetConfiguration` and
-    `Raw` say so in `Validate`. `TestALineBreakIsRefused`.
+    `Raw` say so in `Validate`. `TestALineBreakIsRefused`. bmdwire#20.
   - **A refusal for a greeting fails Dial** (§5.4 item 6): a deck with all
     the clients it takes answers `120 connection rejected` and closes;
     Dial returns that `*Error` rather than a dead session.
     `TestARejectedConnectionFailsDial`; the oracle's greeting of 120
-    expects it.
+    expects it. bmdwire#21.
   - **After the stream has ended nothing is sent**: hyperdeckwire writes
     into a socket it found closed and reads its end again; the session has
     ended and returns `ErrClosed`. The oracle test expects that for calls
