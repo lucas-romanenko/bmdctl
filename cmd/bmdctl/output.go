@@ -41,7 +41,7 @@ type printer struct {
 	// this request opened it. A terminal's header says both.
 	live        *engine.OnAir
 	connectedIn time.Duration
-	saved       remembered // what connect ADDRESS did to hosts.yml
+	saved       remembered      // what connect ADDRESS did to hosts.yml
 	noInput     *engine.NoInput // a source typed that names nothing
 }
 

@@ -41,6 +41,8 @@ func TestSources(t *testing.T) {
 			t.Errorf("%q: %v, want %s", typed, err, msg)
 		}
 	}
+	c.noInput = nil
+	r.Source("cam9")
 	if c.noInput == nil || c.noInput.Typed != "cam9" || len(c.noInput.Inputs) != 6 || c.noInput.Inputs[1].Short != "lkkk" {
 		t.Errorf("no input: %+v", c.noInput)
 	}
