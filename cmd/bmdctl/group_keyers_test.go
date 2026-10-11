@@ -34,11 +34,11 @@ func TestKeyerCommands(t *testing.T) {
 		{[]string{"usk", "1", "keyframe-run", "b"}, "RFlK", "0000000002000000", false},
 		{[]string{"dsk", "on-air", "on", "--dsk", "2"}, "CDsL", "01010000", true},
 		{[]string{"dsk", "tie", "on"}, "CDsT", "00010000", true},
-		{[]string{"dsk", "rate", "1:00", "--dsk", "2"}, "CDsR", "01190000", true},
+		{[]string{"dsk", "rate", "0:20", "--dsk", "2"}, "CDsR", "01140000", true},
 		{[]string{"dsk", "fill", "cam1"}, "CDsF", "00000001", true},
 		{[]string{"dsk", "key", "2"}, "CDsC", "00000002", true},
 		{[]string{"dsk", "gain", "--gain", "20"}, "CDsG", "", true},
-		{[]string{"dsk", "mask", "--enabled"}, "CDsM", "", true},
+		{[]string{"dsk", "mask", "--enabled", "--top", "2"}, "CDsM", "", true},
 		{[]string{"dsk", "auto", "--dsk", "2"}, "DDsA", "01000000", false},
 		{[]string{"aux", "2", "Color 1"}, "CAuS", "010107d1", true},
 		{[]string{"input", "rename", "Camera 2", "--long-name", "Stage Left", "--short-name", "STGL"}, "CInL", "", true},
@@ -64,16 +64,15 @@ func TestKeyerCommands(t *testing.T) {
 	// The rename shows in the names: the new one works, and inputs shows
 	// it. "Camera 2" still reaches input 2 as an alias, whatever its name;
 	// a name nothing has points at inputs.
-	b.must(with("program", "Camera 2")...)
-	if got := b.lastSent(t, "CPgI"); got != "00000002" {
-		t.Errorf("alias: %s", got)
+	if out := b.must(with("--json", "program", "Camera 2")...); !strings.Contains(out, `"source":"2 (Stage Left)"`) {
+		t.Errorf("alias: %s", out)
 	}
 	if code, _, errOut := b.run(with("program", "Stage Right")...); code != exitUsage ||
 		!strings.Contains(errOut, `no input is named "Stage Right" (bmdctl inputs lists them)`) {
 		t.Errorf("unknown name: %d %q", code, errOut)
 	}
-	b.must(with("program", "stage left")...)
-	if got := b.lastSent(t, "CPgI"); got != "00000002" {
+	b.must(with("preview", "stage left")...)
+	if got := b.lastSent(t, "CPvI"); got != "00000002" {
 		t.Errorf("new name: %s", got)
 	}
 	// One source per line: id, short name, long name, port type.

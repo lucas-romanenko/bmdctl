@@ -26,11 +26,11 @@ func TestPositionalExamples(t *testing.T) {
 		line      string
 		code, hex string
 	}{
-		{"preview cam1", "CPvI", "00000001"},
-		{"program 2 --me 1", "CPgI", "00000002"},
+		{"preview cam2", "CPvI", "00000002"},
+		{"program 1 --me 1", "CPgI", "00000001"},
 		{"usk 1 fill cam2", "CKeF", "00000002"},
 		{"aux 2 mp1", "CAuS", "01010bc2"},
-		{"transition rate 1:00", "CTDp", "01001e0000000000"}, // NTSC: one second is 30 frames
+		{"transition rate 0:20", "CTDp", "0100140000000000"},
 		{"color 1 --hue 180 --sat 50", "CClV", "0300070801f40000"},
 		{"macro run 3", "MAct", "00020000"},
 	} {

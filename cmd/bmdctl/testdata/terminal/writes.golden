@@ -55,7 +55,7 @@ $ bmdctl disconnect
 
 $ bmdctl program cam2
 ATEM 1 M/E Constellation HD  PGM CAM2 · PVW CAM1 · connected # ms
-  program     CAM2                                          # ms
+  program     CAM2                                       already
 
 $ bmdctl exec DIR/cue.txt
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW MP1</>

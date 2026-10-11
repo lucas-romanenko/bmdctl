@@ -313,7 +313,7 @@ func TestRatesAtTheSwitchersRate(t *testing.T) {
 // --json prints exactly what the engine sent; --quiet prints nothing.
 func TestJSONAndQuiet(t *testing.T) {
 	b := newBench(t)
-	out := b.must(with("--json", "program", "CAM2")...)
+	out := b.must(with("--json", "program", "CAM1")...)
 	if strings.Count(out, "\n") != 1 {
 		t.Fatalf("not one line: %q", out)
 	}
@@ -334,8 +334,8 @@ func TestJSONAndQuiet(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &r); err != nil {
 		t.Fatal(err)
 	}
-	if !r.OK || !r.Confirmed || r.Result.Command != "CPgI" || r.Result.Echo != "PrgI:0" || r.Result.State.Source != 2 ||
-		r.Result.Args["source"] != "2 (Camera 2)" || r.TookMS == nil {
+	if !r.OK || !r.Confirmed || r.Result.Command != "CPgI" || r.Result.Echo != "PrgI:0" || r.Result.State.Source != 1 ||
+		r.Result.Args["source"] != "1 (Camera 1)" || r.TookMS == nil {
 		t.Errorf("%s", out)
 	}
 	var keys map[string]json.RawMessage
@@ -499,15 +499,15 @@ func TestStaleEngineRestarts(t *testing.T) {
 		t.Errorf("status: %d %d\n%s", code, *spawned, o.String())
 	}
 	// A command restarts it, once, and is sent to the new engine.
-	if code := c.run(with("program", "2")); code != 0 || *spawned != 1 {
-		t.Fatalf("program 2: %d, %d spawns", code, *spawned)
+	if code := c.run(with("program", "1")); code != 0 || *spawned != 1 {
+		t.Fatalf("program 1: %d, %d spawns", code, *spawned)
 	}
 	select {
 	case <-old.Done():
 	default:
 		t.Error("the engine of another build still runs")
 	}
-	if got := b.lastSent(t, "CPgI"); got != "00000002" || b.engine() == old {
+	if got := b.lastSent(t, "CPgI"); got != "00000001" || b.engine() == old {
 		t.Errorf("sent %s, new engine %v", got, b.engine() != old)
 	}
 	// The same build: nothing restarts.

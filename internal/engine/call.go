@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -93,6 +94,9 @@ type CommandResult struct {
 	Echo string `json:"echo,omitempty"`
 	// State is the echoed state packet.
 	State any `json:"state,omitempty"`
+	// Already: the switcher held every value asked for, so nothing was
+	// sent.
+	Already bool `json:"already,omitempty"`
 }
 
 // sendEntry builds the entry's wire command from the arguments and sends
@@ -111,6 +115,11 @@ func (c *call) sendEntry() (any, bool, error) {
 			return nil, false, usageErr(err)
 		}
 	}
+	if c.alreadyHeld() {
+		r := CommandResult{Command: cmd.Opcode(), Echo: cmd.EchoKey(), Args: c.displayArgs(), Already: true}
+		c.noteValues(false, nil)
+		return r, true, nil
+	}
 	r, confirmed, err := c.send(cmd)
 	r.Args = c.displayArgs()
 	if c.entry.Path != c.req.Path {
@@ -120,6 +129,34 @@ func (c *call) sendEntry() (any, bool, error) {
 		c.noteValues(confirmed, nil)
 	}
 	return r, confirmed, err
+}
+
+// alreadyHeld reports whether the switcher holds every value a command
+// sets already, by the command's reader: then sending it would change
+// nothing, and nothing is sent. An argument that says where (named in
+// the echo key: the M/E, the keyer) isn't a value; one the reader
+// doesn't know means the command is sent.
+func (c *call) alreadyHeld() bool {
+	r := readers[c.entry.Path]
+	if r == nil || c.entry.Path != c.req.Path {
+		return false
+	}
+	held := r(c.state, c.args)
+	compared := false
+	for _, p := range c.entry.Params {
+		if !c.args.Has(p.Name) {
+			continue
+		}
+		v, ok := held[p.Name]
+		switch {
+		case !ok && strings.Contains(c.entry.Echo, "<"+p.Name+">"):
+			continue
+		case !ok || !reflect.DeepEqual(v, c.args.Value(p.Name)):
+			return false
+		}
+		compared = true
+	}
+	return compared
 }
 
 // noteValues sends a command's values in a note: its arguments' (from

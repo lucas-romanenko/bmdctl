@@ -25,7 +25,7 @@ $ bmdctl program cam2
 
 $ bmdctl program cam2
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW cam2</>
-  program     <red>CAM2</>                                          <dim># ms</>
+  program     <red>CAM2</>                                       <dim>already</>
 
 $ bmdctl program cam
 ! <red>error</>  source "cam": starts more than one input's name: cam2, CAM2

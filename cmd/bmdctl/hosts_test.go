@@ -209,15 +209,15 @@ func TestHostResolution(t *testing.T) {
 	b.must("hosts", "add", "192.0.2.11", "--as", "other")
 	b.must("hosts", "add", "192.0.2.13", "--as", "stage")
 	b.must("hosts", "add", "192.0.2.20", "--as", "deck", "--device", "hyperdeck")
-	if got := b.wentTo(t, "CPgI", "--host", "Studio", "program", "1"); got != "192.0.2.10:9910" {
+	if got := b.wentTo(t, "DCut", "--host", "Studio", "cut"); got != "192.0.2.10:9910" {
 		t.Fatalf("by name: %s", got)
 	}
 	// The last --host is remembered.
-	if got := b.wentTo(t, "CPgI", "program", "2"); got != "192.0.2.10:9910" {
+	if got := b.wentTo(t, "DCut", "cut"); got != "192.0.2.10:9910" {
 		t.Errorf("last used: %s", got)
 	}
 	// The start of a name, once it is only one name's.
-	if got := b.wentTo(t, "CPgI", "--host", "OTH", "program", "1"); got != "192.0.2.11:9910" {
+	if got := b.wentTo(t, "DCut", "--host", "OTH", "cut"); got != "192.0.2.11:9910" {
 		t.Errorf("by its start: %s", got)
 	}
 	if got := b.cliLastHost(); got != "other" {
@@ -228,7 +228,7 @@ func TestHostResolution(t *testing.T) {
 	}
 	// BMDCTL_HOST wins over the last host.
 	b.env[HostEnv] = "stage"
-	if got := b.wentTo(t, "CPgI", "program", "1"); got != "192.0.2.13:9910" {
+	if got := b.wentTo(t, "DCut", "cut"); got != "192.0.2.13:9910" {
 		t.Errorf("BMDCTL_HOST: %s", got)
 	}
 	delete(b.env, HostEnv)
@@ -241,16 +241,16 @@ func TestHostResolution(t *testing.T) {
 	if out := b.must("--host", "192.0.2.12", "program", "2"); !strings.HasPrefix(out, "ATEM 1 M/E Constellation HD (192.0.2.12)  program") {
 		t.Errorf("bare address: %q", out)
 	}
-	if got := b.wentTo(t, "CPgI", "program", "1"); got != "192.0.2.12:9910" {
+	if got := b.wentTo(t, "DCut", "cut"); got != "192.0.2.12:9910" {
 		t.Errorf("address: %s", got)
 	}
 	// Setting the default makes it the host commands go to now.
 	b.must("hosts", "default", "other")
-	if got := b.wentTo(t, "CPgI", "program", "1"); got != "192.0.2.11:9910" {
+	if got := b.wentTo(t, "DCut", "cut"); got != "192.0.2.11:9910" {
 		t.Errorf("default: %s", got)
 	}
 	os.Remove(filepath.Join(b.env["XDG_STATE_HOME"], "bmdctl", "last-host"))
-	if got := b.wentTo(t, "CPgI", "program", "2"); got != "192.0.2.11:9910" {
+	if got := b.wentTo(t, "DCut", "cut"); got != "192.0.2.11:9910" {
 		t.Errorf("default without last-host: %s", got)
 	}
 	// A host's device type decides the device; it must match one named.

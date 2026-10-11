@@ -8,6 +8,8 @@ package engine
 // and the transition style and next-transition layers set on their own.
 
 import (
+	"slices"
+
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
@@ -131,6 +133,13 @@ func (c *call) sendBuilt(cmd atem.Command, change ...Value) (any, bool, error) {
 		if err := v.Validate(); err != nil {
 			return nil, false, usageErr(err)
 		}
+	}
+	held := len(change) == 0 && c.alreadyHeld() ||
+		len(change) > 0 && !slices.ContainsFunc(change, func(v Value) bool { return v.Before == nil || *v.Before != v.After })
+	if held {
+		// The switcher holds it already: nothing to send.
+		c.noteValues(true, change)
+		return CommandResult{Command: cmd.Opcode(), Echo: cmd.EchoKey(), Args: c.displayArgs(), Already: true}, true, nil
 	}
 	r, confirmed, err := c.send(cmd)
 	r.Args = c.displayArgs()

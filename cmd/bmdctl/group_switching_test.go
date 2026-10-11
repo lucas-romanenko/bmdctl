@@ -39,7 +39,7 @@ func TestSwitchingCommands(t *testing.T) {
 		code, hex string
 		confirmed bool
 	}{
-		{[]string{"program", "cam2"}, "CPgI", "00000002", true},
+		{[]string{"program", "cam1"}, "CPgI", "00000001", true},
 		{[]string{"preview", "Color Bars"}, "CPvI", "000003e8", true},
 		{[]string{"cut"}, "DCut", "00000000", false},
 		{[]string{"auto", "--me", "1"}, "DAut", "00000000", false},
@@ -48,8 +48,8 @@ func TestSwitchingCommands(t *testing.T) {
 		{[]string{"ftb", "enable", "false"}, "FEna", "00000000", true},
 		{[]string{"tbar", "5000"}, "CTPs", "00001388", true},
 		{[]string{"transition", "style", "wipe"}, "CTTp", "01000200", true},
-		{[]string{"transition", "next", "--next", "background,key1"}, "CTTp", "02000003", true},
-		// The dump's selection is background+key1.
+		{[]string{"transition", "next", "--next", "background,key2"}, "CTTp", "02000005", true},
+		// The dump's selection is background+key1, which the fake keeps.
 		{[]string{"transition", "next", "--toggle", "key1"}, "CTTp", "02000001", true},
 		{[]string{"transition", "next", "--toggle", "key2"}, "CTTp", "02000007", true},
 		// The dump's style is dip: the rate goes to the dip settings.
@@ -105,5 +105,36 @@ func TestSwitchingCommands(t *testing.T) {
 		if code, _, errOut := b.run(with(c.args...)...); code != exitUsage || !strings.Contains(errOut, c.msg) {
 			t.Errorf("%v: %d %q, want %q", c.args, code, errOut, c.msg)
 		}
+	}
+}
+
+// A write the switcher holds already sends nothing, and says so: the
+// fake answers nothing here, so anything sent would go unconfirmed.
+// --json has "already": true; a terminal says already where the time
+// goes (terminal_test.go).
+func TestAlready(t *testing.T) {
+	b := newBench(t)
+	b.must(with("program", "1")...)
+	sw := b.switchers()[0]
+	sw.Unanswered("CPgI", "CPvI", "CTTp", "CAuS")
+	n := len(sw.Commands())
+	for _, line := range [][]string{
+		{"program", "cam1"},
+		{"preview", "1"},               // the dump's preview
+		{"transition", "style", "dip"}, // the dump's style: an operation
+		{"aux", "2", "pgm"},
+	} {
+		code, out, errOut := b.run(with(append(line, "--json")...)...)
+		if code != 0 || !strings.Contains(out, `"confirmed":true`) || !strings.Contains(out, `"already":true`) {
+			t.Errorf("%v: %d %s %s", line, code, out, errOut)
+		}
+	}
+	if sent := sw.Commands()[n:]; len(sent) != 0 {
+		t.Errorf("sent %d commands", len(sent))
+	}
+	// A value it doesn't hold is sent, and the silent switcher leaves it
+	// unconfirmed.
+	if code, _, _ := b.run(with("program", "2", "--timeout", "200ms")...); code != exitNoEcho {
+		t.Errorf("a change: exit %d", code)
 	}
 }

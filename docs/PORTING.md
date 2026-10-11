@@ -1579,6 +1579,16 @@ lives until 10 minutes pass without a request, unless pinned.
   `Send`, `confirmed` false, as atemwire's `send()` leaves it. The result
   is `{args, command, echo, state}`: the arguments for display, the
   opcode, the key waited for and the echoed packet.
+- **A write the switcher holds already sends nothing** (the terminal
+  pass). Where a command's reader (notes.go, `readers`) holds every
+  value it sets equal to the argument (an argument the echo key names,
+  the M/E or keyer, says where, not what; one the reader doesn't know
+  means it is sent), or an operation's before and after agree
+  (`sendBuilt`: transition style, rate, next), the engine sends nothing
+  and answers `confirmed` with `"already": true` in the result: the
+  state the switcher reported holds the value. A terminal says
+  `already` where the time goes. atemwire sends whatever it is asked
+  to; this saves a video mode resync and an operator's double press.
 - **Codes.** `usage` (exit 1), `unreachable`, `engine` and `stale` (2),
   `no_echo` (3), `rejected` (4), `destructive` (5). Session errors (`ErrClosed`,
   `ErrDisconnected`, `ErrNotReady`) are `unreachable`; a command that

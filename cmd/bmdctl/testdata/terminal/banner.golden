@@ -18,5 +18,5 @@ bmdctl VERSION
 
 $ bmdctl --host studio program cam2
 <b>studio</>  <dim>PGM CAM2 · PVW CAM1 · 1080p50 · connected # ms</>
-  program     <red>CAM2</>                                          <dim># ms</>
+  program     <red>CAM2</>                                       <dim>already</>
 
