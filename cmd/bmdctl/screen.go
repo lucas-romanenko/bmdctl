@@ -109,7 +109,7 @@ func verbCell(verb string) string { return padRight(verb, verbWidth) + "  " }
 // dim and right-aligned. A line that would pass lineWidth loses the end
 // of what it did, not its status.
 func (c *cli) resultLine(verb, change, status string) string {
-	left := indent + verbCell(verb) + change
+	left := indent + c.stamped() + verbCell(verb) + change
 	if change == "" {
 		left = strings.TrimRight(left, " ")
 	}
@@ -122,6 +122,14 @@ func (c *cli) resultLine(verb, change, status string) string {
 	}
 	end := max(timingEnd, width(left)+2+sw)
 	return left + strings.Repeat(" ", end-sw-width(left)) + c.colour(dim, status)
+}
+
+// stamped is the time of day a result starts with under -t, dim: "13:43:28  ".
+func (c *cli) stamped() string {
+	if !c.stamp {
+		return ""
+	}
+	return c.colour(dim, c.now().Format("15:04:05")) + "  "
 }
 
 // rows lays cells out in columns (align), each line indented.

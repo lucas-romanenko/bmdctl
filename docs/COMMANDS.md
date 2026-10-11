@@ -29,6 +29,7 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 - `--fps N`: The frame rate for rates given as seconds:frames (default: the switcher's display rate; 25 with --dry-run).
 - `--timeout D`: How long to wait for the switcher's echo (default 5s), or for a transfer to finish (default: the library's).
 - `--no-color`: No colour, even on a terminal.
+- `--timestamps, -t`: At a terminal, start each result line with the time of day (HH:MM:SS), dim.
 - `--help, -h`: Help for the command line so far.
 
 ### Built-in commands
