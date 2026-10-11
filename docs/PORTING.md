@@ -1658,13 +1658,21 @@ there instead of taking every address for an ATEM.
   device block, or the Ultimatte's `Label:`, must be in what is sent,
   since both start `PROTOCOL PREAMBLE:` and only the port tells them
   apart otherwise.
-- **The ATEM's question** (`atem.Probe`, `Dialer.Probe`) sends the SYN
-  Dial sends and waits for the switcher's SYN reply, and never ACKs it:
-  the handshake is left half done, so no session opens, and the
-  switcher forgets it. atemwire's `probe()` connects fully through the
-  pool, which takes the whole dump; bmdctl's real connect follows anyway.
-  Whether a half-done handshake holds a client slot on a switcher for a
-  while is not yet seen on hardware.
+- **The ATEM's question** (`atem.Probe`, `Dialer.Probe`) leaves nothing
+  open on the switcher. It sends the SYN Dial sends; on the switcher's
+  acceptance (hello 0x02) it completes the handshake with Dial's ACK,
+  takes the session id from the switcher's first packet (the dump's
+  start) and says goodbye under it (SYN, hello 0x04), as Close does; a
+  refusal opens nothing. A handshake left half done (as the first form
+  of the probe left it, never ACKing the reply) would hold one of a
+  switcher's few client slots until it timed out. Handing the completed
+  handshake to the session connect opens next was the alternative; the
+  engine's dial and the probe are separate requests, possibly far apart,
+  so the probe closes its own. atemwire's `probe()` connects fully
+  through the pool, which takes the whole dump. The fake switcher's
+  `Dangling` says whether a SYN it answered was never completed or a
+  session never said goodbye to, and the probe's test requires neither.
+  Not yet seen on hardware.
 - **Names, where the probe can ask:** a HyperDeck's from `device info`
   (its `name`, else its model; the deck is dialled `Bare` and closed),
   a Videohub's `Friendly name` (model `Model name`), an Ultimatte's

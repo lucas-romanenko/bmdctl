@@ -68,6 +68,8 @@ type Switcher struct {
 	closeOnce sync.Once
 
 	handshakes  int
+	synAnswered bool // a SYN answered, its handshake not completed
+	goodbyes    int
 	session     uint16
 	established bool
 	seq         uint16 // last reliable sequence sent
@@ -250,6 +252,20 @@ func (sw *Switcher) ReleaseLock(store uint16) {
 // Handshakes returns how many handshakes the switcher has completed.
 func (sw *Switcher) Handshakes() int { sw.mu.Lock(); defer sw.mu.Unlock(); return sw.handshakes }
 
+// Goodbyes returns how many goodbyes (SYN, hello 0x04) the switcher has
+// received.
+func (sw *Switcher) Goodbyes() int { sw.mu.Lock(); defer sw.mu.Unlock(); return sw.goodbyes }
+
+// Dangling reports whether the switcher holds a session for a client: a
+// SYN it answered whose handshake the client never completed, or a
+// session established and not said goodbye to. A real switcher keeps
+// either until it times out, taking one of its few client slots.
+func (sw *Switcher) Dangling() bool {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	return sw.synAnswered || sw.established
+}
+
 // Commands returns every command the switcher has received, in order,
 // each with its 8-byte header.
 func (sw *Switcher) Commands() [][]byte {
@@ -359,14 +375,17 @@ func (sw *Switcher) receive(b []byte) {
 		// A new session: accept it under the temporary id.
 		sw.sendStale()
 		sw.established = false
+		sw.synAnswered = true
 		sw.send(packet{flags: flagSYN, session: helloSession, data: []byte{0x02, 0, 0, 0, 0, 0, 0, 0}})
 		return
 	case p.flags&flagSYN != 0 && len(p.data) > 0 && p.data[0] == 0x04:
+		sw.goodbyes++
 		sw.endSession() // goodbye
 		return
 	case !sw.established && p.flags&flagACK != 0 && p.session == helloSession:
 		sw.sendStale()
 		sw.stale = 0
+		sw.synAnswered = false
 		sw.startSession()
 		return
 	}

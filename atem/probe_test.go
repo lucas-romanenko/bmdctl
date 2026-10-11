@@ -7,6 +7,7 @@ package atem_test
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -20,8 +21,24 @@ func TestProbeFindsTheSwitcher(t *testing.T) {
 	if err := (&atem.Dialer{Conn: sw}).Probe(context.Background(), fakeatem.Address); err != nil {
 		t.Fatal(err)
 	}
-	if hs := sw.Handshakes(); hs != 0 {
-		t.Errorf("%d sessions opened", hs)
+	// The handshake completed and the session said goodbye to: nothing
+	// dangles, neither a SYN answered nor a session open.
+	if hs, bye := sw.Handshakes(), sw.Goodbyes(); hs != 1 || bye != 1 {
+		t.Errorf("%d handshakes, %d goodbyes", hs, bye)
+	}
+	if sw.Dangling() {
+		t.Error("the probe left a session dangling")
+	}
+}
+
+// What the fake calls dangling: a SYN answered and never completed.
+func TestAHalfOpenHandshakeDangles(t *testing.T) {
+	sw := fakeatem.New(nil)
+	defer sw.Close()
+	syn := []byte{0x10, 0x14, 0x13, 0x37, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0}
+	sw.WriteTo(syn, &net.UDPAddr{IP: net.ParseIP(fakeatem.Address), Port: 9910})
+	if !sw.Dangling() {
+		t.Error("an answered SYN doesn't dangle")
 	}
 }
 
