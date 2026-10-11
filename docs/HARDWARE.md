@@ -183,3 +183,58 @@ of it. The rules for hardware tests (which switchers, read-only unless
   `classic-audio meters`, a still that isn't premultiplied, a fit that
   shrinks the image or adds bars at the sides, and every other command
   that changes the switcher.
+
+## 2026-10-11: seventh run, the output rework
+
+- **Commit:** `4d3c452`. The engine's log gives its version as
+  `v0.0.0-20261011052018-4d3c4529be7c+dirty`: the checkout had untracked
+  files (the brand handoff, a screenshot), no changed tracked file. The
+  sixth run (2026-10-10 21:45, `489c74e` by the engine's log) has no
+  section here.
+- **Switcher:** the Constellation at 192.168.81.85, "Studio ATEM": the
+  engine's log reports an ATEM 1 M/E Constellation HD at 1080p25. The
+  report didn't restate the protocol version (2.30 on the first run).
+- **Run:** the terminal pass's output, at a terminal, in 18 seconds by
+  the engine's log. The engine of the previous build was stopped and
+  one of this build started. Then `connect` (75 ms), `preview` twice,
+  `program`, `cut`, `undo`, `program wde` (refused before sending: no
+  input of that name), `status`, `inputs`, `show`, `media upload` to
+  still slot 10 (514 ms), `media clear` of it without `--yes`, refused
+  and asked at the prompt, then sent once answered (34 ms), `profile
+  save` (2.8 s: six macros and one still), a `cut` and `disconnect`.
+  The report says `-t` was used; the log doesn't say for which command.
+- **Result:** the output rework worked as designed: the connect line,
+  `already`, the `[y/N]` prompt, the profile's `✓` step lines, `-t`'s
+  time of day, and `disconnect`. The 514 ms upload left no bar in the
+  scrollback, as designed, since the bar is erased once the result is
+  printed; whether one was drawn couldn't be seen afterwards. Four
+  things were wrong:
+  - `undo` straight after the `cut` (10 ms later by the log) said
+    `nothing to undo`: a cut pushed nothing on the undo stack.
+  - The `cut`'s header showed program and preview after the cut, not
+    what was live when it ran.
+  - The status column ended at column 64 on results and wherever the
+    row ended in tables, so `status` and `show keys` put one keyer's
+    on-air state in different columns.
+  - Nothing tested that a bar is drawn for a transfer over 200 ms.
+- **Changed because of it** (`ef5b25f`): a cut or an auto keeps both
+  buses for undo, and undo cuts again (or, where the buses changed
+  since, sets each back); the header shows program and preview as the
+  command found them (one `on_air` note, before the command); every
+  status ends at column 72, results and tables alike, and `status` and
+  `show keys` share a keyer's columns; `TestUploadBar` checks, at a
+  forced terminal with the real 200 ms, that an upload draws its bar at
+  least once and leaves none. Before that (`cfacc73`, to make CI's
+  goldens deterministic), a cut waits for the switcher's `PrgI` and
+  `PrvI` before it answers, and an auto for its first `TrPs` or `PrgI`:
+  an undo 10 ms after a cut, as in this run, could otherwise read the
+  buses from before it. A cut's line now shows its time, not `sent`.
+- **Not yet verified on hardware:** undo of a cut or an auto; that a
+  cut's `PrgI` and `PrvI` arrive within the timeout on a real switcher
+  (if they don't, the cut answers `sent` after `--timeout`); the
+  header and column-72 layout; a bar drawn for a slow transfer;
+  `hosts discover`; `hosts add` and `--as`; a session that drops and
+  comes back; a rename made in ATEM Setup while bmdctl is in use; macro
+  upload, profile restore, `classic-audio meters`, a still that isn't
+  premultiplied, a fit that shrinks the image or adds bars at the
+  sides, and every other command that changes the switcher.
