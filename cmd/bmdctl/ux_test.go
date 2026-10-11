@@ -147,6 +147,25 @@ func TestConnecting(t *testing.T) {
 	}
 }
 
+// The before → after column is as wide as a change between the
+// switcher's two longest source names, so the status lines up.
+func TestChangeColumn(t *testing.T) {
+	b := newBench(t)
+	// The fake's sources go by their short names, four letters at most.
+	if out := b.must(with("program", "cam1")...); !strings.Contains(out, "  CAM2 → CAM1  confirmed ") {
+		t.Errorf("program: %q", out)
+	}
+	if out := b.must(with("preview", "mp1")...); !strings.Contains(out, "  CAM1 → MP1   confirmed ") {
+		t.Errorf("preview: %q", out)
+	}
+	// A source with no short name goes by its long one; the next line's
+	// column makes room for it on both sides of the arrow.
+	b.must(with("input", "rename", "Camera 2", "--long-name", "Stage Left Wide", "--short-name", "")...)
+	if out := b.must(with("program", "1")...); !strings.Contains(out, "  "+padRight("CAM1", 2*15+3)+"  confirmed ") {
+		t.Errorf("long name: %q", out)
+	}
+}
+
 // bmdctl alone: the engine, then a line per host with its model, video
 // mode, how its session stands and which is the default.
 func TestOverview(t *testing.T) {
@@ -163,8 +182,7 @@ func TestOverview(t *testing.T) {
 		"studio \\(192.0.2.10\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds  \\(default\\)\n" +
 		"deck \\(192.0.2.20\\)  hyperdeck  no commands yet\n" +
 		"spare \\(192.0.2.11\\)  no session\n" +
-		"ATEM 1 M/E Constellation HD \\(192.0.2.50\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds\n" +
-		"bmdctl help lists the commands\n"
+		"ATEM 1 M/E Constellation HD \\(192.0.2.50\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds\n"
 	if code != 0 || errOut != "" || !regexp.MustCompile("^"+want+"$").MatchString(collapse(out)) {
 		t.Errorf("overview: %d %q\n%s", code, errOut, out)
 	}
@@ -186,7 +204,8 @@ func TestOverview(t *testing.T) {
 	if out := b.must("help"); !strings.HasPrefix(out, "usage: bmdctl") {
 		t.Errorf("help: %q", out)
 	}
-	// An engine of another build, by the start of its last part.
+	// The engine's commit; an engine of another build says so, whatever
+	// its commit (two builds of one dirty tree share one).
 	b.engine().Stop()
 	eventually(t, "the engine to go", func() bool { _, err := os.Stat(b.env["BMDCTL_SOCKET"]); return os.IsNotExist(err) })
 	c, o, _ := b.cli("")
@@ -194,18 +213,28 @@ func TestOverview(t *testing.T) {
 	if !strings.HasPrefix(o.String(), "engine  not running; the next command starts it\n") || !strings.Contains(o.String(), "studio (192.0.2.10)") {
 		t.Errorf("no engine:\n%s", o)
 	}
-	if err := b.startEngine(engine.Config{BuildID: "aaa/bbb/ccc/0123456789abcdef"}); err != nil {
+	if err := b.startEngine(engine.Config{BuildID: "aaa/bbb/ccc/0123456789abcdef", Commit: "274d6a2"}); err != nil {
 		t.Fatal(err)
 	}
 	c, o, _ = b.cli("")
 	c.build = func() string { return "mine" }
 	c.run(nil)
-	if !strings.Contains(o.String(), ", 0 sessions, build 01234567 (not this bmdctl's)\n") {
+	if !strings.Contains(o.String(), ", 0 sessions, commit 274d6a2 (not this bmdctl's build)\n") || strings.Contains(o.String(), "aaa") {
 		t.Errorf("another build:\n%s", o)
 	}
-	// Nothing to show.
+	c, o, _ = b.cli("")
+	c.build = func() string { return "aaa/bbb/ccc/0123456789abcdef" }
+	c.run(nil)
+	if !strings.HasPrefix(o.String(), "engine  running, pid ") || !strings.Contains(o.String(), ", commit 274d6a2\n") {
+		t.Errorf("this build:\n%s", o)
+	}
+	// status says which commit the engine runs too.
+	if out := b.must(with("status")...); !strings.Contains(out, "\nengine      commit 274d6a2\n") {
+		t.Errorf("status:\n%s", out)
+	}
+	// With no hosts: how to add one, and where the commands are.
 	os.Remove(b.dir + "/config/bmdctl/hosts.yml")
-	if out := b.must(); !strings.Contains(out, "\nno hosts: bmdctl hosts add ADDRESS, or bmdctl hosts discover\n") {
+	if out := b.must(); !strings.HasSuffix(out, "\nno hosts: bmdctl hosts add ADDRESS, or bmdctl hosts discover\nbmdctl help lists the commands\n") {
 		t.Errorf("no hosts:\n%s", out)
 	}
 }

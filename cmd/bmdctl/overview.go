@@ -78,15 +78,16 @@ func (c *cli) overview(g globals) int {
 		fmt.Fprintf(c.stdout, "%s\n", b)
 		return exitOK
 	}
-	for _, l := range c.overviewLines(ov, list) {
+	for _, l := range c.overviewLines(ov, list, len(f.Hosts) == 0) {
 		fmt.Fprintln(c.stdout, l)
 	}
 	return exitOK
 }
 
 // overviewLines are the overview for a person: the engine, then a line
-// per host with its model, video mode and how its session stands.
-func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost) []string {
+// per host with its model, video mode and how its session stands. With
+// no hosts configured, how to add one and where the commands are.
+func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost, noHosts bool) []string {
 	p := &printer{c: c}
 	var rows [][]string
 	if ov == nil {
@@ -95,11 +96,13 @@ func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost) []string {
 		st := ov.Engine
 		n := len(st.Sessions)
 		line := fmt.Sprintf("running, pid %d, up %s, %d session%s", st.PID, since(time.Since(st.Started)), n, plural(n))
-		if st.Build != "" {
-			line += ", build " + shortBuild(st.Build)
-			if mine := c.build(); mine != "" && mine != st.Build {
-				line += " (not this bmdctl's)"
-			}
+		if st.Commit != "" {
+			line += ", commit " + st.Commit
+		}
+		// Builds, not commits, tell an engine of another bmdctl: two
+		// builds of one dirty tree share a commit.
+		if mine := c.build(); st.Build != "" && mine != "" && mine != st.Build {
+			line += " (not this bmdctl's build)"
 		}
 		rows = append(rows, []string{"engine", line})
 	}
@@ -133,20 +136,10 @@ func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost) []string {
 		}
 		hostRows = append(hostRows, row)
 	}
-	out := p.table(rows)
-	if len(list) == 0 {
-		out = append(out, "no hosts: bmdctl hosts add ADDRESS, or bmdctl hosts discover")
-	} else {
-		out = append(out, p.table(hostRows)...)
+	out := append(p.table(rows), p.table(hostRows)...)
+	if noHosts {
+		out = append(out, "no hosts: bmdctl hosts add ADDRESS, or bmdctl hosts discover",
+			c.colour(dim, "bmdctl help lists the commands"))
 	}
-	return append(out, c.colour(dim, "bmdctl help lists the commands"))
-}
-
-// shortBuild is a build ID short enough to compare by eye: the start of
-// its last part (a Go build ID is four hashes joined by /).
-func shortBuild(id string) string {
-	if i := strings.LastIndexByte(id, '/'); i >= 0 {
-		id = id[i+1:]
-	}
-	return id[:min(8, len(id))]
+	return out
 }

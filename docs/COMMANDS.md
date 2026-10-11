@@ -33,7 +33,7 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 
 ### Built-in commands
 
-- `bmdctl`: Show the engine (running or not, its sessions, its build) and a line per host: its model, video mode, how long its session has been idle, and which is the default. Never starts the engine.
+- `bmdctl`: Show the engine (running or not, its sessions, the git commit it runs) and a line per host: its model, video mode, how long its session has been idle, and which is the default. Never starts the engine.
 - `bmdctl help`: Print the help.
 - `bmdctl version`: Print bmdctl's version.
 - `bmdctl engine [--log-level L]`: Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running, and restarts one it started from another build of bmdctl; one run with bmdctl engine answers every build.

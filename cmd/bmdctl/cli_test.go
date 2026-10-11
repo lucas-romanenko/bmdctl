@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -53,6 +54,28 @@ func TestVersion(t *testing.T) {
 	defer func() { version, commit, date = "", "", "" }()
 	if _, out, _ := runCLI("version"); out != "bmdctl v1.2.3 (abc1234, 2026-10-09)\n" {
 		t.Fatalf("%q", out)
+	}
+}
+
+// The commit people see: GoReleaser's, else the build info's, short, and
+// marked when the tree had changes.
+func TestShortCommit(t *testing.T) {
+	rev := func(modified string) []debug.BuildSetting {
+		return []debug.BuildSetting{{Key: "vcs.revision", Value: "274d6a26df98f00d"}, {Key: "vcs.modified", Value: modified}}
+	}
+	for _, c := range []struct {
+		ldflag   string
+		settings []debug.BuildSetting
+		want     string
+	}{
+		{"79a743fc4e41f30c", rev("true"), "79a743f"},
+		{"", rev("false"), "274d6a2"},
+		{"", rev("true"), "274d6a2+dirty"},
+		{"", nil, ""},
+	} {
+		if got := shortCommit(c.ldflag, c.settings); got != c.want {
+			t.Errorf("%q %v: %q, want %q", c.ldflag, c.settings, got, c.want)
+		}
 	}
 }
 

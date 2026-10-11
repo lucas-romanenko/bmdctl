@@ -194,7 +194,7 @@ func (c *cli) serveEngine(g engineFlags) int {
 	}
 	logger := slog.New(slog.NewTextHandler(io.MultiWriter(sinks...), &slog.HandlerOptions{Level: level}))
 	e := engine.New(c.engineConfig(engine.Config{Registry: c.reg, Logger: logger, Version: versionString(),
-		BuildID: c.build(), Background: g.bg, Socket: sock, LogPath: logPath}))
+		Commit: commitString(), BuildID: c.build(), Background: g.bg, Socket: sock, LogPath: logPath}))
 	stop := context.AfterFunc(c.ctx, e.Stop)
 	defer stop()
 	err = e.Serve(l)
@@ -273,6 +273,27 @@ func (c *cli) engineStatus(g globals) int {
 		fmt.Fprintln(c.stdout, l)
 	}
 	return exitOK
+}
+
+// runningEngine is a running engine's status, within a second, or nil;
+// it never starts one.
+func (c *cli) runningEngine() *engine.Status {
+	conn, err := c.dialRunning()
+	if err != nil {
+		return nil
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(c.ctx, time.Second)
+	defer cancel()
+	resp, err := engine.Call(ctx, conn, engine.Request{Device: "engine", Path: "status"}, nil)
+	if err != nil || !resp.OK {
+		return nil
+	}
+	var st engine.Status
+	if json.Unmarshal(resp.Result.(json.RawMessage), &st) != nil {
+		return nil
+	}
+	return &st
 }
 
 // engineCall sends an engine request, printing the response as it is
