@@ -91,7 +91,8 @@ func formatStatus(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	}
 	for _, m := range r.MEs {
 		me := fmt.Sprintf("me %d", m.ME)
-		rows = append(rows, []string{me, "program " + c.colour(red, source(m.Program)), "preview " + c.colour(green, source(m.Preview))})
+		rows = append(rows, []string{me, c.colour(dim, "program") + " " + c.colour(red, source(m.Program)),
+			c.colour(dim, "preview") + " " + c.colour(green, source(m.Preview))})
 		tr := fmt.Sprintf("%s %s, next %s", m.Transition.Style, m.Transition.RateText, strings.Join(m.Transition.Next, "+"))
 		state := "idle"
 		if m.Transition.InTransition {
@@ -144,7 +145,7 @@ func formatStatus(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	if r.Streaming != "" {
 		rows = append(rows, []string{"streaming", r.Streaming})
 	}
-	return p.table(rows)
+	return p.table(c.dimLabels(rows))
 }
 
 func formatConnect(p *printer, _ engine.Response, raw json.RawMessage) []string {
@@ -158,16 +159,16 @@ func formatConnect(p *printer, _ engine.Response, raw json.RawMessage) []string 
 		at := time.Now().Add(time.Duration(s.IdleCloseS) * time.Second)
 		state += fmt.Sprintf(", drops at %s if unused", at.Format("15:04"))
 	}
-	return []string{p.who() + "  " + state}
+	return []string{p.c.result(p.whoOut() + "  " + state)}
 }
 
 func formatDisconnect(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var r engine.DisconnectResult
 	json.Unmarshal(raw, &r)
 	if !r.Closed {
-		return []string{p.who() + "  no session to close"}
+		return []string{p.c.result(p.whoOut() + "  no session to close")}
 	}
-	return []string{p.who() + "  disconnected"}
+	return []string{p.c.result(p.whoOut() + "  disconnected")}
 }
 
 func formatInfo(p *printer, _ engine.Response, raw json.RawMessage) []string {
@@ -197,7 +198,7 @@ func formatInfo(p *printer, _ engine.Response, raw json.RawMessage) []string {
 		[]string{"inputs", fmt.Sprint(r.Inputs)},
 		[]string{"audio", r.Audio},
 	)
-	return p.table(rows)
+	return p.table(p.c.dimLabels(rows))
 }
 
 func compact(raw json.RawMessage) string {

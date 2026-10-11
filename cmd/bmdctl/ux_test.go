@@ -67,6 +67,7 @@ func TestWriteLines(t *testing.T) {
 
 // Colour on a terminal: program red, preview green, sent dim, errors red
 // on stderr. Not with --no-color, NO_COLOR or TERM=dumb, nor --json.
+// (terminal_test.go has the whole of it, against golden files.)
 func TestColour(t *testing.T) {
 	b := newBench(t)
 	run := func(tty bool, args ...string) (string, string) {
@@ -84,7 +85,7 @@ func TestColour(t *testing.T) {
 	if out, _ := run(true, "cut"); !strings.Contains(out, "\x1b[2msent     \x1b[0m") {
 		t.Errorf("cut: %q", out)
 	}
-	if _, errOut := run(true, "program", "Nobody"); !strings.HasPrefix(errOut, "\x1b[31mbmdctl atem program: ") {
+	if _, errOut := run(true, "program", "Nobody"); !strings.HasPrefix(errOut, "\x1b[31merror:\x1b[0m bmdctl atem program: ") {
 		t.Errorf("error: %q", errOut)
 	}
 	for _, c := range []struct {

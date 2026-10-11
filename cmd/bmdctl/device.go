@@ -130,12 +130,17 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 // errStale ends a call answered by an engine of another build.
 var errStale = errors.New("the engine runs another build")
 
-// send sends a request to the engine and prints its replies.
+// send sends a request to the engine and prints its replies. At a
+// terminal the spinner shows while it waits, until the response takes
+// its place.
 func (c *cli) send(g globals, e *table.Entry, req engine.Request, out *printer, label string) int {
 	req.Notes = true
+	stop := c.spin(out.waiting())
+	defer stop()
 	// Starting the engine means opening a session too, unless the
 	// command opens none.
 	spawned := func() {
+		c.banner()
 		if e.Path != "disconnect" {
 			c.sayConnecting(g, out.who())
 		}
@@ -147,10 +152,12 @@ func (c *cli) send(g globals, e *table.Entry, req engine.Request, out *printer, 
 		case f.Note != nil:
 			out.note(*f.Note)
 		default:
+			stop()
 			out.response(f.Line, *f.Response)
 		}
 		return nil
 	})
+	stop()
 	switch {
 	case err != nil && c.ctx.Err() != nil && e.Stream:
 		return out.code() // interrupted: a stream's normal end

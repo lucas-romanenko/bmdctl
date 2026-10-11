@@ -78,6 +78,7 @@ func (c *cli) overview(g globals) int {
 		fmt.Fprintf(c.stdout, "%s\n", b)
 		return exitOK
 	}
+	c.banner()
 	for _, l := range c.overviewLines(ov, list, len(f.Hosts) == 0) {
 		fmt.Fprintln(c.stdout, l)
 	}
@@ -86,7 +87,9 @@ func (c *cli) overview(g globals) int {
 
 // overviewLines are the overview for a person: the engine, then a line
 // per host with its model, video mode and how its session stands. With
-// no hosts configured, how to add one and where the commands are.
+// no hosts configured, how to add one and where the commands are. At a
+// terminal the labels are dim, a switcher's name bold and its address
+// dim, as everywhere.
 func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost, noHosts bool) []string {
 	p := &printer{c: c}
 	var rows [][]string
@@ -108,12 +111,7 @@ func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost, noHosts bo
 	}
 	var hostRows [][]string
 	for _, h := range list {
-		addr := shortAddress(h.Address)
-		name := addr
-		if h.Name != "" {
-			name = h.Name + " (" + addr + ")"
-		}
-		row := []string{name, "", "", "no session"}
+		row := []string{paintWho(c.colour, h.Name, shortAddress(h.Address)), "", "", c.colour(dim, "no session")}
 		if h.Device != "atem" {
 			row[1] = h.Device
 			row[3] = "no commands yet"
@@ -132,11 +130,11 @@ func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost, noHosts bo
 			}
 		}
 		if h.Default {
-			row = append(row, "(default)")
+			row = append(row, c.colour(dim, "(default)"))
 		}
 		hostRows = append(hostRows, row)
 	}
-	out := append(p.table(rows), p.table(hostRows)...)
+	out := append(p.table(c.dimLabels(rows)), p.table(hostRows)...)
 	if noHosts {
 		out = append(out, "no hosts: bmdctl hosts add ADDRESS, or bmdctl hosts discover",
 			c.colour(dim, "bmdctl help lists the commands"))

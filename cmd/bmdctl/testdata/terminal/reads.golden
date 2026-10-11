@@ -1,0 +1,80 @@
+$ bmdctl info
+<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
+<dim>product</>       ATEM 1 M/E Constellation HD (model 27)
+<dim>protocol</>      2.30
+<dim>video mode</>    1080p50 (mode 12), 1920x1080, rates counted at 25 fps
+<dim>m/es</>          1, upstream keyers 4
+<dim>dsks</>          2
+<dim>aux</>           6
+<dim>media</>         2 players, 20 stills, 0 clips
+<dim>macros</>        3
+<dim>supersources</>  0
+<dim>multiviewers</>  1
+<dim>hyperdecks</>    10
+<dim>inputs</>        8
+<dim>audio</>         fairlight
+
+$ bmdctl status
+<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
+<dim>session</>     ready, idle #s, pinned: open until disconnect
+<dim>me 1</>        <dim>program</> <red>2 (Camera 2)</>                       <dim>preview</> <green>1 (Camera 1)</>
+<dim>me 1</>        transition dip 1:05, next background+key1  idle
+<dim>me 1</>        ftb off                                    rate 50 frames
+<dim>me 1 key 1</>  <red>on air</>                                     luma, fill 4, key 5
+<dim>me 1 key 2</>  off air                                    luma, fill 0, key 0
+<dim>me 1 key 3</>  off air                                    luma, fill 0, key 0
+<dim>me 1 key 4</>  off air                                    luma, fill 0, key 0
+<dim>dsk 1</>       <red>on air</>                                     fill 6, key 7
+<dim>dsk 2</>       off air                                    fill 0, key 0
+<dim>aux 1</>       3010 (Media Player 1)
+<dim>aux 2</>       10010 (ME 1 Program)
+<dim>aux 3</>       0
+<dim>macro</>       idle
+
+$ bmdctl inputs
+<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
+1      <green>CAM1</>  <green>Camera 1</>            external
+2      <red>CAM2</>  <red>Camera 2</>            external
+1000   Bars  Color Bars          bars
+2001   COL1  Color 1             colour
+3010   <green>MP1</>   <green>Media Player 1</>      media player
+3011   MP1K  Media Player 1 Key  media player key
+8001   AUX1  Auxiliary 1         aux output
+10010  PGM   ME 1 Program        m/e output
+
+$ bmdctl media list
+<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
+<dim>still 1</>   still  000102030405060708090a0b0c0d0e0f
+<dim>still 2</>   <dim>-</>
+<dim>still 3</>   <dim>-</>
+<dim>still 4</>   <dim>-</>
+<dim>still 5</>   <dim>-</>
+<dim>still 6</>   <dim>-</>
+<dim>still 7</>   <dim>-</>
+<dim>still 8</>   <dim>-</>
+<dim>still 9</>   <dim>-</>
+<dim>still 10</>  <dim>-</>
+<dim>still 11</>  <dim>-</>
+<dim>still 12</>  <dim>-</>
+<dim>still 13</>  <dim>-</>
+<dim>still 14</>  <dim>-</>
+<dim>still 15</>  <dim>-</>
+<dim>still 16</>  <dim>-</>
+<dim>still 17</>  <dim>-</>
+<dim>still 18</>  <dim>-</>
+<dim>still 19</>  <dim>-</>
+<dim>still 20</>  <dim>-</>
+<dim>player 1</>  <green>still 1</>  <green>still</>
+<dim>player 2</>  still 2
+
+$ bmdctl macro list --all
+<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
+<dim>macro 1</>  Open Show
+<dim>macro 2</>             <dim>-</>
+<dim>macro 3</>  Half Time
+
+$ bmdctl video-modes
+<b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ATEM 1 M/E Constellation HD  1080p50
+12  1080p50   <b>current</>
+0   525i5994
+

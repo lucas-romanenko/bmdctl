@@ -1,0 +1,9 @@
+<dim>12:00:00.000</>  program  ME1  CAM3 → <red>CAM5</>
+<dim>12:00:00.000</>  preview  ME1  CAM5 → <green>CAM3</>
+<dim>12:00:00.000</>  tally  <red>CAM5 pgm</>, <green>CAM3 pvw</>
+<dim>12:00:01.000</>  transition  ME1  mix  running 0.0s
+<dim>12:00:02.000</>  transition  ME1  mix  done 1.0s
+<dim>12:00:03.000</>  key-on-air:0:1  {"enabled":true,"index":0,"keyer":1}
+<dim>12:00:04.000</>  <b>session to 192.0.2.10 dropped</>
+<dim>12:00:09.000</>  <b>reconnected</>
+<dim>12:00:09.000</>  program  ME1  CAM5 → <red>CAM3</>

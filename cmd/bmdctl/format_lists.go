@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 )
 
@@ -51,7 +52,7 @@ func formatVideoModes(p *printer, _ engine.Response, raw json.RawMessage) []stri
 	for _, m := range ms {
 		mark := ""
 		if m.Current {
-			mark = p.c.colour(green, "current")
+			mark = p.c.colour(bold, "current")
 		}
 		rows = append(rows, []string{fmt.Sprint(m.ID), m.Name, mark})
 	}
@@ -67,15 +68,18 @@ func formatProfile(p *printer, r engine.Response, raw json.RawMessage) []string 
 	switch p.e.Path {
 	case "profile save":
 		file := p.params["file"]
-		lines = append(lines, fmt.Sprintf("%s  saved %s: %s %s, %d bytes", p.who(), file, pr.Product, pr.VideoMode, pr.Bytes))
+		lines = append(lines, fmt.Sprintf("%s  saved %s: %s %s, %d bytes", p.whoOut(), file, pr.Product, pr.VideoMode, pr.Bytes))
 	case "profile restore":
 		status := pr.Summary
 		if len(pr.Errors) > 0 {
 			status = p.c.colour(red, pr.Summary)
 		}
-		lines = append(lines, fmt.Sprintf("%s  restored %s (%s): %s", p.who(), p.params["file"], strings.TrimSpace(pr.Product+" "+pr.VideoMode), status))
+		lines = append(lines, fmt.Sprintf("%s  restored %s (%s): %s", p.whoOut(), p.params["file"], strings.TrimSpace(pr.Product+" "+pr.VideoMode), status))
 	case "profile images":
-		lines = append(lines, fmt.Sprintf("%s  saved the media pool's stills in %s", p.who(), p.params["dir"]))
+		lines = append(lines, fmt.Sprintf("%s  saved the media pool's stills in %s", p.whoOut(), p.params["dir"]))
+	}
+	if len(lines) > 0 {
+		lines[0] = p.c.result(lines[0])
 	}
 	var rows [][]string
 	for _, e := range pr.Errors {
@@ -87,7 +91,7 @@ func formatProfile(p *printer, r engine.Response, raw json.RawMessage) []string 
 	for _, im := range pr.Images {
 		what := fmt.Sprintf("still %d", im.Slot)
 		if im.Error != "" {
-			rows = append(rows, []string{p.c.colour(yellow, "image"), what, im.Name, im.Error})
+			rows = append(rows, []string{p.c.colour(red, "image"), what, im.Name, im.Error})
 		} else {
 			rows = append(rows, []string{"image", what, im.Name, im.Path})
 		}
@@ -107,7 +111,7 @@ func formatMacroList(p *printer, _ engine.Response, raw json.RawMessage) []strin
 		case r.Recording != nil && m.Slot == *r.Recording:
 			state = p.c.colour(red, "recording")
 		case !m.Used:
-			state = "-"
+			state = p.c.colour(dim, "-")
 		case m.Invalid:
 			state = "invalid"
 		}
@@ -116,7 +120,7 @@ func formatMacroList(p *printer, _ engine.Response, raw json.RawMessage) []strin
 	if len(rows) == 0 {
 		return []string{"no macros"}
 	}
-	return p.table(rows)
+	return p.table(p.c.dimLabels(rows))
 }
 
 func formatMacroDecode(p *printer, _ engine.Response, raw json.RawMessage) []string {
@@ -131,9 +135,11 @@ func formatMacroDecode(p *printer, _ engine.Response, raw json.RawMessage) []str
 func formatMacroEncode(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var r engine.MacroResult
 	json.Unmarshal(raw, &r)
-	return []string{fmt.Sprintf("encoded %s, %d bytes, to %s", r.Source, r.Bytes, strings.Join(p.written, ", "))}
+	return []string{p.c.result(fmt.Sprintf("encoded %s, %d bytes, to %s", r.Source, r.Bytes, strings.Join(p.written, ", ")))}
 }
 
+// formatMediaList is a line per still slot, then per media player: a
+// player on program red, on preview green, by the switcher's tally.
 func formatMediaList(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var r engine.MediaList
 	json.Unmarshal(raw, &r)
@@ -142,13 +148,20 @@ func formatMediaList(p *printer, _ engine.Response, raw json.RawMessage) []strin
 		if s.Used {
 			rows = append(rows, []string{fmt.Sprintf("still %d", s.Slot), s.Name, s.Hash})
 		} else {
-			rows = append(rows, []string{fmt.Sprintf("still %d", s.Slot), "-"})
+			rows = append(rows, []string{fmt.Sprintf("still %d", s.Slot), p.c.colour(dim, "-")})
 		}
 	}
-	for _, m := range r.Players {
-		rows = append(rows, []string{fmt.Sprintf("player %d", m.Player), fmt.Sprintf("%s %d", m.Type, m.Slot), m.Name})
+	var tally map[int]atem.TallyLamps
+	if len(r.Players) > 0 {
+		tally = p.tally()
 	}
-	return p.table(rows)
+	for _, m := range r.Players {
+		// Media player n is source 3000 + 10n, its key the next one.
+		code := tallyColour(tally[3000+10*int(m.Player+1)])
+		rows = append(rows, []string{fmt.Sprintf("player %d", m.Player), paintIf(p.c.colour, code, fmt.Sprintf("%s %d", m.Type, m.Slot)),
+			paintIf(p.c.colour, code, m.Name)})
+	}
+	return p.table(p.c.dimLabels(rows))
 }
 
 // formatTransfer is a transfer's line, laid out as a write's: the
@@ -190,15 +203,36 @@ func formatTransfer(p *printer, r engine.Response, raw json.RawMessage) []string
 }
 
 // formatInputs is one source per line: id, short name, long name, port
-// type.
+// type; the names of a source on program red, on preview green, by the
+// switcher's tally.
 func formatInputs(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var ins []engine.InputEntry
 	json.Unmarshal(raw, &ins)
+	tally := p.tally()
 	rows := [][]string{}
 	for _, in := range ins {
-		rows = append(rows, []string{fmt.Sprint(in.Source), in.Short, in.Long, in.Type})
+		code := tallyColour(tally[in.Source])
+		rows = append(rows, []string{fmt.Sprint(in.Source), paintIf(p.c.colour, code, in.Short), paintIf(p.c.colour, code, in.Long), in.Type})
 	}
 	return p.table(rows)
+}
+
+// tally is the switcher's tally by source (TlSr), for colouring a list
+// as the lamps are: asked of the engine only when stdout takes colour,
+// and nil when it can't say.
+func (p *printer) tally() map[int]atem.TallyLamps {
+	if !p.c.colours(p.c.tty) {
+		return nil
+	}
+	var f atem.TallySourceField
+	if !p.c.ask(p.g, "state", map[string]string{"path": "tally.source"}, &f) {
+		return nil
+	}
+	out := map[int]atem.TallyLamps{}
+	for src, l := range f.Tally {
+		out[int(src)] = l
+	}
+	return out
 }
 
 func formatMeters(p *printer, _ engine.Response, raw json.RawMessage) []string {
