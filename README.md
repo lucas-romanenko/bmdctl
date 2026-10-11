@@ -110,6 +110,8 @@ Go 1.27. The device packages use only the standard library.
   differs from bmdwire.
 - `docs/COMMANDS.md`: every command the CLI knows, generated from the
   command table.
+- `docs/AGENTS.md`: bmdctl for AI agents: the MCP server (`bmdctl mcp`)
+  and how to add it to Claude Code and Claude Desktop.
 - `docs/HARDWARE.md`: every session against a real switcher, and what
   it found.
 - `docs/BRAND.md`: the mark, wordmarks, colours and banner.
