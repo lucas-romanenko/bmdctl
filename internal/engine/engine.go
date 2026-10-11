@@ -76,6 +76,7 @@ type Engine struct {
 
 	mu       sync.Mutex
 	hosts    map[string]*host
+	undo     map[string][]undoEntry // per session key: what undo puts back
 	listener Listener
 	stopping bool
 }
@@ -98,7 +99,7 @@ type host struct {
 // New returns an engine; Serve starts it answering.
 func New(cfg Config) *Engine {
 	e := &Engine{cfg: cfg, log: cfg.Logger, idle: cfg.IdleTimeout, started: time.Now(),
-		hosts: map[string]*host{}, done: make(chan struct{}), ops: atemOperations()}
+		hosts: map[string]*host{}, undo: map[string][]undoEntry{}, done: make(chan struct{}), ops: atemOperations()}
 	if e.log == nil {
 		e.log = slog.New(slog.DiscardHandler)
 	}

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
@@ -118,9 +119,17 @@ func TestEveryCommandRuns(t *testing.T) {
 			done := make(chan int)
 			go func() { done <- cl.run(line) }()
 			ew.next(t)
+			// One of the two changes program, whatever it holds: one it
+			// holds already sends nothing.
+			b.must(with("program", "1")...)
 			b.must(with("program", "2")...)
-			if code := <-done; code != 0 || !strings.Contains(o.String(), "program  ME1") {
-				t.Errorf("watch: %d %q", code, o)
+			select {
+			case code := <-done:
+				if code != 0 || !strings.Contains(o.String(), "program  ME1") {
+					t.Errorf("watch: %d %q", code, o)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("watch saw no program change")
 			}
 			continue
 		}

@@ -1,0 +1,52 @@
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms</>
+  <dim>nothing to undo</>
+
+$ bmdctl program cam1
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
+  program     CAM2 → <red>CAM1</>                                   <dim># ms</>
+
+$ bmdctl preview mp1
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  preview     CAM1 → <green>MP1</>                                    <dim># ms</>
+
+$ bmdctl program cam1
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  program     <red>CAM1</>                                       <dim>already</>
+
+$ bmdctl aux 3 cam2
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  aux 3       0 → CAM2                                      <dim># ms</>
+
+$ bmdctl usk 2 on-air on
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  usk 2 on-air  off → <red>on</>                                    <dim># ms</>
+
+$ bmdctl dsk toggle --dsk 2
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  dsk toggle DSK2  off → <red>on</>                                 <dim># ms</>
+
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  undo        dsk 2  on → off                               <dim># ms</>
+
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  undo        key 2  on → off                               <dim># ms</>
+
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  undo        aux 3  CAM2 → 0                               <dim># ms</>
+
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
+  undo        preview  MP1 → <green>CAM1</>                           <dim># ms</>
+
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  undo        program  CAM1 → <red>CAM2</>                          <dim># ms</>
+
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  <dim>nothing to undo</>
+

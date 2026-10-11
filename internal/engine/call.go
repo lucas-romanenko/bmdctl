@@ -120,12 +120,14 @@ func (c *call) sendEntry() (any, bool, error) {
 		c.noteValues(false, nil)
 		return r, true, nil
 	}
+	undoable := c.remember()
 	r, confirmed, err := c.send(cmd)
 	r.Args = c.displayArgs()
 	if c.entry.Path != c.req.Path {
 		r.Sent = c.entry.Path
 	}
 	if err == nil {
+		undoable()
 		c.noteValues(confirmed, nil)
 	}
 	return r, confirmed, err

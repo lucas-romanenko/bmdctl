@@ -208,3 +208,16 @@ func compact(raw json.RawMessage) string {
 	}
 	return b.String()
 }
+
+func init() { humanFormats["undo"] = formatUndo }
+
+// formatUndo is undo's line, as a write's: or that there was nothing to
+// undo.
+func formatUndo(p *printer, r engine.Response, raw json.RawMessage) []string {
+	var u engine.UndoResult
+	json.Unmarshal(raw, &u)
+	if !u.Undone {
+		return []string{p.whoOut() + "  nothing to undo"}
+	}
+	return []string{p.writeLine("undo", u.What, p.undoChange(u), r.Confirmed, r.TookMS)}
+}
