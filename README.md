@@ -1,4 +1,4 @@
-<img src=".github/banner.png" alt="bmdctl" width="100%">
+<img src=".github/banner.gif" alt="bmdctl" width="100%">
 
 # bmdctl
 

@@ -8,9 +8,11 @@ or use the brand somewhere new.
 
 The assets are in `.github/`:
 
-- `banner.png`: the README banner, 2560×520. It is at the top of
-  `README.md`. GitHub strips CSS from rendered markdown, so the banner
-  stays an image.
+- `banner.gif`: the README banner, 2560×520, at the top of `README.md`.
+  Its cursor blinks: GitHub strips CSS from rendered markdown but plays
+  a GIF inline.
+- `banner.png`: the same banner as a still, the cursor on, for wherever
+  animation is unwanted, such as a social preview or print.
 - `mark/bmdctl-mark-{512,256,112,64,56,32,16}-{dark,light}.png`: the mark,
   transparent outside the tile. Use `512-dark` as the GitHub avatar and
   `32` or `16` as a favicon.
@@ -64,7 +66,8 @@ plain wordmarks below go in lockups and anywhere small.
 - `bmd` 400 `#9A9E9F`, `ctl` 600 `#EDEDEA`, `letter-spacing: -0.04em`.
 - The cursor: a solid `#EDEDEA` block about 0.53em wide and 0.83em tall,
   on the baseline, 0.15em after the `l`. Where CSS runs it blinks at
-  1.1s with `steps(1)`; in an image it is solid.
+  1.1s with `steps(1)`; in the README banner the GIF blinks it. Only the
+  title's cursor blinks: the mark's never animates, anywhere.
 - The tagline is a shell comment, `# control Blackmagic devices from the
   command line`, in Plex Mono 400, `#7E8386`.
 
@@ -114,6 +117,8 @@ Used as is. To regenerate it:
   with a 64×100 cursor. The tagline is 28px below it, at 40px, `#7E8386`.
 - At the far right, right-aligned, in Plex Mono 400, 36px, `#9A9E9F`, on
   two lines: `single Go binary` and `terminal · scripts · AI agents`.
+- The GIF is two frames, the cursor on and then off, 0.55s each,
+  looping forever. The still is the first frame.
 
 ## Legal
 
