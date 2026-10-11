@@ -33,8 +33,9 @@ table entry, regenerate it with
 shows (colour, the prompt, the spinner) is snapshot-tested in
 `cmd/bmdctl/testdata/terminal/`; after changing it, rewrite them with
 `go test ./cmd/bmdctl -run TestTerminal -update` and read the diff. The oracles in
-`internal/fixtures/oracle/` are regenerated with the scripts beside them
-(see the README there) against `../bmdwire` at `v1.3.0`.
+`internal/fixtures/oracle/` and `hyperdeck/testdata/oracle/` are
+regenerated with the scripts beside them (see the README there) against
+`../bmdwire` at `v1.3.0`.
 
 ## The hardware rule
 
@@ -61,7 +62,9 @@ changed because of it. Never rewrite an earlier section.
 ## Rules
 
 - **Mirror bmdwire, don't redesign it.** `docs/SURFACE-atem.md` is the spec
-  for `atem/`; read `../bmdwire/atemwire/` for anything it leaves out. Cite
+  for `atem/`, `docs/SURFACE-hyperdeck.md` for `hyperdeck/`; read
+  `../bmdwire/atemwire/` and `../bmdwire/hyperdeckwire/` for anything they
+  leave out. Cite
   the tag (`bmdwire v1.3.0`) wherever the port references it. Where the port
   must differ, say so in `docs/PORTING.md` with the reason.
 - **Standard library only** in the device packages (`atem`, `hyperdeck`,
@@ -72,15 +75,18 @@ changed because of it. Never rewrite an earlier section.
   from `atem/doc.go`). `hyperdeck/`, `videohub/`, `ultimatte/`, `cmd/` and
   the other `internal/` packages are MIT (`// SPDX-License-Identifier: MIT`).
   `internal/fixtures/` holds data copied from atemwire's tests and is
-  LGPL-3.0-only.
+  LGPL-3.0-only; hyperdeckwire's (MIT) is in `hyperdeck/testdata/`.
 - **Commits.** One commit per step, conventional commit messages
   (`feat(atem): …`, `test(fixtures): …`, `docs: …`), and push after every
   commit. The build/vet/test line above is green at each one.
 - **Scope.** Phase 2 added transfers (stills, macros), the macro bytecode
   codec, profiles and the display-unit readers. Phase 3 added the binary:
   the background engine, hosts, every command through the engine,
-  `exec`, completion, man pages and `doctor`. HTTP serve, MCP and the
-  other devices are phase 4. Don't start them unless asked.
+  `exec`, completion, man pages and `doctor`. Phase 4 added the HyperDeck
+  package and commands, the device probe, the alias binaries, `serve`,
+  `mcp`, the Claude skill and the release. Videohub and Ultimatte (and
+  hyperdeckwire's FTP upload and setup API) are phase 5. Don't start them
+  unless asked.
 
 ## Where things are
 
@@ -95,6 +101,9 @@ changed because of it. Never rewrite an earlier section.
 - `internal/table/`: the command table every device package fills, which the
   CLI and `docs/COMMANDS.md` are generated from.
 - `internal/fakeatem/`: a fake switcher at the `net.PacketConn` level.
+- `hyperdeck/`: the HyperDeck package (TCP 9993); `hyperdeck/testdata/`
+  its fixtures and oracle. `internal/fakehyperdeck/`: a fake deck on any
+  `net.Conn` (a pipe, or loopback).
 - `internal/engine/`: the background engine (sessions, the socket
   protocol, the operations that aren't one wire command).
 - `internal/hosts/`: hosts.yml. `internal/paths/`: where files live.
