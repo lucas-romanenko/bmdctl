@@ -7,12 +7,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"text/tabwriter"
 	"time"
@@ -289,7 +292,8 @@ func writePNG(t *testing.T, b *bench) string {
 }
 
 // undo puts back the last program, preview, aux, keyer or DSK change
-// made from this machine, as a write; with nothing to undo it says so.
+// made from this machine, as a write; a cut or an auto, by cutting back,
+// as a cut; with nothing to undo it says so.
 func TestTerminalUndo(t *testing.T) {
 	b := newBench(t)
 	tr := &transcript{b: b}
@@ -303,8 +307,16 @@ func TestTerminalUndo(t *testing.T) {
 	for range 6 {
 		tr.run("undo")
 	}
+	tr.run("cut")
+	tr.run("undo")
+	tr.run("auto")
+	tr.run("undo")
 	golden(t, "undo.golden", tr.out.String())
 	if out := b.must(with("undo")...); out != "ATEM 1 M/E Constellation HD (192.0.2.10)  nothing to undo\n" {
+		t.Errorf("pipe: %q", out)
+	}
+	b.must(with("cut")...)
+	if out := b.must(with("undo")...); !strings.Contains(out, "  undo  cut  ") || !strings.Contains(out, "CAM2 on program · CAM1 on preview  confirmed") {
 		t.Errorf("pipe: %q", out)
 	}
 }
@@ -319,7 +331,7 @@ func TestTerminalShow(t *testing.T) {
 	tr.run("show", "macros", "--all")
 	golden(t, "show.golden", tr.out.String())
 	if out := b.must(with("show", "dsk")...); !strings.HasPrefix(out, "ATEM 1 M/E Constellation HD (192.0.2.10)  ATEM") ||
-		!strings.Contains(out, "\n  dsk 1       6 / 7  on air  ") {
+		!regexp.MustCompile(`\n  dsk 1       6 / 7  1:05 · masked · premultiplied +on air\n`).MatchString(out) {
 		t.Errorf("pipe:\n%s", out)
 	}
 }
@@ -384,12 +396,27 @@ func TestFit(t *testing.T) {
 	}
 	c := newCLI(io.Discard, io.Discard)
 	c.env = func(string) string { return "" }
-	if got := c.resultLine("program", "CAM2 → CAM1", "32 ms"); got != "  program     CAM2 → CAM1"+strings.Repeat(" ", 64-25-5)+"32 ms" {
+	if got := c.resultLine("program", "CAM2 → CAM1", "32 ms"); got != "  program     CAM2 → CAM1"+strings.Repeat(" ", lineWidth-25-5)+"32 ms" {
 		t.Errorf("%q", got)
 	}
 	long := c.resultLine("transition wipe", strings.Repeat("rate 1:00 → 0:12, ", 6), "rejected")
 	if width(long) != lineWidth || !strings.HasSuffix(long, "…  rejected") {
 		t.Errorf("%q", long)
+	}
+	// Every status ends at lineWidth, and where a line is cut doesn't
+	// move with what its status says: a golden's # ms keeps its place.
+	var cut string
+	for i, status := range []string{"5 ms", "123 ms", "12.5 s", "sent", "rejected"} {
+		got := c.resultLine("profile", strings.Repeat("show.xml · ", 6), status)
+		left := strings.TrimRight(strings.TrimSuffix(got, status), " ")
+		if width(got) != lineWidth || !strings.HasSuffix(got, status) || i > 0 && left != cut {
+			t.Errorf("%s: %q", status, got)
+		}
+		cut = left
+	}
+	// A table row's status too.
+	if got := trailing("  keys        1  luma  4 / 5", "on air"); width(got) != lineWidth || !strings.HasSuffix(got, " on air") {
+		t.Errorf("%q", got)
 	}
 }
 
@@ -591,7 +618,7 @@ func TestSpinnerRuns(t *testing.T) {
 	if frames < 2 || !strings.Contains(errOut, " connecting to 192.0.2.10 · 0.") || !strings.HasSuffix(errOut, clearLine) {
 		t.Errorf("stderr: %q", errOut)
 	}
-	if !regexp.MustCompile(`^\x1b\[1mATEM 1 M/E Constellation HD\x1b\[0m  \x1b\[2mPGM CAM1 · PVW CAM1 · (1080p50 · )?connected \d{3,} ms\x1b\[0m\n  program  `).MatchString(o.String()) {
+	if !regexp.MustCompile(`^\x1b\[1mATEM 1 M/E Constellation HD\x1b\[0m  \x1b\[2mPGM CAM2 · PVW CAM1 · (1080p50 · )?connected \d{3,} ms\x1b\[0m\n  program  `).MatchString(o.String()) {
 		t.Errorf("stdout: %q", o)
 	}
 	// TERM=dumb can't clear a line: no spinner, the connecting line as
@@ -616,6 +643,81 @@ func TestSpinnerRuns(t *testing.T) {
 	if s := e.String(); !strings.Contains(s, "⠋") || !strings.Contains(s[strings.LastIndex(s, "⠋"):], clearLine) {
 		t.Errorf("interrupted: %q", s)
 	}
+}
+
+// An upload that goes past 200 ms draws its bar on stderr at least once,
+// with the spinner's real 200 ms, and leaves nothing of it. The fake
+// holds the upload part way until a bar has been drawn, so the test
+// waits on the bar, not on timing: the upload can't end before one is
+// drawn, and the test fails if none is in 10 s.
+func TestUploadBar(t *testing.T) {
+	dump := bytes.Clone(fixtures.Bytes(t, "dump/initial-dump.bin"))
+	dump[bytes.Index(dump, []byte("VidM"))+4] = 0 // NTSC: 720×480 stills
+	b := newBenchDump(t, dump)
+	release := make(chan struct{})
+	b.onDial = func(sw *fakeatem.Switcher) { sw.HoldUpload(release) }
+	t.Chdir(t.TempDir())
+	os.WriteFile("noise.png", noisePNG(t), 0o644)
+	w := &barWatch{release: release}
+	timeout := time.AfterFunc(10*time.Second, func() { w.once.Do(func() { close(release) }) })
+	defer timeout.Stop()
+	c, o, _ := b.cli("")
+	c.tty, c.ttyErr = true, true
+	c.stderr = w
+	code := c.run(with("media", "upload", "3", "noise.png"))
+	errOut := w.String()
+	if code != 0 || !w.drawn {
+		t.Fatalf("exit %d, bar drawn %v: %q", code, w.drawn, errOut)
+	}
+	if !regexp.MustCompile(`uploading noise\.png → slot 3 [█░]{8} \d+%  \d+ KB  \d+\.\d s`).MatchString(errOut) {
+		t.Errorf("no bar: %q", errOut)
+	}
+	if !strings.HasSuffix(errOut, clearLine) || strings.ContainsAny(o.String(), "█░") || !strings.Contains(o.String(), "upload      slot 3") {
+		t.Errorf("the bar was left behind: %q %q", errOut, o)
+	}
+}
+
+// barWatch is a terminal's stderr that lets the held upload go once a
+// progress bar has been drawn on it.
+type barWatch struct {
+	mu      sync.Mutex
+	buf     bytes.Buffer
+	release chan struct{}
+	once    sync.Once
+	drawn   bool
+}
+
+var barFrame = regexp.MustCompile(`[█░]{8} \d+%`)
+
+func (w *barWatch) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.buf.Write(p)
+	if barFrame.Match(p) {
+		w.once.Do(func() { w.drawn = true; close(w.release) })
+	}
+	return len(p), nil
+}
+
+func (w *barWatch) String() string { w.mu.Lock(); defer w.mu.Unlock(); return w.buf.String() }
+
+// noisePNG is a 720×480 still whose top rows are noise, which doesn't
+// compress: its upload takes more than the fake's first budget.
+func noisePNG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, 720, 480))
+	r := rand.New(rand.NewPCG(3, 4))
+	for i := 0; i < 720*32*4; i++ {
+		img.Pix[i] = byte(r.Uint32())
+	}
+	for i := 3; i < len(img.Pix); i += 4 {
+		img.Pix[i] = 255
+	}
+	var b bytes.Buffer
+	if err := png.Encode(&b, img); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
 }
 
 // align lays rows out as text/tabwriter does, for any table, and counts

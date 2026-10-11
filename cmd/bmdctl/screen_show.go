@@ -27,15 +27,34 @@ func screenShow(p *printer, r engine.Response, raw json.RawMessage) view {
 	c := p.c
 	v := view{about: []string{s.Area}, gap: true}
 	empty := func(what string) []string { return []string{indent + c.colour(dim, what)} }
-	onAir := func(on bool) string {
-		if on {
-			return c.colour(red, "on air")
+	// Keyers' and DSKs' rows: a label, what each is, how it is set dim
+	// after that in one column, and its on-air state at the end of the
+	// line.
+	var labels, whats, hows []string
+	var ons []bool
+	keyed := func() []string {
+		w := 0
+		for _, what := range whats {
+			w = max(w, width(what))
 		}
-		return c.colour(dim, "off")
+		var out []string
+		for i, what := range whats {
+			if hows[i] != "" {
+				what = padRight(what, w) + "  " + c.colour(dim, hows[i])
+			}
+			out = append(out, trailing(labelled(labels[i], what), c.onAir(ons[i])))
+		}
+		return out
 	}
 	switch s.Area {
 	case "keys":
-		var cells [][]string
+		var all []engine.KeyerStatus
+		for _, m := range s.Keys {
+			for _, k := range m.Keyers {
+				all = append(all, k.KeyerStatus)
+			}
+		}
+		typeWidth := keyerTypeWidth(all)
 		for _, m := range s.Keys {
 			for i, k := range m.Keyers {
 				label := ""
@@ -59,16 +78,17 @@ func screenShow(p *printer, r engine.Response, raw json.RawMessage) view {
 						how = append(how, fmt.Sprintf("clip %s gain %s", num(k.Clip), num(k.Gain)))
 					}
 				}
-				cells = append(cells, []string{padRight(label, verbWidth), fmt.Sprint(k.Keyer), k.Type, short(k.Fill) + " / " + short(k.Key),
-					onAir(k.OnAir), c.colour(dim, strings.Join(how, " · "))})
+				labels = append(labels, label)
+				whats = append(whats, keyerRow(k.KeyerStatus, typeWidth))
+				hows = append(hows, strings.Join(how, " · "))
+				ons = append(ons, k.OnAir)
 			}
 		}
-		v.rows = rows(cells)
-		if len(cells) == 0 {
+		v.rows = keyed()
+		if len(v.rows) == 0 {
 			v.rows = empty("no upstream keyers")
 		}
 	case "dsk":
-		var cells [][]string
 		for _, d := range s.DSKs {
 			how := []string{d.RateText}
 			if d.Tie {
@@ -82,11 +102,13 @@ func screenShow(p *printer, r engine.Response, raw json.RawMessage) view {
 			} else {
 				how = append(how, fmt.Sprintf("clip %s gain %s", num(d.Clip), num(d.Gain)))
 			}
-			cells = append(cells, []string{padRight(fmt.Sprintf("dsk %v", d.DSK), verbWidth), short(d.Fill) + " / " + short(d.Key),
-				onAir(d.OnAir), c.colour(dim, strings.Join(how, " · "))})
+			labels = append(labels, fmt.Sprintf("dsk %v", d.DSK))
+			whats = append(whats, short(d.Fill)+" / "+short(d.Key))
+			hows = append(hows, strings.Join(how, " · "))
+			ons = append(ons, d.OnAir)
 		}
-		v.rows = rows(cells)
-		if len(cells) == 0 {
+		v.rows = keyed()
+		if len(v.rows) == 0 {
 			v.rows = empty("no downstream keyers")
 		}
 	case "transition":

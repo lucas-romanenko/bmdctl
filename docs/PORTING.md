@@ -1219,7 +1219,11 @@ pass after the fifth hardware run (palette, spinner, aligned tables),
 and the terminal pass that followed, whose spec is
 `docs/terminal-mock.html` and which this section records whole. Every
 command a person runs follows these rules, and a new command does too
-(CLAUDE.md says so); one that can't says so here.
+(CLAUDE.md says so); one that can't says so here. After the seventh
+hardware run this section departs from the mock: every status ends at
+column 72, a keyer's on air comes last, after how it is set, and a cut
+or an auto shows its time, not `sent`. Where they differ, this section
+is right.
 
 **Where it applies.** Only when stdout is a terminal and neither
 `--json` nor `--quiet` is given (`cli.terminal`); what is drawn on
@@ -1240,9 +1244,11 @@ response doesn't carry comes in note frames (Engine, "Notes":
 - **The switcher is named once per invocation**, in a header: its name
   bold (the host's, else the one it gives itself, else its address),
   then dim, joined by ` · `: `PGM <x> · PVW <y>`, M/E 1's program and
-  preview by short name, so the operator always sees what is live (from
-  the `on_air` note sent after the command, so it is what is live now;
-  a cut or an auto transition shows what it asked for); what the
+  preview by short name, as they were when the command ran: the
+  `on_air` note, read once, before the command (after the seventh
+  hardware run, where a cut's header showed what it had just put on
+  air, next to a line saying the same; the header is the state the
+  line's before → after starts from); what the
   invocation is (exec's `open.cue · 5 lines`); and, only when this
   invocation opened the session, the model (left out where it is the
   name), the video mode and `connected N ms`; then the view's own parts
@@ -1260,11 +1266,14 @@ response doesn't carry comes in note frames (Engine, "Notes":
   document (macro decode's XML, a state value) is printed whole.
 - **Results** are indented two spaces under the header:
   `<verb padded to 10>  <before> → <after>` and the status, dim, right-
-  aligned to end at column 64 (`timingEnd`), further only if the line
-  needs it. The status always has eight columns (`statusWidth`, as wide
-  as `rejected`), whatever it says: where a long line is cut and where
-  its status ends don't move with the width of the time taken (CI's 3-
-  digit times moved one golden's status a column). The verb is the command's words with the arguments that say
+  aligned to end at column 72, the line's last (`trailing`; it was 64,
+  `timingEnd`, until the seventh hardware run, while status's and show
+  keys' on-air columns ended where their rows did). Every row with a
+  status ends there, results and tables alike: a time, `sent`,
+  `already`, `rejected`, on air, `● PGM`, a session. The status always
+  has eight columns (`statusWidth`, as wide as `rejected`), whatever it
+  says: where a long line is cut doesn't move with the width of the
+  time taken (CI's 3-digit times moved one golden's status a column). The verb is the command's words with the arguments that say
   where (`aux 2`, `usk 2 on-air`, `color 2`), and a flag that says where
   only when typed (`program ME2`): the header named the switcher, and
   ME1 on a one-M/E switcher is noise. A verb of ten or more just takes
@@ -1275,7 +1284,9 @@ response doesn't carry comes in note frames (Engine, "Notes":
   time's place. A cut or an auto transition says both buses: `MP1 on
   program · Ca2 on preview`. Transfers say the slot, the name and what
   moved (`upload  slot 10  sponsor  1920×1080`, `clear  slot 10  was
-  "sponsor"`); undo is a write with the verb `undo`.
+  "sponsor"`); undo is a write with the verb `undo`, and an undone cut
+  or auto says both buses as a cut does: `undo  cut  CAM2 on program ·
+  CAM1 on preview`.
 - **Sources** in a result show by short name, else long name, else id;
   where what was typed differs (and isn't a number), it follows dim in
   brackets: `lkkk (cam1)`. An alias that shadowed an input's name is
@@ -1285,9 +1296,14 @@ response doesn't carry comes in note frames (Engine, "Notes":
   column (`ME 1`, `keys`, `dsk 1`, `aux 1–6`) or an id column (dim,
   right-aligned), then values. `status` is ME rows (`PGM  Ca2` red, `PVW
   MP1` green, then `mix 1:00 · next background · FTB off`), keyers and
-  DSKs ending in one on-air column (`on air` red, `off` dim), aux
-  outputs, the macro player (`idle` dim), recording and streaming.
-  `show <area>` lays out one area the same way. `info`, `video-modes`,
+  DSKs ending in their on-air state at column 72 (`on air` red, `off`
+  dim), aux outputs, the macro player (`idle` dim), recording and
+  streaming. `show <area>` lays out one area the same way: a keyer's
+  row is status's (`keyerRow`: number, type, fill / key) with how it is
+  set dim after it and on air still last, so the same keyer has the
+  same columns in both. `inputs`' `● PGM` and `○ PVW`, `macro list`'s
+  running or recording, and `bmdctl`'s sessions end at column 72 too.
+  `info`, `video-modes`,
   `time`, the meters and `state` follow.
 - **Repeats collapse**: consecutive aux outputs on one source are one
   row, `aux 1–6  PGM`; empty media and macro slots no player shows are
@@ -1407,6 +1423,11 @@ ms`, keeping the column it ends in; a typed answer is echoed after
 `[y/N]` as a terminal would. `go test ./cmd/bmdctl -run TestTerminal
 -update` rewrites them; read the diff. The spinner's and the bar's
 frames are tested on a clock the test moves; `TestFit` checks cutting.
+`TestUploadBar` runs an upload at a forced terminal with the real
+200 ms: the fake holds the upload's second budget (`HoldUpload`) until
+stderr has shown a bar, so the upload can't end without one being drawn,
+and checks the bar is gone afterwards (after the seventh hardware run,
+whose 514 ms upload left no bar in the scrollback, as it shouldn't).
 
 ## exec (`cmd/bmdctl/exec.go`)
 
@@ -1681,10 +1702,12 @@ lives until 10 minutes pass without a request, unless pinned.
   frame to its callback as an `engine.Frame`. The protocol version stays
   1: an engine from before the field ignores it, and the CLI falls back
   to what responses carry. Two more (the terminal pass, "Terminal"):
-  `on_air`, M/E 1's program and preview by id and short name, sent
-  after the `switcher` note and again once a command is done (for a cut
-  or an auto transition, which nothing confirms, what it asked for), so a
-  terminal's header shows what is live; and a value's `kept`, set when
+  `on_air`, M/E 1's program and preview by id and short name as the
+  request found them, sent once, after the `switcher` note and before
+  the command runs, so a terminal's header shows what was live when it
+  ran (until the seventh hardware run it was sent again once the
+  command was done, and the CLI showed the second); and a value's
+  `kept`, set when
   the switcher confirmed a command but answered with the value it
   already held, not the one sent. The engine's status carries `commit` too
   (`Config.Commit`), beside `build`. An `overview` engine request answers `{engine,
@@ -1778,13 +1801,26 @@ comes back. Indexes in results count from 1, as the flags do
   - `undo` (the terminal pass; bmdwire has none) puts back the last
     change this engine sent to program, preview, an aux output, or a
     keyer's or DSK's on air (`program`, `preview`, `aux`, `usk on-air`,
-    `usk toggle`, `dsk on-air`, `dsk toggle`, `dsk auto`): before each is
-    sent, the value it replaces is kept, per session key, twenty deep,
-    and pushed once it is sent; a change the switcher held already sent
-    nothing and isn't kept. `undo` pops one and sends it back (a direct
-    on-air for a DSK, not an auto), waiting for the echo; one that fails
-    goes back on the stack. The stacks outlive sessions but not the
-    engine. Nothing to undo is `{"undone": false}`, exit 0.
+    `usk toggle`, `dsk on-air`, `dsk toggle`, `dsk auto`), or the last
+    cut or auto transition (`cut`, `auto`): before each is sent, the
+    value it replaces is kept, per session key, twenty deep, and pushed
+    once it is sent; a change the switcher held already sent nothing and
+    isn't kept. `undo` pops one and sends it back (a direct on-air for a
+    DSK, not an auto), waiting for the echo; one that fails goes back on
+    the stack. The stacks outlive sessions but not the engine. Nothing
+    to undo is `{"undone": false}`, exit 0.
+  - **A cut or an auto keeps both buses** (after the seventh hardware
+    run, where `undo` after a cut said `nothing to undo`), and whether
+    the next transition took the background, so swapped them. Its undo
+    is a cut (`"what": "cut"` or `"auto"`, `"command": "DCut"`), which
+    also takes back the keys the cut took on or off air, where program
+    and preview are as it left them and the next transition still takes
+    the background as it did. Where they changed since (from a panel:
+    a change from here would be on the stack above it), program and
+    preview are each set back instead (`CPgI`, `CPvI`, only those that
+    differ). An auto is undone by a cut too, not another auto: undo
+    puts the buses back at once. While the M/E is mid-transition undo
+    refuses (`usage`) and keeps the entry, to try once it is done.
   - `show <area>` (the terminal pass) reads one area through the
     readers and returns it for the CLI to lay out: `keys` (each keyer's
     type, sources, on air, in the next transition, fly, mask, luma

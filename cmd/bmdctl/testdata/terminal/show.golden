@@ -1,16 +1,16 @@
 $ bmdctl show keys
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms · keys</>
 
-  ME 1        1  luma  4 / 5  <red>on air</>  <dim>next · premultiplied</>
-              2  luma  0 / 0  <dim>off</>     <dim>clip 0 gain 0</>
-              3  luma  0 / 0  <dim>off</>     <dim>clip 0 gain 0</>
-              4  luma  0 / 0  <dim>off</>     <dim>clip 0 gain 0</>
+  ME 1        1  luma  4 / 5  <dim>next · premultiplied</>                <red>on air</>
+              2  luma  0 / 0  <dim>clip 0 gain 0</>                          <dim>off</>
+              3  luma  0 / 0  <dim>clip 0 gain 0</>                          <dim>off</>
+              4  luma  0 / 0  <dim>clip 0 gain 0</>                          <dim>off</>
 
 $ bmdctl show dsk
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · dsk</>
 
-  dsk 1       6 / 7  <red>on air</>  <dim>1:05 · masked · premultiplied</>
-  dsk 2       0 / 0  <dim>off</>     <dim>1:00 · clip 0 gain 0</>
+  dsk 1       6 / 7  <dim>1:05 · masked · premultiplied</>                <red>on air</>
+  dsk 2       0 / 0  <dim>1:00 · clip 0 gain 0</>                            <dim>off</>
 
 $ bmdctl show transition
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · transition</>

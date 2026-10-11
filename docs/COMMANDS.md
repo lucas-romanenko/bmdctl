@@ -1617,7 +1617,7 @@ Give at least one flag. Echo: `TWpP:<me>`.
 
 ### `bmdctl atem undo`
 
-Undo the last program, preview, aux, keyer or DSK on-air change made from this machine.
+Undo the last program, preview, cut, auto, aux, keyer or DSK on-air change made from this machine.
 
 ```
 bmdctl undo

@@ -22,6 +22,11 @@ After every push, wait for CI and check it (`gh run watch`, then
 `gh run list --limit 1`) before reporting green. Local green is not
 green.
 
+Never pipe test output through `head`, `tail` or `grep` when the exit
+code matters: the pipeline's status is the last command's, so a failing
+`go test` reads as passing. Send it to a file and read the status, or
+check `${PIPESTATUS[0]}`.
+
 `docs/COMMANDS.md` is generated from the command table; after changing a
 table entry, regenerate it with
 `go test ./cmd/bmdctl -run TestCommandsDoc -update`. What a terminal
@@ -112,13 +117,16 @@ say why there.
   in a note frame (`engine.Note`), which `--json` never prints; don't add
   fields to a result for it.
 - The switcher is named once per invocation, in the header
-  (`printer.show`): bold name, then dim `PGM x · PVW y`, and model, mode
-  and `connected N ms` only when this invocation opened the session.
-  Never put the name or IP on a result line.
+  (`printer.show`): bold name, then dim `PGM x · PVW y` as they were
+  before the command ran (the one `on_air` note, read once), and model,
+  mode and `connected N ms` only when this invocation opened the
+  session. Never put the name or IP on a result line.
 - Results are `c.resultLine(verb, change, status)`: two-space indent,
-  verb padded to 10, `before → after`, status right-aligned and dim.
-  Status is the time, or `sent`, `already`, `rejected`; never
-  `confirmed`. A cut or auto shows both buses.
+  verb padded to 10, `before → after`, status dim and right-aligned to
+  end at column 72. Status is the time, or `sent`, `already`,
+  `rejected`; never `confirmed`. A cut or auto shows both buses. A
+  table row with a status (on air, `● PGM`, a session) ends it at
+  column 72 too, through `trailing`.
 - Nothing over 72 columns: `fit` cuts with `…`, never wrap.
 - Colour: the value now on program red, on preview green, bold for the
   switcher's name and bmdctl's own lines, dim for ids, timings, hints,

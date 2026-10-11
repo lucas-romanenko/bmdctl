@@ -294,13 +294,13 @@ func TestNotes(t *testing.T) {
 	}
 	req := Request{Device: "atem", Host: fakeatem.Address, Path: "program", Params: map[string]string{"source": "1"}, Notes: true}
 	notes, resp := frames(req)
-	// What is live comes before the command and after it.
-	if len(notes) != 5 || notes[0].Connecting != "192.0.2.10:9910" || notes[1].Switcher == nil || notes[2].OnAir == nil ||
-		len(notes[3].Values) != 2 || notes[4].OnAir == nil {
+	// What is live comes once, as the command found it, before it runs.
+	if len(notes) != 4 || notes[0].Connecting != "192.0.2.10:9910" || notes[1].Switcher == nil || notes[2].OnAir == nil ||
+		len(notes[3].Values) != 2 {
 		t.Fatalf("notes: %+v", notes)
 	}
-	if was, now := *notes[2].OnAir, *notes[4].OnAir; was != (OnAir{"CAM2", "CAM1", 2, 1}) || now != (OnAir{"CAM1", "CAM1", 1, 1}) {
-		t.Errorf("on air: %+v, then %+v", was, now)
+	if was := *notes[2].OnAir; was != (OnAir{"CAM2", "CAM1", 2, 1}) {
+		t.Errorf("on air: %+v", was)
 	}
 	notes = append(notes[:2], notes[3])
 	sw := notes[1].Switcher
@@ -314,7 +314,7 @@ func TestNotes(t *testing.T) {
 	// A warm session: no connect; no notes at all unless asked. (Source
 	// 1 is on program now, so these are answered "already".)
 	notes, resp = frames(req)
-	if len(notes) != 4 || notes[0].Switcher == nil {
+	if len(notes) != 3 || notes[0].Switcher == nil {
 		t.Errorf("warm: %+v", notes)
 	}
 	req.Notes = false
@@ -329,5 +329,94 @@ func TestNotes(t *testing.T) {
 	json.Unmarshal(o.Result.(json.RawMessage), &ov)
 	if len(ov.Switchers) != 1 || ov.Switchers[0].Name != "ATEM 1 M/E Constellation HD" || !ov.Switchers[0].Ready || ov.Engine.PID == 0 {
 		t.Errorf("overview: %+v", ov)
+	}
+}
+
+// A cut or an auto transition waits for the switcher's report, and undo
+// puts both buses back: by cutting again where they are as it left them,
+// else by setting each. A write the switcher already held pushed
+// nothing. A transition still running is left to finish.
+func TestUndoCut(t *testing.T) {
+	r := newRig(t, Config{})
+	do := func(path string, params map[string]string) Response {
+		t.Helper()
+		return r.must(Request{Device: "atem", Host: fakeatem.Address, Path: path, Params: params})
+	}
+	buses := func() (int, int) {
+		var st StatusResult
+		json.Unmarshal(do("status", nil).Result.(json.RawMessage), &st)
+		return st.MEs[0].Program.ID, st.MEs[0].Preview.ID
+	}
+	undo := func() UndoResult {
+		t.Helper()
+		var u UndoResult
+		json.Unmarshal(do("undo", nil).Result.(json.RawMessage), &u)
+		return u
+	}
+	sent := func(code string) int {
+		n := 0
+		for _, c := range r.sws[0].Commands() {
+			if string(c[4:8]) == code {
+				n++
+			}
+		}
+		return n
+	}
+	// The dump: program 2, preview 1, the next transition background
+	// and key 1.
+	if resp := do("program", map[string]string{"source": "2"}); !strings.Contains(string(resp.Result.(json.RawMessage)), `"already":true`) {
+		t.Fatalf("program 2: %s", resp.Result)
+	}
+	if resp := do("cut", nil); !resp.Confirmed {
+		t.Errorf("cut: not confirmed")
+	}
+	// No wait here: the cut answered once the switcher reported it.
+	if p, v := buses(); p != 1 || v != 2 {
+		t.Fatalf("after the cut: program %d, preview %d", p, v)
+	}
+	if u := undo(); !u.Undone || u.What != "cut" || u.Command != "DCut" || sent("DCut") != 2 {
+		t.Errorf("undo: %+v, %d cuts", u, sent("DCut"))
+	}
+	if p, v := buses(); p != 2 || v != 1 {
+		t.Errorf("after undo: program %d, preview %d", p, v)
+	}
+	// program 2 was already held: nothing to undo.
+	if u := undo(); u.Undone {
+		t.Errorf("undid %+v", u)
+	}
+	// An auto, then preview changed elsewhere: undo sets both back.
+	do("auto", nil)
+	if p, v := buses(); p != 1 || v != 2 {
+		t.Fatalf("after the auto: program %d, preview %d", p, v)
+	}
+	r.sws[0].Send(fakeatem.Command("PrvI", []byte{0, 0, 0x03, 0xe8, 0, 0, 0, 0})) // Bars, from a panel
+	eventually(t, "preview on Bars", func() bool { _, v := buses(); return v == 1000 })
+	cuts := sent("DCut")
+	if u := undo(); !u.Undone || u.What != "auto" || u.Command != "CPgI" || sent("DCut") != cuts || sent("CPvI") != 1 {
+		t.Errorf("undo of the auto: %+v", u)
+	}
+	if p, v := buses(); p != 2 || v != 1 {
+		t.Errorf("after undo: program %d, preview %d", p, v)
+	}
+	// Mid-transition: refused, and kept to try again.
+	do("cut", nil)
+	r.sws[0].Send(fakeatem.Command("TrPs", []byte{0, 1, 10, 0, 0x13, 0x88, 0, 0}))
+	eventually(t, "a transition", func() bool {
+		var st StatusResult
+		json.Unmarshal(do("status", nil).Result.(json.RawMessage), &st)
+		return st.MEs[0].Transition.InTransition
+	})
+	resp, err := r.call(context.Background(), Request{Device: "atem", Host: fakeatem.Address, Path: "undo"})
+	if err != nil || resp.OK || !strings.Contains(resp.Error, "mid-transition") {
+		t.Errorf("mid-transition: %+v %v", resp, err)
+	}
+	r.sws[0].Send(fakeatem.Command("TrPs", []byte{0, 0, 0, 0, 0, 0, 0, 0}))
+	eventually(t, "the transition's end", func() bool {
+		var st StatusResult
+		json.Unmarshal(do("status", nil).Result.(json.RawMessage), &st)
+		return !st.MEs[0].Transition.InTransition
+	})
+	if u := undo(); !u.Undone || u.What != "cut" {
+		t.Errorf("undo after the transition: %+v", u)
 	}
 }

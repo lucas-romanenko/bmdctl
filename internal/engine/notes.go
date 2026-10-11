@@ -223,22 +223,15 @@ func programMove(c *call) []Value {
 		return nil
 	}
 	prog, prev := c.state.ProgramSource(me), c.state.PreviewSource(me)
-	if me == 0 {
-		// No echo says what is live now: the header shows what was
-		// asked for, as the line does.
-		c.predicted = &OnAir{Program: sourceName(c.state, prev), Preview: sourceName(c.state, prog), ProgramID: prev, PreviewID: prog}
-	}
 	return []Value{{Param: "program", Before: ptr(sourceName(c.state, prog)), After: sourceName(c.state, prev)}}
 }
 
-// noteOnAir sends M/E 1's program and preview as st holds them, or as a
-// cut or an auto transition just asked for them.
-func (c *call) noteOnAir(st atem.State) {
+// noteOnAir sends M/E 1's program and preview as the request found them,
+// before it does anything: a terminal's header says what was live when
+// the command ran, read once.
+func (c *call) noteOnAir() {
+	st := c.state
 	if !c.req.Notes || len(st.MEs) == 0 {
-		return
-	}
-	if c.predicted != nil {
-		c.note(Note{OnAir: c.predicted})
 		return
 	}
 	prog, prev := st.ProgramSource(0), st.PreviewSource(0)

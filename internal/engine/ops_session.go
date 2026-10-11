@@ -32,7 +32,7 @@ func sessionOperations() []operation {
 			run: opConnect},
 		{entry: table.Entry{Path: "disconnect", Summary: "Close the engine's session to the switcher, pinned or not."},
 			run: opDisconnect, noDial: true},
-		{entry: table.Entry{Path: "undo", Summary: "Undo the last program, preview, aux, keyer or DSK on-air change made from this machine."},
+		{entry: table.Entry{Path: "undo", Summary: "Undo the last program, preview, cut, auto, aux, keyer or DSK on-air change made from this machine."},
 			run: opUndo},
 		{entry: table.Entry{Path: "info", Summary: "Show the switcher's model, firmware, video mode and what it has."},
 			run: opInfo},

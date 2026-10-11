@@ -1,50 +1,50 @@
 $ bmdctl program cam1
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1 · connected # ms</>
-  program     CAM2 → <red>CAM1</>                                   <dim># ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms</>
+  program     CAM2 → <red>CAM1</>                                           <dim># ms</>
 
 $ bmdctl preview cam2
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
-  preview     CAM1 → <green>CAM2</>                                   <dim># ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
+  preview     CAM1 → <green>CAM2</>                                           <dim># ms</>
 
 $ bmdctl usk 2 on-air on
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
-  usk 2 on-air  off → <red>on</>                                    <dim># ms</>
+  usk 2 on-air  off → <red>on</>                                            <dim># ms</>
 
 $ bmdctl usk 2 on-air off
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
-  usk 2 on-air  on → off                                    <dim># ms</>
+  usk 2 on-air  on → off                                            <dim># ms</>
 
 $ bmdctl dsk auto
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
-  dsk auto    on → off                                      <dim>sent</>
+  dsk auto    on → off                                              <dim>sent</>
 
 $ bmdctl cut
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
-  cut         <red>CAM2</> on program · <green>CAM1</> on preview             <dim># ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
+  cut         <red>CAM2</> on program · <green>CAM1</> on preview                     <dim># ms</>
 
 $ bmdctl ftb toggle
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
-  ftb toggle  off → <red>black</>                                   <dim>sent</>
+  ftb toggle  off → <red>black</>                                           <dim>sent</>
 
 $ bmdctl aux 2 cam1
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
-  aux 2       PGM → CAM1                                    <dim># ms</>
+  aux 2       PGM → CAM1                                            <dim># ms</>
 
 $ bmdctl transition mix 0:12
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
-  transition mix  1:00 → 0:12                               <dim># ms</>
+  transition mix  1:00 → 0:12                                       <dim># ms</>
 
 $ bmdctl color 2 --hue 120
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
-  color 2     hue 300 → 120                                 <dim># ms</>
+  color 2     hue 300 → 120                                         <dim># ms</>
 
 $ bmdctl transition wipe --rate 10
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
-  transition wipe  rate 0:20                            <dim>rejected</>
+  transition wipe  rate 0:20                                    <dim>rejected</>
 
 $ bmdctl program cam1 --me 1
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
-  program ME1  CAM2 → <red>CAM1</>                                  <dim># ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  program ME1  CAM2 → <red>CAM1</>                                          <dim># ms</>
 
 $ bmdctl connect
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
@@ -55,12 +55,12 @@ $ bmdctl disconnect
 
 $ bmdctl program cam2
 ATEM 1 M/E Constellation HD  PGM CAM2 · PVW CAM1 · connected # ms
-  program     CAM2                                       already
+  program     CAM2                                               already
 
 $ bmdctl exec DIR/cue.txt
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW MP1 · cue.txt · 3 lines</>
-  1  preview     CAM1 → <green>MP1</>                                 <dim># ms</>
-  2  cut         <red>MP1</> on program · <green>CAM2</> on preview           <dim># ms</>
-  3  aux 1       MP1 → CAM1                                 <dim># ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · cue.txt · 3 lines</>
+  1  preview     CAM1 → <green>MP1</>                                         <dim># ms</>
+  2  cut         <red>MP1</> on program · <green>CAM2</> on preview                   <dim># ms</>
+  3  aux 1       MP1 → CAM1                                         <dim># ms</>
   <dim>done · 3 ok</>
 

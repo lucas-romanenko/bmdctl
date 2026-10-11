@@ -4,8 +4,8 @@ $ bmdctl connect 192.0.2.10
   <dim>tab completes input names</>
 
 $ bmdctl program cam1
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
-  program     CAM2 → <red>CAM1</>                                   <dim># ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  program     CAM2 → <red>CAM1</>                                           <dim># ms</>
 
 $ bmdctl disconnect
 <b>ATEM 1 M/E Constellation HD</>  disconnected

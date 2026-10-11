@@ -23,11 +23,12 @@ import (
 )
 
 const (
-	lineWidth = 72 // nothing printed is wider; longer lines are cut with "…"
-	timingEnd = 64 // a result's timing ends here, right-aligned
+	// lineWidth: nothing printed is wider; longer lines are cut with "…".
+	// A row's status ends here, right-aligned (trailing).
+	lineWidth = 72
 	// statusWidth is the room a status always has, as wide as the widest
-	// ("rejected"): where a line is cut and where its status ends don't
-	// depend on how wide the time taken is.
+	// ("rejected"): where a line is cut doesn't depend on how wide the
+	// time taken is.
 	statusWidth = 8
 	verbWidth   = 10 // the verb column
 	indent    = "  "
@@ -111,22 +112,32 @@ func verbCell(verb string) string { return padRight(verb, verbWidth) + "  " }
 
 // resultLine is a result under the header: the verb in its column, what
 // it did, and its status (the time taken, or sent, already, rejected)
-// dim and right-aligned. A line that would pass lineWidth loses the end
-// of what it did, not its status.
+// dim, at the end of the line (trailing).
 func (c *cli) resultLine(verb, change, status string) string {
 	left := indent + c.lineNo + c.stamped() + verbCell(verb) + change
-	if change == "" {
-		left = strings.TrimRight(left, " ")
-	}
 	if status == "" {
-		return fit(left, lineWidth)
+		return fit(strings.TrimRight(left, " "), lineWidth)
 	}
+	return trailing(left, c.colour(dim, status))
+}
+
+// trailing ends a row with its status, right-aligned to end at
+// lineWidth, as every result and table row with one does: a time, sent,
+// already, on air, ● PGM, a session. Where both don't fit the row is cut,
+// never the status (itself cut to half the line); the status always has
+// statusWidth columns, so where a row is cut doesn't move with what it
+// says.
+func trailing(row, status string) string {
+	row = strings.TrimRight(row, " ")
+	if status == "" {
+		return fit(row, lineWidth)
+	}
+	status = fit(status, lineWidth/2)
 	room := max(width(status), statusWidth)
-	if width(left)+2+room > lineWidth {
-		left = fit(left, lineWidth-2-room)
+	if width(row)+2+room > lineWidth {
+		row = fit(row, lineWidth-2-room)
 	}
-	end := max(timingEnd, width(left)+2+room)
-	return left + strings.Repeat(" ", end-width(status)-width(left)) + c.colour(dim, status)
+	return row + strings.Repeat(" ", lineWidth-width(row)-width(status)) + status
 }
 
 // stamped is the time of day a result starts with under -t, dim: "13:43:28  ".

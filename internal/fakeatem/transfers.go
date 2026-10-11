@@ -100,6 +100,16 @@ func (sw *Switcher) FailTransfers(statuses ...uint8) {
 	sw.failNext = append(sw.failNext, statuses...)
 }
 
+// HoldUpload holds the next upload part way: once its first budget of
+// chunks has arrived, the next budget (FTCD) waits until release is
+// closed. The upload has begun and reported progress, and can't end
+// until then.
+func (sw *Switcher) HoldUpload(release <-chan struct{}) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	sw.uploadHeld = release
+}
+
 // LockedBySession reports whether the session holds store's lock.
 func (sw *Switcher) LockedBySession(store uint16) bool {
 	sw.mu.Lock()
@@ -204,6 +214,17 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 		x.got = append(x.got, chunk...)
 		x.decoded += decodedLen(x.store, chunk)
 		if x.budgetLeft--; x.budgetLeft == 0 && x.decoded < x.length {
+			if release := sw.uploadHeld; release != nil {
+				sw.uploadHeld = nil
+				go func() {
+					<-release
+					sw.mu.Lock()
+					b := sw.budget(tid, x)
+					sw.mu.Unlock()
+					sw.Send(b)
+				}()
+				return nil
+			}
 			return [][]byte{sw.budget(tid, x)}
 		}
 		return nil

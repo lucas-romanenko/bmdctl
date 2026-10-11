@@ -36,9 +36,10 @@ type printer struct {
 	sw         *engine.Switcher // the switcher, from the engine's note
 	vals       []engine.Value   // what the command set, from its note
 	connected  bool             // this request opened the session
-	// live is what M/E 1 has on program and preview, from the engine's
-	// latest note; connectedIn how long opening the session took, when
-	// this request opened it. A terminal's header says both.
+	// live is what M/E 1 had on program and preview when the command
+	// ran, from the engine's on_air note (the first: read once);
+	// connectedIn how long opening the session took, when this request
+	// opened it. A terminal's header says both.
 	live        *engine.OnAir
 	connectedIn time.Duration
 	saved       remembered      // what connect ADDRESS did to hosts.yml
@@ -100,7 +101,9 @@ func (p *printer) note(n engine.Note) {
 	case n.Values != nil:
 		p.vals = n.Values
 	case n.OnAir != nil:
-		p.live = n.OnAir
+		if p.live == nil {
+			p.live = n.OnAir
+		}
 	case n.NoInput != nil:
 		p.noInput = n.NoInput
 	case n.Progress != nil:
