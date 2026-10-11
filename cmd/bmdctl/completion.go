@@ -110,7 +110,7 @@ func (c *cli) completeCommand(args []string) int {
 
 // builtinFlags are the flags of the built-ins that take their own.
 var builtinFlags = map[string][]string{
-	"engine": {"--log-level"}, "exec": {"--continue"}, "hosts": {"--device"}, "man": {"--dir"},
+	"engine": {"--log-level"}, "exec": {"--continue"}, "hosts": {"--as", "--device", "--for"}, "man": {"--dir"},
 }
 
 // complete returns the candidates for the last of args, the word being
@@ -146,7 +146,7 @@ func (c *cli) complete(args []string) []string {
 	switch prev {
 	case "--host":
 		return match(cur, c.hostNames())
-	case "--fps", "--timeout":
+	case "--fps", "--timeout", "--as", "--for":
 		return nil
 	case "--log-level":
 		return match(cur, []string{"debug", "info", "warn", "error"})
@@ -177,7 +177,7 @@ func (c *cli) complete(args []string) []string {
 	case "hosts":
 		switch {
 		case len(words) == 1:
-			return match(cur, []string{"list", "add", "rm", "default"})
+			return match(cur, []string{"list", "add", "rm", "default", "discover"})
 		case len(words) == 2 && (words[1] == "rm" || words[1] == "default"):
 			return match(cur, c.hostNames())
 		}
@@ -275,7 +275,7 @@ func (c *cli) completeValue(cur string, e *table.Entry, p table.Param, g globals
 	return nil
 }
 
-// hostNames are the names in hosts.yml.
+// hostNames are the names the hosts in hosts.yml go by.
 func (c *cli) hostNames() []string {
 	f, _, err := c.loadHosts()
 	if err != nil {
@@ -283,7 +283,7 @@ func (c *cli) hostNames() []string {
 	}
 	var out []string
 	for _, h := range f.Hosts {
-		out = append(out, h.Name)
+		out = append(out, h.Label())
 	}
 	return out
 }
@@ -303,8 +303,7 @@ func (c *cli) ask(g globals, path string, params map[string]string, v any) bool 
 	defer conn.Close()
 	ctx, cancel := context.WithTimeout(c.ctx, time.Second)
 	defer cancel()
-	resp, err := engine.Call(ctx, conn, engine.Request{Device: "atem", Host: t.Address, Path: path, Params: params, Build: c.build()},
-		func([]byte, *engine.FileFrame, *engine.Response) error { return nil })
+	resp, err := engine.Call(ctx, conn, engine.Request{Device: "atem", Host: t.Address, Path: path, Params: params, Build: c.build()}, nil)
 	if err != nil || !resp.OK {
 		return false
 	}

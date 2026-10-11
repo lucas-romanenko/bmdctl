@@ -231,10 +231,11 @@ func (e *Engine) serveConn(c io.ReadWriteCloser) {
 	}
 }
 
-// sink takes what a request produces besides its response: files, and
-// a streaming command's results.
+// sink takes what a request produces besides its response: files, notes,
+// and a streaming command's results.
 type sink interface {
 	file(FileFrame) error
+	note(Note) error
 	response(Response) error
 }
 
@@ -255,6 +256,7 @@ func (s *connSink) write(v any) error {
 }
 
 func (s *connSink) file(f FileFrame) error    { return s.write(frame{File: &f}) }
+func (s *connSink) note(n Note) error         { return s.write(frame{Note: &n}) }
 func (s *connSink) response(r Response) error { return s.write(r) }
 
 // Handle runs one request and returns its response. Files and stream
@@ -315,16 +317,18 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 		}
 		return o.run(c)
 	}
-	h, sess, release, err := e.acquire(ctx, req.Host)
+	connecting := func(key string) { c.note(Note{Connecting: key}) }
+	h, sess, idle, release, err := e.acquire(ctx, req.Host, connecting)
 	if err != nil {
 		return nil, false, err
 	}
 	defer release()
 	c.host, c.sess = h, sess
-	if err := waitReady(ctx, sess); err != nil {
+	if err := waitReady(ctx, sess, func() { connecting(h.key) }); err != nil {
 		return nil, false, err
 	}
 	c.state = sess.State()
+	c.note(Note{Switcher: e.switcherNote(h, c.state, idle)})
 	c.res = atem.Resolver{State: c.state, FPS: req.FPS}
 	c.args, err = entry.Parse(req.Params, c.res)
 	if err != nil {
@@ -367,22 +371,28 @@ func hostKey(addr string) (string, error) {
 }
 
 // acquire returns the session for addr, dialling it if there is none or
-// the one there has failed. Concurrent requests share one dial. release
-// must be called when the request is done with the session.
-func (e *Engine) acquire(ctx context.Context, addr string) (*host, *atem.Session, func(), error) {
+// the one there has failed, and how long it had gone unused. Concurrent
+// requests share one dial; connecting is called with the session's key
+// when this request waits for one. release must be called when the
+// request is done with the session.
+func (e *Engine) acquire(ctx context.Context, addr string, connecting func(key string)) (*host, *atem.Session, time.Duration, func(), error) {
 	key, err := hostKey(addr)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, 0, nil, err
 	}
 	e.mu.Lock()
 	if e.stopping {
 		e.mu.Unlock()
-		return nil, nil, nil, codeErr(CodeUnreachable, "the engine is stopping")
+		return nil, nil, 0, nil, codeErr(CodeUnreachable, "the engine is stopping")
 	}
 	h := e.hosts[key]
 	if h == nil {
 		h = &host{key: key}
 		e.hosts[key] = h
+	}
+	var idle time.Duration
+	if h.busy == 0 && !h.used.IsZero() {
+		idle = time.Since(h.used)
 	}
 	h.busy++
 	if h.idle != nil {
@@ -390,11 +400,11 @@ func (e *Engine) acquire(ctx context.Context, addr string) (*host, *atem.Session
 		h.idle = nil
 	}
 	release := func() { e.release(h) }
-	for {
+	for said := false; ; said = true {
 		if h.sess != nil && h.sess.Connected() {
 			s := h.sess
 			e.mu.Unlock()
-			return h, s, release, nil
+			return h, s, idle, release, nil
 		}
 		if h.sess != nil { // failed since
 			go h.sess.Close()
@@ -406,18 +416,21 @@ func (e *Engine) acquire(ctx context.Context, addr string) (*host, *atem.Session
 		}
 		ch := h.dialing
 		e.mu.Unlock()
+		if !said {
+			connecting(key)
+		}
 		select {
 		case <-ch:
 		case <-ctx.Done():
 			release()
-			return nil, nil, nil, codeErr(CodeUnreachable, "%s: %v", key, ctx.Err())
+			return nil, nil, 0, nil, codeErr(CodeUnreachable, "%s: %v", key, ctx.Err())
 		}
 		e.mu.Lock()
 		if h.sess == nil {
 			err := h.dialErr
 			e.mu.Unlock()
 			release()
-			return nil, nil, nil, codeErr(CodeUnreachable, "%s", dialMessage(key, err))
+			return nil, nil, 0, nil, codeErr(CodeUnreachable, "%s", dialMessage(key, err))
 		}
 	}
 }
@@ -540,13 +553,15 @@ func (e *Engine) pin(h *host, on bool) {
 }
 
 // waitReady waits for the session's state to be complete: at once,
-// unless it is re-handshaking after a silence.
-func waitReady(ctx context.Context, s *atem.Session) error {
+// unless it is re-handshaking after a silence, which it reports through
+// waiting first.
+func waitReady(ctx context.Context, s *atem.Session, waiting func()) error {
 	select {
 	case <-s.Ready():
 		return nil
 	default:
 	}
+	waiting()
 	deadline := time.NewTimer(atem.ConnectTimeout)
 	defer deadline.Stop()
 	tick := time.NewTicker(100 * time.Millisecond)
@@ -638,8 +653,96 @@ func (e *Engine) status() Status {
 	return st
 }
 
+// SwitcherName is what a switcher calls itself: the name set in ATEM
+// Setup (WhoI), else its product name (_pin); bmdwire v1.3.0's state.py
+// reports device_name(mx) or product_name(mx) as atem_name.
+func SwitcherName(st atem.State) string {
+	if n := st.DeviceName(""); n != "" {
+		return n
+	}
+	return st.ProductName("")
+}
+
+// switcherNote is the Switcher note for a request using h, whose session
+// holds st and had gone unused for idle.
+func (e *Engine) switcherNote(h *host, st atem.State, idle time.Duration) *Switcher {
+	e.mu.Lock()
+	pinned := h.pinned
+	e.mu.Unlock()
+	sw := &Switcher{Host: h.key, Name: SwitcherName(st), Product: st.ProductName(""), VideoMode: videoModeLabel(st),
+		Ready: true, Pinned: pinned, IdleS: int(idle.Seconds())}
+	if !pinned {
+		sw.DropS = int(e.idle.Seconds())
+	}
+	return sw
+}
+
+// Overview is the engine and each switcher it has a session to: what
+// bmdctl prints when run without arguments.
+type Overview struct {
+	Engine    Status     `json:"engine"`
+	Switchers []Switcher `json:"switchers"`
+}
+
+// switchers describes every session, as the overview shows them.
+func (e *Engine) switchers() []Switcher {
+	type snap struct {
+		sw   Switcher
+		sess *atem.Session
+	}
+	var snaps []snap
+	e.mu.Lock()
+	for _, h := range e.hosts {
+		sw := Switcher{Host: h.key, Pinned: h.pinned}
+		if h.dialErr != nil && h.sess == nil {
+			sw.Error = h.dialErr.Error()
+		}
+		if h.busy == 0 && !h.used.IsZero() {
+			sw.IdleS = int(time.Since(h.used).Seconds())
+			if !h.pinned {
+				sw.DropS = max(0, int((e.idle - time.Since(h.used)).Seconds()))
+			}
+		}
+		snaps = append(snaps, snap{sw, h.sess})
+	}
+	e.mu.Unlock()
+	out := []Switcher{}
+	for _, s := range snaps {
+		if s.sess != nil {
+			select {
+			case <-s.sess.Ready():
+				s.sw.Ready = true
+			default:
+			}
+			st := s.sess.State()
+			s.sw.Name, s.sw.Product, s.sw.VideoMode = SwitcherName(st), st.ProductName(""), videoModeLabel(st)
+		}
+		out = append(out, s.sw)
+	}
+	slices.SortFunc(out, func(a, b Switcher) int { return strings.Compare(a.Host, b.Host) })
+	return out
+}
+
+// session returns addr's host and session, if the engine has one, without
+// dialling.
+func (e *Engine) session(addr string) (*host, *atem.Session) {
+	key, err := hostKey(addr)
+	if err != nil {
+		return nil, nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	h := e.hosts[key]
+	if h == nil || h.sess == nil {
+		return nil, nil
+	}
+	return h, h.sess
+}
+
 func (e *Engine) engineRequest(req Request) (any, bool, error) {
 	switch req.Path {
+	case "overview":
+		return Overview{Engine: e.status(), Switchers: e.switchers()}, false, nil
 	case "status", "ping":
 		return e.status(), false, nil
 	case "stop":

@@ -46,6 +46,11 @@ type Request struct {
 	// the client to start one of its own; requests to the engine itself
 	// (status, stop) are answered whatever the build.
 	Build string `json:"build,omitempty"`
+	// Notes asks for note frames before the response (Note): the
+	// switcher reached, a connect under way, what a command sets. The
+	// CLI asks always and prints them only for people, so a --json
+	// line is the same either way.
+	Notes bool `json:"notes,omitempty"`
 }
 
 // Error codes, each with its own exit status in the CLI.
@@ -122,9 +127,71 @@ type FileFrame struct {
 	Data  []byte `json:"data"`
 }
 
-// frame is one line from the engine: a file or a response.
+// Note is a frame for people, sent before the response to a request that
+// asks for notes. The CLI prints it on a terminal and never with --json,
+// so it carries what only a person reads: how the session was had, the
+// switcher's name and model, a command's before and after. Each note
+// sets one field.
+type Note struct {
+	// Connecting is the session's host:port when the request opens the
+	// session, waits for another request's dial, or waits for a session
+	// that went silent to come back. A Switcher note follows once it is
+	// ready.
+	Connecting string `json:"connecting,omitempty"`
+	// Switcher is the switcher the request reached, as its session holds
+	// it: every request that uses a session gets one.
+	Switcher *Switcher `json:"switcher,omitempty"`
+	// Values are what a command sets, each before and after, in the
+	// units it takes. The CLI shows a write from them.
+	Values []Value `json:"values,omitempty"`
+}
+
+// Switcher is a switcher as the engine's session to it knows it.
+type Switcher struct {
+	Host string `json:"host"` // the session's key, host:port
+	// Name is what the switcher calls itself: the name set in ATEM
+	// Setup (WhoI), else its product name (_pin), as bmdwire v1.3.0's
+	// state.py atem_name is.
+	Name      string `json:"name,omitempty"`
+	Product   string `json:"product,omitempty"`
+	VideoMode string `json:"video_mode,omitempty"`
+	Ready     bool   `json:"ready"`
+	Pinned    bool   `json:"pinned,omitempty"`
+	// IdleS is how long the session had gone without a request: before
+	// this one, in a note.
+	IdleS int `json:"idle_s"`
+	// DropS is how long the session may go unused before it closes, from
+	// the end of the request in a note, from now in an overview; 0 when
+	// pinned.
+	DropS int    `json:"drop_s,omitempty"`
+	Error string `json:"error,omitempty"` // the last dial's failure, with no session
+}
+
+// Value is one thing a command sets: its parameter, or for a command
+// with none of its own (cut), what it moves.
+type Value struct {
+	Param string `json:"param"`
+	// Before is the value the switcher held, as a person reads it;
+	// absent when the state doesn't say.
+	Before *string `json:"before,omitempty"`
+	// After is what the switcher reported back for a confirmed command,
+	// else what was sent.
+	After string `json:"after"`
+}
+
+// frame is one line from the engine: a file, a note or a response.
 type frame struct {
 	File *FileFrame `json:"file,omitempty"`
+	Note *Note      `json:"note,omitempty"`
+}
+
+// Frame is one line of a reply, as Call reads it: the raw line and the
+// file, note or response in it.
+type Frame struct {
+	Line     []byte
+	File     *FileFrame
+	Note     *Note
+	Response *Response
 }
 
 // Error is a failure with its code.
@@ -149,11 +216,14 @@ func CodeOf(err error) string {
 	return CodeUsage
 }
 
-// Call sends req over conn and passes every frame of the reply to onFrame:
-// the raw line, and the file or the response in it. It returns the last
-// response, or an error if the engine hung up before sending one. A
-// streaming reply ends when the engine closes the connection or ctx ends.
-func Call(ctx context.Context, conn io.ReadWriteCloser, req Request, onFrame func(line []byte, f *FileFrame, r *Response) error) (Response, error) {
+// Call sends req over conn and passes every frame of the reply to onFrame.
+// It returns the last response, or an error if the engine hung up before
+// sending one. A streaming reply ends when the engine closes the
+// connection or ctx ends. onFrame may be nil.
+func Call(ctx context.Context, conn io.ReadWriteCloser, req Request, onFrame func(Frame) error) (Response, error) {
+	if onFrame == nil {
+		onFrame = func(Frame) error { return nil }
+	}
 	req.V = Version
 	b, err := json.Marshal(req)
 	if err != nil {
@@ -181,8 +251,8 @@ func Call(ctx context.Context, conn io.ReadWriteCloser, req Request, onFrame fun
 		if err := json.Unmarshal(line, &f); err != nil {
 			return Response{}, fmt.Errorf("engine: bad frame: %v", err)
 		}
-		if f.File != nil {
-			if err := onFrame(line, f.File, nil); err != nil {
+		if f.File != nil || f.Note != nil {
+			if err := onFrame(Frame{Line: line, File: f.File, Note: f.Note}); err != nil {
 				return Response{}, err
 			}
 			continue
@@ -191,7 +261,7 @@ func Call(ctx context.Context, conn io.ReadWriteCloser, req Request, onFrame fun
 		if err := json.Unmarshal(line, &r); err != nil {
 			return Response{}, fmt.Errorf("engine: bad response: %v", err)
 		}
-		if err := onFrame(line, nil, &r); err != nil {
+		if err := onFrame(Frame{Line: line, Response: &r}); err != nil {
 			return Response{}, err
 		}
 		last = &r

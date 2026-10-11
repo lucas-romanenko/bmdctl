@@ -19,6 +19,7 @@ type globals struct {
 	yes     bool
 	dryRun  bool
 	help    bool
+	noColor bool
 	fps     int // 0: the switcher's
 	timeout time.Duration
 }
@@ -27,7 +28,7 @@ type globals struct {
 // A command's parameters can't use these names.
 var globalFlags = map[string]bool{
 	"host": true, "fps": true, "timeout": true,
-	"json": false, "quiet": false, "yes": false, "dry-run": false, "help": false,
+	"json": false, "quiet": false, "yes": false, "dry-run": false, "help": false, "no-color": false,
 }
 
 // shortFlags are the one-letter forms (-q), which never clash with a
@@ -118,6 +119,8 @@ func (g *globals) set(name, value string) error {
 		g.dryRun = true
 	case "help":
 		g.help = true
+	case "no-color":
+		g.noColor = true
 	}
 	return nil
 }

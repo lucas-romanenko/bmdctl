@@ -17,8 +17,8 @@ import (
 
 func TestComplete(t *testing.T) {
 	b := newBench(t)
-	b.must("hosts", "add", "studio", "192.0.2.10")
-	b.must("hosts", "add", "spare", "192.0.2.11")
+	b.must("hosts", "add", "192.0.2.10", "--as", "studio")
+	b.must("hosts", "add", "192.0.2.11", "--as", "spare")
 	complete := func(args ...string) []string {
 		c, _, _ := b.cli("")
 		c.spawn = func(string, []string, []string) error { t.Fatal("completion started an engine"); return nil }
@@ -55,9 +55,9 @@ func TestComplete(t *testing.T) {
 		{[]string{"media", "upload", "--file", ""}, []string{completeFiles}},
 		{[]string{"exec", ""}, []string{completeFiles}},
 		{[]string{"--host", "s"}, []string{"studio", "spare"}},
-		{[]string{"hosts", ""}, []string{"list", "add", "rm", "default"}},
+		{[]string{"hosts", ""}, []string{"list", "add", "rm", "default", "discover"}},
 		{[]string{"hosts", "rm", "st"}, []string{"studio"}},
-		{[]string{"hosts", "add", "x", "1.2.3.4", "--device", "h"}, []string{"hyperdeck"}},
+		{[]string{"hosts", "add", "1.2.3.4", "--as", "x", "--device", "h"}, []string{"hyperdeck"}},
 		{[]string{"completion", ""}, []string{"bash", "zsh", "fish"}},
 		{[]string{"engine", ""}, []string{"stop", "status"}},
 		{[]string{"program", "1", "x"}, nil},

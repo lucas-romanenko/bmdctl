@@ -29,6 +29,7 @@ func source(s engine.Source) string {
 	return fmt.Sprintf("%d (%s)", s.ID, s.Name)
 }
 
+// onAir is a keyer's state, red when on air.
 func onAir(c *cli, on bool) string {
 	if on {
 		return c.colour(red, "on air")
@@ -53,14 +54,38 @@ func sessionLine(s engine.SessionStatus) string {
 	return state
 }
 
+// sessionUse is how a request's session stands, from the engine's note:
+// how long it had gone unused (or that this request opened it), and when
+// it drops if nothing uses it.
+func (p *printer) sessionUse() string {
+	sw := p.sw
+	if sw == nil {
+		return ""
+	}
+	parts := []string{"ready"}
+	if p.connected {
+		parts = append(parts, "connected just now")
+	} else {
+		parts = append(parts, "idle "+since(time.Duration(sw.IdleS)*time.Second))
+	}
+	if sw.Pinned {
+		parts = append(parts, "pinned: open until disconnect")
+	} else if sw.DropS > 0 {
+		at := time.Now().Add(time.Duration(sw.DropS) * time.Second)
+		parts = append(parts, fmt.Sprintf("drops at %s if unused", at.Format("15:04")))
+	}
+	return strings.Join(parts, ", ")
+}
+
 func formatStatus(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var r engine.StatusResult
 	json.Unmarshal(raw, &r)
 	c := p.c
-	rows := [][]string{
-		{"session", r.Session.Host, sessionLine(r.Session)},
-		{"switcher", r.Product, r.VideoMode},
+	use := p.sessionUse()
+	if use == "" {
+		use = sessionLine(r.Session)
 	}
+	rows := [][]string{{"session", use}}
 	for _, m := range r.MEs {
 		me := fmt.Sprintf("me %d", m.ME)
 		rows = append(rows, []string{me, "program " + c.colour(red, source(m.Program)), "preview " + c.colour(green, source(m.Preview))})
@@ -122,16 +147,24 @@ func formatStatus(p *printer, _ engine.Response, raw json.RawMessage) []string {
 func formatConnect(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var s engine.SessionStatus
 	json.Unmarshal(raw, &s)
-	return p.table([][]string{{"connected", s.Host, sessionLine(s), strings.TrimSpace(s.Product + " " + s.VideoMode)}})
+	state := "connected"
+	switch {
+	case s.Pinned:
+		state += ", pinned: open until disconnect"
+	case s.IdleCloseS > 0:
+		at := time.Now().Add(time.Duration(s.IdleCloseS) * time.Second)
+		state += fmt.Sprintf(", drops at %s if unused", at.Format("15:04"))
+	}
+	return []string{p.who() + "  " + state}
 }
 
 func formatDisconnect(p *printer, _ engine.Response, raw json.RawMessage) []string {
 	var r engine.DisconnectResult
 	json.Unmarshal(raw, &r)
 	if !r.Closed {
-		return []string{"no session to " + r.Host}
+		return []string{p.who() + "  no session to close"}
 	}
-	return []string{"disconnected " + r.Host}
+	return []string{p.who() + "  disconnected"}
 }
 
 func formatInfo(p *printer, _ engine.Response, raw json.RawMessage) []string {

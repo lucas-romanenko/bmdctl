@@ -91,6 +91,15 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 		fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: atemwire restored it from pyatem without checking it on a switcher\n", label)
 	}
 	out := &printer{c: c, g: g, e: e, params: req.Params}
+	if !e.Local {
+		var err error
+		if out.t, err = c.resolveTarget(g); err != nil {
+			if errors.Is(err, errNoHost) && !e.Operation {
+				err = fmt.Errorf("%w; or add --dry-run to print the bytes", err)
+			}
+			return c.fail(exitUsage, "bmdctl %s: %v", label, err)
+		}
+	}
 	if e.Local {
 		// Run it here, then read the response back as if it had come
 		// from an engine, so it prints the same way.
@@ -100,20 +109,20 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 		out.response(line, resp)
 		return out.code()
 	}
-	t, err := c.resolveTarget(g)
-	if errors.Is(err, errNoHost) && !e.Operation {
-		err = fmt.Errorf("%w; or add --dry-run to print the bytes", err)
-	}
-	if err != nil {
-		return c.fail(exitUsage, "bmdctl %s: %v", label, err)
-	}
+	t := out.t
 	if t.Device != "" && t.Device != req.Device {
 		return c.fail(exitUsage, "bmdctl %s: %s is a %s, not an %s", label, t.label(), t.Device, req.Device)
 	}
 	req.Host = t.Address
 	code := c.send(g, e, req, out, label)
 	if g.hostSet && code != exitUnreachable && !c.noRemember {
-		c.setLastHost(g.host)
+		// The host by the name it goes by, not the start of it typed,
+		// which a host added later could make ambiguous.
+		last := g.host
+		if out.t.Host != nil {
+			last = out.t.Host.Label()
+		}
+		c.setLastHost(last)
 	}
 	return code
 }
@@ -121,32 +130,27 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 // errStale ends a call answered by an engine of another build.
 var errStale = errors.New("the engine runs another build")
 
-// send sends a request to the engine and prints its replies. An engine
-// started from another build answers "stale" and stops; the request then
-// goes, once, to a new engine of this build.
+// send sends a request to the engine and prints its replies.
 func (c *cli) send(g globals, e *table.Entry, req engine.Request, out *printer, label string) int {
-	req.Build = c.build()
-	err := errStale
-	for tries := 0; errors.Is(err, errStale); tries++ {
-		if tries > 0 {
-			c.waitEngineGone()
+	req.Notes = true
+	// Starting the engine means opening a session too, unless the
+	// command opens none.
+	spawned := func() {
+		if e.Path != "disconnect" {
+			c.sayConnecting(g, out.who())
 		}
-		var conn io.ReadWriteCloser
-		if conn, err = c.connectEngine(); err != nil {
-			return c.fail(codeFor(err), "bmdctl %s: %v", label, err)
-		}
-		_, err = engine.Call(c.ctx, conn, req, func(line []byte, f *engine.FileFrame, r *engine.Response) error {
-			if f != nil {
-				return out.file(*f)
-			}
-			if r.Code == engine.CodeStale && tries == 0 {
-				return errStale
-			}
-			out.response(line, *r)
-			return nil
-		})
-		conn.Close()
 	}
+	err := c.call(req, spawned, func(f engine.Frame) error {
+		switch {
+		case f.File != nil:
+			return out.file(*f.File)
+		case f.Note != nil:
+			out.note(*f.Note)
+		default:
+			out.response(f.Line, *f.Response)
+		}
+		return nil
+	})
 	switch {
 	case err != nil && c.ctx.Err() != nil && e.Stream:
 		return out.code() // interrupted: a stream's normal end
@@ -154,6 +158,32 @@ func (c *cli) send(g globals, e *table.Entry, req engine.Request, out *printer, 
 		return c.fail(codeFor(err), "bmdctl %s: %v", label, err)
 	}
 	return out.code()
+}
+
+// call sends a request to the engine, starting one (and then calling
+// spawned) if none runs, and passes each frame of the reply to onFrame.
+// An engine started from another build answers "stale" and stops; the
+// request then goes, once, to a new engine of this build.
+func (c *cli) call(req engine.Request, spawned func(), onFrame func(engine.Frame) error) error {
+	req.Build = c.build()
+	err := errStale
+	for tries := 0; errors.Is(err, errStale); tries++ {
+		if tries > 0 {
+			c.waitEngineGone()
+		}
+		var conn io.ReadWriteCloser
+		if conn, err = c.connectEngine(spawned); err != nil {
+			return err
+		}
+		_, err = engine.Call(c.ctx, conn, req, func(f engine.Frame) error {
+			if f.Response != nil && f.Response.Code == engine.CodeStale && tries == 0 {
+				return errStale
+			}
+			return onFrame(f)
+		})
+		conn.Close()
+	}
+	return err
 }
 
 // precheck reads a command line without a switcher: names and rates are

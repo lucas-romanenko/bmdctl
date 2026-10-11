@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestPositionalExamples(t *testing.T) {
 		t.Errorf("program 5 --me 2: %d %q", code, errOut)
 	}
 	out := b.must(with("media", "upload", "10", "test.png", "--name", "X")...)
-	if !strings.Contains(out, `slot 10 "X" from 64x36 png`) {
+	if !regexp.MustCompile(`  media upload 10 +"X" from 64x36 png +confirmed`).MatchString(out) {
 		t.Errorf("media upload: %q", out)
 	}
 	if _, name, _, ok := b.switchers()[0].Still(9); !ok || name != "X" {
@@ -119,7 +120,8 @@ func TestOldFlagFormOnce(t *testing.T) {
 	script := filepath.Join(t.TempDir(), "cue.txt")
 	os.WriteFile(script, []byte("program --source 1\npreview --source 2\ncut\n"), 0o644)
 	code, out, errOut := b.run(with("exec", script)...)
-	if code != 0 || strings.Count(out, "\n") != 3 || errOut != "bmdctl: --source is deprecated, use: program 1\n" {
+	if code != 0 || strings.Count(out, "\n") != 3 || strings.Count(errOut, "deprecated") != 1 ||
+		!strings.HasPrefix(errOut, "bmdctl: --source is deprecated, use: program 1\n") {
 		t.Errorf("exec: %d %q %q", code, out, errOut)
 	}
 }

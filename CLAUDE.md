@@ -83,6 +83,7 @@ changed because of it. Never rewrite an earlier section.
 - `internal/engine/`: the background engine (sessions, the socket
   protocol, the operations that aren't one wire command).
 - `internal/hosts/`: hosts.yml. `internal/paths/`: where files live.
+  `internal/mdns/`: the Bonjour browse behind `hosts discover`.
 - `cmd/bmdctl/`: the CLI.
 - `.github/banner.png`, `.github/mark/`: the README banner and the mark.
   `docs/BRAND.md` is their spec; follow it for anything branded.

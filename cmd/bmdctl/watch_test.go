@@ -28,6 +28,7 @@ func TestWatchLines(t *testing.T) {
 		"7":{"index":7,"name":"Graphics","short_name":""}},
 		"tally":{"source":{"num":2,"tally":{"3":{"program":true,"preview":false},"5":{"program":false,"preview":true}}}}}`), &st)
 	v := newWatchView(&st)
+	v.who = "Studio (192.0.2.10)"
 	for _, c := range []struct {
 		ev   watchEvent
 		want string
@@ -57,7 +58,8 @@ func TestWatchLines(t *testing.T) {
 			`input-properties:9  {"index":9,"name":"Lectern","short_name":"LECT"}`},
 		{event("PrgI", "PrgI:0", "12:00:05.000", map[string]int{"index": 0, "source": 3}), "program  ME1  LECT → CAM3"},
 		{event("Abcd", "Abcd", "12:00:06.000", "q80="), `Abcd  "q80="`},
-		{watchEvent{Kind: "disconnected"}, "disconnected"},
+		{watchEvent{Kind: "disconnected"}, "session to Studio (192.0.2.10) dropped"},
+		{watchEvent{Kind: "ready"}, "reconnected"},
 	} {
 		if got := v.line(c.ev); got != c.want {
 			t.Errorf("%s: %q, want %q", c.ev.Key, got, c.want)
@@ -93,6 +95,9 @@ func TestWatchHuman(t *testing.T) {
 		}
 		if l := ew.next(t); l != "watching; Ctrl-C to stop" {
 			t.Fatalf("stderr %q", l)
+		}
+		if l := w.next(t); l != "ATEM 1 M/E Constellation HD (192.0.2.10)  ATEM 1 M/E Constellation HD  1080p50" {
+			t.Fatalf("header %q", l)
 		}
 		return w, done
 	}

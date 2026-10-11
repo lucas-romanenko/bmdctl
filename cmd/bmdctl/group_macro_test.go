@@ -66,7 +66,7 @@ func TestMacroCommands(t *testing.T) {
 
 	// Upload, list, download.
 	out = b.must(with("macro", "upload", "5", filepath.Join(dir, "m.xml"), "--name", "Intro", "--description", "opens")...)
-	if !strings.Contains(out, `confirmed`) || !strings.Contains(out, `slot 5 "Intro" from 3 ops`) {
+	if !strings.Contains(out, `confirmed`) || !strings.Contains(out, `  macro upload 5  `) || !strings.Contains(out, `"Intro" from 3 ops`) {
 		t.Errorf("upload: %q", out)
 	}
 	sw := b.switchers()[0]
@@ -98,7 +98,7 @@ func TestMacroCommands(t *testing.T) {
 
 	// Run and stop.
 	out = b.must(with("macro", "run", "Intro")...)
-	if !strings.Contains(out, "confirmed") || !strings.Contains(out, "slot 5 (Intro)") || b.lastSent(t, "MAct") != "00040000" {
+	if !strings.Contains(out, "confirmed") || !strings.Contains(out, "  macro run  ") || !strings.Contains(out, "  5 (Intro)  ") || b.lastSent(t, "MAct") != "00040000" {
 		t.Errorf("run: %q", out)
 	}
 	if out := b.must(with("macro", "list")...); !strings.Contains(out, "running") {
@@ -125,7 +125,7 @@ func TestMacroCommands(t *testing.T) {
 		t.Errorf("action delete without --yes: %d", code)
 	}
 	out = b.must(with("macro", "delete", "rec", "--yes")...)
-	if !strings.Contains(out, "confirmed") || !strings.Contains(out, "slot 7 (Rec)") || b.lastSent(t, "MAct") != "00060500" {
+	if !strings.Contains(out, "confirmed") || !strings.Contains(out, "  macro delete 7 (Rec)  ") || b.lastSent(t, "MAct") != "00060500" {
 		t.Errorf("delete: %q", out)
 	}
 	if code, _, errOut := b.run(with("macro", "run", "nobody")...); code != exitUsage || !strings.Contains(errOut, "no macro has that name") {

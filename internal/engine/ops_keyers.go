@@ -36,13 +36,15 @@ func keyerOperations() []operation {
 // opUSKToggle is toggle_usk: the keyer's on-air state, inverted.
 func opUSKToggle(c *call) (any, bool, error) {
 	me, k := meArg(c), uint8(c.args.Value("keyer").(uint64))
-	return c.sendBuilt(atem.KeyOnAir{ME: me, Keyer: k, Enabled: !c.state.USKOnAir(int(me), int(k))})
+	on := c.state.USKOnAir(int(me), int(k))
+	return c.sendBuilt(atem.KeyOnAir{ME: me, Keyer: k, Enabled: !on}, Value{Param: "on-air", Before: ptr(onOff(on)), After: onOff(!on)})
 }
 
 // opDSKToggle is toggle_dsk.
 func opDSKToggle(c *call) (any, bool, error) {
 	d := uint8(c.args.Value("dsk").(uint64))
-	return c.sendBuilt(atem.DkeyOnair{DSK: d, OnAir: !c.state.DSKState(int(d)).OnAir})
+	on := c.state.DSKState(int(d)).OnAir
+	return c.sendBuilt(atem.DkeyOnair{DSK: d, OnAir: !on}, Value{Param: "on-air", Before: ptr(onOff(on)), After: onOff(!on)})
 }
 
 // InputEntry is one source in the input list.

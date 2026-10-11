@@ -37,10 +37,10 @@ func (b *bench) doctor(args ...string) (int, string) {
 
 func TestDoctor(t *testing.T) {
 	b := newBench(t)
-	b.must("hosts", "add", "studio", "192.0.2.10")
-	b.must("hosts", "add", "spare", "192.0.2.12")
-	b.must("hosts", "add", "deck", "192.0.2.20", "--device", "hyperdeck")
-	b.must("hosts", "add", "hub", "192.0.2.21", "--device", "videohub")
+	b.must("hosts", "add", "192.0.2.10", "--as", "studio")
+	b.must("hosts", "add", "192.0.2.12", "--as", "spare")
+	b.must("hosts", "add", "192.0.2.20", "--as", "deck", "--device", "hyperdeck")
+	b.must("hosts", "add", "192.0.2.21", "--as", "hub", "--device", "videohub")
 	b.must("hosts", "default", "studio")
 	b.must("--host", "studio", "cut") // the engine holds studio's session
 
@@ -53,7 +53,7 @@ func TestDoctor(t *testing.T) {
 		"4 hosts, default studio",
 		"ok last host studio",
 		"host studio atem 192.0.2.10: the engine's session is ready: ATEM 1 M/E Constellation HD 1080p50",
-		"host spare atem 192.0.2.12: ATEM 1 M/E Constellation HD 1080p50",
+		"host spare atem 192.0.2.12: the engine's session is ready: ATEM 1 M/E Constellation HD 1080p50",
 		"host deck hyperdeck 192.0.2.20: TCP 192.0.2.20:9993 answers",
 		"unreachable host hub videohub 192.0.2.21: nothing answers on TCP 192.0.2.21:9990: connection refused",
 	} {
@@ -64,7 +64,8 @@ func TestDoctor(t *testing.T) {
 	if code != exitUnreachable {
 		t.Errorf("exit %d, want 2 (a host only didn't answer)", code)
 	}
-	// It didn't open a second session to studio, and closed spare's.
+	// It opened no session of its own: hosts add left the engine one to
+	// each switcher.
 	if n := len(b.switchers()); n != 2 {
 		t.Errorf("%d sessions", n)
 	}

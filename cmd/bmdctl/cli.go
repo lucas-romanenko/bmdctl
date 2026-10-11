@@ -15,10 +15,12 @@ import (
 	"strings"
 	"sync"
 	"text/tabwriter"
+	"time"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/hosts"
+	"github.com/lucas-romanenko/bmdctl/internal/mdns"
 	"github.com/lucas-romanenko/bmdctl/internal/paths"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
@@ -54,7 +56,8 @@ type cli struct {
 	stdout, stderr io.Writer
 	env            paths.Env
 	environ        func() []string // the environment a spawned engine gets
-	tty            bool            // stdout is a terminal: colour allowed
+	tty, ttyErr    bool            // stdout, stderr is a terminal: colour allowed
+	noColor        bool            // --no-color
 	reg            *table.Registry
 	// spawn starts a background engine (engine.Spawn); tests replace it.
 	spawn func(exe string, args, env []string) error
@@ -75,6 +78,12 @@ type cli struct {
 	// noticed: the old --name form's notice has been printed; it is
 	// printed once per invocation, however many lines use the form.
 	noticed bool
+	// said: "connecting to ..." has been printed for these switchers;
+	// connecting: the last one awaits its model and video mode line.
+	said       map[string]bool
+	connecting bool
+	// discover browses for switchers (mdns); tests replace it.
+	discover func(ctx context.Context, wait time.Duration) ([]mdns.Instance, error)
 	// dialATEM and dialTCP are doctor's reachability checks; tests
 	// replace them.
 	dialATEM func(ctx context.Context, addr string) (*atem.Session, error)
@@ -89,15 +98,16 @@ func newCLI(stdout, stderr io.Writer) *cli {
 	var d net.Dialer
 	return &cli{stdin: os.Stdin, stdout: stdout, stderr: stderr, env: os.Getenv, environ: os.Environ,
 		reg: reg, spawn: engine.Spawn, build: sync.OnceValue(buildID), engineConfig: func(c engine.Config) engine.Config { return c },
-		ctx: context.Background(), dialATEM: atem.Dial,
+		ctx: context.Background(), dialATEM: atem.Dial, said: map[string]bool{}, discover: browse,
 		dialTCP: func(ctx context.Context, addr string) (net.Conn, error) { return d.DialContext(ctx, "tcp", addr) }}
 }
 
 // builtins are the commands that aren't a device's.
 var builtins = []struct{ name, summary string }{
+	{"help", "this help; 'bmdctl' alone shows the engine and the switchers"},
 	{"version", "print bmdctl's version"},
 	{"engine", "run the background engine in the foreground; engine stop|status"},
-	{"hosts", "name devices: hosts list|add|rm|default"},
+	{"hosts", "name switchers by their own names: hosts list|add|rm|default|discover"},
 	{"exec", "run the commands in a file, one per line: exec FILE|-"},
 	{"completion", "print a shell completion script: completion bash|zsh|fish"},
 	{"man", "print the manual page, or write it with --dir"},
@@ -110,7 +120,8 @@ func (c *cli) usage(w io.Writer) {
 
 Commands run through a background engine that keeps a session open to
 each switcher; the first command starts it. A command without a device
-word goes to the ATEM named by --host.
+word goes to the ATEM named by --host. 'bmdctl' alone shows the engine
+and each switcher.
 
 Commands:
 `)
@@ -125,9 +136,10 @@ Commands:
 
 func globalHelp(w io.Writer) {
 	fmt.Fprint(w, `Flags, accepted anywhere on the line:
-  --host H       the switcher: a name from 'bmdctl hosts', or host[:port]
-                 (UDP 9910 by default); else $BMDCTL_HOST, else the last
-                 --host, else the default host
+  --host H       the switcher: a name from 'bmdctl hosts' in any case, or
+                 any unambiguous start of one, or host[:port] (UDP 9910 by
+                 default); else $BMDCTL_HOST, else the last --host, else
+                 the default host
   --json         print the engine's JSON response as it is
   --quiet, -q    print nothing on stdout; the exit status tells
   --yes, -y      allow a destructive command
@@ -135,6 +147,7 @@ func globalHelp(w io.Writer) {
   --fps N        frame rate for rates given as seconds:frames
                  (default: the switcher's; 25 with --dry-run)
   --timeout D    how long to wait for the switcher's echo (default 5s)
+  --no-color     no colour, even on a terminal (so does $NO_COLOR)
   --help, -h     help for the command line so far
 
 Exit status: 0 done, 1 usage, 2 switcher or engine unreachable, 3 sent but
@@ -147,6 +160,7 @@ not confirmed in time, 4 refused by the switcher, 5 destructive without --yes.
 func (c *cli) run(args []string) int {
 	g, words, tokens, err := splitLine(args)
 	c.json, c.quiet = g.json, g.quiet
+	c.noColor = c.noColor || g.noColor
 	if err != nil {
 		return c.fail(exitUsage, "bmdctl: %v", err)
 	}
@@ -156,8 +170,7 @@ func (c *cli) run(args []string) int {
 			return exitOK
 		}
 		if len(tokens) == 0 {
-			c.usage(c.stderr)
-			return exitUsage
+			return c.overview(g)
 		}
 	}
 	first := ""
@@ -221,8 +234,60 @@ func (c *cli) fail(code int, format string, args ...any) int {
 		fmt.Fprintf(c.stdout, "%s\n", b)
 		return code
 	}
-	fmt.Fprintln(c.stderr, msg)
+	c.errorf(code, "%s", msg)
 	return code
+}
+
+// errorf prints an error on stderr, red on a terminal, ending with the
+// next step for its exit status (nextStep).
+func (c *cli) errorf(code int, format string, args ...any) {
+	msg := nextStep(code, fmt.Sprintf(format, args...))
+	first, rest, _ := strings.Cut(msg, "\n")
+	fmt.Fprint(c.stderr, c.colourErr(red, first)+"\n")
+	if rest != "" {
+		fmt.Fprintln(c.stderr, rest)
+	}
+}
+
+// nextStep ends an error with what to do next, by its exit status:
+// doctor for a switcher or engine that can't be reached, status for a
+// command the switcher didn't confirm, --yes for a destructive one. (An
+// unknown source already points at inputs, where the engine says so.)
+func nextStep(code int, msg string) string {
+	step := ""
+	switch code {
+	case exitUnreachable:
+		step = "bmdctl doctor says why"
+	case exitNoEcho:
+		step = "bmdctl status shows what the switcher holds now"
+	case exitDestructive:
+		step = "add --yes to run it"
+	}
+	if step == "" || strings.Contains(msg, step) || code == exitDestructive && strings.Contains(msg, "--yes") {
+		return msg
+	}
+	return msg + " (" + step + ")"
+}
+
+// notice prints a line for a person on stderr, prefixed "bmdctl: ";
+// never with --json or --quiet.
+func (c *cli) notice(format string, args ...any) {
+	if c.json || c.quiet {
+		return
+	}
+	fmt.Fprintf(c.stderr, "bmdctl: "+format+"\n", args...)
+}
+
+// sayConnecting prints "connecting to <who> ..." on stderr, once per
+// switcher in an invocation: when a command starts the engine, opens a
+// session, or waits for one to come back. The model and video mode
+// follow when the session is ready (printer.note).
+func (c *cli) sayConnecting(g globals, who string) {
+	if g.json || g.quiet || c.said[who] {
+		return
+	}
+	c.said[who], c.connecting = true, true
+	fmt.Fprintf(c.stderr, "connecting to %s …\n", who)
 }
 
 // codeName is the engine's error code for an exit status.

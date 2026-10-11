@@ -147,9 +147,13 @@ func macroAction(action uint8) op {
 				return nil, false, codeErr(CodeUsage, "macro slot %v is empty", table.Index(slot))
 			}
 		}
-		r, confirmed, err := c.sendBuilt(atem.MacroAction{Slot: uint16(slot), Action: action})
+		var change []Value
+		if c.args.Has("slot") {
+			change = []Value{{Param: "slot", After: fmt.Sprintf("%v (%s)", table.Index(slot), c.state.MacroEntry(slot).Name)}}
+		}
+		r, confirmed, err := c.sendBuilt(atem.MacroAction{Slot: uint16(slot), Action: action}, change...)
 		if cr, ok := r.(CommandResult); ok && c.args.Has("slot") {
-			cr.Args["slot"] = fmt.Sprintf("%v (%s)", table.Index(slot), c.state.MacroEntry(slot).Name)
+			cr.Args["slot"] = change[0].After
 			r = cr
 		}
 		return r, confirmed, err

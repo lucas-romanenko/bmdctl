@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestSplitWords(t *testing.T) {
@@ -40,8 +41,8 @@ func TestSplitWords(t *testing.T) {
 // exec runs a file's commands in order, through the engine, to one host.
 func TestExec(t *testing.T) {
 	b := newBench(t)
-	b.must("hosts", "add", "studio", "192.0.2.10")
-	b.must("hosts", "add", "other", "192.0.2.11")
+	b.must("hosts", "add", "192.0.2.10", "--as", "studio")
+	b.must("hosts", "add", "192.0.2.11", "--as", "other")
 	dir := t.TempDir()
 	write := func(name, s string) string {
 		p := filepath.Join(dir, name)
@@ -56,24 +57,25 @@ bmdctl preview CAM1
 cut   # back on the show's switcher
 `)
 	code, out, errOut := b.run("exec", cue, "--host", "studio")
-	if code != 0 || errOut != "" {
+	if code != 0 || errOut != "" { // hosts add opened both sessions
 		t.Fatalf("exec: %d %q %q", code, out, errOut)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) != 4 || !strings.HasPrefix(lines[0], "program") || !strings.HasPrefix(lines[1], "preview") ||
-		!strings.HasPrefix(lines[2], "cut") || !strings.HasPrefix(lines[3], "cut") {
+	if len(lines) != 4 || !strings.HasPrefix(lines[0], "studio (192.0.2.10)  program") || !strings.HasPrefix(lines[1], "studio (192.0.2.10)  preview") ||
+		!strings.HasPrefix(lines[2], "other (192.0.2.11)  cut") || !strings.HasPrefix(lines[3], "studio (192.0.2.10)  cut") {
 		t.Errorf("output:\n%s", out)
 	}
-	// The status column lines up across the commands.
-	if strings.Index(lines[0], "confirmed") != strings.Index(lines[2], "sent") {
+	// The status column lines up across the commands to one switcher.
+	column := func(l, word string) int { return utf8.RuneCountInString(l[:strings.Index(l, word)]) }
+	if column(lines[0], "confirmed") != column(lines[3], "sent") {
 		t.Errorf("not aligned:\n%s", out)
 	}
 	// Every line went to studio but the one that named other.
-	if got := b.dialled(); !reflect.DeepEqual(got, []string{"192.0.2.10:9910", "192.0.2.11:9910"}) {
-		t.Errorf("dialled %v", got)
-	}
 	if n := len(b.sent("DCut")); n != 2 {
 		eventually(t, "two cuts", func() bool { return len(b.sent("DCut")) == 2 })
+	}
+	if got := b.wentTo(t, "DCut", "exec", write("cut.txt", "cut\n"), "--host", "studio"); got != "192.0.2.10:9910" {
+		t.Errorf("cut went to %s", got)
 	}
 	// exec doesn't change the last host used.
 	if got := b.cliLastHost(); got != "" {

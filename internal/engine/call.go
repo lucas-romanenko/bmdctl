@@ -110,7 +110,47 @@ func (c *call) sendEntry() (any, bool, error) {
 	if c.entry.Path != c.req.Path {
 		r.Sent = c.entry.Path
 	}
+	if err == nil {
+		c.noteValues(confirmed, nil)
+	}
 	return r, confirmed, err
+}
+
+// noteValues sends a command's values in a note: its arguments' (from
+// the state its echo left, when confirmed), or for an operation that says
+// what it changes, the arguments that say where (the indexes) and change.
+func (c *call) noteValues(confirmed bool, change []Value) {
+	if !c.req.Notes {
+		return
+	}
+	var vals []Value
+	if change != nil {
+		for _, v := range c.argValues(nil, nil) {
+			if p := c.entry.Params[slicesIndex(c.entry.Params, v.Param)]; p.OneBased {
+				vals = append(vals, v)
+			}
+		}
+		vals = append(vals, change...)
+	} else {
+		var post *atem.State
+		if confirmed && readers[c.entry.Path] != nil {
+			st := c.sess.State()
+			post = &st
+		}
+		vals = c.commandValues(post)
+	}
+	if len(vals) > 0 {
+		c.note(Note{Values: vals})
+	}
+}
+
+func slicesIndex(ps []table.Param, name string) int {
+	for i, p := range ps {
+		if p.Name == name {
+			return i
+		}
+	}
+	return -1
 }
 
 // send sends cmd. A command with a state echo waits for it, the only
@@ -243,6 +283,7 @@ func (s funcSink) file(f FileFrame) error {
 	}
 	return s.onFile(f)
 }
+func (funcSink) note(Note) error         { return nil }
 func (funcSink) response(Response) error { return nil }
 
 // wireChecks are what a wire command is checked for against the state
