@@ -130,7 +130,8 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 	}
 	t := out.t
 	if t.Device != "" && t.Device != req.Device {
-		return c.fail(exitUsage, "bmdctl %s: %s is a %s, not an %s", label, t.label(), t.Device, req.Device)
+		return c.fail(exitUsage, "bmdctl %s: %s is %s %s, not %s %s", label, t.label(), engine.DeviceArticle(t.Device),
+			engine.DeviceNames[t.Device], engine.DeviceArticle(req.Device), engine.DeviceNames[req.Device])
 	}
 	req.Host = t.Address
 	code := c.send(g, e, req, out, label)

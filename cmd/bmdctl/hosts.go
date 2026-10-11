@@ -177,13 +177,13 @@ const hostsUsage = `usage: bmdctl hosts [list]
        bmdctl hosts rm NAME
        bmdctl hosts default [NAME]
 
-Names the switchers you use, in $XDG_CONFIG_HOME/bmdctl/hosts.yml, by
+Names the devices you use, in $XDG_CONFIG_HOME/bmdctl/hosts.yml, by
 the names they give themselves. 'bmdctl connect ADDRESS' adds one and
-makes it the default. 'hosts add' connects to the switcher at
-ADDRESS and asks its name: the one set in ATEM Setup, else its model.
---as gives it another, for two switchers with one name; a HyperDeck,
-Videohub or Ultimatte needs one, as bmdctl can't ask them yet. Adding an
-address again asks again. 'hosts discover' adds every switcher that
+makes it the default. 'hosts add' asks what answers at ADDRESS (an ATEM,
+a HyperDeck, a Videohub or an Ultimatte; --device says it instead) and
+its name: an ATEM's as set in ATEM Setup, else its model; a HyperDeck's,
+Videohub's or Ultimatte's as it reports it. --as gives it another, for
+two devices with one name. Adding an address again asks again. 'hosts discover' adds every switcher that
 announces itself on the network (Bonjour), by its own name. When a
 switcher is renamed in ATEM Setup, the next command to it renames its
 host and says so; --host still takes the old name.
@@ -204,7 +204,7 @@ func (c *cli) hostsCommand(g globals, words, tokens []string) int {
 	if len(words) > 0 {
 		sub, words = words[0], words[1:]
 	}
-	device, as, wait := "atem", "", 2*time.Second
+	device, as, wait := "", "", 2*time.Second
 	for i := 0; i < len(tokens); i++ {
 		name, value, hasValue := strings.Cut(strings.TrimPrefix(tokens[i], "--"), "=")
 		ok := sub == "add" && (name == "device" || name == "as") || sub == "discover" && name == "for"
@@ -324,14 +324,16 @@ func (c *cli) hostsCommand(g globals, words, tokens []string) int {
 	return exitUsage
 }
 
-// hostsAdd adds the device at addr, by the name its switcher gives itself
-// unless as gives one. An address already a host is asked again: it goes
-// by its switcher's name, or as.
+// hostsAdd adds the device at addr, by the name it gives itself unless
+// as gives one. Without device, the probe says what answers there
+// (connect.go); an ATEM is asked its name through the engine, the others
+// say it to the probe. An address already a host is asked again: it goes
+// by its device's name, or as.
 func (c *cli) hostsAdd(g globals, f *hosts.File, path, addr, as, device string) int {
 	if err := hosts.CheckAddress(addr); err != nil {
 		return c.fail(exitUsage, "bmdctl hosts add: %v", err)
 	}
-	if !slices.Contains(hosts.Devices, device) {
+	if device != "" && !slices.Contains(hosts.Devices, device) {
 		return c.fail(exitUsage, "bmdctl hosts add: device %q is not one of %s", device, strings.Join(hosts.Devices, ", "))
 	}
 	if as != "" {
@@ -339,14 +341,41 @@ func (c *cli) hostsAdd(g globals, f *hosts.File, path, addr, as, device string) 
 			return c.fail(exitUsage, "bmdctl hosts add: --as: %v", err)
 		}
 	}
+	var probed *engine.ProbeResult
+	unanswered := false
+	if device == "" {
+		r, err := c.probe(g, addr)
+		switch {
+		case err == nil:
+			device, probed = r.Device, r
+		case as != "":
+			device, unanswered = "atem", true
+			c.notice("%s didn't answer, so what it is and its name are unknown (%v); added as %s, an ATEM",
+				shortAddress(addr), err, as)
+		default:
+			return c.fail(codeFor(err), "bmdctl hosts add: %v", err)
+		}
+	}
 	h := hosts.Host{Address: addr, Device: device, As: as}
 	var sw *engine.Switcher
-	if device != "atem" {
-		if as == "" {
-			return c.fail(exitUsage, "bmdctl hosts add: bmdctl can't ask a %s its name yet: give it one with --as NAME", device)
+	switch {
+	case unanswered:
+	case device != "atem":
+		if probed == nil {
+			// --device said what it is; its name is still its to say.
+			if r, err := c.probe(g, addr); err == nil && r.Device == device {
+				probed = r
+			}
 		}
-		h.Name, h.As = as, ""
-	} else {
+		switch {
+		case probed != nil && probed.Name != "":
+			h.Name = probed.Name
+		case as == "":
+			return c.fail(exitUsage, "bmdctl hosts add: %s didn't say its name: give it one with --as NAME", shortAddress(addr))
+		default:
+			h.Name, h.As = as, ""
+		}
+	default:
 		var err error
 		switch sw, err = c.identify(g, addr); {
 		case err == nil:
@@ -581,11 +610,11 @@ type remembered struct {
 	name             string
 }
 
-// remember makes the switcher connect ADDRESS reached the default host:
-// added by the name it gives itself, if no host has its address, and the
-// host commands go to now. A name another host goes by is said, with the
-// --as that fixes it.
-func (c *cli) remember(g globals, t target, sw *engine.Switcher) remembered {
+// remember makes the device connect ADDRESS reached the default host:
+// added by the name it gives itself, as the device it is, if no host has
+// its address, and the host commands go to now. A name another host goes
+// by is said, with the --as that fixes it.
+func (c *cli) remember(g globals, t target, device, name string) remembered {
 	f, path, err := c.loadHosts()
 	if err != nil {
 		c.notice("hosts.yml: %v", err)
@@ -597,10 +626,10 @@ func (c *cli) remember(g globals, t target, sw *engine.Switcher) remembered {
 		h = f.Named(t.Host.Label())
 	}
 	if h == nil {
-		if sw == nil || sw.Name == "" {
+		if name == "" {
 			return r
 		}
-		nh := hosts.Host{Name: sw.Name, Address: t.Address, Device: "atem"}
+		nh := hosts.Host{Name: name, Address: t.Address, Device: device}
 		if err := f.Add(nh); err != nil {
 			if f.Named(nh.Label()) != nil {
 				c.notice("not saved: %q is another host's name", nh.Label())

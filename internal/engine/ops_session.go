@@ -18,17 +18,23 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
 
+// typeParam is connect's --type: what the device at an address is,
+// without asking it (the CLI's probe, docs/PORTING.md "Device probe").
+var typeParam = table.Param{Name: "type", Kind: table.String,
+	Help: "what the device is, without asking it: atem, hyperdeck, videohub or ultimatte"}
+
 func sessionOperations() []operation {
 	return []operation{
 		{entry: table.Entry{Path: "status", Summary: "Show what is on air: program, preview, transitions, keyers, macros."},
 			run: opStatus},
-		{entry: table.Entry{Path: "connect", Summary: "Connect to a switcher and keep the session open; an address is saved as the default host.",
+		{entry: table.Entry{Path: "connect", Summary: "Connect to a switcher and keep the session open; an address is asked what it is and saved as the default host.",
 			Syntax: "connect [address]",
 			Params: []table.Param{
 				{Name: "address", Kind: table.String,
-					Help: "the switcher: an address (saved to hosts.yml, by the name it gives itself, as the default) or a host's name; else the default"},
+					Help: "an address (asked what answers there, then saved to hosts.yml by the name it gives itself, as the default) or a host's name; else the default"},
 				{Name: "pin", Kind: table.Bool, Default: "true",
-					Help: "keep the session open until disconnect; false lets it close after 10 idle minutes"}}},
+					Help: "keep the session open until disconnect; false lets it close after 10 idle minutes"},
+				typeParam}},
 			run: opConnect},
 		{entry: table.Entry{Path: "disconnect", Summary: "Close the engine's session to the switcher, pinned or not."},
 			run: opDisconnect, noDial: true},

@@ -394,6 +394,9 @@ func splitHint(msg string) (rest, hint string) {
 	if i := strings.Index(msg, " is destructive: add --yes"); i >= 0 {
 		return msg[:i] + " is destructive", msg[i+len(" is destructive: "):]
 	}
+	if i := strings.LastIndex(msg, "; bmdctl "); i >= 0 && !strings.Contains(msg[i:], "\n") {
+		return msg[:i], msg[i+2:] // "DECK 1 is a HyperDeck; bmdctl hyperdeck --help"
+	}
 	return msg, ""
 }
 

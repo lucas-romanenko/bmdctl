@@ -141,7 +141,11 @@ func (p *printer) typedAs(param, shown string) string {
 func (p *printer) response(line []byte, r engine.Response) {
 	p.last = &r
 	if r.OK && p.e.Path == "connect" && p.typed["address"] != "" {
-		p.saved = p.c.remember(p.g, p.t, p.sw)
+		name := ""
+		if p.sw != nil {
+			name = p.sw.Name
+		}
+		p.saved = p.c.remember(p.g, p.t, p.e.Device, name)
 	}
 	switch {
 	case p.g.json:

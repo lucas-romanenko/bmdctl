@@ -17,6 +17,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
+	"github.com/lucas-romanenko/bmdctl/internal/fakenet"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
@@ -47,6 +48,9 @@ type bench struct {
 	onDial func(*fakeatem.Switcher)
 	// dialErr, if set, fails every dial.
 	dialErr error
+	// net is what the device probe finds: an ATEM at every address
+	// unless a test puts another device there.
+	net *fakenet.Net
 }
 
 func newBench(t *testing.T) *bench {
@@ -61,12 +65,13 @@ func newBenchDump(t *testing.T, dump []byte) *bench {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	b := &bench{t: t, dir: dir, dump: dump, env: map[string]string{
+	b := &bench{t: t, dir: dir, dump: dump, net: fakenet.New(), env: map[string]string{
 		"HOME":            dir,
 		"XDG_CONFIG_HOME": filepath.Join(dir, "config"),
 		"XDG_STATE_HOME":  filepath.Join(dir, "state"),
 		"BMDCTL_SOCKET":   filepath.Join(dir, "s.sock"),
 	}}
+	b.net.EveryATEM()
 	if err := b.startEngine(engine.Config{}); err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +90,7 @@ func (b *bench) startEngine(cfg engine.Config) error {
 		return err
 	}
 	cfg.Registry, cfg.Dial, cfg.Socket = reg, b.dial, l.Addr()
+	cfg.ProbeATEM, cfg.ProbeDial = b.net.ProbeATEM, b.net.Dial
 	eng := engine.New(cfg)
 	b.mu.Lock()
 	b.eng = eng

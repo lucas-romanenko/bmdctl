@@ -29,7 +29,7 @@ import (
 )
 
 // Address is what tests dial: TEST-NET-1, so nothing real answers it.
-const Address = "192.0.2.11"
+const Address = "192.0.2.20"
 
 // Clip is a clip on a slot's disk.
 type Clip struct {
