@@ -84,3 +84,5 @@ changed because of it. Never rewrite an earlier section.
   protocol, the operations that aren't one wire command).
 - `internal/hosts/`: hosts.yml. `internal/paths/`: where files live.
 - `cmd/bmdctl/`: the CLI.
+- `.github/banner.png`, `.github/mark/`: the README banner and the mark.
+  `docs/BRAND.md` is their spec; follow it for anything branded.
