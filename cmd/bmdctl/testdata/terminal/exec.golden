@@ -2,7 +2,7 @@ $ bmdctl exec DIR/open.cue
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW MP1 · open.cue · 5 lines</>
   2  preview     CAM1 → <green>MP1</>                                 <dim># ms</>
   3  transition mix  1:00                                <dim>already</>
-  5  auto        <red>MP1</> on program · <green>CAM2</> on preview           <dim>sent</>
+  5  auto        <red>MP1</> on program · <green>CAM2</> on preview           <dim># ms</>
   6  usk 1 fill  4 <dim>(cam1)</>                               <dim>rejected</>
   7  usk 1 on-air  on → off                                 <dim># ms</>
   <dim>done · 5 ok</>
@@ -18,14 +18,14 @@ $ bmdctl exec DIR/stop.cue
 $ bmdctl exec DIR/stop.cue --continue
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2 · stop.cue · 3 lines</>
   1  program     <red>CAM1</>                                    <dim>already</>
-  3  cut         <red>CAM2</> on program · <green>CAM1</> on preview          <dim>sent</>
+  3  cut         <red>CAM2</> on program · <green>CAM1</> on preview          <dim># ms</>
   <dim>done · 2 ok · 1 failed</>
 !   2  <red>error</>  no input "nowhere"
 !             <dim>1 CAM1 Camera 1 · 2 CAM2 Camera 2 ·… · bmdctl inputs for all</>
 [exit 1]
 
 $ bmdctl exec DIR/t.cue -t
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2 · t.cue · 1 line</>
-  1  <dim>13:43:28</>  preview     <green>CAM2</>                          <dim>already</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM2 · t.cue · 1 line</>
+  1  <dim>13:43:28</>  preview     CAM1 → <green>CAM2</>                      <dim># ms</>
   <dim>done · 1 ok</>
 

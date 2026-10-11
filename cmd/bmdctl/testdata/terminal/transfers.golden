@@ -22,7 +22,7 @@ $ bmdctl profile save show.xml
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
   ✓ setup     3 macros                                      <dim># ms</>
   ✓ stills    1 still, 1 failed                             <dim># ms</>
-  profile     show.xml  24 KB · 3 macros · 1 still, 1 failed   <dim># ms</>
+  profile     show.xml  24 KB · 3 macros · 1 still, 1 failed      <dim># ms</>
   <red>error</>       slot 1 "still": atem: frame of 0 bytes is not 720x480 pix…
 
 $ bmdctl profile images --dir stills

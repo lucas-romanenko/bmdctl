@@ -200,10 +200,15 @@ func slicesIndex(ps []table.Param, name string) int {
 
 // send sends cmd. A command with a state echo waits for it, the only
 // confirmation the protocol has (SURFACE.md §4.4); one without is sent and
-// left, as atemwire's send() leaves it.
+// left, as atemwire's send() leaves it, unless the switcher reports what
+// it did at once (effect).
 func (c *call) send(cmd atem.Command) (CommandResult, bool, error) {
 	r := CommandResult{Command: cmd.Opcode(), Echo: cmd.EchoKey()}
 	if r.Echo == "" {
+		if keys, all := c.effect(cmd); len(keys) > 0 {
+			confirmed, err := c.sendAndWaitFor(cmd, keys, all)
+			return r, confirmed, err
+		}
 		return r, false, sessionErr(c.sess.Send(cmd))
 	}
 	ctx, cancel := context.WithTimeout(c.ctx, c.req.timeout())
@@ -217,6 +222,65 @@ func (c *call) send(cmd atem.Command) (CommandResult, bool, error) {
 	}
 	r.State = ch.Value
 	return r, true, nil
+}
+
+// effect is what the switcher reports at once of a command that has no
+// echo: the state keys, and whether it reports all of them or one. A cut
+// swaps program and preview when the next transition takes the
+// background and they differ (PrgI and PrvI); an auto transition starts
+// (TrPs), or is done at once (PrgI). Nothing else is waited for: a cut of
+// the keys alone is sent and left.
+func (c *call) effect(cmd atem.Command) (keys []string, all bool) {
+	switch x := cmd.(type) {
+	case atem.Cut:
+		me := int(x.ME)
+		if !c.state.TransitionSelection(me).Background || c.state.ProgramSource(me) == c.state.PreviewSource(me) {
+			return nil, false
+		}
+		return []string{fmt.Sprintf("PrgI:%d", me), fmt.Sprintf("PrvI:%d", me)}, true
+	case atem.Auto:
+		return []string{fmt.Sprintf("TrPs:%d", x.ME), fmt.Sprintf("PrgI:%d", x.ME)}, false
+	}
+	return nil, false
+}
+
+// sendAndWaitFor sends cmd and waits for the switcher to report keys (all
+// of them, or the first): then the session's state holds what cmd did, so
+// the next request reads it and not the state before (a cut, then undo).
+// Not reported within the timeout, cmd is sent and unconfirmed, as it was
+// before the wait.
+func (c *call) sendAndWaitFor(cmd atem.Command, keys []string, all bool) (bool, error) {
+	changes, stop := c.sess.Subscribe() // before sending: the report can't slip past
+	defer stop()
+	if err := c.sess.Send(cmd); err != nil {
+		return false, sessionErr(err)
+	}
+	ctx, cancel := context.WithTimeout(c.ctx, c.req.timeout())
+	defer cancel()
+	want := map[string]bool{}
+	for _, k := range keys {
+		want[k] = true
+	}
+	for {
+		select {
+		case ch, ok := <-changes:
+			if !ok {
+				return false, nil // the session ended, or this fell behind
+			}
+			if !want[ch.Key] {
+				continue
+			}
+			delete(want, ch.Key)
+			if !all || len(want) == 0 {
+				return true, nil
+			}
+		case <-ctx.Done():
+			if c.ctx.Err() != nil {
+				return false, sessionErr(c.ctx.Err())
+			}
+			return false, nil
+		}
+	}
 }
 
 // sessionErr gives a session error its code: the session gone is

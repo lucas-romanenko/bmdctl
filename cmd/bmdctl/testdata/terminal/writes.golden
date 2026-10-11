@@ -20,10 +20,10 @@ $ bmdctl dsk auto
 
 $ bmdctl cut
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
-  cut         <red>CAM2</> on program · <green>CAM1</> on preview             <dim>sent</>
+  cut         <red>CAM2</> on program · <green>CAM1</> on preview             <dim># ms</>
 
 $ bmdctl ftb toggle
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
   ftb toggle  off → <red>black</>                                   <dim>sent</>
 
 $ bmdctl aux 2 cam1
@@ -60,7 +60,7 @@ ATEM 1 M/E Constellation HD  PGM CAM2 · PVW CAM1 · connected # ms
 $ bmdctl exec DIR/cue.txt
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW MP1 · cue.txt · 3 lines</>
   1  preview     CAM1 → <green>MP1</>                                 <dim># ms</>
-  2  cut         <red>MP1</> on program · <green>CAM2</> on preview           <dim>sent</>
+  2  cut         <red>MP1</> on program · <green>CAM2</> on preview           <dim># ms</>
   3  aux 1       MP1 → CAM1                                 <dim># ms</>
   <dim>done · 3 ok</>
 

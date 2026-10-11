@@ -232,7 +232,8 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 }
 
 // Commands go through the engine to the switcher. One with a state echo
-// waits for it and is confirmed; one without is sent and left.
+// waits for it and is confirmed; a cut, which has none, for the swap the
+// switcher reports; any other is sent and left.
 func TestSendThroughTheEngine(t *testing.T) {
 	b := newBench(t)
 	out := b.must(with("program", "5")...)
@@ -244,10 +245,14 @@ func TestSendThroughTheEngine(t *testing.T) {
 		t.Fatalf("switcher got %x", c)
 	}
 	out = b.must(with("atem", "cut")...)
-	if !strings.Contains(out, "sent") || strings.Contains(out, "confirmed") {
+	if !strings.Contains(out, " confirmed ") || len(b.sent("DCut")) != 1 {
 		t.Errorf("cut: %q", out)
 	}
-	eventually(t, "the cut", func() bool { return len(b.sent("DCut")) == 1 })
+	out = b.must(with("ftb", "toggle")...)
+	if !strings.Contains(out, "sent") || strings.Contains(out, "confirmed") {
+		t.Errorf("ftb toggle: %q", out)
+	}
+	eventually(t, "the fade", func() bool { return len(b.sent("FtbA")) == 1 })
 	// One session served both: the engine kept it.
 	if n := len(b.switchers()); n != 1 {
 		t.Errorf("%d sessions", n)

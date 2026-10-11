@@ -1151,7 +1151,9 @@ status idle countdown and an error's next step.
   reported, clamps and refusals included: against the fake switcher,
   whose `mirror.go` answers with the state it holds, a wipe shows its old
   rate. A command with no echo shows what it sent; `cut`, `auto`, `ftb
-  toggle` and `dsk auto` show what they ask for (`moves`), marked `sent`.
+  toggle` and `dsk auto` show what they ask for (`moves`), `ftb toggle`
+  and `dsk auto` marked `sent`, a cut or an auto `confirmed` once the
+  switcher reports it (Engine, "Wire commands").
   A command with no reader shows its arguments as sent. An operation that
   sends one command says what it changes itself (`sendBuilt`'s change:
   the toggles, `transition next`, `transition rate`, the macro slot).
@@ -1259,7 +1261,10 @@ response doesn't carry comes in note frames (Engine, "Notes":
 - **Results** are indented two spaces under the header:
   `<verb padded to 10>  <before> → <after>` and the status, dim, right-
   aligned to end at column 64 (`timingEnd`), further only if the line
-  needs it. The verb is the command's words with the arguments that say
+  needs it. The status always has eight columns (`statusWidth`, as wide
+  as `rejected`), whatever it says: where a long line is cut and where
+  its status ends don't move with the width of the time taken (CI's 3-
+  digit times moved one golden's status a column). The verb is the command's words with the arguments that say
   where (`aux 2`, `usk 2 on-air`, `color 2`), and a flag that says where
   only when typed (`program ME2`): the header named the switcher, and
   ME1 on a one-M/E switcher is noise. A verb of ten or more just takes
@@ -1707,6 +1712,23 @@ lives until 10 minutes pass without a request, unless pinned.
   `Send`, `confirmed` false, as atemwire's `send()` leaves it. The result
   is `{args, command, echo, state}`: the arguments for display, the
   opcode, the key waited for and the echoed packet.
+- **A cut or an auto transition waits for what the switcher reports of
+  it** (`call.effect`, after CI failed on every push from `68fadb8`).
+  Neither has an echo, so `Send` returned as soon as the packet was
+  queued, and the next request (the next line of exec, an `undo`)
+  could read the state from before the switcher's answer arrived: on CI's
+  `go test -race` it usually had, locally it usually hadn't, and the
+  goldens disagreed. Now the engine subscribes, sends, and waits up to
+  `timeout_ms` for a cut's `PrgI` and `PrvI` on its M/E (when the next
+  transition takes the background and program and preview differ; a cut
+  of the keys alone is sent and left), or for an auto's first `TrPs` or
+  `PrgI` (the transition starting, or the fake's, done at once). Then
+  it answers `confirmed`, and the session's state, read on the session's
+  goroutine, holds the whole packet. Not reported in time, it answers
+  as before: sent, `confirmed` false, no error. `echo` stays empty.
+  `ftb toggle`, `dsk auto` and the macro commands are still sent and
+  left. atemwire's `send()` waits for nothing; this is the engine's,
+  not the port's.
 - **A write the switcher holds already sends nothing** (the terminal
   pass). Where a command's reader (notes.go, `readers`) holds every
   value it sets equal to the argument (an argument the echo key names,

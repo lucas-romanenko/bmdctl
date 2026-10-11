@@ -67,12 +67,12 @@ cut   # back on the show's switcher
 	}
 	// The status column lines up across the commands to one switcher.
 	column := func(l, word string) int { return utf8.RuneCountInString(l[:strings.Index(l, word)]) }
-	if column(lines[0], "confirmed") != column(lines[3], "sent") {
+	if column(lines[0], "confirmed") != column(lines[3], "confirmed") {
 		t.Errorf("not aligned:\n%s", out)
 	}
 	// Every line went to studio but the one that named other.
 	if n := len(b.sent("DCut")); n != 2 {
-		eventually(t, "two cuts", func() bool { return len(b.sent("DCut")) == 2 })
+		t.Errorf("%d cuts", n)
 	}
 	if got := b.wentTo(t, "DCut", "exec", write("cut.txt", "cut\n"), "--host", "studio"); got != "192.0.2.10:9910" {
 		t.Errorf("cut went to %s", got)

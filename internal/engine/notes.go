@@ -200,8 +200,9 @@ var readers = map[string]reader{
 
 // moves are what a command without values of its own changes, by path,
 // before and as asked: a cut or an auto transition takes preview to
-// program when the next transition takes the background. No echo
-// confirms them, so the CLI shows them as sent.
+// program when the next transition takes the background. None has an
+// echo: a cut or an auto is confirmed by what the switcher reports of it
+// (call.go, effect), the others the CLI shows as sent.
 var moves = map[string]func(c *call) []Value{
 	"cut":  programMove,
 	"auto": programMove,

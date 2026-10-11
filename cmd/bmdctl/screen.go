@@ -25,7 +25,11 @@ import (
 const (
 	lineWidth = 72 // nothing printed is wider; longer lines are cut with "…"
 	timingEnd = 64 // a result's timing ends here, right-aligned
-	verbWidth = 10 // the verb column
+	// statusWidth is the room a status always has, as wide as the widest
+	// ("rejected"): where a line is cut and where its status ends don't
+	// depend on how wide the time taken is.
+	statusWidth = 8
+	verbWidth   = 10 // the verb column
 	indent    = "  "
 	hintPad   = "       " // under an error's message: len("error  ")
 )
@@ -117,12 +121,12 @@ func (c *cli) resultLine(verb, change, status string) string {
 	if status == "" {
 		return fit(left, lineWidth)
 	}
-	sw := width(status)
-	if width(left)+2+sw > lineWidth {
-		left = fit(left, lineWidth-2-sw)
+	room := max(width(status), statusWidth)
+	if width(left)+2+room > lineWidth {
+		left = fit(left, lineWidth-2-room)
 	}
-	end := max(timingEnd, width(left)+2+sw)
-	return left + strings.Repeat(" ", end-sw-width(left)) + c.colour(dim, status)
+	end := max(timingEnd, width(left)+2+room)
+	return left + strings.Repeat(" ", end-width(status)-width(left)) + c.colour(dim, status)
 }
 
 // stamped is the time of day a result starts with under -t, dim: "13:43:28  ".

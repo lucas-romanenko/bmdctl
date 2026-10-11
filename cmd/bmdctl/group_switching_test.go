@@ -41,8 +41,10 @@ func TestSwitchingCommands(t *testing.T) {
 	}{
 		{[]string{"program", "cam1"}, "CPgI", "00000001", true},
 		{[]string{"preview", "Color Bars"}, "CPvI", "000003e8", true},
-		{[]string{"cut"}, "DCut", "00000000", false},
-		{[]string{"auto", "--me", "1"}, "DAut", "00000000", false},
+		// No echo, but the switcher reports the swap, or the transition
+		// starting: confirmed by that.
+		{[]string{"cut"}, "DCut", "00000000", true},
+		{[]string{"auto", "--me", "1"}, "DAut", "00000000", true},
 		{[]string{"ftb", "toggle"}, "FtbA", "00000000", false},
 		{[]string{"ftb", "rate", "1:00"}, "FtbC", "01001900", true},
 		{[]string{"ftb", "enable", "false"}, "FEna", "00000000", true},
