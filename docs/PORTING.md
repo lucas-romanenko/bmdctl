@@ -1892,6 +1892,25 @@ add it to Claude Code and Claude Desktop is docs/AGENTS.md.
   Nothing here has been tried with Claude Code or Claude Desktop
   themselves.
 
+## The Claude skill (`skills/bmdctl/SKILL.md`)
+
+Phase 4: what an agent needs to run a live show with bmdctl, in under
+150 lines (the owner's limit; `TestSkillCommands` enforces it): when to
+use bmdctl; read the state before writing, and say what is on air before
+a cut or an auto; how results read (confirmed, sent, already, rejected;
+`--json`'s shape; exit codes); the destructive commands, and that the
+agent asks the operator and never passes `--yes` (`yes: true`) itself, one
+yes per command; sequences through `exec`, whose lines are all checked
+before any is sent; five recipes in the owner's order (load and key a
+graphic, a pre-show reset, a scheduled content change, tally-driven
+routing, a HyperDeck playback cue); how to read `watch --json`; caution
+on models nobody has tried; COMMANDS.md for everything else. It speaks
+CLI lines, which the MCP tools mirror one for one. Its description is
+under 200 characters, claude.ai's limit for an uploaded skill.
+`TestSkillCommands` runs every line of its code blocks through the checks
+a typed line gets, so a renamed flag fails the build rather than misleads
+an agent. docs/AGENTS.md says how to install it.
+
 ## Engine (`internal/engine`)
 
 A background process holding one `atem.Session` per switcher, so a
