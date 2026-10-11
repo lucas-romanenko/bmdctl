@@ -197,6 +197,13 @@ func manPage(r *table.Registry) string {
 	b.WriteString(".SH ATEM COMMANDS\n")
 	for _, e := range r.Entries("atem") {
 		fmt.Fprintf(&b, ".SS \"%s\"\n%s\n", roff(e.Usage()), roff(e.Summary))
+		if len(e.Examples) > 0 {
+			b.WriteString(".PP\n.nf\n.RS\n")
+			for _, ex := range e.Examples {
+				fmt.Fprintf(&b, "bmdctl %s\n", roff(ex))
+			}
+			b.WriteString(".RE\n.fi\n")
+		}
 		var notes []string
 		if e.Destructive {
 			notes = append(notes, "Destructive: needs --yes.")

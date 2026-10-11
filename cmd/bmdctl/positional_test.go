@@ -96,7 +96,7 @@ func TestOldFlagForm(t *testing.T) {
 	}
 	// Help, COMMANDS.md and completion show the arguments positionally.
 	_, help, _ := runCLI("program", "--help")
-	if !strings.HasPrefix(help, "usage: bmdctl [atem] program <source> [--flag value ...]") || strings.Contains(help, "--source") ||
+	if !strings.Contains(help, "\nusage: bmdctl [atem] program <source> [--flag value ...]") || strings.Contains(help, "--source") ||
 		!strings.Contains(help, "  <source>  source, 0-65535") {
 		t.Errorf("help:\n%s", help)
 	}
@@ -134,7 +134,7 @@ func TestFairlightAlias(t *testing.T) {
 	if o1 == "" || o1 != o2 || e1 != "" {
 		t.Errorf("fairlight strip: %q %q, audio strip: %q", o1, e1, o2)
 	}
-	if _, help, _ := runCLI("fairlight", "eq", "--help"); !strings.HasPrefix(help, "usage: bmdctl [atem] audio eq <source> <band>") {
+	if _, help, _ := runCLI("fairlight", "eq", "--help"); !strings.Contains(help, "\nusage: bmdctl [atem] audio eq <source> <band>") {
 		t.Errorf("fairlight eq --help:\n%s", help)
 	}
 	// The groups: audio for the Fairlight mixer and both mixers' shared

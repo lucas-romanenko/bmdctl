@@ -451,6 +451,14 @@ func firstWord(usage string) string {
 }
 
 func (c *cli) entryHelp(w io.Writer, device string, e table.Entry) {
+	// It opens with what it does and how it is typed, for real.
+	fmt.Fprintf(w, "%s\n\n", e.Summary)
+	for _, ex := range e.Examples {
+		fmt.Fprintf(w, "  bmdctl %s\n", ex)
+	}
+	if len(e.Examples) > 0 {
+		fmt.Fprintln(w)
+	}
 	fmt.Fprintf(w, "usage: bmdctl [%s] %s", device, e.Usage())
 	var args, flags []table.Param
 	for _, p := range e.Params {
@@ -463,7 +471,7 @@ func (c *cli) entryHelp(w io.Writer, device string, e table.Entry) {
 	if len(flags) > 0 {
 		fmt.Fprint(w, " [--flag value ...]")
 	}
-	fmt.Fprintf(w, "\n\n%s\n", e.Summary)
+	fmt.Fprintln(w)
 	if e.Destructive {
 		fmt.Fprintln(w, "Destructive: hard to undo, or drops connections. Needs --yes.")
 	}

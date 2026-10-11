@@ -90,6 +90,11 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 
 Set a Fairlight strip's compressor.
 
+```
+bmdctl audio compressor 1301 --enabled --threshold -20 --ratio 4
+bmdctl audio compressor cam1 --attack 2 --release 200
+```
+
 Give at least one flag. Echo: `AICP:<source>.<channel>`.
 
 | argument | value | | |
@@ -106,6 +111,12 @@ Give at least one flag. Echo: `AICP:<source>.<channel>`.
 ### `bmdctl atem audio eq <source> <band>`
 
 Set one EQ band of a Fairlight strip.
+
+```
+bmdctl audio eq 1301 1 --shape HighPass --frequency 80
+bmdctl audio eq cam2 3 --frequency 2500 --gain -3 --q 2
+bmdctl audio eq cam2 3 --enabled off
+```
 
 Give at least one flag. Echo: `AEBP:<source>.<channel>:<band>`.
 
@@ -124,6 +135,11 @@ Give at least one flag. Echo: `AEBP:<source>.<channel>:<band>`.
 ### `bmdctl atem audio expander <source>`
 
 Set a Fairlight strip's expander or gate.
+
+```
+bmdctl audio expander 1301 --enabled --mode gate --threshold -45
+bmdctl audio expander cam1 --range 20 --ratio 2
+```
 
 Give at least one flag. Echo: `AIXP:<source>.<channel>`.
 
@@ -144,6 +160,10 @@ Give at least one flag. Echo: `AIXP:<source>.<channel>`.
 
 Start or stop the meter streams, again after every reconnect; on a switcher with the classic mixer, sends classic-audio levels.
 
+```
+bmdctl audio levels on
+```
+
 No echo.
 
 | argument | value | | |
@@ -153,6 +173,11 @@ No echo.
 ### `bmdctl atem audio limiter <source>`
 
 Set a Fairlight strip's limiter.
+
+```
+bmdctl audio limiter 1301 --enabled --threshold -6
+bmdctl audio limiter cam1 --attack 1 --release 100
+```
 
 Give at least one flag. Echo: `AILP:<source>.<channel>`.
 
@@ -170,6 +195,12 @@ Give at least one flag. Echo: `AILP:<source>.<channel>`.
 
 Set the master bus; on a switcher with the classic mixer, sends classic-audio master.
 
+```
+bmdctl audio master --volume -6
+bmdctl audio master --volume -inf
+bmdctl audio master --eq --eq-gain 2
+```
+
 Give at least one flag. Echo: `FAMP`.
 
 | argument | value | | |
@@ -183,6 +214,10 @@ Give at least one flag. Echo: `FAMP`.
 ### `bmdctl atem audio master-compressor`
 
 Set the Fairlight master bus compressor.
+
+```
+bmdctl audio master-compressor --enabled --threshold -10 --ratio 3
+```
 
 Give at least one flag. Echo: `MOCP`.
 
@@ -198,6 +233,11 @@ Give at least one flag. Echo: `MOCP`.
 ### `bmdctl atem audio master-eq <band>`
 
 Set one EQ band of the Fairlight master bus.
+
+```
+bmdctl audio master-eq 1 --shape LowShelf --gain -2
+bmdctl audio master-eq 6 --shape HighShelf --gain 1.5
+```
 
 Give at least one flag. Echo: `AMBP:<band>`.
 
@@ -215,6 +255,10 @@ Give at least one flag. Echo: `AMBP:<band>`.
 
 Set the Fairlight master bus limiter.
 
+```
+bmdctl audio master-limiter --enabled --threshold -1
+```
+
 Give at least one flag. Echo: `AMLP`.
 
 | argument | value | | |
@@ -229,6 +273,11 @@ Give at least one flag. Echo: `AMLP`.
 
 Read the audio meters: each strip's and the master's levels in dB, from whichever mixer the switcher has.
 
+```
+bmdctl audio meters
+bmdctl audio meters --for 3
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `--for` | float, seconds | default 0.5 | how long to collect levels; the last of each strip's is shown |
@@ -236,6 +285,12 @@ Read the audio meters: each strip's and the master's levels in dB, from whicheve
 ### `bmdctl atem audio strip <source>`
 
 Set a Fairlight strip.
+
+```
+bmdctl audio strip cam1 --volume -6
+bmdctl audio strip 1301 --gain 12 --mix On
+bmdctl audio strip cam2 --mix AudioFollowVideo
+```
 
 Give at least one flag. Echo: `FASP:<source>.<channel>`.
 
@@ -256,6 +311,11 @@ Give at least one flag. Echo: `FASP:<source>.<channel>`.
 
 Run the M/E's transition with its current style and rate.
 
+```
+bmdctl auto
+bmdctl auto --me 2
+```
+
 No echo.
 
 | argument | value | | |
@@ -265,6 +325,10 @@ No echo.
 ### `bmdctl atem auto-video-mode <enable>`
 
 Turn automatic input video mode detection on or off.
+
+```
+bmdctl auto-video-mode on
+```
 
 **Unverified.** Echo: `AiVM`.
 
@@ -276,6 +340,12 @@ Turn automatic input video mode detection on or off.
 
 Route a source to an aux output.
 
+```
+bmdctl aux 1 pgm
+bmdctl aux 2 cam4
+bmdctl aux 3 cf1
+```
+
 Echo: `AuxS:<aux>`.
 
 | argument | value | | |
@@ -286,6 +356,12 @@ Echo: `AuxS:<aux>`.
 ### `bmdctl atem camera <destination> <category> <parameter>`
 
 Send one Blackmagic camera control parameter.
+
+```
+bmdctl camera 1 0 3 --type fixed16 --data 0.5
+bmdctl camera 2 1 2 --type int16 --data 5600,0
+bmdctl camera 1 0 0 --relative --type fixed16 --data 0.05
+```
 
 **Unverified.** Echo: `CCdP:<destination>:<category>:<parameter>`.
 
@@ -302,6 +378,12 @@ Send one Blackmagic camera control parameter.
 
 Set a classic audio mixer input.
 
+```
+bmdctl classic-audio input cam1 --afv
+bmdctl classic-audio input cam2 --on --volume 32768
+bmdctl classic-audio input cam3 --balance -5000
+```
+
 **Unverified.** Give at least one flag. Echo: `AMIP:<source>.0`.
 
 | argument | value | | |
@@ -316,6 +398,10 @@ Set a classic audio mixer input.
 
 Start or stop the classic mixer's meter stream.
 
+```
+bmdctl classic-audio levels on
+```
+
 **Unverified.** No echo.
 
 | argument | value | | |
@@ -325,6 +411,11 @@ Start or stop the classic mixer's meter stream.
 ### `bmdctl atem classic-audio master`
 
 Set the classic audio mixer's master.
+
+```
+bmdctl classic-audio master --volume 32768
+bmdctl classic-audio master --afv
+```
 
 **Unverified.** Give at least one flag. Echo: `AMMO`.
 
@@ -337,6 +428,11 @@ Set the classic audio mixer's master.
 
 Read the classic audio mixer's meters: each input's and the master's levels in dB.
 
+```
+bmdctl classic-audio meters
+bmdctl classic-audio meters --for 3
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `--for` | float, seconds | default 0.5 | how long to collect levels; the last of each strip's is shown |
@@ -344,6 +440,12 @@ Read the classic audio mixer's meters: each input's and the master's levels in d
 ### `bmdctl atem classic-audio monitor`
 
 Set the classic audio mixer's monitor.
+
+```
+bmdctl classic-audio monitor --enabled --volume 32768
+bmdctl classic-audio monitor --solo --solo-source cam2
+bmdctl classic-audio monitor --dim
+```
 
 **Unverified.** Give at least one flag. Echo: `AMmO`.
 
@@ -361,6 +463,11 @@ Set the classic audio mixer's monitor.
 
 Set a colour generator.
 
+```
+bmdctl color 1 --hue 210 --saturation 80 --luma 40
+bmdctl color 2 --sat 0 --luma 100
+```
+
 Give at least one flag. Echo: `ColV:<generator>`.
 
 | argument | value | | |
@@ -374,6 +481,12 @@ Give at least one flag. Echo: `ColV:<generator>`.
 
 Connect to a switcher and keep the session open; an address is saved as the default host.
 
+```
+bmdctl connect 192.168.10.240
+bmdctl connect
+bmdctl connect --pin off
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `[address]` | string | optional | the switcher: an address (saved to hosts.yml, by the name it gives itself, as the default) or a host's name; else the default |
@@ -382,6 +495,11 @@ Connect to a switcher and keep the session open; an address is saved as the defa
 ### `bmdctl atem cut`
 
 Cut program and preview.
+
+```
+bmdctl cut
+bmdctl cut --me 2
+```
 
 No echo.
 
@@ -393,9 +511,18 @@ No echo.
 
 Close the engine's session to the switcher, pinned or not.
 
+```
+bmdctl disconnect
+```
+
 ### `bmdctl atem dsk auto`
 
 Run a downstream keyer's auto transition.
+
+```
+bmdctl dsk auto
+bmdctl dsk auto --dsk 2
+```
 
 No echo.
 
@@ -407,6 +534,11 @@ No echo.
 
 Set a downstream keyer's fill source.
 
+```
+bmdctl dsk fill mp1
+bmdctl dsk fill mp2 --dsk 2
+```
+
 Echo: `DskB:<dsk>`.
 
 | argument | value | | |
@@ -417,6 +549,12 @@ Echo: `DskB:<dsk>`.
 ### `bmdctl atem dsk gain`
 
 Set a downstream keyer's clip, gain, pre-multiply and invert.
+
+```
+bmdctl dsk gain --premultiplied
+bmdctl dsk gain --premultiplied off --clip 40 --gain 70
+bmdctl dsk gain --invert --dsk 2
+```
 
 Give at least one flag. Echo: `DskP:<dsk>`.
 
@@ -432,6 +570,11 @@ Give at least one flag. Echo: `DskP:<dsk>`.
 
 Set a downstream keyer's key source.
 
+```
+bmdctl dsk key mp1k
+bmdctl dsk key mp2k --dsk 2
+```
+
 Echo: `DskB:<dsk>`.
 
 | argument | value | | |
@@ -442,6 +585,11 @@ Echo: `DskB:<dsk>`.
 ### `bmdctl atem dsk mask`
 
 Set a downstream keyer's mask.
+
+```
+bmdctl dsk mask --enabled --top -4
+bmdctl dsk mask --enabled off --dsk 2
+```
 
 Give at least one flag. Echo: `DskP:<dsk>`.
 
@@ -458,6 +606,11 @@ Give at least one flag. Echo: `DskP:<dsk>`.
 
 Put a downstream keyer on or off air.
 
+```
+bmdctl dsk on-air on
+bmdctl dsk on-air off --dsk 2
+```
+
 Echo: `DskS:<dsk>`.
 
 | argument | value | | |
@@ -468,6 +621,11 @@ Echo: `DskS:<dsk>`.
 ### `bmdctl atem dsk rate <rate>`
 
 Set a downstream keyer's rate.
+
+```
+bmdctl dsk rate 1:00
+bmdctl dsk rate 0:15 --dsk 2
+```
 
 Echo: `DskP:<dsk>`.
 
@@ -480,6 +638,11 @@ Echo: `DskP:<dsk>`.
 
 Tie a downstream keyer to the next transition.
 
+```
+bmdctl dsk tie on
+bmdctl dsk tie off --dsk 2
+```
+
 Echo: `DskP:<dsk>`.
 
 | argument | value | | |
@@ -491,6 +654,11 @@ Echo: `DskP:<dsk>`.
 
 Put a downstream keyer on air if it is off, or off if it is on.
 
+```
+bmdctl dsk toggle
+bmdctl dsk toggle --dsk 2
+```
+
 Echo: `DskS:<dsk>`.
 
 | argument | value | | |
@@ -501,6 +669,10 @@ Echo: `DskS:<dsk>`.
 
 Make fade to black available or not (always M/E 1; see docs/PORTING.md).
 
+```
+bmdctl ftb enable on
+```
+
 Echo: `FEna`.
 
 | argument | value | | |
@@ -510,6 +682,10 @@ Echo: `FEna`.
 ### `bmdctl atem ftb rate <rate>`
 
 Set the fade-to-black rate.
+
+```
+bmdctl ftb rate 1:00
+```
 
 Echo: `FtbP:<me>`.
 
@@ -522,6 +698,10 @@ Echo: `FtbP:<me>`.
 
 Fade to black, or back.
 
+```
+bmdctl ftb toggle
+```
+
 No echo.
 
 | argument | value | | |
@@ -531,6 +711,11 @@ No echo.
 ### `bmdctl atem hyperdeck-slot <slot>`
 
 Bind a HyperDeck slot to an address and an input.
+
+```
+bmdctl hyperdeck-slot 1 --address 192.168.10.50 --input cam4
+bmdctl hyperdeck-slot 2 --address 0.0.0.0
+```
 
 Give at least one flag. Echo: `RXMS:<slot>`.
 
@@ -544,9 +729,18 @@ Give at least one flag. Echo: `RXMS:<slot>`.
 
 Show the switcher's model, firmware, video mode and what it has.
 
+```
+bmdctl info
+```
+
 ### `bmdctl atem input rename <source>`
 
 Rename an input.
+
+```
+bmdctl input rename cam1 --long-name "Stage Left" --short-name STGL
+bmdctl input rename 2 --short-name WIDE
+```
 
 Give at least one flag. Echo: `InPr:<source>`.
 
@@ -561,6 +755,11 @@ Give at least one flag. Echo: `InPr:<source>`.
 
 List the switcher's sources, one per line: id, short name, long name and port type.
 
+```
+bmdctl inputs
+bmdctl inputs --all
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `--all` | bool | default false | at a terminal, the outputs, key masks and media player keys too (a pipe and --json always have them) |
@@ -568,6 +767,12 @@ List the switcher's sources, one per line: id, short name, long name and port ty
 ### `bmdctl atem macro action <action>`
 
 Run, stop, continue or delete a macro, or stop recording.
+
+```
+bmdctl macro action stop-record
+bmdctl macro action insert-user-wait
+bmdctl macro action continue
+```
 
 Echo: `MRPr, MRcS or MPrp:<slot>, by action`.
 
@@ -580,6 +785,11 @@ Echo: `MRPr, MRcS or MPrp:<slot>, by action`.
 
 Turn macro bytecode into XML ops (JSON with --json).
 
+```
+bmdctl macro decode open.bin
+bmdctl macro decode open.bin --json
+```
+
 Runs in the CLI; needs no switcher.
 
 | argument | value | | |
@@ -589,6 +799,11 @@ Runs in the CLI; needs no switcher.
 ### `bmdctl atem macro delete <slot>`
 
 Delete a macro.
+
+```
+bmdctl macro delete 4
+bmdctl macro delete "Lower third in"
+```
 
 **Destructive.** Echo: `MPrp:<slot>`.
 
@@ -600,6 +815,12 @@ Delete a macro.
 
 Download a macro as XML ops, JSON ops or bytecode.
 
+```
+bmdctl macro download 1
+bmdctl macro download 1 open.xml
+bmdctl macro download 1 - --format json
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `<slot>` | string | required | macro slot, or the macro's name |
@@ -609,6 +830,10 @@ Download a macro as XML ops, JSON ops or bytecode.
 ### `bmdctl atem macro encode <file> <out>`
 
 Turn XML or JSON ops into macro bytecode.
+
+```
+bmdctl macro encode open.xml open.bin
+```
 
 Runs in the CLI; needs no switcher.
 
@@ -621,6 +846,11 @@ Runs in the CLI; needs no switcher.
 
 List the macros: slot, name, description; and what runs or records.
 
+```
+bmdctl macro list
+bmdctl macro list --all
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `--all` | bool | default false | include empty slots |
@@ -628,6 +858,11 @@ List the macros: slot, name, description; and what runs or records.
 ### `bmdctl atem macro record <slot> <name>`
 
 Start recording a macro.
+
+```
+bmdctl macro record 5 "Lower third in"
+bmdctl macro record 6 Open --description "titles and music"
+```
 
 Echo: `MRcS`.
 
@@ -641,6 +876,11 @@ Echo: `MRcS`.
 
 Run a macro.
 
+```
+bmdctl macro run 1
+bmdctl macro run "Lower third in"
+```
+
 Echo: `MRPr`.
 
 | argument | value | | |
@@ -650,6 +890,10 @@ Echo: `MRPr`.
 ### `bmdctl atem macro sleep <frames>`
 
 Record a wait into the macro being recorded.
+
+```
+bmdctl macro sleep 25
+```
 
 No echo.
 
@@ -661,11 +905,20 @@ No echo.
 
 Stop the macro that is running.
 
+```
+bmdctl macro stop
+```
+
 Echo: `MRPr`.
 
 ### `bmdctl atem macro upload <slot> <file>`
 
 Upload a macro from XML ops, JSON ops or bytecode.
+
+```
+bmdctl macro upload 5 open.xml
+bmdctl macro upload 6 open.bin --name Open
+```
 
 Echo: `MPrp:<slot>`.
 
@@ -680,11 +933,19 @@ Echo: `MPrp:<slot>`.
 
 Capture program into the next free still slot.
 
+```
+bmdctl media capture
+```
+
 No echo.
 
 ### `bmdctl atem media clear <slot>`
 
 Empty a still slot, under the media pool's lock.
+
+```
+bmdctl media clear 5
+```
 
 **Destructive.** Echo: `MPfe:<slot>`.
 
@@ -696,6 +957,10 @@ Empty a still slot, under the media pool's lock.
 
 Clear a still slot without taking the store lock (some models ignore this; media clear takes it).
 
+```
+bmdctl media clear-unlocked 5
+```
+
 **Destructive.** Echo: `MPfe:<slot>`.
 
 | argument | value | | |
@@ -706,6 +971,11 @@ Clear a still slot without taking the store lock (some models ignore this; media
 
 Download a still slot as a PNG.
 
+```
+bmdctl media download 3
+bmdctl media download 3 logo.png
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `<slot>` | uint, 1-65536, counted from 1 | required | still slot |
@@ -715,6 +985,11 @@ Download a still slot as a PNG.
 
 List the media pool's stills and what each media player shows.
 
+```
+bmdctl media list
+bmdctl media list --all
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `--all` | bool | default false | at a terminal, the empty slots too (a pipe and --json always have them) |
@@ -722,6 +997,11 @@ List the media pool's stills and what each media player shows.
 ### `bmdctl atem media player <player>`
 
 Point a media player at a still or a clip.
+
+```
+bmdctl media player 1 --still 3
+bmdctl media player 2 --clip 1
+```
 
 Give at least one flag. Echo: `MPCE:<player>`.
 
@@ -734,6 +1014,12 @@ Give at least one flag. Echo: `MPCE:<player>`.
 ### `bmdctl atem media upload <slot> <file>`
 
 Upload a PNG, JPEG or GIF to a still slot, fitted to the video mode.
+
+```
+bmdctl media upload 3 logo.png
+bmdctl media upload 4 sponsor.png --name "Main Sponsor"
+bmdctl media upload 5 lower-third.png --premultiply off
+```
 
 Echo: `MPfe:<slot>`.
 
@@ -749,6 +1035,11 @@ Echo: `MPfe:<slot>`.
 
 Route a source to a multiviewer window.
 
+```
+bmdctl multiviewer input 3 cam5
+bmdctl multiviewer input 10 aux1 --multiviewer 2
+```
+
 **Unverified.** Echo: `MvIn:<multiviewer>:<window>`.
 
 | argument | value | | |
@@ -760,6 +1051,11 @@ Route a source to a multiviewer window.
 ### `bmdctl atem multiviewer properties`
 
 Set a multiviewer's layout and program/preview swap.
+
+```
+bmdctl multiviewer properties --swap
+bmdctl multiviewer properties --layout 12 --multiviewer 2
+```
 
 **Unverified.** Give at least one flag. Echo: `MvPr:<multiviewer>`.
 
@@ -773,6 +1069,11 @@ Set a multiviewer's layout and program/preview swap.
 
 Put a source on an M/E's preview bus.
 
+```
+bmdctl preview cam3
+bmdctl preview col1 --me 2
+```
+
 Echo: `PrvI:<me>`.
 
 | argument | value | | |
@@ -784,6 +1085,11 @@ Echo: `PrvI:<me>`.
 
 Download every used still as a PNG, named as profiles name them.
 
+```
+bmdctl profile images
+bmdctl profile images --dir stills/
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `--dir` | dir | default ATEM Media Pool | where to write them |
@@ -791,6 +1097,12 @@ Download every used still as a PNG, named as profiles name them.
 ### `bmdctl atem profile restore <file>`
 
 Apply a profile XML to the switcher, and upload the images it names.
+
+```
+bmdctl profile restore show.xml
+bmdctl profile restore show.xml --program --preview
+bmdctl profile restore show.xml --macros-only
+```
 
 **Destructive.**
 
@@ -825,6 +1137,11 @@ Apply a profile XML to the switcher, and upload the images it names.
 
 Save the switcher's setup as ATEM Software Control's profile XML, and its media pool images.
 
+```
+bmdctl profile save show.xml
+bmdctl profile save show.xml --media-pool-images off
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `<file>` | file, written | required | the profile XML to write; images go beside it |
@@ -853,6 +1170,12 @@ Save the switcher's setup as ATEM Software Control's profile XML, and its media 
 
 Put a source on an M/E's program bus.
 
+```
+bmdctl program cam2
+bmdctl program "Stage Left"
+bmdctl program mp1 --me 2
+```
+
 Echo: `PrgI:<me>`.
 
 | argument | value | | |
@@ -863,6 +1186,11 @@ Echo: `PrgI:<me>`.
 ### `bmdctl atem recording settings`
 
 Set the recording file name and disks.
+
+```
+bmdctl recording settings --filename service-2026-10-11
+bmdctl recording settings --in-camera
+```
 
 **Unverified.** Give at least one flag. Echo: `RMSu`.
 
@@ -877,6 +1205,10 @@ Set the recording file name and disks.
 
 Start or stop recording.
 
+```
+bmdctl recording state on
+```
+
 **Unverified.** Echo: `RTMS`.
 
 | argument | value | | |
@@ -887,6 +1219,12 @@ Start or stop recording.
 
 Show one area of the switcher: keys, dsk, transition, audio, media, macros, aux or hyperdecks.
 
+```
+bmdctl show keys
+bmdctl show transition
+bmdctl show audio
+```
+
 | argument | value | | |
 |---|---|---|---|
 | `<area>` | enum: keys=0 dsk=1 transition=2 audio=3 media=4 macros=5 aux=6 hyperdecks=7 | required | keys, dsk, transition, audio, media, macros, aux or hyperdecks |
@@ -896,17 +1234,31 @@ Show one area of the switcher: keys, dsk, transition, audio, media, macros, aux 
 
 Clear the saved power-on state.
 
+```
+bmdctl startup clear
+```
+
 **Unverified.** **Destructive.** No echo.
 
 ### `bmdctl atem startup save`
 
 Make the current state the power-on state.
 
+```
+bmdctl startup save
+```
+
 **Unverified.** **Destructive.** No echo.
 
 ### `bmdctl atem state`
 
 Print the switcher's state as the session holds it, or one part of it.
+
+```
+bmdctl state
+bmdctl state --path mes.0.program
+bmdctl state --path fairlight.master
+```
 
 | argument | value | | |
 |---|---|---|---|
@@ -916,9 +1268,17 @@ Print the switcher's state as the session holds it, or one part of it.
 
 Show what is on air: program, preview, transitions, keyers, macros.
 
+```
+bmdctl status
+```
+
 ### `bmdctl atem streaming audio-bitrate <min> <max>`
 
 Set the streaming audio bitrate.
+
+```
+bmdctl streaming audio-bitrate 128000 192000
+```
 
 **Unverified.** Echo: `STAB`.
 
@@ -930,6 +1290,12 @@ Set the streaming audio bitrate.
 ### `bmdctl atem streaming service`
 
 Set the streaming service.
+
+```
+bmdctl streaming service --name YouTube --key abcd-1234-efgh-5678
+bmdctl streaming service --url rtmp://a.rtmp.youtube.com/live2
+bmdctl streaming service --bitrate-min 4500000 --bitrate-max 6000000
+```
 
 **Unverified.** Give at least one flag. Echo: `SRSU`.
 
@@ -945,6 +1311,10 @@ Set the streaming service.
 
 Start or stop streaming.
 
+```
+bmdctl streaming state on
+```
+
 **Unverified.** Echo: `StRS`.
 
 | argument | value | | |
@@ -954,6 +1324,12 @@ Start or stop streaming.
 ### `bmdctl atem supersource box <box>`
 
 Set a SuperSource box.
+
+```
+bmdctl supersource box 1 --source cam1 --enabled
+bmdctl supersource box 2 --source cam2 --x 800 --size 500
+bmdctl supersource box 2 --masked --left 4000 --right 4000
+```
 
 **Unverified.** Give at least one flag. Echo: `SSBP:<supersource>:<box>`.
 
@@ -976,6 +1352,11 @@ Set a SuperSource box.
 
 Set SuperSource's art fill, key and layer.
 
+```
+bmdctl supersource properties --fill-source mp1 --key-source mp1k
+bmdctl supersource properties --layer foreground --premultiplied
+```
+
 **Unverified.** Give at least one flag. Echo: `SSrc:<supersource>`.
 
 | argument | value | | |
@@ -993,6 +1374,11 @@ Set SuperSource's art fill, key and layer.
 
 Move the T-bar.
 
+```
+bmdctl tbar 5000
+bmdctl tbar 10000 --me 2
+```
+
 **Unverified.** Echo: `TrPs:<me>`.
 
 | argument | value | | |
@@ -1004,11 +1390,20 @@ Move the T-bar.
 
 Read the switcher's clock: ask for it (TiRq) and wait for the Time packet.
 
+```
+bmdctl time
+```
+
 Echo: `Time`.
 
 ### `bmdctl atem time-of-day`
 
 Set the switcher's clock.
+
+```
+bmdctl time-of-day
+bmdctl time-of-day --time 2026-10-11T19:30:00Z
+```
 
 **Unverified.** No echo.
 
@@ -1020,11 +1415,20 @@ Set the switcher's clock.
 
 Ask the switcher for its time (the reply is the Time packet).
 
+```
+bmdctl time-request
+```
+
 No echo.
 
 ### `bmdctl atem transition dip`
 
 Set the dip transition.
+
+```
+bmdctl transition dip --source col1 --rate 0:15
+bmdctl transition dip --source black --me 2
+```
 
 Give at least one flag. Echo: `TDpP:<me>`.
 
@@ -1037,6 +1441,12 @@ Give at least one flag. Echo: `TDpP:<me>`.
 ### `bmdctl atem transition dve`
 
 Set the DVE transition.
+
+```
+bmdctl transition dve --style PushLeft --rate 0:20
+bmdctl transition dve --style SqueezeTopLeft --reverse --flip-flop
+bmdctl transition dve --fill-source mp1 --key-source mp1k --key-enable
+```
 
 Give at least one flag. Echo: `TDvP:<me>`.
 
@@ -1060,6 +1470,11 @@ Give at least one flag. Echo: `TDvP:<me>`.
 
 Set the mix transition's rate.
 
+```
+bmdctl transition mix 1:00
+bmdctl transition mix 0:12 --me 2
+```
+
 Echo: `TMxP:<me>`.
 
 | argument | value | | |
@@ -1070,6 +1485,11 @@ Echo: `TMxP:<me>`.
 ### `bmdctl atem transition next`
 
 Set the layers the next transition takes, or toggle one.
+
+```
+bmdctl transition next --next background,key1
+bmdctl transition next --toggle key1
+```
 
 Echo: `TrSS:<me>`.
 
@@ -1083,6 +1503,11 @@ Echo: `TrSS:<me>`.
 
 Turn transition preview on or off.
 
+```
+bmdctl transition preview on
+bmdctl transition preview on --me 2
+```
+
 **Unverified.** Echo: `TrPr:<me>`.
 
 | argument | value | | |
@@ -1093,6 +1518,11 @@ Turn transition preview on or off.
 ### `bmdctl atem transition rate <rate>`
 
 Set the rate of the M/E's current transition style.
+
+```
+bmdctl transition rate 0:20
+bmdctl transition rate 30 --me 2
+```
 
 Echo: `TMxP, TDpP, TWpP, TDvP or TStP:<me>, by style`.
 
@@ -1105,6 +1535,11 @@ Echo: `TMxP, TDpP, TWpP, TDvP or TStP:<me>, by style`.
 
 Set the transition style and the layers the next transition takes.
 
+```
+bmdctl transition settings --style mix --next background
+bmdctl transition settings --style wipe --me 2
+```
+
 Give at least one flag. Echo: `TrSS:<me>`.
 
 | argument | value | | |
@@ -1116,6 +1551,12 @@ Give at least one flag. Echo: `TrSS:<me>`.
 ### `bmdctl atem transition stinger`
 
 Set the stinger transition.
+
+```
+bmdctl transition stinger --player 1 --duration 2:00 --trigger 0:12
+bmdctl transition stinger --pre-roll 0:10 --rate 0:08
+bmdctl transition stinger --premultiplied off --clip 50 --gain 70
+```
 
 Give at least one flag. Echo: `TStP:<me>`.
 
@@ -1136,6 +1577,11 @@ Give at least one flag. Echo: `TStP:<me>`.
 
 Set the transition style.
 
+```
+bmdctl transition style mix
+bmdctl transition style stinger --me 2
+```
+
 Echo: `TrSS:<me>`.
 
 | argument | value | | |
@@ -1146,6 +1592,12 @@ Echo: `TrSS:<me>`.
 ### `bmdctl atem transition wipe`
 
 Set the wipe transition.
+
+```
+bmdctl transition wipe --pattern CircleIris --rate 1:00
+bmdctl transition wipe --width 5 --source col1 --softness 20
+bmdctl transition wipe --reverse --flip-flop
+```
 
 Give at least one flag. Echo: `TWpP:<me>`.
 
@@ -1167,9 +1619,19 @@ Give at least one flag. Echo: `TWpP:<me>`.
 
 Undo the last program, preview, aux, keyer or DSK on-air change made from this machine.
 
+```
+bmdctl undo
+```
+
 ### `bmdctl atem usk <keyer> chroma`
 
 Set an advanced chroma key.
+
+```
+bmdctl usk 1 chroma --foreground 0.6 --background 0.4
+bmdctl usk 1 chroma --spill 0.5 --flare 0.3
+bmdctl usk 2 chroma --key-edge 0.5 --me 2
+```
 
 Give at least one flag. Echo: `KACk:<me>:<keyer>`.
 
@@ -1193,6 +1655,12 @@ Give at least one flag. Echo: `KACk:<me>:<keyer>`.
 
 Set an advanced chroma key's sample cursor and colour.
 
+```
+bmdctl usk 1 chroma-sample --cursor --x 0.2 --y 0.5
+bmdctl usk 1 chroma-sample --preview
+bmdctl usk 1 chroma-sample --cursor off --preview off
+```
+
 Give at least one flag. Echo: `KACC:<me>:<keyer>`.
 
 | argument | value | | |
@@ -1211,6 +1679,12 @@ Give at least one flag. Echo: `KACC:<me>:<keyer>`.
 ### `bmdctl atem usk <keyer> dve`
 
 Set a DVE (or fly) key.
+
+```
+bmdctl usk 1 dve --size-x 0.4 --size-y 0.4
+bmdctl usk 1 dve --position-x 8 --position-y 4.5
+bmdctl usk 1 dve --border --shadow --rate 0:20
+```
 
 Give at least one flag. Echo: `KeDV:<me>:<keyer>`.
 
@@ -1249,6 +1723,11 @@ Give at least one flag. Echo: `KeDV:<me>:<keyer>`.
 
 Set an upstream keyer's fill source.
 
+```
+bmdctl usk 1 fill cam3
+bmdctl usk 2 fill mp1 --me 2
+```
+
 Echo: `KeBP:<me>:<keyer>`.
 
 | argument | value | | |
@@ -1261,6 +1740,11 @@ Echo: `KeBP:<me>:<keyer>`.
 
 Set an upstream keyer's key (cut) source.
 
+```
+bmdctl usk 1 key mp1k
+bmdctl usk 2 key cam4 --me 2
+```
+
 Echo: `KeBP:<me>:<keyer>`.
 
 | argument | value | | |
@@ -1272,6 +1756,12 @@ Echo: `KeBP:<me>:<keyer>`.
 ### `bmdctl atem usk <keyer> keyframe-run <to>`
 
 Fly the key to a keyframe.
+
+```
+bmdctl usk 1 keyframe-run a
+bmdctl usk 1 keyframe-run full
+bmdctl usk 1 keyframe-run runToInfinite --direction 3
+```
 
 No echo.
 
@@ -1286,6 +1776,11 @@ No echo.
 
 Store the keyer's DVE as a fly keyframe.
 
+```
+bmdctl usk 1 keyframe-set a
+bmdctl usk 1 keyframe-set b --me 2
+```
+
 Echo: `KKFP:<me>:<keyer>:<keyframe> (A and B), KeFS:<me>:<keyer>`.
 
 | argument | value | | |
@@ -1297,6 +1792,12 @@ Echo: `KKFP:<me>:<keyer>:<keyframe> (A and B), KeFS:<me>:<keyer>`.
 ### `bmdctl atem usk <keyer> luma`
 
 Set a luma key.
+
+```
+bmdctl usk 1 luma --clip 40 --gain 60
+bmdctl usk 1 luma --premultiplied
+bmdctl usk 2 luma --invert --me 2
+```
 
 Give at least one flag. Echo: `KeLm:<me>:<keyer>`.
 
@@ -1312,6 +1813,11 @@ Give at least one flag. Echo: `KeLm:<me>:<keyer>`.
 ### `bmdctl atem usk <keyer> mask`
 
 Set an upstream keyer's mask.
+
+```
+bmdctl usk 1 mask --enabled --left -8 --right 8
+bmdctl usk 1 mask --enabled off
+```
 
 **Unverified.** Give at least one flag. Echo: `KeBP:<me>:<keyer>`.
 
@@ -1329,6 +1835,11 @@ Set an upstream keyer's mask.
 
 Put an upstream keyer on or off air.
 
+```
+bmdctl usk 1 on-air on
+bmdctl usk 2 on-air off --me 2
+```
+
 Echo: `KeOn:<me>:<keyer>`.
 
 | argument | value | | |
@@ -1340,6 +1851,11 @@ Echo: `KeOn:<me>:<keyer>`.
 ### `bmdctl atem usk <keyer> pattern`
 
 Set a pattern key.
+
+```
+bmdctl usk 1 pattern --pattern CircleIris --size 40
+bmdctl usk 1 pattern --softness 20 --position-x 0.75
+```
 
 Give at least one flag. Echo: `KePt:<me>:<keyer>`.
 
@@ -1359,6 +1875,11 @@ Give at least one flag. Echo: `KePt:<me>:<keyer>`.
 
 Put an upstream keyer on air if it is off, or off if it is on.
 
+```
+bmdctl usk 1 toggle
+bmdctl usk 2 toggle --me 2
+```
+
 Echo: `KeOn:<me>:<keyer>`.
 
 | argument | value | | |
@@ -1369,6 +1890,11 @@ Echo: `KeOn:<me>:<keyer>`.
 ### `bmdctl atem usk <keyer> type`
 
 Set an upstream keyer's type and fly mode.
+
+```
+bmdctl usk 1 type --type chroma
+bmdctl usk 1 type --type dve --fly
+```
 
 Give at least one flag. Echo: `KeBP:<me>:<keyer>`.
 
@@ -1383,6 +1909,11 @@ Give at least one flag. Echo: `KeBP:<me>:<keyer>`.
 
 Change the video mode: outputs resync and clients may be dropped.
 
+```
+bmdctl video-mode 1080p50
+bmdctl video-mode 1080i5994
+```
+
 **Destructive.** Echo: `VidM`.
 
 | argument | value | | |
@@ -1393,9 +1924,19 @@ Change the video mode: outputs resync and clients may be dropped.
 
 List the video modes the switcher supports, the current one marked.
 
+```
+bmdctl video-modes
+```
+
 ### `bmdctl atem watch`
 
 Print each change the switcher reports, as it comes.
+
+```
+bmdctl watch
+bmdctl watch --filter PrgI,PrvI
+bmdctl watch --filter PrgI --count 1
+```
 
 Runs until interrupted.
 

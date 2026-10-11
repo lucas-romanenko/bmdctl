@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -112,7 +113,9 @@ func TestHelpAtEveryLevel(t *testing.T) {
 				continue // bare --help is the top level
 			}
 			code, out, errOut := runCLI(args...)
-			if code != 0 || errOut != "" || !strings.HasPrefix(out, "usage: bmdctl [atem]") {
+			// A group's help starts with its usage; a command's with its
+			// summary and examples, then its usage.
+			if code != 0 || errOut != "" || !strings.HasPrefix(out, "usage: bmdctl [atem]") && !strings.Contains(out, "\n\nusage: bmdctl [atem]") {
 				t.Errorf("%q: %d %q %q", args, code, out, errOut)
 			}
 		}
@@ -610,5 +613,45 @@ func TestSpawnedEngine(t *testing.T) {
 	b.must("engine", "stop")
 	if code, _, _ := b.run("engine", "status"); code != exitUnreachable {
 		t.Errorf("still running after stop: %d", code)
+	}
+}
+
+// Every command's help opens with one to three examples from the table,
+// each a line that reads as that command and passes the checks a line
+// gets before it is sent, at most 72 columns.
+func TestExamples(t *testing.T) {
+	c := newCLI(io.Discard, io.Discard)
+	for _, e := range c.reg.Entries("atem") {
+		if n := len(e.Examples); n < 1 || n > 3 {
+			t.Errorf("%s: %d examples", e.Path, n)
+		}
+		for _, ex := range e.Examples {
+			args, err := splitWords(ex)
+			if err != nil {
+				t.Errorf("%s: %q: %v", e.Path, ex, err)
+				continue
+			}
+			g, words, tokens, err := splitLine(args)
+			if err != nil {
+				t.Errorf("%s: %q: %v", e.Path, ex, err)
+				continue
+			}
+			got, raw, err := c.reg.ParseLine("atem", words, tokens)
+			if err == nil {
+				err = precheck(got, raw, g)
+			}
+			switch {
+			case err != nil:
+				t.Errorf("%s: %q: %v", e.Path, ex, err)
+			case got.Path != e.Path:
+				t.Errorf("%s: %q is %s", e.Path, ex, got.Path)
+			case len("bmdctl "+ex) > 72:
+				t.Errorf("%s: %q is over 72 columns", e.Path, ex)
+			}
+		}
+	}
+	_, out, _ := runCLI("usk", "1", "fill", "--help")
+	if !strings.HasPrefix(out, "Set an upstream keyer's fill source.\n\n  bmdctl usk 1 fill cam3\n") {
+		t.Errorf("help:\n%s", out)
 	}
 }

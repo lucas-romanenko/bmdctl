@@ -875,7 +875,7 @@ and a zero value selects nothing.
 
 - **`internal/table` is generic** (and MIT). An `Entry` is
   `{Device, Path, Summary, Params, Build, Operation, Local, Stream, Echo,
-  Unverified, Destructive, AtLeastOne}`; a `Param` has a name, a kind
+  Unverified, Destructive, AtLeastOne, Examples}`; a `Param` has a name, a kind
   (uint, int, float, bool, string, enum, flags, rate, time, list, source,
   file, out-file, dir), an optional range, a unit, help,
   required/default, and `OneBased` (an `Index`, below). A `Registry`
@@ -1373,6 +1373,17 @@ too. Not yet seen on hardware.
   groff is installed.
 - **`docs/COMMANDS.md`** starts with that same CLI reference, then the
   table.
+- **Examples** (the terminal pass): every entry carries one to three
+  real command lines (`Entry.Examples`, as typed after `bmdctl`
+  without the device word, the plainest first): the wire commands' in
+  `atem/table_examples.go`, the operations' in
+  `internal/engine/examples.go`, set as the entries are registered.
+  `--help` opens with the summary and them, before the usage line and
+  the argument and flag tables; `docs/COMMANDS.md` shows them in a code
+  block under the summary, the man page indented after it.
+  `TestExamples` requires one to three per entry, each at most 72
+  columns, each reading as its own command and passing the checks a
+  line gets before it is sent.
 
 ## doctor (`cmd/bmdctl/doctor.go`)
 
