@@ -334,9 +334,12 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	c.state = sess.State()
 	c.note(Note{Switcher: e.switcherNote(h, c.state, idle)})
 	c.noteOnAir(c.state)
-	c.res = atem.Resolver{State: c.state, FPS: req.FPS}
+	c.res = Sources(atem.Resolver{State: c.state, FPS: req.FPS}, c)
 	c.args, err = entry.Parse(req.Params, c.res)
 	if err != nil {
+		if c.noInput != nil {
+			c.note(Note{NoInput: c.noInput})
+		}
 		return nil, false, usageErr(err)
 	}
 	if err := c.forMixer(e.cfg.Registry); err != nil {

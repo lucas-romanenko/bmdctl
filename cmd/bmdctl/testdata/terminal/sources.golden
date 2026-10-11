@@ -1,0 +1,33 @@
+$ bmdctl preview in2
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM2 · connected # ms</>
+  preview     CAM1 → <green>CAM2</> <dim>(in2)</>                             <dim># ms</>
+
+$ bmdctl preview Camera 1
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  preview     CAM2 → <green>CAM1</> <dim>(Camera 1)</>                        <dim># ms</>
+
+$ bmdctl aux 1 auxil
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  aux 1       MP1 → AUX1 <dim>(auxil)</>                            <dim># ms</>
+
+$ bmdctl program MP1
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW CAM1</>
+  program     CAM2 → <red>MP1</>                                    <dim># ms</>
+
+$ bmdctl input rename 1 --short-name cam2
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM MP1 · PVW cam2</>
+  input rename CAM1  short-name "CAM1" → "cam2"             <dim># ms</>
+
+$ bmdctl program cam2
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW cam2</>
+  program     MP1 → <red>CAM2</>                                    <dim># ms</>
+!   <dim>cam2 means input 2 (CAM2); for the input named "cam2", type 1</>
+
+$ bmdctl program cam2
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW cam2</>
+  program     <red>CAM2</>                                          <dim># ms</>
+
+$ bmdctl program cam
+! <red>error</>  source "cam": starts more than one input's name: cam2, CAM2
+[exit 1]
+

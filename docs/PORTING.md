@@ -1019,12 +1019,25 @@ and a zero value selects nothing.
 - **Sources** (`source` kind: program, preview, aux, keyer and DSK fill
   and key, dip, wipe border, DVE fill and key, multiviewer windows,
   SuperSource, Fairlight and classic audio sources, monitor solo, HyperDeck
-  input) take an id or one of the switcher's input names, long or short,
-  case-insensitive, surrounding spaces ignored (`atem.Resolver`,
-  `State.InputsNamed`). A name two inputs share is refused with both
-  listed. A numeric id is not checked against the inputs: audio sources
-  such as 1301 have no `InPr`. Names need the switcher's state, so they
-  resolve in the engine; `--dry-run` takes ids only.
+  input) are found in this order, case-insensitive, surrounding spaces
+  ignored (`engine.Sources`, wrapping `atem.Resolver`, which is
+  unchanged): a number is that id, not checked against the inputs (audio
+  sources such as 1301 have no `InPr`); an alias (`engine.SourceAlias`)
+  names a source whatever its label: `camN`, `camera N`, `inN`,
+  `input N` are input N, `mpN` 3000+10N, `bars` 1000, `black`/`blk` 0,
+  `colN` 2000+N, `pgm` 10010 and `pvw` 10011 (M/E 1's outputs), `cfN`
+  7000+N, `auxN` 8000+N, provided the switcher lists that source (black
+  always); else a short or long label (`State.InputsNamed`; one two
+  inputs share is refused with both listed); else the one input a label
+  starts (two or more are refused, listed). An alias that is also
+  another input's label wins, and the engine says so in a note
+  (`alias`), which a terminal prints once ever. Nothing found is the
+  error it always was, `no input is named "x" (bmdctl inputs lists
+  them)`, with a `no_input` note carrying the switcher's first six inputs
+  for a terminal to list. (After the terminal pass, which asked for it:
+  operators type cam2 whatever a camera is called. atemwire takes ids.)
+  Labels need the switcher's state, so they resolve in the engine;
+  `--dry-run` takes numbers and aliases.
 - **Rates** take frames or "seconds:frames", converted at `DisplayFPS` of
   the session's state unless `--fps` is given (with `--dry-run`, `--fps`
   or 25, atemwire's fallback). Deliberately stricter than atemwire's

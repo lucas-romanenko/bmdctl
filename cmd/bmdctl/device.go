@@ -242,7 +242,7 @@ func (c *cli) dryRun(device string, e *table.Entry, raw map[string]string, g glo
 	if fps == 0 {
 		fps = atem.FallbackFPS
 	}
-	a, err := e.Parse(raw, atem.Resolver{FPS: fps})
+	a, err := e.Parse(raw, engine.Sources(atem.Resolver{FPS: fps}, nil))
 	if err != nil {
 		return c.fail(exitUsage, "bmdctl %s: %s", label, strings.TrimPrefix(err.Error(), "usage: "))
 	}
@@ -492,7 +492,7 @@ func (c *cli) entryHelp(w io.Writer, device string, e table.Entry) {
 		notes = append(notes, strings.Join(counted, " and ")+" count from 1, as ATEM Software Control does; the atem library counts from 0.")
 	}
 	if slices.ContainsFunc(e.Params, func(p table.Param) bool { return p.Kind == table.Source }) {
-		notes = append(notes, "A source is an id or one of the switcher's input names, long or short, in any case.")
+		notes = append(notes, "A source is an input's number; cam2, input 2, mp1, bars, black, col1, pgm, pvw, cf1 or aux3,\nwhatever its name; or an input's short or long name, or the start of one, in any case.")
 	}
 	if slices.ContainsFunc(e.Params, func(p table.Param) bool { return p.Kind == table.Rate }) {
 		notes = append(notes, "A rate is a frame count or seconds:frames at the switcher's display rate.")

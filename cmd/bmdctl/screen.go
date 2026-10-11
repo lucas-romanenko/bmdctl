@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -275,10 +276,29 @@ func (p *printer) screenError(r engine.Response) {
 		}
 		hint = strings.Join(nonEmpty(cause, "bmdctl doctor checks the network"), " · ")
 	}
+	if n := p.noInput; n != nil && code == exitUsage {
+		msg, hint = fmt.Sprintf("no input %q", n.Typed), p.inputsHint(n.Inputs)
+	}
 	if hint == "" {
 		hint = termStep(code)
 	}
 	p.c.screenError(msg, hint)
+}
+
+// inputsHint is the inputs a source could have been, on one line: "1
+// CAM1 Camera 1 · 2 CAM2 Camera 2 ...", then where the rest are. The
+// list is cut, never the end.
+func (p *printer) inputsHint(ins []engine.Source) string {
+	var list []string
+	for _, in := range ins {
+		list = append(list, strings.Join(nonEmpty(strconv.Itoa(in.ID), in.Short, in.Name), " "))
+	}
+	tail := "bmdctl inputs for all"
+	if len(list) == 0 {
+		return tail
+	}
+	tail = " · " + tail
+	return fit(strings.Join(list, " · "), lineWidth-len(hintPad)-width(tail)) + tail
 }
 
 // screenError is an error at a terminal: "error" red, the message, and

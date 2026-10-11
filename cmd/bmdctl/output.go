@@ -42,6 +42,7 @@ type printer struct {
 	live        *engine.OnAir
 	connectedIn time.Duration
 	saved       remembered // what connect ADDRESS did to hosts.yml
+	noInput     *engine.NoInput // a source typed that names nothing
 }
 
 func (p *printer) label() string { return strings.TrimSpace(p.e.Device + " " + p.e.Path) }
@@ -91,7 +92,25 @@ func (p *printer) note(n engine.Note) {
 		p.vals = n.Values
 	case n.OnAir != nil:
 		p.live = n.OnAir
+	case n.NoInput != nil:
+		p.noInput = n.NoInput
+	case n.Alias != nil && p.c.terminal():
+		a := n.Alias
+		if p.c.tellOnce(fmt.Sprintf("alias %s %s %d", p.t.Address, strings.ToLower(a.Typed), a.Shadowed.ID)) {
+			p.c.notice("%s means input %d (%s); for the input named %q, type %d", a.Typed, a.Source.ID, short(a.Source), a.Typed, a.Shadowed.ID)
+		}
 	}
+}
+
+// typedAs is what was typed for a source, dim in brackets, where it
+// isn't the name a line shows it by (nor a number, which says itself):
+// " (cam1)" after "lkkk".
+func (p *printer) typedAs(param, shown string) string {
+	typed := strings.TrimSpace(p.typed[param])
+	if typed == "" || isNumber(typed) || strings.EqualFold(typed, shown) {
+		return ""
+	}
+	return " " + p.c.colour(dim, "("+typed+")")
 }
 
 func (p *printer) response(line []byte, r engine.Response) {
@@ -401,6 +420,9 @@ func (p *printer) describe(e *table.Entry, vals []engine.Value, term bool) (what
 			after = p.c.colour(red, after)
 		case e.Path == "preview" && v.Param == "source":
 			after = p.c.colour(green, after)
+		}
+		if prm := param(v.Param); term && prm != nil && prm.Kind == table.Source {
+			after += p.typedAs(v.Param, v.After)
 		}
 		ch := after
 		if v.Before != nil && *v.Before != v.After {
