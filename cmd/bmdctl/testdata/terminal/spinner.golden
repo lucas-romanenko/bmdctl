@@ -1,0 +1,20 @@
+prefixed false:
+
+<clear><cr><b>⠋</> connecting to studio (192.0.2.10)  <dim>0.2s</>
+<clear><cr><b>⠙</> connecting to studio (192.0.2.10)  <dim>0.3s</>
+<clear><cr>connected to studio (192.0.2.10): ATEM 1 M/E Constellation HD, 1080p50  312 ms
+
+<clear><cr><b>⠹</> uploading still 3 to studio (192.0.2.10)  <dim>0.2s</>
+<clear><cr><b>⠸</> uploading still 3 to studio (192.0.2.10)  <dim>1m01s</>
+<clear><cr><b>⠼</> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  <dim>1.0s</>
+<clear><cr>
+prefixed true:
+line 2: 
+<clear><cr>line 2: <b>⠋</> connecting to studio (192.0.2.10)  <dim>0.2s</>
+<clear><cr>line 2: <b>⠙</> connecting to studio (192.0.2.10)  <dim>0.3s</>
+<clear><cr>line 2: connected to studio (192.0.2.10): ATEM 1 M/E Constellation HD, 1080p50  312 ms
+line 2: 
+<clear><cr>line 2: <b>⠹</> uploading still 3 to studio (192.0.2.10)  <dim>0.2s</>
+<clear><cr>line 2: <b>⠸</> uploading still 3 to studio (192.0.2.10)  <dim>1m01s</>
+<clear><cr>line 2: <b>⠼</> xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…  <dim>1.0s</>
+<clear><cr>

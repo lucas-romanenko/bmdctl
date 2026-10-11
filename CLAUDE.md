@@ -17,7 +17,10 @@ or test run touches the network beyond loopback.
 
 `docs/COMMANDS.md` is generated from the command table; after changing a
 table entry, regenerate it with
-`go test ./cmd/bmdctl -run TestCommandsDoc -update`. The oracles in
+`go test ./cmd/bmdctl -run TestCommandsDoc -update`. What a terminal
+shows (colour, the prompt, the spinner) is snapshot-tested in
+`cmd/bmdctl/testdata/terminal/`; after changing it, rewrite them with
+`go test ./cmd/bmdctl -run TestTerminal -update` and read the diff. The oracles in
 `internal/fixtures/oracle/` are regenerated with the scripts beside them
 (see the README there) against `../bmdwire` at `v1.3.0`.
 

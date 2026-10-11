@@ -404,9 +404,13 @@ func (c *cli) hostsAdd(g globals, f *hosts.File, path, addr, as, device string) 
 // stderr that it connects.
 func (c *cli) identify(g globals, addr string) (*engine.Switcher, error) {
 	who := shortAddress(addr)
+	asking := "asking " + who + " its name"
+	stop := c.spin(asking)
+	defer stop()
 	var sw *engine.Switcher
 	var resp *engine.Response
-	err := c.call(engine.Request{Device: "atem", Host: addr, Path: "info", Notes: true}, func() { c.sayConnecting(g, who) },
+	spawned := func() { c.banner(); c.sayConnecting(g, who) }
+	err := c.call(engine.Request{Device: "atem", Host: addr, Path: "info", Notes: true}, spawned,
 		func(f engine.Frame) error {
 			switch {
 			case f.Response != nil:
@@ -416,8 +420,7 @@ func (c *cli) identify(g globals, addr string) (*engine.Switcher, error) {
 			case f.Note != nil && f.Note.Switcher != nil:
 				sw = f.Note.Switcher
 				if c.connecting && !g.json && !g.quiet {
-					c.connecting = false
-					fmt.Fprintln(c.stderr, strings.Join(nonEmpty(sw.Product, sw.VideoMode), ", "))
+					c.sayConnected(sw.Name, who, *sw, asking)
 				}
 			}
 			return nil
@@ -445,10 +448,12 @@ func (c *cli) identify(g globals, addr string) (*engine.Switcher, error) {
 // hostsDiscover adds every switcher that announces itself within wait,
 // by its own name. One already a host is renamed if its name changed.
 func (c *cli) hostsDiscover(g globals, f *hosts.File, path string, wait time.Duration) int {
-	if !g.json && !g.quiet {
+	stop := c.spin(fmt.Sprintf("looking for switchers for %v", wait))
+	if !g.json && !g.quiet && c.spinner == nil {
 		fmt.Fprintf(c.stderr, "looking for switchers for %v …\n", wait)
 	}
 	found, err := c.discover(c.ctx, wait)
+	stop()
 	if err != nil {
 		return c.fail(exitUnreachable, "bmdctl hosts discover: %v", err)
 	}

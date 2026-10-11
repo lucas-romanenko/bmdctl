@@ -239,7 +239,8 @@ func splitWords(s string) ([]string, error) {
 }
 
 // prefixWriter prefixes each line written with the exec line it came
-// from.
+// from. A carriage return starts the line again, as the spinner's frames
+// do (clearLine), so each frame is prefixed too.
 type prefixWriter struct {
 	w      io.Writer
 	prefix string
@@ -254,7 +255,7 @@ func (p *prefixWriter) Write(b []byte) (int, error) {
 			p.mid = true
 		}
 		out = append(out, c)
-		if c == '\n' {
+		if c == '\n' || c == '\r' {
 			p.mid = false
 		}
 	}

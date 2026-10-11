@@ -85,12 +85,14 @@ func (c *cli) doctorCommand(g globals, words, tokens []string) int {
 	default:
 		var rows [][]string
 		for _, ch := range checks {
+			// Green means preview alone, so ok is plain; there is no
+			// yellow in the palette, so a warning is bold.
 			status := ch.Status
 			switch status {
 			case "ok":
-				status = c.colour(green, padRight(status, 11))
+				status = padRight(status, 11)
 			case "warn":
-				status = c.colour(yellow, padRight(status, 11))
+				status = c.colour(bold, padRight(status, 11))
 			default:
 				status = c.colour(red, padRight(status, 11))
 			}
@@ -279,6 +281,8 @@ func (c *cli) doctorReach(f *hosts.File, st *engine.Status, add func(name, statu
 		status, detail string
 	}
 	results := make([]result, len(f.Hosts))
+	stop := c.spin(fmt.Sprintf("reaching %d host%s", len(f.Hosts), plural(len(f.Hosts))))
+	defer stop()
 	var wg sync.WaitGroup
 	for i, h := range f.Hosts {
 		wg.Add(1)

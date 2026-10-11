@@ -1,0 +1,41 @@
+$ bmdctl program cam1
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  program  ME1            CAM2 → <red>CAM1</>  confirmed <dim>  # ms</>
+! connected to <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>: 1080p50  <dim># ms</>
+
+$ bmdctl preview cam2
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  preview  ME1            CAM1 → <green>CAM2</>  confirmed <dim>  # ms</>
+
+$ bmdctl usk 2 on-air on
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  usk 2 on-air  ME1       off → <red>on</>     confirmed <dim>  # ms</>
+
+$ bmdctl usk 2 on-air off
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  usk 2 on-air  ME1       on → off     confirmed <dim>  # ms</>
+
+$ bmdctl dsk auto
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  dsk auto  DSK1          on → off     <dim>sent     </> <dim>  # ms</>
+
+$ bmdctl cut
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  cut  ME1                CAM1 → <red>CAM2</>  <dim>sent     </> <dim>  # ms</>
+
+$ bmdctl ftb toggle
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  ftb toggle  ME1         off → <red>black</>  <dim>sent     </> <dim>  # ms</>
+
+$ bmdctl aux 2 cam1
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  aux 2                   PGM → CAM1   confirmed <dim>  # ms</>
+
+$ bmdctl transition mix 0:12
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  transition mix  ME1     1:00 → 0:12  confirmed <dim>  # ms</>
+
+$ bmdctl color 2 --hue 120
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  color 2                 hue 300 → 120  confirmed <dim>  # ms</>
+
+$ bmdctl connect
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  connected, pinned: open until disconnect
+
+$ bmdctl disconnect
+<b>></> <b>ATEM 1 M/E Constellation HD</> <dim>(192.0.2.10)</>  disconnected
+
+$ bmdctl program cam2
+> ATEM 1 M/E Constellation HD (192.0.2.10)  program  ME1            CAM2         confirmed  # ms
+! connected to ATEM 1 M/E Constellation HD (192.0.2.10): 1080p50  # ms
+

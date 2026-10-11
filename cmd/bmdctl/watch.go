@@ -36,7 +36,7 @@ type watchEvent struct {
 // and the values a change is shown against.
 type watchView struct {
 	who        string                      // the switcher, for the line saying its session dropped
-	paint      func(code, s string) string // colours program red, preview green
+	paint      func(code, s string) string // program red, preview green, the session's own lines bold
 	names      map[int]string              // source: short name, else long name
 	program    map[int]int                 // M/E: source
 	preview    map[int]int
@@ -119,9 +119,9 @@ func (v *watchView) line(ev watchEvent) string {
 		if who == "" {
 			who = "the switcher"
 		}
-		return "session to " + who + " dropped"
+		return v.paint(bold, "session to "+who+" dropped")
 	case "ready":
-		return "reconnected"
+		return v.paint(bold, "reconnected")
 	case "state":
 	default:
 		return ev.Kind
@@ -271,7 +271,7 @@ func (v *watchView) dropped() {
 // program and preview that changed while it was away.
 func (v *watchView) back() []string {
 	v.away = false
-	out := []string{"reconnected"}
+	out := []string{v.paint(bold, "reconnected")}
 	for _, bus := range []struct {
 		label    string
 		was, now map[int]int
@@ -296,7 +296,7 @@ func formatWatch(p *printer, _ engine.Response, raw json.RawMessage) []string {
 		if p.c.ask(p.g, "state", nil, &st) {
 			p.watch = newWatchView(&st)
 		}
-		fmt.Fprintln(p.c.stderr, "watching; Ctrl-C to stop")
+		fmt.Fprintln(p.c.stderr, p.c.colourErr(dim, "watching; Ctrl-C to stop"))
 		return []string{p.header()}
 	}
 	if p.watch == nil {
@@ -317,7 +317,7 @@ func formatWatch(p *printer, _ engine.Response, raw json.RawMessage) []string {
 		lines = []string{v.line(ev)}
 	}
 	for i := range lines {
-		lines[i] = ev.Time + "  " + lines[i]
+		lines[i] = p.c.colour(dim, ev.Time) + "  " + lines[i]
 	}
 	return lines
 }

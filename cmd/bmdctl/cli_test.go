@@ -21,7 +21,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
-var update = flag.Bool("update", false, "rewrite docs/COMMANDS.md")
+var update = flag.Bool("update", false, "rewrite docs/COMMANDS.md and testdata/terminal's golden files")
 
 // docs/COMMANDS.md is generated from the command table.
 func TestCommandsDoc(t *testing.T) {

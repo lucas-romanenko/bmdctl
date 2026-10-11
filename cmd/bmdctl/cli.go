@@ -82,6 +82,13 @@ type cli struct {
 	// connecting: the last one awaits its model and video mode line.
 	said       map[string]bool
 	connecting bool
+	// bannered: the banner has been printed; shared with exec's lines.
+	bannered *bool
+	// spinner is the one a request shows while it waits (spin), if any;
+	// spinAfter is how long a wait goes before it shows (tests lengthen
+	// it, so a slow machine can't draw one).
+	spinner   *spinner
+	spinAfter time.Duration
 	// discover browses for switchers (mdns); tests replace it.
 	discover func(ctx context.Context, wait time.Duration) ([]mdns.Instance, error)
 	// dialATEM and dialTCP are doctor's reachability checks; tests
@@ -99,6 +106,7 @@ func newCLI(stdout, stderr io.Writer) *cli {
 	return &cli{stdin: os.Stdin, stdout: stdout, stderr: stderr, env: os.Getenv, environ: os.Environ,
 		reg: reg, spawn: engine.Spawn, build: sync.OnceValue(buildID), engineConfig: func(c engine.Config) engine.Config { return c },
 		ctx: context.Background(), dialATEM: atem.Dial, said: map[string]bool{}, discover: browse,
+		bannered: new(bool), spinAfter: spinAfter,
 		dialTCP: func(ctx context.Context, addr string) (net.Conn, error) { return d.DialContext(ctx, "tcp", addr) }}
 }
 
@@ -238,15 +246,10 @@ func (c *cli) fail(code int, format string, args ...any) int {
 	return code
 }
 
-// errorf prints an error on stderr, red on a terminal, ending with the
-// next step for its exit status (nextStep).
+// errorf prints an error on stderr, ending with the next step for its
+// exit status (nextStep), laid out for a terminal by printError.
 func (c *cli) errorf(code int, format string, args ...any) {
-	msg := nextStep(code, fmt.Sprintf(format, args...))
-	first, rest, _ := strings.Cut(msg, "\n")
-	fmt.Fprint(c.stderr, c.colourErr(red, first)+"\n")
-	if rest != "" {
-		fmt.Fprintln(c.stderr, rest)
-	}
+	c.printError(c.stderr, nextStep(code, fmt.Sprintf(format, args...)))
 }
 
 // nextStep ends an error with what to do next, by its exit status:
@@ -281,13 +284,40 @@ func (c *cli) notice(format string, args ...any) {
 // sayConnecting prints "connecting to <who> ..." on stderr, once per
 // switcher in an invocation: when a command starts the engine, opens a
 // session, or waits for one to come back. The model and video mode
-// follow when the session is ready (printer.note).
+// follow when the session is ready (printer.note). While the spinner
+// shows, it says so instead, and the line that follows replaces it.
 func (c *cli) sayConnecting(g globals, who string) {
 	if g.json || g.quiet || c.said[who] {
 		return
 	}
 	c.said[who], c.connecting = true, true
+	if c.spinner != nil {
+		c.spinner.set("connecting to " + who)
+		return
+	}
 	fmt.Fprintf(c.stderr, "connecting to %s …\n", who)
+}
+
+// sayConnected follows sayConnecting once the session is ready: the
+// model and video mode, on stderr. While the spinner shows, the line
+// takes the place of its "connecting to ...": "connected to <who>:
+// <model>, <video mode>  <time>", a switcher named by its model not
+// named twice; and the spinner goes on, saying next.
+func (c *cli) sayConnected(name, addr string, sw engine.Switcher, next string) {
+	c.connecting = false
+	about := nonEmpty(sw.Product, sw.VideoMode)
+	s := c.spinner
+	if s == nil {
+		fmt.Fprintln(c.stderr, strings.Join(about, ", "))
+		return
+	}
+	if name == sw.Product {
+		about = nonEmpty(sw.VideoMode)
+	}
+	took := s.elapsed().Milliseconds()
+	s.set(next)
+	fmt.Fprintf(c.stderr, "connected to %s: %s  %s\n", paintWho(c.colourErr, name, addr), strings.Join(about, ", "),
+		c.colourErr(dim, fmt.Sprintf("%d ms", took)))
 }
 
 // codeName is the engine's error code for an exit status.

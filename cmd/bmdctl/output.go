@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 	"unicode/utf8"
 
@@ -78,8 +77,8 @@ func (p *printer) note(n engine.Note) {
 		p.sw = n.Switcher
 		p.c.adopt(p.g, &p.t, *n.Switcher)
 		if p.c.connecting && p.human() {
-			p.c.connecting = false
-			fmt.Fprintln(p.c.stderr, strings.Join(nonEmpty(n.Switcher.Product, n.Switcher.VideoMode), ", "))
+			name, addr := p.whoParts()
+			p.c.sayConnected(name, addr, *n.Switcher, p.waiting())
 		}
 	case n.Values != nil:
 		p.vals = n.Values
@@ -127,28 +126,61 @@ func isTable(r engine.Response) bool {
 // one), else the one the switcher gives itself; the address alone when
 // neither is known.
 func (p *printer) who() string {
-	name := ""
-	switch {
-	case p.t.Host != nil:
-		name = p.t.Host.Label()
-	case p.sw != nil:
-		name = p.sw.Name
-	}
-	addr := shortAddress(p.t.Address)
+	name, addr := p.whoParts()
 	if name == "" {
 		return addr
 	}
 	return name + " (" + addr + ")"
 }
 
+// whoParts are who's name ("" when none is known) and address.
+func (p *printer) whoParts() (name, addr string) {
+	switch {
+	case p.t.Host != nil:
+		name = p.t.Host.Label()
+	case p.sw != nil:
+		name = p.sw.Name
+	}
+	return name, shortAddress(p.t.Address)
+}
+
+// whoOut is who as stdout shows it: the name bold, the address dim.
+func (p *printer) whoOut() string {
+	name, addr := p.whoParts()
+	return paintWho(p.c.colour, name, addr)
+}
+
 // header is a report's first line: the switcher, its model and video
 // mode.
 func (p *printer) header() string {
-	parts := []string{p.who()}
+	parts := []string{p.whoOut()}
 	if p.sw != nil {
 		parts = append(parts, nonEmpty(p.sw.Product, p.sw.VideoMode)...)
 	}
-	return p.c.colour(bold, strings.Join(parts, "  "))
+	return strings.Join(parts, "  ")
+}
+
+// waiting is what the spinner says while a request waits on the
+// switcher: what it does, to which switcher.
+func (p *printer) waiting() string {
+	who, slot := p.who(), p.params["slot"]
+	switch p.e.Path {
+	case "media upload":
+		return fmt.Sprintf("uploading still %s to %s", slot, who)
+	case "media download":
+		return fmt.Sprintf("downloading still %s from %s", slot, who)
+	case "macro upload":
+		return fmt.Sprintf("uploading macro %s to %s", slot, who)
+	case "macro download":
+		return fmt.Sprintf("downloading macro %s from %s", slot, who)
+	case "profile save":
+		return "saving the profile of " + who
+	case "profile restore":
+		return "restoring the profile to " + who
+	case "profile images":
+		return "downloading the stills from " + who
+	}
+	return p.label() + ": waiting for " + who
 }
 
 func nonEmpty(s ...string) []string {
@@ -212,16 +244,6 @@ func (c *cli) colourErr(code, s string) string {
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
-// Colours: program red and preview green, as tally lamps are; errors red;
-// a command sent without an echo to confirm it dim.
-const (
-	green  = "32"
-	yellow = "33"
-	red    = "31"
-	bold   = "1"
-	dim    = "2"
-)
-
 // humanLines renders a response as lines: one per result.
 func (p *printer) humanLines(r engine.Response) []string {
 	raw, _ := r.Result.(json.RawMessage)
@@ -270,8 +292,11 @@ func (p *printer) commandLine(r engine.Response, raw json.RawMessage) string {
 // switcher's two longest source names ("CAM2 → CAM5" on a switcher whose
 // names are its four-letter short names); one that is wider pushes the
 // status along.
+// At a terminal the line starts with the prompt, the switcher's name
+// bold and its address dim, sent and the time dim.
 func (p *printer) writeLine(what, where, change string, confirmed bool, took int64) string {
-	status := p.c.colour(dim, padRight("sent", 9))
+	c := p.c
+	status := c.colour(dim, padRight("sent", 9))
 	if confirmed {
 		status = padRight("confirmed", 9)
 	}
@@ -283,7 +308,8 @@ func (p *printer) writeLine(what, where, change string, confirmed bool, took int
 	if p.sw != nil && p.sw.NameWidth > 0 {
 		changeWidth = 2*p.sw.NameWidth + width(" → ")
 	}
-	return fmt.Sprintf("%s  %s  %s  %s %5d ms", p.who(), padRight(head, 22), padRight(change, changeWidth), status, took)
+	return c.result(fmt.Sprintf("%s  %s  %s  %s %s", p.whoOut(), padRight(head, 22), padRight(change, changeWidth), status,
+		c.colour(dim, fmt.Sprintf("%5d ms", took))))
 }
 
 // describe splits a command's values into what was done (its words, with
@@ -336,9 +362,12 @@ func (p *printer) describe(e *table.Entry, vals []engine.Value) (what, where, ch
 		}
 	}
 	for _, v := range changed {
+		// What a tally lamp would show: the source put on program red, on
+		// preview green; a keyer or DSK put on air, or fade to black, red.
 		after := v.After
 		switch {
-		case e.Path == "program" && v.Param == "source", v.Param == "program":
+		case e.Path == "program" && v.Param == "source", v.Param == "program",
+			v.Param == "on-air" && v.After == "on", v.Param == "ftb" && v.After == "black":
 			after = p.c.colour(red, after)
 		case e.Path == "preview" && v.Param == "source":
 			after = p.c.colour(green, after)
@@ -427,15 +456,12 @@ func width(s string) int {
 	return n
 }
 
-// table aligns rows of cells into lines.
+// table aligns rows of cells into lines (align), colour codes and all.
 func (p *printer) table(rows [][]string) []string {
-	var b bytes.Buffer
-	tw := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
-	for _, r := range rows {
-		fmt.Fprintln(tw, strings.Join(r, "\t"))
+	out := align(rows)
+	if len(out) == 0 {
+		return nil
 	}
-	tw.Flush()
-	out := strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
 	for i := range out {
 		out[i] = strings.TrimRight(out[i], " ")
 	}
