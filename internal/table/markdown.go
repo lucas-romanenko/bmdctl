@@ -26,6 +26,13 @@ func (r *Registry) Markdown() string {
 		fmt.Fprintf(&b, "\n## %s\n", d)
 		for _, e := range r.Entries(d) {
 			fmt.Fprintf(&b, "\n### `bmdctl %s %s`\n\n%s\n", d, e.Usage(), e.Summary)
+			if len(e.Examples) > 0 {
+				b.WriteString("\n```\n")
+				for _, ex := range e.Examples {
+					fmt.Fprintf(&b, "bmdctl %s\n", ex)
+				}
+				b.WriteString("```\n")
+			}
 			var notes []string
 			if e.Unverified {
 				notes = append(notes, "**Unverified.**")

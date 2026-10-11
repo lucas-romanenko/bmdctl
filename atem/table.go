@@ -25,7 +25,9 @@ import (
 func RegisterCommands(r *table.Registry) error {
 	var entries []table.Entry
 	for _, s := range commandSpecs() {
-		entries = append(entries, s.entry())
+		e := s.entry()
+		e.Examples = examples[s.path]
+		entries = append(entries, e)
 	}
 	if err := r.Add(entries...); err != nil {
 		return err

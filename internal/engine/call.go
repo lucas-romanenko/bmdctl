@@ -362,7 +362,7 @@ func RegisterOperations(r *table.Registry) error {
 	var es []table.Entry
 	for _, o := range operations() {
 		e := o.entry
-		e.Device, e.Operation = "atem", true
+		e.Device, e.Operation, e.Examples = "atem", true, opExamples[e.Path]
 		es = append(es, e)
 	}
 	if err := r.Add(es...); err != nil {

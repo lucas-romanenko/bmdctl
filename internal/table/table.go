@@ -92,6 +92,10 @@ type Entry struct {
 	// AtLeastOne: the command does nothing unless one of its optional
 	// parameters is given (a masked command).
 	AtLeastOne bool
+	// Examples are up to three real command lines, as typed after
+	// "bmdctl" without the device word, the plainest first: --help opens
+	// with them, and docs/COMMANDS.md and the man page show them.
+	Examples []string
 }
 
 // Words returns the entry's path as words.
