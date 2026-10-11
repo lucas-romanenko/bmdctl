@@ -97,7 +97,7 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 	out := []string{""}
 	if len(list) == 0 {
 		out = append(out, indent+c.colour(dim, "no switchers yet"), "",
-			indent+c.colour(dim, "bmdctl hosts add ADDRESS adds one"))
+			indent+c.colour(dim, "bmdctl connect ADDRESS adds one"))
 		return out
 	}
 	var cells [][]string

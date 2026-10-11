@@ -169,6 +169,28 @@ func TestTerminalWrites(t *testing.T) {
 	golden(t, "writes.golden", strings.ReplaceAll(tr.out.String(), tr.b.dir, "DIR"))
 }
 
+// connect ADDRESS saves the switcher as the default, by its own name,
+// and the first time ever says Tab completes its names; connect alone
+// goes to the default; disconnect names the switcher. A name another
+// host goes by isn't taken.
+func TestTerminalConnect(t *testing.T) {
+	b := newBench(t)
+	tr := &transcript{b: b}
+	tr.run("connect", "192.0.2.10")
+	tr.run("program", "cam1") // to the default now
+	tr.run("disconnect")
+	tr.run("connect")
+	tr.run("connect", "192.0.2.10") // saved already, the default already
+	tr.run("connect", "192.0.2.11") // calls itself what the first does
+	tr.run("disconnect")
+	golden(t, "connect.golden", tr.out.String())
+	f, _, _ := tr.b.cli("")
+	hs, _, _ := f.loadHosts()
+	if len(hs.Hosts) != 1 || hs.Default != "ATEM 1 M/E Constellation HD" || hs.Hosts[0].Address != "192.0.2.10" {
+		t.Errorf("hosts.yml: %+v", hs)
+	}
+}
+
 // fit cuts a line to its columns, colour codes and all.
 func TestFit(t *testing.T) {
 	for _, c := range []struct {
