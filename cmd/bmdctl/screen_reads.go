@@ -227,7 +227,7 @@ func screenConnect(p *printer, _ engine.Response, raw json.RawMessage) view {
 		}
 		out = append(out, c.resultLine("connect", state, ""))
 	}
-	if p.saved.name != "" && c.tellOnce("tab-completion") {
+	if p.saved.name != "" && p.e.Device == "atem" && c.tellOnce("tab-completion") {
 		out = append(out, indent+c.colour(dim, "tab completes input names"))
 	}
 	return view{rows: out}

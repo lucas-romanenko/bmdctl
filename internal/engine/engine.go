@@ -28,6 +28,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
+	"github.com/lucas-romanenko/bmdctl/hyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
 
@@ -41,6 +42,10 @@ type Config struct {
 	// Dial opens a session; nil means atem.Dialer with Logger. Tests
 	// point it at internal/fakeatem.
 	Dial func(ctx context.Context, addr string) (*atem.Session, error)
+	// DialHyperDeck opens a HyperDeck session; nil means
+	// hyperdeck.Dialer with Logger. Tests point it at
+	// internal/fakehyperdeck.
+	DialHyperDeck func(ctx context.Context, addr string) (*hyperdeck.Session, error)
 	// ProbeATEM and ProbeDial are the device probe's ways of asking an
 	// address (probe.go): an ATEM's handshake, and a TCP connection for
 	// the others. Nil means atem.Probe and a net.Dialer's; tests point
@@ -87,12 +92,21 @@ type Engine struct {
 	stopping bool
 }
 
-// host is one switcher address and its session.
+// devSession is a session to a device: an *atem.Session or a
+// *hyperdeck.Session.
+type devSession interface {
+	Connected() bool
+	Ready() <-chan struct{}
+	Close() error
+}
+
+// host is one device address and its session.
 type host struct {
-	key string // canonical "host:port"
+	key    string // canonical "host:port"
+	device string // atem, hyperdeck
 
 	// Guarded by Engine.mu.
-	sess    *atem.Session
+	sess    devSession
 	dialing chan struct{} // closed when the dial in progress ends
 	dialErr error
 	pinned  bool
@@ -116,6 +130,10 @@ func New(cfg Config) *Engine {
 		d := atem.Dialer{Logger: e.log}
 		e.cfg.Dial = d.Dial
 	}
+	if e.cfg.DialHyperDeck == nil {
+		d := hyperdeck.Dialer{Logger: e.log}
+		e.cfg.DialHyperDeck = d.Dial
+	}
 	if e.cfg.ProbeATEM == nil {
 		e.cfg.ProbeATEM = atem.Probe
 	}
@@ -132,6 +150,9 @@ func New(cfg Config) *Engine {
 func NewRegistry() (*table.Registry, error) {
 	r := table.New()
 	if err := atem.RegisterCommands(r); err != nil {
+		return nil, err
+	}
+	if err := hyperdeck.RegisterCommands(r); err != nil {
 		return nil, err
 	}
 	if err := RegisterOperations(r); err != nil {
@@ -187,7 +208,7 @@ func (e *Engine) stop() {
 	e.stopping = true
 	close(e.done)
 	l := e.listener
-	var sessions []*atem.Session
+	var sessions []devSession
 	for k, h := range e.hosts {
 		if h.idle != nil {
 			h.idle.Stop()
@@ -307,7 +328,7 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	if e.cfg.Background && req.Build != "" && e.cfg.BuildID != "" && req.Build != e.cfg.BuildID {
 		return nil, false, codeErr(CodeStale, "the engine runs another build of bmdctl and stops, for this one to start its own")
 	}
-	if req.Device != "atem" {
+	if req.Device != "atem" && req.Device != "hyperdeck" {
 		return nil, false, codeErr(CodeUsage, "no commands for device %q", req.Device)
 	}
 	entry := e.cfg.Registry.Find(req.Device, req.Path)
@@ -323,6 +344,9 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	}
 	if req.Host == "" {
 		return nil, false, codeErr(CodeUsage, "no switcher named: give --host")
+	}
+	if req.Device == "hyperdeck" {
+		return c.runDeck() // hyperdeck.go
 	}
 	o, isOp := e.ops[entry.Path]
 	if entry.Operation && !isOp {
@@ -384,10 +408,17 @@ func usageErr(err error) error {
 }
 
 // hostKey is addr as "host:port", lower-cased, port 9910 by default.
-func hostKey(addr string) (string, error) {
+func hostKey(addr string) (string, error) { return deviceKey("atem", addr) }
+
+// deviceKey is addr as "host:port", lower-cased, the device's port by
+// default: 9910 for an ATEM, 9993 for a HyperDeck.
+func deviceKey(device, addr string) (string, error) {
 	h, p, err := net.SplitHostPort(addr)
 	if err != nil {
 		h, p = strings.Trim(addr, "[]"), fmt.Sprint(atem.DefaultPort)
+		if device == "hyperdeck" {
+			p = fmt.Sprint(hyperdeck.DefaultPort)
+		}
 	}
 	if h == "" {
 		return "", codeErr(CodeUsage, "no host in %q", addr)
@@ -395,13 +426,23 @@ func hostKey(addr string) (string, error) {
 	return net.JoinHostPort(strings.ToLower(h), p), nil
 }
 
-// acquire returns the session for addr, dialling it if there is none or
-// the one there has failed, and how long it had gone unused. Concurrent
-// requests share one dial; connecting is called with the session's key
-// when this request waits for one. release must be called when the
-// request is done with the session.
+// acquire returns the ATEM session for addr: acquireSession's for an
+// ATEM.
 func (e *Engine) acquire(ctx context.Context, addr string, connecting func(key string)) (*host, *atem.Session, time.Duration, func(), error) {
-	key, err := hostKey(addr)
+	h, s, idle, release, err := e.acquireSession(ctx, "atem", addr, connecting)
+	if err != nil {
+		return nil, nil, 0, nil, err
+	}
+	return h, s.(*atem.Session), idle, release, nil
+}
+
+// acquireSession returns the device's session for addr, dialling it if
+// there is none or the one there has failed, and how long it had gone
+// unused. Concurrent requests share one dial; connecting is called with
+// the session's key when this request waits for one. release must be
+// called when the request is done with the session.
+func (e *Engine) acquireSession(ctx context.Context, device, addr string, connecting func(key string)) (*host, devSession, time.Duration, func(), error) {
+	key, err := deviceKey(device, addr)
 	if err != nil {
 		return nil, nil, 0, nil, err
 	}
@@ -411,9 +452,22 @@ func (e *Engine) acquire(ctx context.Context, addr string, connecting func(key s
 		return nil, nil, 0, nil, codeErr(CodeUnreachable, "the engine is stopping")
 	}
 	h := e.hosts[key]
+	if h != nil && h.device != device && h.busy == 0 {
+		// The address was another device's: start again.
+		if h.sess != nil {
+			go h.sess.Close()
+		}
+		if h.idle != nil {
+			h.idle.Stop()
+		}
+		h = nil
+	}
 	if h == nil {
-		h = &host{key: key}
+		h = &host{key: key, device: device}
 		e.hosts[key] = h
+	} else if h.device != device {
+		e.mu.Unlock()
+		return nil, nil, 0, nil, codeErr(CodeUsage, "%s is in use as %s %s", key, DeviceArticle(h.device), DeviceNames[h.device])
 	}
 	var idle time.Duration
 	if h.busy == 0 && !h.used.IsZero() {
@@ -464,6 +518,8 @@ func dialMessage(key string, err error) string {
 	switch {
 	case err == nil:
 		return key + ": no session"
+	case errors.Is(err, context.DeadlineExceeded) && strings.HasSuffix(key, fmt.Sprintf(":%d", hyperdeck.DefaultPort)):
+		return fmt.Sprintf("no HyperDeck answered at %s within %v", key, hyperdeck.ConnectTimeout)
 	case errors.Is(err, context.DeadlineExceeded):
 		return fmt.Sprintf("no switcher answered at %s within %v", key, atem.ConnectTimeout)
 	}
@@ -473,9 +529,25 @@ func dialMessage(key string, err error) string {
 // dial opens h's session. It runs on the engine's context, not a
 // request's, since every request waiting for it shares it.
 func (e *Engine) dial(h *host) {
-	ctx, cancel := context.WithTimeout(e.ctx, atem.ConnectTimeout)
-	s, err := e.cfg.Dial(ctx, h.key)
-	cancel()
+	var s devSession
+	var err error
+	if h.device == "hyperdeck" {
+		ctx, cancel := context.WithTimeout(e.ctx, atem.ConnectTimeout)
+		var d *hyperdeck.Session
+		d, err = e.cfg.DialHyperDeck(ctx, h.key)
+		cancel()
+		if err == nil {
+			s = d
+		}
+	} else {
+		ctx, cancel := context.WithTimeout(e.ctx, atem.ConnectTimeout)
+		var a *atem.Session
+		a, err = e.cfg.Dial(ctx, h.key)
+		cancel()
+		if err == nil {
+			s = a
+		}
+	}
 	e.mu.Lock()
 	ch := h.dialing
 	h.dialing, h.dialErr = nil, err
@@ -489,11 +561,25 @@ func (e *Engine) dial(h *host) {
 	close(ch)
 	e.mu.Unlock()
 	if err != nil {
-		e.log.Warn("connect failed", "host", h.key, "err", err)
+		e.log.Warn("connect failed", "host", h.key, "device", h.device, "err", err)
 		return
 	}
-	st := s.State()
-	e.log.Info("connected", "host", h.key, "product", st.ProductName(""), "video_mode", videoModeLabel(st))
+	name, product, mode := describe(s)
+	e.log.Info("connected", "host", h.key, "device", h.device, "name", name, "product", product, "video_mode", mode)
+}
+
+// describe is a session's device as people read it: the name it gives
+// itself, its model, and its video mode (a deck's video format).
+func describe(s devSession) (name, product, mode string) {
+	switch x := s.(type) {
+	case *atem.Session:
+		st := x.State()
+		return SwitcherName(st), st.ProductName(""), videoModeLabel(st)
+	case *hyperdeck.Session:
+		st := x.State()
+		return st.Name(), st.Model(), st.Transport["video format"]
+	}
+	return "", "", ""
 }
 
 func videoModeLabel(st atem.State) string {
@@ -539,13 +625,18 @@ func (e *Engine) expire(h *host) {
 	}
 }
 
-// disconnect closes addr's session, pinned or not. Requests using it end
-// with ErrClosed.
+// disconnect closes addr's ATEM session, pinned or not. Requests using
+// it end with ErrClosed.
 func (e *Engine) disconnect(addr string) (bool, error) {
 	key, err := hostKey(addr)
 	if err != nil {
 		return false, err
 	}
+	return e.disconnectKey(key)
+}
+
+// disconnectKey closes the session at key, pinned or not.
+func (e *Engine) disconnectKey(key string) (bool, error) {
 	e.mu.Lock()
 	h := e.hosts[key]
 	if h == nil {
@@ -623,9 +714,10 @@ type Status struct {
 	Sessions   []SessionStatus `json:"sessions"`
 }
 
-// SessionStatus is one switcher session.
+// SessionStatus is one device's session.
 type SessionStatus struct {
 	Host      string     `json:"host"`
+	Device    string     `json:"device,omitempty"` // atem, hyperdeck
 	Connected bool       `json:"connected"`
 	Ready     bool       `json:"ready"`
 	Pinned    bool       `json:"pinned"`
@@ -644,11 +736,11 @@ func (e *Engine) status() Status {
 	e.mu.Lock()
 	type snap struct {
 		ss   SessionStatus
-		sess *atem.Session
+		sess devSession
 	}
 	var snaps []snap
 	for _, h := range e.hosts {
-		ss := SessionStatus{Host: h.key, Pinned: h.pinned, Busy: h.busy}
+		ss := SessionStatus{Host: h.key, Device: h.device, Pinned: h.pinned, Busy: h.busy}
 		if h.dialErr != nil && h.sess == nil {
 			ss.Error = h.dialErr.Error()
 		}
@@ -670,8 +762,7 @@ func (e *Engine) status() Status {
 				s.ss.Ready = true
 			default:
 			}
-			state := s.sess.State()
-			s.ss.Product, s.ss.VideoMode = state.ProductName(""), videoModeLabel(state)
+			_, s.ss.Product, s.ss.VideoMode = describe(s.sess)
 		}
 		st.Sessions = append(st.Sessions, s.ss)
 	}
@@ -717,12 +808,12 @@ type Overview struct {
 func (e *Engine) switchers() []Switcher {
 	type snap struct {
 		sw   Switcher
-		sess *atem.Session
+		sess devSession
 	}
 	var snaps []snap
 	e.mu.Lock()
 	for _, h := range e.hosts {
-		sw := Switcher{Host: h.key, Pinned: h.pinned}
+		sw := Switcher{Host: h.key, Device: h.device, Pinned: h.pinned}
 		if h.dialErr != nil && h.sess == nil {
 			sw.Error = h.dialErr.Error()
 		}
@@ -743,8 +834,7 @@ func (e *Engine) switchers() []Switcher {
 				s.sw.Ready = true
 			default:
 			}
-			st := s.sess.State()
-			s.sw.Name, s.sw.Product, s.sw.VideoMode = SwitcherName(st), st.ProductName(""), videoModeLabel(st)
+			s.sw.Name, s.sw.Product, s.sw.VideoMode = describe(s.sess)
 		}
 		out = append(out, s.sw)
 	}
@@ -765,7 +855,11 @@ func (e *Engine) session(addr string) (*host, *atem.Session) {
 	if h == nil || h.sess == nil {
 		return nil, nil
 	}
-	return h, h.sess
+	s, ok := h.sess.(*atem.Session)
+	if !ok {
+		return nil, nil
+	}
+	return h, s
 }
 
 func (e *Engine) engineRequest(ctx context.Context, req Request) (any, bool, error) {

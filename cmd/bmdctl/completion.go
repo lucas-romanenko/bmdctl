@@ -129,12 +129,15 @@ func (c *cli) complete(args []string) []string {
 	if len(words) > 0 {
 		first = words[0]
 	}
+	// The device: named, else the target host's type, as run finds it.
 	device, path := "atem", words
 	if slices.Contains(hosts.Devices, first) {
 		device, path = first, words[1:]
-		if first != "atem" {
-			return nil
-		}
+	} else if t, err := c.resolveTarget(g); err == nil && t.Device != "" {
+		device = t.Device
+	}
+	if !slices.Contains(c.reg.Devices(), device) {
+		return nil
 	}
 	e, _, err := c.reg.ParseLine(device, path, tokens)
 	var nc *table.NoCommand

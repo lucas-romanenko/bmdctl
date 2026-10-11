@@ -388,7 +388,11 @@ func (c *cli) unverified(label string) {
 		c.notice("%s is unverified on hardware", label)
 		return
 	}
-	fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: atemwire restored it from pyatem without checking it on a switcher\n", label)
+	why := "atemwire restored it from pyatem without checking it on a switcher"
+	if strings.HasPrefix(label, "hyperdeck ") {
+		why = "bmdctl sends it as BMD's protocol document describes; hyperdeckwire never sent it to a deck"
+	}
+	fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: %s\n", label, why)
 }
 
 // sayConnecting prints "connecting to <who> ..." on stderr, once per

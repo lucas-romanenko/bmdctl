@@ -238,7 +238,8 @@ func TestALineBreakIsRefused(t *testing.T) {
 }
 
 func TestCommandsRefuseNothing(t *testing.T) {
-	for _, c := range []Validator{SetConfiguration{}, GotoClipBy{0}, GotoTimecode{"1:00"}, GotoTimecode{"00:00:00:0x"}} {
+	for _, c := range []Validator{SetConfiguration{}, GotoClipBy{0}, GotoTimecode{"1:00"}, GotoTimecode{"00:00:00:0x"},
+		GotoTimecode{"00:00:60:00"}, GotoTimecode{"24:00:00:00"}} {
 		if c.Validate() == nil {
 			t.Errorf("%+v valid", c)
 		}

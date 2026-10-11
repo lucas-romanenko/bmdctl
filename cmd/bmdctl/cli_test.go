@@ -20,6 +20,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
+	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
 
 var update = flag.Bool("update", false, "rewrite docs/COMMANDS.md and testdata/terminal's golden files")
@@ -626,7 +627,11 @@ func TestSpawnedEngine(t *testing.T) {
 // gets before it is sent, at most 72 columns.
 func TestExamples(t *testing.T) {
 	c := newCLI(io.Discard, io.Discard)
-	for _, e := range c.reg.Entries("atem") {
+	var all []table.Entry
+	for _, d := range c.reg.Devices() {
+		all = append(all, c.reg.Entries(d)...)
+	}
+	for _, e := range all {
 		if n := len(e.Examples); n < 1 || n > 3 {
 			t.Errorf("%s: %d examples", e.Path, n)
 		}
@@ -641,7 +646,7 @@ func TestExamples(t *testing.T) {
 				t.Errorf("%s: %q: %v", e.Path, ex, err)
 				continue
 			}
-			got, raw, err := c.reg.ParseLine("atem", words, tokens)
+			got, raw, err := c.reg.ParseLine(e.Device, words, tokens)
 			if err == nil {
 				err = precheck(got, raw, g)
 			}

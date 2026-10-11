@@ -180,6 +180,9 @@ func (p *printer) headerLine(v view) string {
 	if p.live != nil && !v.noLive {
 		live = []string{"PGM " + p.live.Program + " · PVW " + p.live.Preview}
 	}
+	if p.deckLive != nil && !v.noLive {
+		live = nonEmpty(deckLiveText(p.deckLive))
+	}
 	if p.sw != nil && (v.model || p.connectedIn > 0) {
 		if p.sw.Product != p.name() {
 			model = nonEmpty(p.sw.Product)
@@ -235,7 +238,7 @@ func (p *printer) show(v view) {
 // screen is a successful response's view.
 func (p *printer) screen(r engine.Response) view {
 	raw, _ := r.Result.(json.RawMessage)
-	if f := screenFormats[p.e.Path]; f != nil {
+	if f := screenFormats[formatKey(p.e)]; f != nil {
 		return f(p, r, raw)
 	}
 	if !p.e.Operation || isCommandResult(raw) {

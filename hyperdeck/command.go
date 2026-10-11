@@ -231,7 +231,8 @@ func (c GotoTimecode) Validate() error {
 }
 
 // IsTimecode reports whether s is HH:MM:SS:FF (or HH:MM:SS;FF, drop
-// frame), two digits each.
+// frame), two digits each, hours under 24 and minutes and seconds under
+// 60.
 func IsTimecode(s string) bool {
 	if len(s) != 11 {
 		return false
@@ -246,7 +247,8 @@ func IsTimecode(s string) bool {
 			return false
 		}
 	}
-	return true
+	two := func(i int) int { return int(s[i]-'0')*10 + int(s[i+1]-'0') }
+	return two(0) < 24 && two(3) < 60 && two(6) < 60
 }
 
 // Record starts recording, into a clip named Name if given. From BMD's

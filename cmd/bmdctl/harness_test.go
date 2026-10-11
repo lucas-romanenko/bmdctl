@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
+	"github.com/lucas-romanenko/bmdctl/hyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
 	"github.com/lucas-romanenko/bmdctl/internal/fakenet"
@@ -91,6 +92,9 @@ func (b *bench) startEngine(cfg engine.Config) error {
 	}
 	cfg.Registry, cfg.Dial, cfg.Socket = reg, b.dial, l.Addr()
 	cfg.ProbeATEM, cfg.ProbeDial = b.net.ProbeATEM, b.net.Dial
+	cfg.DialHyperDeck = func(ctx context.Context, addr string) (*hyperdeck.Session, error) {
+		return (&hyperdeck.Dialer{DialContext: b.net.Dial}).Dial(ctx, addr)
+	}
 	eng := engine.New(cfg)
 	b.mu.Lock()
 	b.eng = eng

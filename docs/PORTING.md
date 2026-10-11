@@ -2286,6 +2286,95 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   adds against the fake deck, over a pipe and over loopback TCP. Nothing
   here has run against a deck.
 
+## HyperDeck commands (`hyperdeck/table.go`, `internal/engine/hyperdeck.go`, `cmd/bmdctl/deck.go`)
+
+Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
+`hyperdeck`, goes to a HyperDeck through the engine.
+
+- **The table.** `hyperdeck.RegisterCommands` adds the commands that are
+  one line each, built from their arguments as the ATEM's are (a
+  `TableCommand`, whose bytes are the line and its newline): `play
+  [--speed N] [--loop] [--single-clip] [--clip N]`, `stop`, `record
+  [name]`, `next` and `prev` (`goto: clip id: +1`/`-1`), `slot <slot>`.
+  The engine adds the ones that read the deck first: `goto <clip>`,
+  `loop <on>`, `clips [--disk] [--slot N]`, `status`, `watch [--count
+  N]`, `state [--path P]`, `connect [address]` and `disconnect`. Slots
+  and clips count from 1, as the deck numbers them on the wire: nothing
+  is converted. `--dry-run` prints the line itself (a text protocol's
+  bytes). `record`, `next`, `prev` and `loop` are marked unverified:
+  hyperdeckwire never sends them (SURFACE-hyperdeck.md §5.1), and the
+  notice says so; `goto` by timecode is too, though the entry isn't
+  marked, since by clip it is hyperdeckwire's own line.
+- **The engine's sessions** are keyed by device: an address's key takes
+  the device's port (9910, 9993), and a host holds an `*atem.Session` or
+  a `*hyperdeck.Session` (`devSession`: Connected, Ready, Close) with its
+  device. Dialling, sharing a dial, idling out, pinning, `status` and
+  the overview are the same for both; `Config.DialHyperDeck` dials a
+  deck (`hyperdeck.Dialer`, so notifications on and the state read).
+- **Each request reads the transport first** (`transport info`): the
+  deck's notifications don't carry the timecode as it plays, and the
+  before of a result and a terminal's header (the `deck` note, `stopped
+  · clip 2`, as `on_air` is a switcher's) should be what the deck holds.
+  The `switcher` note carries the deck's name (device info's), model and
+  video format, so the header, hosts.yml's renames and the overview work
+  as for a switcher.
+- **A write says what it changed**, before and after, in a `values`
+  note: the transport (`stopped → play 50%`; the speed where it isn't
+  100), the clip by name (`next`, `prev`, `goto`), the timecode (`goto
+  00:01:30:00`), the slot, loop on or off. After the deck's 200 the
+  engine reads the transport again: that answer comes after the
+  command's, so it holds what the command did. A HyperDeck acks every
+  command, so a write is always `confirmed` (or refused): there is no
+  `sent`. A deck that already holds it sends nothing, `already`: `stop`
+  while stopped, `play` as it plays (no other flag), the active slot
+  again, loop as it is.
+- **What the deck refuses** (a 1xx) is `rejected`, exit 4: `the deck
+  refused play: remote control disabled (111)`. No answer within the
+  timeout is `no_echo`, exit 3, and ends the session (Session,
+  "Timeouts"); the session gone is `unreachable`, exit 2.
+- **`goto <clip>`** takes a timecode (HH:MM:SS:FF, `;` for drop frame;
+  hours under 24, minutes and seconds under 60), a clip's number, or a
+  clip's name: exactly, ignoring case, else the one clip whose name it
+  starts (two are listed); the timeline is read fresh for a name.
+- **`loop on|off`** changes the playback under way: it sends `play` with
+  the speed and single clip as they are and loop set, a `loop: false`
+  hyperdeckwire can't send. The protocol keeps no loop apart from a
+  playback, so a stopped deck has nothing to loop and the command says
+  so (`bmdctl play --loop starts one looping`); not sending play there,
+  which would start one, is deliberate.
+- **`status`** reads each slot's info and remote control, then shows the
+  transport (status, speed, loop, single clip), the timecode, the clip
+  (number, name, duration), how many clips the timeline holds, each slot
+  (volume, status, recording time left, the active one marked at the
+  line's end) and whether remote control is on. `clips` reads the
+  timeline (`clips get`), marking the clip the transport is on with its
+  status at the line's end, or with `--disk`/`--slot` a slot's disk
+  (`disk list`), with its formats. `state` is the session's
+  `hyperdeck.State` as JSON, `--path` as a switcher's.
+- **`watch`** streams the deck's notifications as `ChangeEvent`s: kind
+  `state`, the code as opcode (`508`), the block as key (`transport`,
+  `slot:2`, `remote`, `configuration`) and what the notification carried
+  as value; `disconnected` when the session ends. The CLI shows each
+  against a `state` snapshot taken once the engine says it watches, as a
+  switcher's watch does: `transport  stopped → play`, `clip  Intro... →
+  Interview.mov`, `remote  enabled true → false`.
+- **Routing.** The device comes from the host's type (Hosts, "Which
+  device"): `play` to an ATEM host says `STUDIO (192.0.2.10) is an ATEM;
+  bmdctl atem --help`, `program 2` to a deck `DECK 1 (192.0.2.20) is a
+  HyperDeck; bmdctl hyperdeck --help`. Completion completes the host's
+  device's commands. `doctor` reads a deck's greeting and device info
+  (model, protocol, software) where the engine has no ready session to
+  it.
+- **Colour:** `record` red, as recording is on a switcher; nothing else
+  of a deck's is coloured but what is for every device (the name bold;
+  ids, durations, the header's transport dim).
+- **Tests.** `cmd/bmdctl/deck_test.go` runs each command through an
+  engine to the fake deck (a pipe through `internal/fakenet`): the
+  lines sent, each result's before → after, refusals, reads as text and
+  JSON, watch, and that every entry runs (`TestEveryDeckCommandRuns`);
+  `testdata/terminal/deck.golden` is the terminal's. None of it has met
+  a deck: the owner will run it against one when one is on the bench.
+
 ## Fake HyperDeck (`internal/fakehyperdeck`)
 
 - **A deck on any `net.Conn`.** `Deck.Dial` is a `hyperdeck.Dialer`'s

@@ -17,10 +17,13 @@ writes haven't yet. The ATEM package has its wire
 layer: the UDP transport, a session that tracks the switcher's state,
 every state packet atemwire parses and every command it can send. It
 also moves stills and macros to and from the switcher, encodes and
-decodes macros, and saves and applies ASC-style profiles. The CLI runs
-everything through a background engine that keeps a session open to
-each switcher; the first command starts it. The other devices come
-later.
+decodes macros, and saves and applies ASC-style profiles. The HyperDeck
+package speaks the HyperDeck Ethernet Protocol (TCP 9993): transport,
+clips, slots and the deck's notifications, checked against hyperdeckwire
+itself but not yet run against a deck. The CLI runs everything through a
+background engine that keeps a session open to each device; the first
+command starts it. `bmdctl connect ADDRESS` finds out what is at an
+address. Videohub and Ultimatte come later.
 
 ```
 $ bmdctl hosts add studio 10.0.0.20
@@ -90,6 +93,9 @@ Go 1.27. The device packages use only the standard library.
 
 - `docs/SURFACE-atem.md`: everything atemwire can do, copied from bmdwire
   v1.3.0. It is the specification for the `atem` package.
+- `docs/SURFACE-hyperdeck.md`: everything hyperdeckwire can do, written
+  from bmdwire v1.3.0's code. It is the specification for the
+  `hyperdeck` package.
 - `docs/PORTING.md`: every decision the port makes, and every place it
   differs from bmdwire.
 - `docs/COMMANDS.md`: every command the CLI knows, generated from the
