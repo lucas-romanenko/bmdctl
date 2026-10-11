@@ -86,6 +86,9 @@ func formatStatus(p *printer, _ engine.Response, raw json.RawMessage) []string {
 		use = sessionLine(r.Session)
 	}
 	rows := [][]string{{"session", use}}
+	if st := p.c.runningEngine(); st != nil && st.Commit != "" {
+		rows = append(rows, []string{"engine", "commit " + st.Commit})
+	}
 	for _, m := range r.MEs {
 		me := fmt.Sprintf("me %d", m.ME)
 		rows = append(rows, []string{me, "program " + c.colour(red, source(m.Program)), "preview " + c.colour(green, source(m.Preview))})

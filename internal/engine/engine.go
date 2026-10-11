@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
@@ -46,6 +47,9 @@ type Config struct {
 	IdleTimeout time.Duration
 	// Version, Socket and LogPath are reported by the status request.
 	Version, Socket, LogPath string
+	// Commit is the git commit the engine was built from, short, for
+	// people; reported by status. BuildID is what tells builds apart.
+	Commit string
 	// BuildID is the build the engine runs, reported by status.
 	BuildID string
 	// Background: a command started the engine (engine --background), so
@@ -585,6 +589,7 @@ func waitReady(ctx context.Context, s *atem.Session, waiting func()) error {
 // Status is what the engine reports about itself.
 type Status struct {
 	Version  string `json:"version"`
+	Commit   string `json:"commit,omitempty"` // the git commit, short, for people
 	Build    string `json:"build,omitempty"`
 	Protocol int    `json:"protocol"`
 	// Background: a command started it, and one of another build
@@ -613,7 +618,7 @@ type SessionStatus struct {
 }
 
 func (e *Engine) status() Status {
-	st := Status{Version: e.cfg.Version, Build: e.cfg.BuildID, Protocol: Version, Background: e.cfg.Background, PID: os.Getpid(), Started: e.started,
+	st := Status{Version: e.cfg.Version, Commit: e.cfg.Commit, Build: e.cfg.BuildID, Protocol: Version, Background: e.cfg.Background, PID: os.Getpid(), Started: e.started,
 		Socket: e.cfg.Socket, Log: e.cfg.LogPath, Sessions: []SessionStatus{}}
 	e.mu.Lock()
 	type snap struct {
@@ -673,6 +678,9 @@ func (e *Engine) switcherNote(h *host, st atem.State, idle time.Duration) *Switc
 		Ready: true, Pinned: pinned, IdleS: int(idle.Seconds())}
 	if !pinned {
 		sw.DropS = int(e.idle.Seconds())
+	}
+	for id := range st.Inputs {
+		sw.NameWidth = max(sw.NameWidth, utf8.RuneCountInString(sourceName(st, int(id))))
 	}
 	return sw
 }

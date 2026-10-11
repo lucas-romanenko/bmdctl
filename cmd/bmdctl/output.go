@@ -266,7 +266,10 @@ func (p *printer) commandLine(r engine.Response, raw json.RawMessage) string {
 
 // writeLine lays a write's result out in columns, so the lines of exec
 // line up: the switcher, what was done and where, what changed, the
-// status, the time.
+// status, the time. What changed is as wide as a change between the
+// switcher's two longest source names ("CAM2 → CAM5" on a switcher whose
+// names are its four-letter short names); one that is wider pushes the
+// status along.
 func (p *printer) writeLine(what, where, change string, confirmed bool, took int64) string {
 	status := p.c.colour(dim, padRight("sent", 9))
 	if confirmed {
@@ -276,7 +279,11 @@ func (p *printer) writeLine(what, where, change string, confirmed bool, took int
 	if where != "" {
 		head += "  " + where
 	}
-	return fmt.Sprintf("%s  %s  %s  %s %5d ms", p.who(), padRight(head, 22), padRight(change, 24), status, took)
+	changeWidth := 24 // without the engine's note
+	if p.sw != nil && p.sw.NameWidth > 0 {
+		changeWidth = 2*p.sw.NameWidth + width(" → ")
+	}
+	return fmt.Sprintf("%s  %s  %s  %s %5d ms", p.who(), padRight(head, 22), padRight(change, changeWidth), status, took)
 }
 
 // describe splits a command's values into what was done (its words, with

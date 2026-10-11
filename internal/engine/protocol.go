@@ -165,6 +165,10 @@ type Switcher struct {
 	// pinned.
 	DropS int    `json:"drop_s,omitempty"`
 	Error string `json:"error,omitempty"` // the last dial's failure, with no session
+	// NameWidth is the widest of the switcher's sources as a line shows
+	// them (short name, else long name, else id), in characters: the CLI
+	// sizes a write's before → after column to it. In a note only.
+	NameWidth int `json:"name_width,omitempty"`
 }
 
 // Value is one thing a command sets: its parameter, or for a command

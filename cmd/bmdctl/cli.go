@@ -335,6 +335,38 @@ func versionString() string {
 	return fmt.Sprintf("bmdctl %s (%s)", v, strings.Join(extra, ", "))
 }
 
+// commitString is the git commit this binary was built from, short as
+// git prints it: GoReleaser's, else the toolchain's build info
+// (vcs.revision, "+dirty" when vcs.modified says the tree had changes,
+// untracked files included); "" when neither says (go run, go test). It
+// is for people; the stale-engine check compares build IDs.
+func commitString() string {
+	var settings []debug.BuildSetting
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		settings = bi.Settings
+	}
+	return shortCommit(commit, settings)
+}
+
+func shortCommit(ldflag string, settings []debug.BuildSetting) string {
+	if ldflag != "" {
+		return ldflag[:min(7, len(ldflag))]
+	}
+	rev, dirty := "", ""
+	for _, s := range settings {
+		switch {
+		case s.Key == "vcs.revision":
+			rev = s.Value[:min(7, len(s.Value))]
+		case s.Key == "vcs.modified" && s.Value == "true":
+			dirty = "+dirty"
+		}
+	}
+	if rev == "" {
+		return ""
+	}
+	return rev + dirty
+}
+
 // errExit carries an exit code through a function that returns an error.
 type errExit struct {
 	code int
