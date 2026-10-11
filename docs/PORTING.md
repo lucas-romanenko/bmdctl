@@ -14,6 +14,8 @@ it. When you make a new decision, add it here in the same commit.
   header naming the tag. It is the specification for `atem/`. Its body says
   it describes 1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in
   v1.3.0, so it describes v1.3.0 apart from those marks.
+- `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
+  bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md.
 - Where SURFACE.md and the Python code disagree, the code at v1.3.0 wins,
   as SURFACE.md itself says. Each disagreement found during the port is
   listed under "SURFACE.md and the code" at the end of this file.
@@ -46,9 +48,11 @@ it. When you make a new decision, add it here in the same commit.
 - Phase 2 adds transfers (stills, macros), the macro bytecode codec,
   profiles and the display-unit readers. Phase 3 adds the binary: the
   background engine, hosts, every command through the engine, `exec`,
-  completion, man pages and `doctor`. Out of scope until asked (phase 4):
-  HTTP, MCP, and the HyperDeck, Videohub and Ultimatte packages beyond
-  their `doc.go`.
+  completion, man pages and `doctor`. Phase 4 adds the HyperDeck package
+  and its commands, the device probe, the alias binaries, `serve`, `mcp`,
+  the Claude skill and the release. Out of scope until asked (phase 5):
+  the Videohub and Ultimatte packages beyond their `doc.go`, and
+  hyperdeckwire's FTP upload and configuration API.
 
 ## Licensing
 
@@ -59,9 +63,12 @@ it. When you make a new decision, add it here in the same commit.
 - `internal/fixtures/` holds bytes and files copied from atemwire's test
   suite, so it carries atemwire's licence as well.
 - Everything else (the CLI, the other device packages, `internal/table`,
-  `internal/fakeatem`, `internal/engine`, `internal/hosts`,
-  `internal/mdns`, `internal/paths`) is MIT, as bmdwire's non-ATEM
-  packages are.
+  `internal/fakeatem`, `internal/fakehyperdeck`, `internal/engine`,
+  `internal/hosts`, `internal/mdns`, `internal/paths`) is MIT, as
+  bmdwire's non-ATEM packages are. `hyperdeck/` is a port of
+  hyperdeckwire, which is MIT; its fixtures and oracle are in
+  `hyperdeck/testdata/`, not `internal/fixtures/`, so the LGPL directory
+  holds only atemwire's data.
 
 ## Fixtures (`internal/fixtures`)
 
@@ -2074,6 +2081,172 @@ comes back. Indexes in results count from 1, as the flags do
   `-short`). The tests for the deliberate differences are in
   `atem/fake_test.go` (package `atem_test`, which can shorten the silence
   timeout through `export_test.go`).
+
+## HyperDeck (`hyperdeck/`)
+
+Ports bmdwire v1.3.0's `hyperdeckwire/client.py`, the HyperDeck Ethernet
+Protocol on TCP 9993. hyperdeckwire has no SURFACE.md, so
+`docs/SURFACE-hyperdeck.md` inventories it, written from the code;
+`upload.py` (FTP) and `setup.py` (the configuration API) are in it and
+not ported yet.
+
+API: `Dial(ctx, addr)`, `Dialer{DialContext, Logger, Bare}`; `Send(cmd)`,
+`Request(ctx, cmd) (Response, error)`, `SendAndWait(ctx, cmd)`, `State()`,
+`Subscribe() (<-chan Change, func())`, `Ready()`, `Connected()`, `Close()`,
+`Greeting()`, `Model()`, `ProtocolVersion()`; a method per hyperdeckwire
+method (`DeviceInfo`, `DiskList`, `Play(ctx, PlayOptions)`, ...); a command
+type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
+`ErrClosed`, `ErrTimeout`, `ErrMalformed`.
+
+- **atem.Session's shape, on a stream.** One owner goroutine holds the
+  connection's writes, the commands waiting for answers, the state and the
+  subscribers; one reader frames what the deck sends and hands it over.
+  Methods hand the owner closures on an unbuffered channel and wait for
+  them to have run. hyperdeckwire is one blocking socket read only when a
+  request is made; here the reader reads all the time, so notifications
+  reach the state between commands.
+- **Answers are matched in order.** The deck answers every command once,
+  in order, so each command sent registers a waiter, in the owner step
+  that writes it, and the next answer that isn't asynchronous is the
+  oldest waiter's. `SendAndWait` is `_check_ok` (a 1xx is an `*Error`,
+  hyperdeckwire's `HyperdeckError`, `[code] text`); `Request` is
+  `request` (any code). `Send` writes and returns; its answer is read and
+  dropped, a refusal logged. HyperDeck acks every command, so a
+  command's answer is its confirmation: unlike an ATEM there is no
+  command without one.
+- **Framing is `_recv_line` and `_read_response`:** LF ends a line, every
+  CR before it goes, bytes decode as Python's `'replace'` (one U+FFFD per
+  maximal ill-formed subpart), blank heads are skipped, the code is read
+  with a port of `int()` (signs, leading zeros, underscores, any script's
+  decimal digits; beyond int32 it is malformed, where Python goes on with
+  a big integer), a head ending in a colon starts a block read to the first
+  empty line, and `params()` strips with Python's `str.strip()` (Unicode
+  whitespace and U+001C-U+001F). The clip parsers split on single spaces
+  from the right, as `_parse_disk_line` and `_parse_clips_v1_line` do; the
+  clip-line filter counts decimal digits where Python's `isdigit()` also
+  counts superscripts, and a head of those is skipped by the parser there
+  and by the filter here, with the same list. Messages quote with a port
+  of `repr()`. These ports are hyperdeck's own: `atem`'s are LGPL.
+- **Dial** opens TCP with a 5 s deadline (`ConnectTimeout`,
+  `DEFAULT_CONNECT_TIMEOUT`) and reads the greeting as `connect` does: the
+  first block, whatever it is (`skip_async=False`). Then, unless `Bare`,
+  it turns on the notifications bmdctl needs, one `notify: <kind>: true`
+  line each (transport, slot, remote, configuration; not display
+  timecode, which a deck sends every frame) and reads the deck's state:
+  `device info`, `transport info`, `remote`, `configuration`, `clips get`
+  and `slot info` for each of `slot count`'s slots (16 at most). A refusal
+  among these (an old firmware without a notification) is logged and
+  leaves that part empty; the connection failing fails Dial. Ready is
+  closed when Dial returns. hyperdeckwire turns nothing on and reads
+  nothing more; the oracle tests dial `Bare`.
+- **State and notifications are bmdctl's** (hyperdeckwire keeps none):
+  every block read, answer or notification, goes into `State` by its
+  head's text: `connection info`, `device info`, `transport info`, `slot
+  info` (by its `slot id`), `remote info`, `configuration`, `notify`,
+  `clips info` (the timeline, parsed), `disk list` (by slot, parsed),
+  anything else under `Other` by its text. An answer replaces its block; a
+  notification, which carries only what changed, is merged into it.
+  Fields keep the deck's names (`display timecode`); `State` has
+  accessors (`Status`, `ClipID`, `SlotID`, `Timecode`, `Name`, `Model`,
+  `RecordingTime`). A 5xx after the greeting is published as a `Change`
+  (`Key` `transport`, `slot:2`, `remote`, `configuration`; `Params`, what
+  it carried; `Value`, the block now), each subscriber its own copy; a
+  subscriber 1024 behind is closed and dropped, as atem's are. `Name` is
+  device info's `name` (what HyperDeck Setup sets, which hyperdeckwire's
+  `set_name` docstring says `device info` reports), else its model.
+- **No re-handshake.** TCP either works or ends: the stream ending, a
+  read or write error, or a timeout ends the session (`Connected` false,
+  waiters failed with an error matching `ErrClosed` that wraps the cause,
+  subscribers sent `ChangeDisconnected` and closed). The caller dials
+  again, as hyperdeckwire's caller reconnects.
+- **Timeouts.** Without a context deadline an answer is waited for 5 s
+  (`ReadTimeout`, `DEFAULT_READ_TIMEOUT`); with one, until it. The context
+  ending first abandons the wait: the waiter stays, so its answer, when it
+  comes, is dropped, not read as the next command's.
+- **Commands** are hyperdeckwire's lines, written as it writes them
+  (`play: clip id: N loop: true single clip: true speed: N`, in that
+  order; `clips add: clip id: N name: X`, the name verbatim; a
+  `Setting`'s underscores as spaces, bools `true`/`false`). `Play`'s loop
+  and single clip are pointers: nil leaves them out, false writes
+  `loop: false`, which hyperdeckwire can't (§5.4 item 8) and bmdctl's
+  `loop off` needs. `SetConfiguration` with nothing to set refuses to be a
+  command (`Validate`), where `set_configuration()` sends nothing; the
+  method sends nothing, as hyperdeckwire's does.
+- **Added from BMD's document** (`HyperDeckEthernetProtocol.pdf`,
+  December 2024), which hyperdeckwire doesn't send and nobody has yet
+  sent from bmdctl to a deck: `Record` (`record`, `record: name: X`),
+  `GotoClipBy` (`goto: clip id: +1`, `-1`), `GotoTimecode` (`goto:
+  timecode: HH:MM:SS:FF`, checked for that form), `Notify` and `Play`'s
+  false loop and single clip. The CLI marks these unverified.
+- **Deliberate differences**, each a trap of SURFACE-hyperdeck.md §5.4
+  fixed rather than copied, with a test; not yet filed against bmdwire:
+  - **A timeout ends the session** (§5.4 item 1): an answer later than
+    its deadline would be read as the next command's. The owner checks
+    the oldest waiter's deadline every 100 ms. `TestATimeoutEndsTheSession`;
+    an abandoned wait's late answer is dropped, `TestALateAnswerIsDropped`.
+  - **An answer to no command is dropped** and logged (§5.4 item 2), not
+    given to the next command. `TestAnAnswerToNothingIsDropped`. A
+    malformed head is still the waiting command's error, as in
+    hyperdeckwire, and one with no command waiting is dropped too.
+  - **A line break in a value is refused** (§5.4 item 5): every command is
+    checked, and `ClipsAdd`, `Record`, `Notify`, `SetConfiguration` and
+    `Raw` say so in `Validate`. `TestALineBreakIsRefused`.
+  - **A refusal for a greeting fails Dial** (§5.4 item 6): a deck with all
+    the clients it takes answers `120 connection rejected` and closes;
+    Dial returns that `*Error` rather than a dead session.
+    `TestARejectedConnectionFailsDial`; the oracle's greeting of 120
+    expects it.
+  - **After the stream has ended nothing is sent**: hyperdeckwire writes
+    into a socket it found closed and reads its end again; the session has
+    ended and returns `ErrClosed`. The oracle test expects that for calls
+    after a `ConnectionError`.
+- **Verification.** `hyperdeck/testdata/oracle/client.json`
+  (`gen_client.py`) records hyperdeckwire v1.3.0's real client in 747
+  scripted sessions, 872 calls: the bytes sent, how far into the stream it
+  had read, and the result or exception. `TestClientMatchesHyperdeckwire`
+  replays each through a `Bare` Session on a connection that gives it, call
+  by call, exactly what hyperdeckwire had read (the session reads eagerly),
+  and checks the bytes, results (dicts, clips, ints) and errors by class
+  (`HyperdeckError` code, text and message; `ConnectionError` as
+  `ErrClosed`; the malformed head's and `ValueError`'s messages), the
+  greeting, model and protocol version, and that every method is called.
+  `TestParsersMatchHyperdeckwire` checks the line parsers on 132 lines and
+  `params` on 16 bodies. `client_test.go` ports
+  `test_hyperdeckwire_client.py` one for one on the fixtures copied from
+  it (`hyperdeck/testdata/fixtures`); `session_test.go` tests what bmdctl
+  adds against the fake deck, over a pipe and over loopback TCP. Nothing
+  here has run against a deck.
+
+## Fake HyperDeck (`internal/fakehyperdeck`)
+
+- **A deck on any `net.Conn`.** `Deck.Dial` is a `hyperdeck.Dialer`'s
+  `DialContext`, one end of a `net.Pipe`; `Deck.Listen` serves loopback,
+  for what dials a port itself. MIT.
+- **What it holds:** a HyperDeck Studio HD Mini named `Deck 1`, protocol
+  1.13, two slots (`SD1` with three clips, the hardware-verified name
+  `Intro Loop animation.mp4` first; `SD2` with one), a timeline (the
+  active slot's clips, as a Studio's is), a transport (status, speed,
+  clip, position in frames at 25 fps, loop, single clip), remote control
+  and a configuration.
+- **What it answers**, with BMD's codes and the 2xx blocks of §4.1:
+  device info (with `name`), transport info, slot info, disk list, clips
+  get, clips count, remote, configuration, notify (per connection),
+  ping; play (speed 0 reports stopped, as hyperdeckwire found on
+  hardware), stop, record (stopping adds the clip, named or `Clip
+  0001.mov`), goto by clip id (absolute, or `+N`/`-N` held at the ends),
+  by timecode, slot select, clips clear/add/remove, remote enable, quit.
+  Writes need remote control (111); a clip it hasn't is 112, an empty
+  timeline 107, a value out of range 102 or 109, anything else 100. Each
+  change goes to the connections that turned its notification on, with
+  only what changed (508, 502, 510, 511).
+- **Controls:** `SetRemote` and `Press(status)` (the front panel, heard
+  by every connection), `Silence` (takes commands, answers none), `Send`
+  (raw text to every connection), `Reject(n)` (120 to the next n), `Drop`
+  (closes every connection); `Commands`, `Status`, `Slot` to look inside.
+- **Not a deck model.** The timecode moves only on goto, nothing plays
+  through to the next clip, and nothing about a deck's timing is claimed.
+  What a real deck answers to `goto: clip id: +1` on the last clip, or a
+  goto beyond the timeline, is not known; the fake holds or refuses.
 
 ## Traps inherited from atemwire
 
