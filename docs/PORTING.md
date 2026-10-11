@@ -1701,6 +1701,38 @@ there instead of taking every address for an ATEM.
   hyperdeckwire's hardware-verified form; the Videohub's and Ultimatte's
   are their libraries' test samples.
 
+## Alias binaries (`cmd/bmdctl/alias.go`, `.goreleaser.yml`, `install.sh`)
+
+Phase 4: one binary, five names. Run as `atemctl`, `hdctl`, `vhctl` or
+`ultctl` (argv[0]'s base name, case and `.exe` ignored for Windows),
+bmdctl is `bmdctl <device>`: atem, hyperdeck, videohub, ultimatte.
+
+- **The device word goes first** (`aliasArgs`): global flags are read
+  anywhere, so `hdctl --json play` is `bmdctl hyperdeck --json play`. The
+  device's own word is allowed again (`hdctl hyperdeck stop`); another
+  device's is refused (`atemctl runs ATEM commands; bmdctl hyperdeck ...
+  runs a HyperDeck's`). Built-ins (version, engine, hosts, exec,
+  completion, man, doctor) are bmdctl's, unchanged. The engine an alias
+  starts is the same executable (a symlink resolves to bmdctl; a Windows
+  copy is the same build), so it isn't a stale one.
+- **Help is the device's alone:** the alias with nothing but flags, with
+  `help` or `--help`, prints that device's command list, its usage lines
+  and examples under the alias's name (`usage: hdctl <command>`, `hdctl
+  play --speed 200`). vhctl and ultctl say there are no commands yet.
+- **Completion** scripts register all five names and ask the name typed
+  (`"${COMP_WORDS[0]}" __complete ...`), which puts its device word in
+  front.
+- **Shipping.** GoReleaser's before hook makes `build/aliases/<name> ->
+  bmdctl` symlinks, and the macOS and Linux archives carry them as
+  symlinks (GoReleaser 2.18 keeps a symlink a symlink in a tar.gz, checked
+  with a snapshot). Windows can't, so four Windows-only builds of the
+  same main under the alias names put copies in the zip. `install.sh`
+  links them beside bmdctl (`ln -sf bmdctl`).
+- **Tests.** `alias_test.go` runs alias lines against the bench and,
+  through `main`, a symlink named hdctl to the test binary;
+  `internal/release` runs `install.sh` against a release served on
+  loopback (its archive, checksums.txt, /latest's redirect).
+
 ## Engine (`internal/engine`)
 
 A background process holding one `atem.Session` per switcher, so a
@@ -1852,7 +1884,10 @@ lives until 10 minutes pass without a request, unless pinned.
   transport.
 - **Stopping** closes the listener, cancels running requests and closes
   every session, which says goodbye to each switcher; it waits up to 5 s
-  for requests to end.
+  for requests to end. A connection accepted as it stops is closed
+  unanswered: its request is counted (the WaitGroup's Add) under the
+  engine's lock and only while not stopping, which Stop sets under that
+  lock before it waits (`-race` found the two racing in phase 4).
 
 ## Operations (`internal/engine/ops_*.go`)
 

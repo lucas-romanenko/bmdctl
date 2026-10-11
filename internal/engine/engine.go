@@ -190,7 +190,16 @@ func (e *Engine) Serve(l Listener) error {
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
+		// Add under the lock, and not once stopping: Stop sets stopping
+		// under it before it waits, so Add can't race the Wait.
+		e.mu.Lock()
+		if e.stopping {
+			e.mu.Unlock()
+			c.Close()
+			return nil
+		}
 		e.wg.Add(1)
+		e.mu.Unlock()
 		go func() {
 			defer e.wg.Done()
 			e.serveConn(c)

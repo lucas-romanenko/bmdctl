@@ -183,7 +183,12 @@ func TestALateAnswerIsDropped(t *testing.T) {
 func TestAnAnswerToNothingIsDropped(t *testing.T) {
 	d := fakehyperdeck.New()
 	s := dialFake(t, d)
-	d.Send("102 invalid value\r\n")
+	ch, stop := s.Subscribe()
+	defer stop()
+	// The notification after it says the session has read the stray
+	// answer: then a command can't be what it answers.
+	d.Send("102 invalid value\r\n508 transport info:\r\nstatus: play\r\n\r\n")
+	next(t, ch)
 	if err := s.Ping(ctx); err != nil {
 		t.Errorf("%v", err)
 	}
@@ -255,8 +260,14 @@ func TestCloseSendsQuit(t *testing.T) {
 	d := fakehyperdeck.New()
 	s := dialFake(t, d)
 	s.Close()
-	if got := d.Commands(); got[len(got)-1] != "quit" {
-		t.Errorf("sent %q", got)
+	// The deck has read the line once Close returns, and notes it just
+	// after.
+	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		if got := d.Commands(); got[len(got)-1] == "quit" {
+			break
+		} else if time.Now().After(deadline) {
+			t.Fatalf("sent %q", got)
+		}
 	}
 	if s.Connected() {
 		t.Error("connected")

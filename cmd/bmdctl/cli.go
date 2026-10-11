@@ -100,6 +100,9 @@ type cli struct {
 	spinAfter time.Duration
 	// discover browses for switchers (mdns); tests replace it.
 	discover func(ctx context.Context, wait time.Duration) ([]mdns.Instance, error)
+	// alias is the device bmdctl runs as when invoked as one of its
+	// alias names (atemctl, hdctl, ...): aliasName (alias.go).
+	alias, aliasName string
 	// probed is what answered at connect ADDRESS's address, when the
 	// engine was asked (connect.go).
 	probed *engine.ProbeResult
@@ -221,6 +224,16 @@ not confirmed in time, 4 refused by the switcher, 5 destructive without --yes.
 // run is main without the process: it takes the arguments after the
 // program name and returns the exit code.
 func (c *cli) run(args []string) int {
+	if c.alias != "" {
+		a, help, err := c.aliasArgs(args)
+		switch {
+		case err != nil:
+			return c.fail(codeFor(err), "%v", err)
+		case help:
+			return c.aliasHelp()
+		}
+		args = a
+	}
 	g, words, tokens, err := splitLine(args)
 	c.json, c.quiet = g.json, g.quiet
 	c.noColor = c.noColor || g.noColor

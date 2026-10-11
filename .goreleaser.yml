@@ -1,10 +1,19 @@
 # GoReleaser v2. Run by .github/workflows/release.yml when a v* tag is pushed.
 # Binaries: macOS arm64/amd64, Windows amd64, Linux amd64/arm64, attached to
-# the GitHub release. Image: ghcr.io/lucas-romanenko/bmdctl (linux amd64 and
+# the GitHub release, each archive with the alias binaries (atemctl, hdctl,
+# vhctl, ultctl). Image: ghcr.io/lucas-romanenko/bmdctl (linux amd64 and
 # arm64 under one manifest).
 version: 2
 
 project_name: bmdctl
+
+before:
+  hooks:
+    # The alias binaries (docs/PORTING.md, "Alias binaries"): bmdctl run as
+    # atemctl, hdctl, vhctl or ultctl acts as that device's command. On
+    # macOS and Linux they are symlinks to bmdctl, made here and kept as
+    # symlinks in the archives; Windows gets copies (the *-windows builds).
+    - sh -c 'rm -rf build/aliases && mkdir -p build/aliases && for a in atemctl hdctl vhctl ultctl; do ln -s bmdctl build/aliases/$a; done'
 
 builds:
   - id: bmdctl
@@ -12,23 +21,53 @@ builds:
     binary: bmdctl
     env:
       - CGO_ENABLED=0
-    goos: [darwin, linux, windows]
+    goos: [darwin, linux]
     goarch: [amd64, arm64]
-    ignore:
-      - goos: windows
-        goarch: arm64
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }}
+      - &ldflags -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }}
+  - &windows
+    id: bmdctl-windows
+    main: ./cmd/bmdctl
+    binary: bmdctl
+    env:
+      - CGO_ENABLED=0
+    goos: [windows]
+    goarch: [amd64]
+    flags:
+      - -trimpath
+    ldflags:
+      - *ldflags
+  - <<: *windows
+    id: atemctl-windows
+    binary: atemctl
+  - <<: *windows
+    id: hdctl-windows
+    binary: hdctl
+  - <<: *windows
+    id: vhctl-windows
+    binary: vhctl
+  - <<: *windows
+    id: ultctl-windows
+    binary: ultctl
 
 archives:
   - id: bmdctl
     ids: [bmdctl]
     formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: build/aliases/*
+        strip_parent: true
+      - README.md
+      - LICENSE
+      - atem/LICENSE
+      - atem/LICENSE-gpl3.txt
+      - atem/NOTICE
+  - id: bmdctl-windows
+    ids: [bmdctl-windows, atemctl-windows, hdctl-windows, vhctl-windows, ultctl-windows]
+    formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
