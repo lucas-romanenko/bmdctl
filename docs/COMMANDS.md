@@ -38,6 +38,7 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 - `bmdctl help`: Print the help.
 - `bmdctl version`: Print bmdctl's version; at a terminal also the commit it was built from, the hosts file and the engine.
 - `bmdctl engine [--log-level L]`: Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running, and restarts one it started from another build of bmdctl; one run with bmdctl engine answers every build.
+- `bmdctl engine --serve [--listen ADDRESS]`: Run the engine in the foreground and serve every command over HTTP/JSON from its process, as bmdctl serve does (127.0.0.1:8880 unless --listen says otherwise): a container's command.
 - `bmdctl engine stop`: Stop the running engine; its sessions say goodbye to their switchers.
 - `bmdctl engine status`: Show the engine's version, build, pid, socket, log and sessions.
 - `bmdctl hosts [list]`: List the hosts.
@@ -49,6 +50,7 @@ bmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag 
 - `bmdctl completion bash|zsh|fish`: Print a shell completion script: commands, flags, host names and, while the engine runs, the switcher's input names and the indexes it has, counted from 1.
 - `bmdctl man [--dir DIR]`: Print the bmdctl(1) manual page, or write it to DIR/bmdctl.1.
 - `bmdctl doctor`: Check the engine, its socket and log, the hosts file and that each host answers, and say what is misconfigured. Exit 1 for a misconfiguration, 2 when a host only didn't answer.
+- `bmdctl serve [--listen ADDRESS]`: Serve every command over HTTP/JSON until interrupted, through the engine: GET /hosts, GET /hosts/{host}/state, POST /hosts/{host}/{command} (the command's words as the path, its arguments a JSON object, multipart/form-data for a file; ?yes=true for a destructive one), GET /hosts/{host}/events (server-sent events: watch's frames) and GET /openapi.json. The answer is the engine's, as --json prints it. It listens on 127.0.0.1:8880 unless --listen says otherwise, and has no authentication: whoever can reach it controls the devices.
 
 ### Conventions
 
