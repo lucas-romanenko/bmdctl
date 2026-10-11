@@ -1656,6 +1656,16 @@ comes back. Indexes in results count from 1, as the flags do
     on-air for a DSK, not an auto), waiting for the echo; one that fails
     goes back on the stack. The stacks outlive sessions but not the
     engine. Nothing to undo is `{"undone": false}`, exit 0.
+  - `show <area>` (the terminal pass) reads one area through the
+    readers and returns it for the CLI to lay out: `keys` (each keyer's
+    type, sources, on air, in the next transition, fly, mask, luma
+    clip and gain), `dsk`, `transition` (the next one, each style's
+    rate and settings, fade to black), `audio` (the Fairlight master and
+    strips, or the classic mixer's inputs, its raw volume as dB, 32768
+    being 0), `media` and `macros` (as `media list` and `macro list
+    --all`), `aux` and `hyperdecks` (the bound slots). `status` stays
+    the short overview of them all. A DVE style atemwire's tables don't
+    name (0-15) is `style N`.
   - `info` is identity and size: product and model, the name set in ATEM
     Setup, the firmware's protocol version, the video mode with its
     resolution and display rate, counts from `_top`, `_MeC` and `_mpl`,

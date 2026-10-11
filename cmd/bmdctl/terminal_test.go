@@ -308,6 +308,21 @@ func TestTerminalUndo(t *testing.T) {
 	}
 }
 
+// show: one area of the switcher, formatted.
+func TestTerminalShow(t *testing.T) {
+	b := newBench(t)
+	tr := &transcript{b: b}
+	for _, area := range []string{"keys", "dsk", "transition", "audio", "media", "macros", "aux", "hyperdecks"} {
+		tr.run("show", area)
+	}
+	tr.run("show", "macros", "--all")
+	golden(t, "show.golden", tr.out.String())
+	if out := b.must(with("show", "dsk")...); !strings.HasPrefix(out, "ATEM 1 M/E Constellation HD (192.0.2.10)  ATEM") ||
+		!strings.Contains(out, "\n  dsk 1       6 / 7  on air  ") {
+		t.Errorf("pipe:\n%s", out)
+	}
+}
+
 // fit cuts a line to its columns, colour codes and all.
 func TestFit(t *testing.T) {
 	for _, c := range []struct {

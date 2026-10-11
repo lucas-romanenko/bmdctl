@@ -882,6 +882,15 @@ Start or stop recording.
 |---|---|---|---|
 | `<recording>` | bool | required | recording |
 
+### `bmdctl atem show <area>`
+
+Show one area of the switcher: keys, dsk, transition, audio, media, macros, aux or hyperdecks.
+
+| argument | value | | |
+|---|---|---|---|
+| `<area>` | enum: keys=0 dsk=1 transition=2 audio=3 media=4 macros=5 aux=6 hyperdecks=7 | required | keys, dsk, transition, audio, media, macros, aux or hyperdecks |
+| `--all` | bool | default false | media and macros: the empty slots too, at a terminal |
+
 ### `bmdctl atem startup clear`
 
 Clear the saved power-on state.
