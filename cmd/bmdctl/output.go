@@ -43,6 +43,12 @@ type printer struct {
 	connectedIn time.Duration
 	saved       remembered      // what connect ADDRESS did to hosts.yml
 	noInput     *engine.NoInput // a source typed that names nothing
+	// steps are an operation's steps (profile save, restore), done how
+	// far (stepped), with what each did; failed is the one that failed.
+	steps   []string
+	details []string
+	stepped int
+	failed  *engine.Step
 }
 
 func (p *printer) label() string { return strings.TrimSpace(p.e.Device + " " + p.e.Path) }
@@ -94,6 +100,17 @@ func (p *printer) note(n engine.Note) {
 		p.live = n.OnAir
 	case n.NoInput != nil:
 		p.noInput = n.NoInput
+	case n.Progress != nil:
+		if p.c.spinner != nil {
+			p.c.spinner.progress(*n.Progress)
+		}
+	case n.Steps != nil:
+		p.steps = n.Steps
+		if p.c.terminal() {
+			p.show(view{}) // the header, before the steps under it
+		}
+	case n.Step != nil:
+		p.step(*n.Step)
 	case n.Alias != nil && p.c.terminal():
 		a := n.Alias
 		if p.c.tellOnce(fmt.Sprintf("alias %s %s %d", p.t.Address, strings.ToLower(a.Typed), a.Shadowed.ID)) {
@@ -654,3 +671,41 @@ func formatState(p *printer, _ engine.Response, raw json.RawMessage) []string {
 // humanFormats renders operations whose results read better than
 // flattened: by entry path.
 var humanFormats = map[string]func(p *printer, r engine.Response, raw json.RawMessage) []string{}
+
+// step takes a step's note: begun, the spinner says it; done, a line
+// says so under the header, in place of the spinner; failed, it is kept
+// for the response, which says why (stepFailed).
+func (p *printer) step(s engine.Step) {
+	if s.Index < 0 || s.Index >= len(p.steps) {
+		return
+	}
+	label := p.steps[s.Index]
+	switch {
+	case s.Error != "":
+		p.failed = &s
+	case s.Done:
+		p.stepped = s.Index + 1
+		p.details = append(p.details, nonEmpty(s.Detail)...)
+		if p.c.terminal() && !p.g.quiet {
+			fmt.Fprintln(p.c.stdout, p.c.resultLine("✓ "+label, s.Detail, took(s.TookMS)))
+		}
+	default:
+		if p.c.spinner != nil {
+			p.c.spinner.set(label)
+		}
+	}
+}
+
+// stepFailed is a failed step at a terminal, in place: the step and why,
+// red, what to do next under it, and the steps it left undone.
+func (p *printer) stepFailed(msg, hint string) {
+	c := p.c
+	label := p.steps[p.failed.Index]
+	fmt.Fprintln(c.stdout, fit(indent+c.colour(red, verbCell("✗ "+label)+msg), lineWidth))
+	if hint != "" {
+		fmt.Fprintln(c.stdout, indent+strings.Repeat(" ", verbWidth+2)+c.colour(dim, fit(hint, lineWidth-verbWidth-4)))
+	}
+	for _, l := range p.steps[p.failed.Index+1:] {
+		fmt.Fprintln(c.stdout, indent+c.colour(dim, verbCell("· "+l)+"skipped"))
+	}
+}

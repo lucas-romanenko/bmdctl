@@ -134,6 +134,50 @@ type transferTask struct {
 
 	done     chan transferResult // buffered 1; written once
 	finished bool
+
+	// size is the upload's length as sent (compressed, if it is), for
+	// its progress; progress, if not nil, takes the latest Progress
+	// (buffered 1): the owner never waits on it.
+	size     int
+	progress chan Progress
+}
+
+// Progress is how far a transfer has come, in bytes, as bmdwire v1.3.0's
+// protocol.py events count them: an upload's upload-progress, the bytes
+// queued of all it sends (compressed, for a still); a still download's
+// transfer-progress, the bytes received of the frame's uncompressed size
+// (so it may end short of Total). A macro download reports none, as
+// atemwire's doesn't.
+type Progress struct {
+	Done, Total int
+}
+
+type progressKey struct{}
+
+// WithProgress returns a context under which a transfer reports its
+// progress to f, from the goroutine that called the transfer (not the
+// session's: atemwire raises its events on its worker thread, which here
+// runs no callbacks), as often as it comes, latest first: a report not
+// yet taken is replaced by the next.
+func WithProgress(ctx context.Context, f func(Progress)) context.Context {
+	return context.WithValue(ctx, progressKey{}, f)
+}
+
+// report hands the task's caller its progress, never waiting: a report
+// not taken yet is replaced.
+func (t *transferTask) report(done, total int) {
+	if t.progress == nil || total <= 0 {
+		return
+	}
+	p := Progress{Done: min(done, total), Total: total}
+	select {
+	case <-t.progress:
+	default:
+	}
+	select {
+	case t.progress <- p:
+	default:
+	}
 }
 
 type transferResult struct {
@@ -391,6 +435,11 @@ func (s *Session) runTransfer(ctx context.Context, t *transferTask, timeout time
 		defer cancel()
 	}
 	t.done = make(chan transferResult, 1)
+	progress, _ := ctx.Value(progressKey{}).(func(Progress))
+	if progress != nil {
+		t.progress = make(chan Progress, 1)
+	}
+	t.size = len(t.data)
 	errc := make(chan error, 1)
 	if err := s.do(func() {
 		if !s.initialized {
@@ -405,10 +454,16 @@ func (s *Session) runTransfer(ctx context.Context, t *transferTask, timeout time
 	if err := <-errc; err != nil {
 		return nil, err
 	}
-	select {
-	case r := <-t.done:
-		return r.data, r.err
-	case <-ctx.Done():
+wait:
+	for {
+		select {
+		case r := <-t.done:
+			return r.data, r.err
+		case p := <-t.progress: // nil, and never ready, without WithProgress
+			progress(p)
+		case <-ctx.Done():
+			break wait
+		}
 	}
 	ch := make(chan error, 1)
 	if err := s.do(func() { ch <- s.cancelTask(t, ctx.Err()) }); err != nil {
@@ -691,6 +746,10 @@ func (s *Session) onChunk(f *FileTransferDataField) {
 	}
 	l.buffer = append(l.buffer, f.Data)
 	l.bufferBytes += len(f.Data)
+	// transfer-progress: a still's, of its frame's uncompressed size.
+	if m := s.state.VideoMode.Mode; m != nil && l.transfer.store != StoreMacros {
+		l.transfer.report(l.bufferBytes, m.Pixels()*4)
+	}
 	// atemwire acknowledges with slot 0: "it seems it's always 0 in practice".
 	s.sendCommands(TransferAck{Transfer: l.transfer.tid})
 }
@@ -809,6 +868,7 @@ func (s *Session) queueChunks() {
 			l.budget = nil
 		}
 		s.t.queuePacket(TransferData{Transfer: t.tid, Data: chunk}.Encode())
+		t.report(t.size-len(t.data), t.size) // upload-progress
 		if l.budget == nil {
 			break
 		}

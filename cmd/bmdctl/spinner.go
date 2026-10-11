@@ -5,9 +5,12 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/lucas-romanenko/bmdctl/internal/engine"
 )
 
 // spinner says what a request waits on while it waits, on one dim,
@@ -22,8 +25,9 @@ type spinner struct {
 	after time.Duration    // how long a wait goes unshown
 	now   func() time.Time // tests replace it
 	label string
-	since time.Time // when label was set
-	shown bool      // a frame is on the line
+	since time.Time        // when label was set
+	prog  *engine.Progress // how far a transfer has come: a bar, where known
+	shown bool             // a frame is on the line
 	frame int
 	stop  chan struct{}
 	done  chan struct{}
@@ -74,8 +78,42 @@ func (s *spinner) tick() {
 	}
 	glyph := spinFrames[s.frame%len(spinFrames)]
 	s.frame++
-	fmt.Fprintf(s.out, "%s%s", clearLine, s.paint(dim, fit(indent+glyph+" "+s.label+" · "+seconds(d), lineWidth)))
+	fmt.Fprintf(s.out, "%s%s", clearLine, s.paint(dim, spinLine(glyph, s.label, s.prog, d)))
 	s.shown = true
+}
+
+// spinLine is one frame: what it waits for and the time so far; with a
+// transfer's progress, a bar, the share done and the bytes moved (or
+// which of several it moves).
+func spinLine(glyph, label string, p *engine.Progress, d time.Duration) string {
+	if p == nil || p.Total <= 0 {
+		return fit(indent+glyph+" "+label+" · "+seconds(d), lineWidth)
+	}
+	f := min(1, float64(p.Done)/float64(p.Total))
+	tail := fmt.Sprintf(" %s %d%%", bar(f), int(f*100))
+	switch {
+	case p.Item != "" && p.Bytes:
+		tail += "  " + p.Item + "  " + size(p.Done)
+	case p.Item != "":
+		tail += "  " + p.Item
+	case p.Bytes:
+		tail += "  " + size(p.Done)
+	}
+	tail += "  " + seconds(d)
+	return fit(indent+glyph+" "+label, lineWidth-width(tail)) + tail
+}
+
+// bar is a share done as eight cells.
+func bar(f float64) string {
+	n := int(f*8 + 0.5)
+	return strings.Repeat("█", n) + strings.Repeat("░", 8-n)
+}
+
+// progress shows how far a transfer has come, as a bar, from now.
+func (s *spinner) progress(p engine.Progress) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.prog = &p
 }
 
 // set says what the wait is for from now on; its time starts again.
@@ -85,7 +123,7 @@ func (s *spinner) set(label string) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.label, s.since = label, s.now()
+	s.label, s.since, s.prog = label, s.now(), nil
 }
 
 // elapsed is how long the wait for the current label has gone on.

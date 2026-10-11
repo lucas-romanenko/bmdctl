@@ -180,7 +180,7 @@ func opMediaUpload(c *call) (any, bool, error) {
 	}
 	ctx, cancel := c.transferCtx()
 	defer cancel()
-	if err := c.sess.UploadStill(ctx, slot, img, opts); err != nil {
+	if err := c.sess.UploadStill(c.withProgress(ctx, bytesMoved), slot, img, opts); err != nil {
 		return nil, false, transferErr(err)
 	}
 	return r, true, nil
@@ -199,7 +199,7 @@ func opMediaDownload(c *call) (any, bool, error) {
 	w, h := m.FrameSize()
 	ctx, cancel := c.transferCtx()
 	defer cancel()
-	frame, err := c.sess.DownloadStill(ctx, slot)
+	frame, err := c.sess.DownloadStill(c.withProgress(ctx, bytesMoved), slot)
 	if err != nil {
 		return nil, false, transferErr(err)
 	}

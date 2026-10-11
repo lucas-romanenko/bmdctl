@@ -1,0 +1,43 @@
+$ bmdctl media upload 3 logo.png
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms</>
+  upload      slot 3  logo  720×480                         <dim># ms</>
+
+$ bmdctl media upload 3 logo.png --yes --name Logo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  upload      slot 3  Logo  720×480  <dim>was "logo"</>             <dim># ms</>
+
+$ bmdctl media download 3 out.png
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  download    slot 3  Logo → out.png  720×480               <dim># ms</>
+
+$ bmdctl macro upload 5 ops.json --name Cams
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  upload      macro 5  Cams                                 <dim># ms</>
+
+$ bmdctl macro download 5 cams.xml
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  download    macro 5  Cams → cams.xml                      <dim># ms</>
+
+$ bmdctl profile save show.xml
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  ✓ setup     3 macros                                      <dim># ms</>
+  ✓ stills    1 still, 1 failed                             <dim># ms</>
+  profile     show.xml  24 KB · 3 macros · 1 still, 1 failed   <dim># ms</>
+  <red>error</>       slot 1 "still": atem: frame of 0 bytes is not 720x480 pix…
+
+$ bmdctl profile images --dir stills
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  images      stills  1 still                               <dim># ms</>
+  <red>error</>       slot 1 "still": atem: frame of 0 bytes is not 720x480 pix…
+
+$ bmdctl profile restore show.xml --yes --video-mode false
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  ✓ setup     applied: 13, skipped: 5                       <dim># ms</>
+  ✓ stills    1 still, 1 failed                             <dim># ms</>
+  restore     show.xml  1 still, 1 failed                   <dim># ms</>
+  <red>error</>       slot 1 "still": no file at ATEM Media Pool/still.png
+
+$ bmdctl media clear 3 --yes
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  clear       slot 3  <dim>was "Logo"</>                            <dim># ms</>
+

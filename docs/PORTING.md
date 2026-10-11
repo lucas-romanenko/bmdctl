@@ -652,8 +652,16 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   finishes the task it is acting on, so a result can't reach the wrong
   caller and callers can overlap. A fatal status is a `*TransferError`
   naming the status as `FileTransferErrorField.__repr__` does. The progress
-  events (`transfer-progress`, `upload-progress`) are not ported: no
-  callback runs on the owner goroutine.
+  events (`transfer-progress`, `upload-progress`) are ported (the
+  terminal pass, for a progress bar) without a callback on the owner
+  goroutine: a transfer under `WithProgress(ctx, f)` gets a channel
+  holding the latest `Progress{Done, Total}`, which the owner replaces
+  and never waits on, and `runTransfer` calls `f` on the caller's
+  goroutine. As atemwire counts it: an upload, the bytes queued of all
+  it sends (compressed, for a still; atemwire counts each as its UDP
+  thread sends it); a still download, the bytes received of the frame's
+  uncompressed size, so it may end short (atemwire every 20 chunks,
+  here every chunk); a macro download none.
 - **Cancellation withdraws one task.** When their timeout expires,
   atemwire's callers call `abort_transfers`, which empties the whole lane,
   safe there only because transfers are serialised. Here the end of a

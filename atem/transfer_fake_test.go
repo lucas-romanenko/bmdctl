@@ -300,3 +300,45 @@ func TestCommandsDuringATransfer(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A transfer under WithProgress reports, on the caller's goroutine, how
+// far it has come: an upload the bytes queued of what it sends, a still
+// download the bytes received of the frame's size; a macro download
+// nothing, as atemwire's transfer-progress skips the macro store.
+func TestTransferProgress(t *testing.T) {
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	frame := testFrame()
+	rle, _ := atem.RLEEncode(frame)
+	var reports []atem.Progress
+	record := func(p atem.Progress) { reports = append(reports, p) }
+	check := func(what string, total int) {
+		t.Helper()
+		if len(reports) < 2 {
+			t.Fatalf("%s: %d reports", what, len(reports))
+		}
+		for i, p := range reports {
+			if p.Total != total || p.Done <= 0 || p.Done > p.Total || i > 0 && p.Done < reports[i-1].Done {
+				t.Fatalf("%s: report %d is %+v of %d", what, i, p, total)
+			}
+		}
+		reports = nil
+	}
+	if err := s.UploadStillFrame(atem.WithProgress(ctxFor(t, 10*time.Second), record), 3, frame, "Logo", ""); err != nil {
+		t.Fatal(err)
+	}
+	if last := reports[len(reports)-1]; last.Done != len(rle) {
+		t.Errorf("upload ends at %+v, want %d", last, len(rle))
+	}
+	check("upload", len(rle))
+	if _, err := s.DownloadStill(atem.WithProgress(ctxFor(t, 10*time.Second), record), 3); err != nil {
+		t.Fatal(err)
+	}
+	check("download", 1920*1080*4)
+	if err := s.UploadMacro(ctxFor(t, 5*time.Second), 2, "Intro", "", bytes.Repeat([]byte{8, 0, 2, 0, 0, 0, 5, 0}, 500)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DownloadMacro(atem.WithProgress(ctxFor(t, 5*time.Second), record), 2); err != nil || len(reports) != 0 {
+		t.Errorf("macro download: %v, %d reports", err, len(reports))
+	}
+}

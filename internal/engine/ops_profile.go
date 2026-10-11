@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/atem/profile"
@@ -182,17 +183,35 @@ func opProfileSave(c *call) (any, bool, error) {
 	opts.Settings, opts.VideoMode = c.flag("settings"), c.flag("video-mode")
 	opts.HyperDecks, opts.Macros = c.flag("hyperdecks"), c.flag("macros")
 	opts.Logger = c.e.log
-	p, err := profile.Save(c.ctx, c.sess, opts)
+	// Two steps for a person: the setup (the macros downloaded with it),
+	// then the stills.
+	c.steps(nonEmptySteps("setup", opts.MediaPoolImages && usedStills(c.state) > 0, "stills")...)
+	var p *profile.Profile
+	err = c.step(0, func() (string, error) {
+		var err error
+		if p, err = profile.Save(c.ctx, c.sess, opts); err != nil {
+			return "", sessionErr(err)
+		}
+		if opts.Macros {
+			return count(usedMacros(c.state), "macro"), nil
+		}
+		return "", nil
+	})
 	if err != nil {
-		return nil, false, sessionErr(err)
+		return nil, false, err
 	}
 	xml, err := p.ToXML()
 	if err != nil {
 		return nil, false, err
 	}
 	r := ProfileResult{Product: c.state.ProductName(""), VideoMode: videoModeLabel(c.state), Bytes: len(xml)}
-	if opts.MediaPoolImages {
-		if r.Images, err = c.downloadImages("file", MediaPoolDir+"/"); err != nil {
+	if opts.MediaPoolImages && usedStills(c.state) > 0 {
+		err := c.step(1, func() (string, error) {
+			var err error
+			r.Images, err = c.downloadImages("file", MediaPoolDir+"/")
+			return imagesDetail(r.Images), err
+		})
+		if err != nil {
 			return nil, false, err
 		}
 	}
@@ -222,17 +241,23 @@ func (c *call) downloadImages(param, prefix string) ([]ImageResult, error) {
 		return out, nil
 	}
 	w, h := m.FrameSize()
+	n, i := usedStills(st), 0
 	for slot := range st.MediaplayerSlots() {
 		info := st.MediaplayerSlotInfo(slot)
 		if !info.IsUsed {
 			continue
 		}
+		i++
 		name := info.Name
 		if name == "" {
 			name = fmt.Sprintf("Slot%d", slot)
 		}
 		r := ImageResult{Slot: table.Index(slot), Name: name, Path: prefix + fileName(name, fmt.Sprintf("Slot%d", slot)) + ".png"}
 		ctx, cancel := c.transferCtx()
+		base, item := int64(i-1)*int64(w*h*4), fmt.Sprintf("still %d of %d", i, n)
+		ctx = c.withProgress(ctx, func(p atem.Progress) Progress {
+			return Progress{Done: base + int64(p.Done), Total: int64(n) * int64(p.Total), Bytes: true, Item: item}
+		})
 		frame, err := c.sess.DownloadStill(ctx, slot)
 		cancel()
 		if err == nil {
@@ -293,7 +318,17 @@ func opProfileRestore(c *call) (any, bool, error) {
 	set("camera-control", &opts.RestoreCameraControl)
 	set("talkback", &opts.RestoreTalkback)
 	opts.Logger = c.e.log
-	res, applyErr := p.Apply(c.ctx, c.sess, opts)
+	images := opts.RestoreMediaPoolImages && len(stillsToUpload(p)) > 0
+	c.steps(nonEmptySteps("setup", images, "stills")...)
+	var res *profile.ApplyResult
+	var applyErr error
+	c.step(0, func() (string, error) {
+		res, applyErr = p.Apply(c.ctx, c.sess, opts)
+		if res == nil {
+			return "", applyErr
+		}
+		return res.Summary(), applyErr
+	})
 	r := ProfileResult{Product: p.Product(), VideoMode: p.VideoMode()}
 	if res != nil {
 		r.Applied, r.Skipped, r.Errors, r.Summary = res.Applied, res.Skipped, res.Errors, res.Summary()
@@ -307,15 +342,88 @@ func opProfileRestore(c *call) (any, bool, error) {
 		return r, false, nil
 	}
 	if opts.RestoreMediaPoolImages {
+		start := time.Now()
+		if images {
+			c.note(Note{Step: &Step{Index: 1}})
+		}
 		r.Images = c.uploadImages(p)
+		if images {
+			c.note(Note{Step: &Step{Index: 1, Done: true, Detail: imagesDetail(r.Images), TookMS: time.Since(start).Milliseconds()}})
+		}
 	}
 	return r, false, nil
+}
+
+// nonEmptySteps is first, then each later step whose condition holds.
+func nonEmptySteps(first string, more bool, then string) []string {
+	if more {
+		return []string{first, then}
+	}
+	return []string{first}
+}
+
+// usedStills is how many still slots hold a still.
+func usedStills(st atem.State) int {
+	n := 0
+	for slot := range st.MediaplayerSlots() {
+		if st.MediaplayerSlotInfo(slot).IsUsed {
+			n++
+		}
+	}
+	return n
+}
+
+// usedMacros is how many macro slots hold a macro.
+func usedMacros(st atem.State) int {
+	n := 0
+	for _, p := range st.Macros.Properties {
+		if p != nil && p.IsUsed {
+			n++
+		}
+	}
+	return n
+}
+
+// imagesDetail says what an images step moved: "3 stills", "2 stills, 1
+// failed".
+func imagesDetail(ims []ImageResult) string {
+	ok, failed := 0, 0
+	for _, im := range ims {
+		if im.Error != "" {
+			failed++
+		} else {
+			ok++
+		}
+	}
+	s := count(ok, "still")
+	if failed > 0 {
+		s += fmt.Sprintf(", %d failed", failed)
+	}
+	return s
+}
+
+func count(n int, thing string) string { return fmt.Sprintf("%d %s%s", n, thing, plural(n)) }
+
+// stillsToUpload are a profile's <Still> elements that name a file.
+func stillsToUpload(p *profile.Profile) []*profile.Element {
+	pool := p.Root().Find("MediaPool")
+	if pool == nil {
+		return nil
+	}
+	var out []*profile.Element
+	for _, s := range pool.FindAll("Stills/Still") {
+		if s.GetDefault("path", "") != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // uploadImages pushes each <Still index name path> whose image the CLI
 // sent into its slot, after the rest of the profile, as atemwire's
 // caller is expected to.
 func (c *call) uploadImages(p *profile.Profile) []ImageResult {
+	n, i := len(stillsToUpload(p)), 0
 	out := []ImageResult{}
 	pool := p.Root().Find("MediaPool")
 	if pool == nil {
@@ -330,6 +438,7 @@ func (c *call) uploadImages(p *profile.Profile) []ImageResult {
 			continue
 		}
 		data, ok := c.req.Files[ImageParam(slot)]
+		i++
 		var err error
 		switch {
 		case slot < 0:
@@ -341,6 +450,10 @@ func (c *call) uploadImages(p *profile.Profile) []ImageResult {
 			var format string
 			if img, format, err = image.Decode(bytes.NewReader(data)); err == nil {
 				ctx, cancel := c.transferCtx()
+				base, item := int64(i-1)*1000, fmt.Sprintf("still %d of %d", i, n)
+				ctx = c.withProgress(ctx, func(p atem.Progress) Progress {
+					return Progress{Done: base + int64(p.Done)*1000/int64(p.Total), Total: int64(n) * 1000, Item: item}
+				})
 				err = c.sess.UploadStill(ctx, slot, img, atem.StillOptions{Name: r.Name, Premultiply: format == "png"})
 				cancel()
 			}
