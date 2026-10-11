@@ -29,7 +29,7 @@ const bashCompletion = `# bash completion for bmdctl. Load it with:
 # offered counted from 1, as bmdctl takes them.
 _bmdctl() {
     local cur=${COMP_WORDS[COMP_CWORD]} out line
-    out=$(bmdctl __complete "${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null) || return
+    out=$("${COMP_WORDS[0]}" __complete "${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null) || return
     COMPREPLY=()
     if [[ $out == ":files" ]]; then
         compopt -o filenames 2>/dev/null
@@ -40,10 +40,10 @@ _bmdctl() {
         [[ -n $line ]] && COMPREPLY+=("$(printf '%q' "$line")")
     done <<< "$out"
 }
-complete -F _bmdctl bmdctl
+complete -F _bmdctl bmdctl atemctl hdctl vhctl ultctl
 `
 
-const zshCompletion = `#compdef bmdctl
+const zshCompletion = `#compdef bmdctl atemctl hdctl vhctl ultctl
 # zsh completion for bmdctl. Load it with:
 #   source <(bmdctl completion zsh)
 # or save it as _bmdctl in a directory on $fpath. Indexes (M/Es, keyers,
@@ -51,7 +51,7 @@ const zshCompletion = `#compdef bmdctl
 # as bmdctl takes them.
 _bmdctl() {
     local -a out
-    out=("${(@f)$(bmdctl __complete "${(@)words[2,CURRENT]}" 2>/dev/null)}")
+    out=("${(@f)$(${words[1]} __complete "${(@)words[2,CURRENT]}" 2>/dev/null)}")
     if [[ ${out[1]} == ":files" ]]; then
         _files
         return
@@ -61,7 +61,7 @@ _bmdctl() {
 if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
     _bmdctl "$@"
 else
-    compdef _bmdctl bmdctl
+    compdef _bmdctl bmdctl atemctl hdctl vhctl ultctl
 fi
 `
 
@@ -72,15 +72,18 @@ const fishCompletion = `# fish completion for bmdctl. Load it with:
 # from 1, as bmdctl takes them.
 function __bmdctl_complete
     set -l tokens (commandline -opc)
+    set -l prog $tokens[1]
     set -e tokens[1]
-    set -l out (bmdctl __complete $tokens (commandline -ct) 2>/dev/null)
+    set -l out ($prog __complete $tokens (commandline -ct) 2>/dev/null)
     if test "$out[1]" = ":files"
         __fish_complete_path (commandline -ct)
     else
         printf '%s\n' $out
     end
 end
-complete -c bmdctl -f -a '(__bmdctl_complete)'
+for prog in bmdctl atemctl hdctl vhctl ultctl
+    complete -c $prog -f -a '(__bmdctl_complete)'
+end
 `
 
 func (c *cli) completionCommand(g globals, words []string) int {

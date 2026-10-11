@@ -423,7 +423,7 @@ func (c *cli) groupHelp(w io.Writer, device string, prefix []string) {
 	if path != "" {
 		path += " "
 	}
-	fmt.Fprintf(w, "usage: bmdctl [%s] %s<command> [arguments] [--flag value ...]\n\n", device, path)
+	fmt.Fprintf(w, "usage: %s %s<command> [arguments] [--flag value ...]\n\n", c.usageHead(device), path)
 	fmt.Fprintf(w, "Commands:\n")
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, ch := range c.reg.Children(device, prefix) {
@@ -438,7 +438,11 @@ func (c *cli) groupHelp(w io.Writer, device string, prefix []string) {
 		fmt.Fprintf(tw, "  %s\t%s\n", usage, summary)
 	}
 	tw.Flush()
-	fmt.Fprintf(w, "\nRun 'bmdctl %s %s<command> --help' for a command's arguments.\n", device, path)
+	run := "bmdctl " + device
+	if c.usageHead(device) != "bmdctl ["+device+"]" {
+		run = c.usageHead(device)
+	}
+	fmt.Fprintf(w, "\nRun '%s %s<command> --help' for a command's arguments.\n", run, path)
 	if len(prefix) == 0 {
 		fmt.Fprintln(w)
 		globalHelp(w)
@@ -459,12 +463,12 @@ func (c *cli) entryHelp(w io.Writer, device string, e table.Entry) {
 	// It opens with what it does and how it is typed, for real.
 	fmt.Fprintf(w, "%s\n\n", e.Summary)
 	for _, ex := range e.Examples {
-		fmt.Fprintf(w, "  bmdctl %s\n", ex)
+		fmt.Fprintf(w, "  %s %s\n", c.prog(), ex)
 	}
 	if len(e.Examples) > 0 {
 		fmt.Fprintln(w)
 	}
-	fmt.Fprintf(w, "usage: bmdctl [%s] %s", device, e.Usage())
+	fmt.Fprintf(w, "usage: %s %s", c.usageHead(device), e.Usage())
 	var args, flags []table.Param
 	for _, p := range e.Params {
 		if e.Positional(p.Name) {
