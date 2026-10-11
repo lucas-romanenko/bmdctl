@@ -238,3 +238,36 @@ of it. The rules for hardware tests (which switchers, read-only unless
   upload, profile restore, `classic-audio meters`, a still that isn't
   premultiplied, a fit that shrinks the image or adds bars at the
   sides, and every other command that changes the switcher.
+
+## 2026-10-10: sixth run, the readability pass (recorded late)
+
+- **Recorded on 2026-10-11, after the seventh run's section**, so it is
+  out of order: no report was written at the time. It is from the
+  engine's log alone, which says what was sent and how long it took,
+  not what the terminal showed.
+- **Commit:** `489c74e`. The engine's log gives its version as
+  `v0.0.0-20261011014228-489c74e55047`, not marked dirty.
+- **Switcher:** the Constellation at 192.168.81.85, "TEST ATEM 2": the
+  engine's log reports an ATEM 1 M/E Constellation HD at 1080p25. The
+  log doesn't give the protocol version (2.30 on the first run).
+- **Run:** in six seconds by the engine's log, from 21:44:57. The engine
+  of the previous build (`274d6a2`) was stopped and one of this build
+  started. Then `preview`, whose request opened the session (connected
+  in about 320 ms); `program` (32 ms); `status`; `bmdctl engine
+  status`; `inputs`; `state`; `program cam1`, refused before sending (no
+  input of that name, as in the fifth run); and `media clear` of still
+  slot 10 (19 ms; a destructive command, so `--yes` was given: the log
+  shows no refusal). The session closed after ten idle minutes.
+- **Result:** the `preview` stalled: 5,319 ms, then `no_echo`, `sent,
+  but the switcher did not report PrvI:0 within 5s` (exit 3). The
+  switcher wasn't the problem: it answered the `program` 42 ms later,
+  in 32 ms. By the owner's diagnosis it was a no-op: the preview asked
+  for the source already on preview, a switcher doesn't report a value
+  that didn't change, and the engine waited its whole timeout for an
+  echo that never came. Everything else answered at once.
+- **Changed because of it** (`e975fc5`): a write the switcher already
+  holds sends nothing. The engine reads the value through the
+  command's reader first and answers confirmed with `"already": true`,
+  and a terminal says `already` where the time goes. The seventh run
+  verified `already` on hardware.
+- **Not yet verified on hardware:** as after the fifth run.
