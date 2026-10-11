@@ -34,6 +34,7 @@ const (
 // exec's lines: whose header is up.
 type screenState struct {
 	header string
+	about  []string // the header's parts for the whole invocation: exec's file and lines
 }
 
 // view is what one response shows at a terminal: the header's own
@@ -109,7 +110,7 @@ func verbCell(verb string) string { return padRight(verb, verbWidth) + "  " }
 // dim and right-aligned. A line that would pass lineWidth loses the end
 // of what it did, not its status.
 func (c *cli) resultLine(verb, change, status string) string {
-	left := indent + c.stamped() + verbCell(verb) + change
+	left := indent + c.lineNo + c.stamped() + verbCell(verb) + change
 	if change == "" {
 		left = strings.TrimRight(left, " ")
 	}
@@ -152,11 +153,13 @@ func (p *printer) name() string {
 }
 
 // headerLine is the switcher's name, bold, then dim: what is live on M/E
-// 1, the model, video mode and how long connecting took when this
-// invocation opened the session, and the view's own parts.
+// 1, what the invocation is (exec's file), the model, video mode and how
+// long connecting took when this invocation opened the session, and the
+// view's own parts.
 //
 // What is live comes first. Where the line would pass lineWidth, the
-// model goes, then the video mode, before anything is cut.
+// model goes, then the video mode, then the connect time, before
+// anything is cut.
 func (p *printer) headerLine(v view) string {
 	var live, model, mode, connected []string
 	if p.live != nil && !v.noLive {
@@ -172,7 +175,7 @@ func (p *printer) headerLine(v view) string {
 		connected = []string{fmt.Sprintf("connected %d ms", p.connectedIn.Milliseconds())}
 	}
 	line := func() string {
-		parts := slices.Concat(live, model, mode, connected, v.about)
+		parts := slices.Concat(live, p.c.scr.about, model, mode, connected, v.about)
 		l := p.c.colour(bold, p.name())
 		if len(parts) > 0 {
 			l += "  " + p.c.colour(dim, strings.Join(parts, " · "))
@@ -186,6 +189,10 @@ func (p *printer) headerLine(v view) string {
 	}
 	if width(l) > lineWidth && mode != nil {
 		mode = nil
+		l = line()
+	}
+	if width(l) > lineWidth && connected != nil {
+		connected = nil
 		l = line()
 	}
 	return fit(l, lineWidth)
@@ -299,6 +306,9 @@ func (p *printer) screenError(r engine.Response) {
 		p.stepFailed(msg, hint)
 		return
 	}
+	if p.c.lineNo != "" && p.sw != nil {
+		p.show(view{}) // exec's lines are under the header, a failed one too
+	}
 	p.c.screenError(msg, hint)
 }
 
@@ -315,7 +325,11 @@ func (p *printer) inputsHint(ins []engine.Source) string {
 		return tail
 	}
 	tail = " · " + tail
-	return fit(strings.Join(list, " · "), lineWidth-len(hintPad)-width(tail)) + tail
+	room := lineWidth - len(hintPad) - width(tail)
+	if p.c.lineNo != "" {
+		room -= width(indent + p.c.lineNo)
+	}
+	return fit(strings.Join(list, " · "), room) + tail
 }
 
 // screenError is an error at a terminal: "error" red, the message, and
@@ -323,13 +337,19 @@ func (p *printer) inputsHint(ins []engine.Source) string {
 func (c *cli) screenError(msg, hint string) { c.screenErrorTo(c.stderr, msg, hint) }
 
 func (c *cli) screenErrorTo(w io.Writer, msg, hint string) {
+	// A line of exec's goes in its place, numbered as the lines are.
+	lead, pad := "", hintPad
+	if c.lineNo != "" {
+		lead = indent + c.lineNo
+		pad = strings.Repeat(" ", width(lead)) + hintPad
+	}
 	lines := strings.Split(msg, "\n")
-	fmt.Fprintln(w, fit(c.colourErr(red, "error")+"  "+lines[0], lineWidth))
+	fmt.Fprintln(w, fit(lead+c.colourErr(red, "error")+"  "+lines[0], lineWidth))
 	for _, l := range lines[1:] {
-		fmt.Fprintln(w, fit(hintPad+strings.TrimLeft(l, " "), lineWidth))
+		fmt.Fprintln(w, fit(pad+strings.TrimLeft(l, " "), lineWidth))
 	}
 	if hint != "" {
-		fmt.Fprintln(w, hintPad+c.colourErr(dim, fit(hint, lineWidth-len(hintPad))))
+		fmt.Fprintln(w, pad+c.colourErr(dim, fit(hint, lineWidth-len(pad))))
 	}
 }
 

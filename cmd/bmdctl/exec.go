@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -26,7 +27,10 @@ command resolves it, and every line goes there unless it gives its own
 
 It stops at the first command that fails, with that command's exit
 status, unless --continue, which runs every line and exits with the
-first failure's status. --json prints one line per command.
+first failure's status. --json prints one line per command. At a
+terminal each result starts with its line's number in the file, a failed
+line's error is in its place, and it ends "done · N ok" or "stopped at
+line N".
 `
 
 // line is one command of an exec file.
@@ -96,7 +100,18 @@ func (c *cli) execCommand(g globals, words, tokens []string) int {
 	if len(bad) > 0 {
 		return c.fail(exitUsage, "bmdctl exec %s: nothing run:\n  %s", words[0], strings.Join(bad, "\n  "))
 	}
-	first := exitOK
+	// At a terminal the lines are numbered under one header, which says
+	// the file, and it ends saying how it went.
+	term := c.terminal()
+	if term {
+		c.scr.about = []string{fmt.Sprintf("%s · %s", filepath.Base(words[0]), count(len(lines), "line"))}
+		defer func() { c.scr.about = nil }()
+	}
+	numWidth := 1
+	if len(lines) > 0 {
+		numWidth = len(fmt.Sprint(lines[len(lines)-1].n))
+	}
+	first, ok, failed := exitOK, 0, 0
 	for _, l := range lines {
 		if c.ctx.Err() != nil {
 			return c.fail(exitUsage, "bmdctl exec: interrupted before line %d", l.n)
@@ -104,14 +119,33 @@ func (c *cli) execCommand(g globals, words, tokens []string) int {
 		sub := *c
 		sub.noRemember = true
 		sub.ttyIn = false // a cue doesn't stop to ask: its lines were checked for --yes
-		sub.stderr = &prefixWriter{w: c.stderr, prefix: fmt.Sprintf("line %d: ", l.n)}
+		if term {
+			sub.lineNo = padLeft(fmt.Sprint(l.n), numWidth) + "  "
+		} else {
+			sub.stderr = &prefixWriter{w: c.stderr, prefix: fmt.Sprintf("line %d: ", l.n)}
+		}
 		code := sub.run(append(slices.Clone(common), l.args...))
-		if code != exitOK && first == exitOK {
+		if code == exitOK {
+			ok++
+			continue
+		}
+		failed++
+		if first == exitOK {
 			first = code
 			if !cont {
+				if term {
+					fmt.Fprintln(c.stdout, indent+c.colour(dim, fmt.Sprintf("stopped at line %d", l.n)))
+				}
 				return code
 			}
 		}
+	}
+	if term {
+		end := fmt.Sprintf("done · %d ok", ok)
+		if failed > 0 {
+			end += fmt.Sprintf(" · %d failed", failed)
+		}
+		fmt.Fprintln(c.stdout, indent+c.colour(dim, end))
 	}
 	return first
 }

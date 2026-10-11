@@ -60,6 +60,7 @@ type cli struct {
 	ttyIn          bool             // stdin is a terminal: a person can confirm a destructive command
 	noColor        bool             // --no-color
 	stamp          bool             // -t
+	lineNo         string           // exec's line number, as a result starts with it at a terminal
 	now            func() time.Time // the clock -t reads; tests stop it
 	reg            *table.Registry
 	// spawn starts a background engine (engine.Spawn); tests replace it.

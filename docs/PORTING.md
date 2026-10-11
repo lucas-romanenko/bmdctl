@@ -1339,7 +1339,13 @@ too. Not yet seen on hardware.
   when the first line starts the engine, is printed once. `--no-color`
   goes on every line.
   `--json` prints one response line per command. `exec`, `engine`,
-  `completion`, `man` and `doctor` can't be lines.
+  `completion`, `man` and `doctor` can't be lines. At a terminal (the
+  terminal pass) the lines share one header, which names the file and
+  how many lines it has; each result starts with its line's number in
+  the file, right-aligned; a failed line's error and next step are in
+  its place, numbered, not prefixed `line N:`; and it ends, dim, `done ·
+  N ok` (`· M failed` with `--continue`) or `stopped at line N`. A line
+  never stops to ask for confirmation: lines were checked for `--yes`.
 
 ## Completion, man page, COMMANDS.md (`cmd/bmdctl`)
 
