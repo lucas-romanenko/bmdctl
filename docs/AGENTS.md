@@ -5,10 +5,11 @@ every command of the command table, run through bmdctl's engine, on the
 devices hosts.yml names. There are two ways in, and they can be used
 together:
 
-- **`bmdctl mcp`**, a Model Context Protocol server: a tool per command
-  (`atem_program`, `atem_usk_on_air`, `hyperdeck_play`, ...), plus
-  `list_hosts`, `get_state` and `list_inputs`, and each host's state as a
-  resource the agent can subscribe to.
+- **`bmdctl mcp`**, a Model Context Protocol server: fifteen tools, one
+  per command group (`atem_switching`, `atem_usk`, `atem_media`,
+  `hyperdeck_transport`, ...) with the command as its `subcommand`, plus
+  `list_hosts`, and each host's state as a resource the agent can
+  subscribe to.
 - **The skill** in `skills/bmdctl/`, which tells the agent how to work a
   live show safely: read before writing, say what is on air before a cut,
   ask a person before anything destructive, and the recipes for common
@@ -56,13 +57,25 @@ messages are in `mcp-server-bmdctl.log` under `~/Library/Logs/Claude/`
 
 ### What the tools do
 
-- **Names** are the device and the command's words: `atem_program`,
-  `atem_transition_wipe`, `atem_media_upload`, `hyperdeck_goto`. Each
-  takes the command's arguments as its input schema (ranges, units,
-  defaults; indexes count from 1, as ATEM Software Control counts them)
-  and `host`: a host's name from `list_hosts`, the start of one, or an
-  address, the default host when left out. A switcher's tool sent to a
-  HyperDeck (or the other way) says so.
+- **A tool per group.** The ATEM's are `atem_switching` (program,
+  preview, cut, auto, tbar, undo, aux, ftb), `atem_transition`,
+  `atem_usk`, `atem_dsk`, `atem_audio`, `atem_media`, `atem_macro`,
+  `atem_profile`, `atem_sources` (inputs, renames, colour generators,
+  camera control), `atem_outputs` (multiviewer, SuperSource, recording,
+  streaming), `atem_system` (info, video mode, startup, time) and
+  `atem_session` (status, state, show, watch, connect, disconnect); a
+  HyperDeck's are `hyperdeck_transport` and `hyperdeck_session`. Each
+  takes `subcommand`, the command less the group's word (`bmdctl
+  transition wipe --rate 25` is `atem_transition {"subcommand": "wipe",
+  "rate": 25}`; `bmdctl ftb toggle` is `atem_switching {"subcommand":
+  "ftb toggle"}`), that command's arguments (ranges, units, defaults;
+  indexes count from 1, as ATEM Software Control counts them; each
+  argument's description says which subcommands take it) and `host`: a
+  host's name from `list_hosts`, the start of one, or an address, the
+  default host when left out. The tool's description lists its
+  subcommands with their usage. An argument the subcommand doesn't
+  take is an error naming what it does take; a switcher's tool sent to
+  a HyperDeck (or the other way) says so.
 - **Results say whether anything changed**: `status` is `confirmed` (the
   device reported it back), `sent` (no confirmation exists for that
   command), `already` (the device held it, so nothing was sent) or
@@ -70,19 +83,22 @@ messages are in `mcp-server-bmdctl.log` under `~/Library/Logs/Claude/`
   after; reads say `done`. A failure is an error result with the engine's
   code (`usage`, `unreachable`, `no_echo`, `rejected`, `destructive`) and
   message, for the agent to act on.
-- **Destructive tools** (`atem_video_mode`, `atem_startup_save`,
-  `atem_startup_clear`, `atem_media_clear`, `atem_media_clear_unlocked`,
-  `atem_macro_delete`, `atem_profile_restore`) are annotated so, and do
-  nothing without
-  `yes: true`: they answer with what they would affect (`video mode
-  1080p50 → 525i5994: every output resyncs`) for the agent to put to a
-  person. Replacing a used still or macro slot asks the same way.
-- **Files** are on the machine running `bmdctl mcp`: `atem_media_upload`
-  reads the path it is given, downloads write where `file` says.
+- **Destructive subcommands** (`atem_system` `video-mode`, `startup
+  save` and `startup clear`; `atem_media` `clear` and `clear-unlocked`;
+  `atem_macro` `delete`; `atem_profile` `restore`) do nothing without
+  `confirm: true`, and their tools are annotated destructive: they
+  answer with what they would affect (`video mode 1080p50 → 525i5994:
+  every output resyncs`) for the agent to put to a person. Uploading
+  over a used still or macro slot, recording a macro into one, and a
+  macro `action` delete ask the same way.
+- **Files** are on the machine running `bmdctl mcp`: `atem_media`
+  `upload` reads the path it is given, downloads write where `file`
+  says.
 - **Watching**: subscribe to `bmdctl://hosts/<host>/state` and the server
   sends a notification on each change (at most four a second); read the
-  resource for the state. `atem_watch` and `hyperdeck_watch` collect a few
-  seconds of changes and return them, for an agent without subscriptions.
+  resource for the state. The `watch` subcommand of `atem_session` and
+  `hyperdeck_session` collects a few `seconds` of changes and returns
+  them, for an agent without subscriptions.
 - **Both protocol eras**: the server answers clients of the current
   revision (2026-07-28, no handshake) and of the `initialize` revisions
   before it.
@@ -116,8 +132,9 @@ it beside the MCP server:
   and turn it on. Skills need code execution on (Settings > Capabilities).
 
 The skill names the commands as the CLI types them; with the MCP server
-the same command is a tool (`bmdctl dsk on-air on` is `atem_dsk_on_air`
-with `{"on-air": true}`), and the skill says so. A test in
+the same command is its group's tool with the rest as `subcommand`
+(`bmdctl dsk on-air on` is `atem_dsk` with `{"subcommand": "on-air",
+"on-air": true}`), and the skill says so. A test in
 `cmd/bmdctl/skill_test.go` checks that every command line in it is one
 bmdctl accepts.
 

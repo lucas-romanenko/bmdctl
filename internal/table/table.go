@@ -96,15 +96,86 @@ type Entry struct {
 	// "bmdctl" without the device word, the plainest first: --help opens
 	// with them, and docs/COMMANDS.md and the man page show them.
 	Examples []string
+	// Group is the group the entry belongs to, one its device declares
+	// (AddGroups): what one MCP tool gathers. Empty means the path's
+	// first word.
+	Group string
 }
 
 // Words returns the entry's path as words.
 func (e Entry) Words() []string { return strings.Fields(e.Path) }
 
+// GroupName is the entry's group: Group, else its first word.
+func (e Entry) GroupName() string {
+	if e.Group != "" {
+		return e.Group
+	}
+	return e.Words()[0]
+}
+
+// Group is a set of a device's entries that belong together:
+// "switching" is program, preview, cut, auto and the rest.
+type Group struct {
+	Name    string
+	Summary string
+}
+
 // Registry holds entries.
 type Registry struct {
 	entries []Entry
-	aliases map[string]string // "device word": the first word it stands for
+	aliases map[string]string  // "device word": the first word it stands for
+	groups  map[string][]Group // by device, in the order declared
+}
+
+// AddGroups declares a device's groups, in the order they are listed.
+func (r *Registry) AddGroups(device string, gs ...Group) error {
+	if r.groups == nil {
+		r.groups = map[string][]Group{}
+	}
+	for _, g := range gs {
+		if g.Name == "" || slices.ContainsFunc(r.groups[device], func(x Group) bool { return x.Name == g.Name }) {
+			return fmt.Errorf("table: %s group %q is empty or added twice", device, g.Name)
+		}
+		r.groups[device] = append(r.groups[device], g)
+	}
+	return nil
+}
+
+// Groups returns a device's groups that hold entries: the declared ones
+// in their order, then, sorted, any an entry names that its device
+// didn't declare (a first word), with no summary.
+func (r *Registry) Groups(device string) []Group {
+	used := map[string]bool{}
+	for _, e := range r.Entries(device) {
+		used[e.GroupName()] = true
+	}
+	var out []Group
+	for _, g := range r.groups[device] {
+		if used[g.Name] {
+			out = append(out, g)
+			delete(used, g.Name)
+		}
+	}
+	var rest []string
+	for n := range used {
+		rest = append(rest, n)
+	}
+	slices.Sort(rest)
+	for _, n := range rest {
+		out = append(out, Group{Name: n})
+	}
+	return out
+}
+
+// GroupEntries returns the entries in a device's group, sorted by path.
+func (r *Registry) GroupEntries(device, group string) []Entry {
+	var out []Entry
+	for _, e := range r.Entries(device) {
+		if e.GroupName() == group {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // New returns an empty registry.

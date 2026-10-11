@@ -32,7 +32,7 @@ type call struct {
 	// Set for a request to a HyperDeck (hyperdeck.go).
 	deck   *hyperdeck.Session
 	dstate hyperdeck.State // as the request found it
-	res   table.Resolver
+	res    table.Resolver
 	// noInput is what a source that named nothing could have been, for
 	// a note if the arguments don't parse.
 	noInput *NoInput
@@ -427,7 +427,7 @@ func RegisterOperations(r *table.Registry) error {
 	var es []table.Entry
 	for _, o := range operations() {
 		e := o.entry
-		e.Device, e.Operation, e.Examples = "atem", true, opExamples[e.Path]
+		e.Device, e.Operation, e.Examples, e.Group = "atem", true, opExamples[e.Path], atem.GroupOf(e.Path)
 		es = append(es, e)
 	}
 	if err := r.Add(es...); err != nil {

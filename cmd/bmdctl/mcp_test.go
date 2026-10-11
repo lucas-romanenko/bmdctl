@@ -164,83 +164,111 @@ func TestMCPTools(t *testing.T) {
 			t.Errorf("%s: %v", n, tl)
 		}
 	}
-	for _, n := range []string{"list_hosts", "get_state", "list_inputs", "atem_program", "atem_usk_on_air", "atem_video_mode",
-		"atem_media_upload", "hyperdeck_play", "hyperdeck_goto", "atem_watch"} {
+	// A tool per command group, about fifteen.
+	if len(names) < 10 || len(names) > 20 {
+		t.Errorf("%d tools", len(names))
+	}
+	for _, n := range []string{"list_hosts", "atem_switching", "atem_usk", "atem_media", "atem_system", "atem_session",
+		"atem_sources", "hyperdeck_transport", "hyperdeck_session"} {
 		if names[n] == nil {
 			t.Errorf("no tool %s", n)
 		}
 	}
 	ann := func(n string) map[string]any { return names[n]["annotations"].(map[string]any) }
-	if ann("atem_video_mode")["destructiveHint"] != true || ann("atem_program")["destructiveHint"] != false ||
-		ann("atem_status")["readOnlyHint"] != true || ann("atem_program")["readOnlyHint"] != false {
-		t.Errorf("annotations: %v %v %v", ann("atem_video_mode"), ann("atem_program"), ann("atem_status"))
+	if ann("atem_system")["destructiveHint"] != true || ann("atem_media")["destructiveHint"] != true ||
+		ann("atem_switching")["destructiveHint"] != false || ann("atem_switching")["readOnlyHint"] != false ||
+		ann("atem_session")["readOnlyHint"] != true || ann("atem_session")["destructiveHint"] != false {
+		t.Errorf("annotations: %v %v %v", ann("atem_system"), ann("atem_switching"), ann("atem_session"))
 	}
-	if p := names["atem_video_mode"]["inputSchema"].(map[string]any)["properties"].(map[string]any); p["yes"] == nil || p["host"] == nil {
-		t.Errorf("video_mode properties: %v", p)
+	schema := func(n string) map[string]any { return names[n]["inputSchema"].(map[string]any) }
+	if p := schema("atem_system")["properties"].(map[string]any); p["confirm"] == nil || p["host"] == nil || p["mode"] == nil {
+		t.Errorf("atem_system properties: %v", p)
+	}
+	if p := schema("atem_switching")["properties"].(map[string]any); p["confirm"] != nil || p["subcommand"] == nil {
+		t.Errorf("atem_switching properties: %v", p)
+	}
+	if r := schema("atem_switching")["required"].([]any); len(r) != 1 || r[0] != "subcommand" {
+		t.Errorf("atem_switching required: %v", r)
 	}
 
 	// Writes say how they went: confirmed with what changed, then already.
-	res, isErr, text := m.tool("atem_program", map[string]any{"host": "studio", "source": "cam1"})
-	if isErr || res["status"] != "confirmed" || !strings.Contains(text, `{"after":"CAM1","before":"CAM2","param":"source"}`) {
+	res, isErr, text := m.tool("atem_switching", map[string]any{"subcommand": "program", "host": "studio", "source": "cam1"})
+	if isErr || res["status"] != "confirmed" || res["subcommand"] != "program" ||
+		!strings.Contains(text, `{"after":"CAM1","before":"CAM2","param":"source"}`) || !strings.Contains(text, `"subcommand":"program"`) {
 		t.Errorf("program: %v %s", isErr, text)
 	}
-	if res, _, text := m.tool("atem_program", map[string]any{"host": "studio", "source": 1}); res["status"] != "already" {
+	if res, _, text := m.tool("atem_switching", map[string]any{"subcommand": "program", "host": "studio", "source": 1}); res["status"] != "already" {
 		t.Errorf("program again: %s", text)
 	}
-	if res, _, text := m.tool("atem_dsk_auto", map[string]any{"host": "studio"}); res["status"] != "sent" {
+	if res, _, text := m.tool("atem_dsk", map[string]any{"subcommand": "auto", "host": "studio"}); res["status"] != "sent" {
 		t.Errorf("dsk auto: %s", text)
 	}
-	// A destructive one does nothing without yes, and says what it would.
-	res, isErr, text = m.tool("atem_video_mode", map[string]any{"host": "studio", "mode": "525i5994"})
+	// A destructive subcommand does nothing without confirm, and says
+	// what it would affect.
+	res, isErr, text = m.tool("atem_system", map[string]any{"subcommand": "video-mode", "host": "studio", "mode": "525i5994"})
 	if !isErr || res["code"] != "destructive" || !strings.Contains(text, "Not done: this is destructive. video mode 1080p50 → 525i5994") ||
-		!strings.Contains(text, "call it again with yes: true") {
+		!strings.Contains(text, "call it again with confirm: true") {
 		t.Errorf("video-mode: %s", text)
 	}
 	if len(b.sent("CVdM")) != 0 {
-		t.Error("video mode sent without yes")
+		t.Error("video mode sent without confirm")
 	}
-	if res, isErr, text := m.tool("atem_video_mode", map[string]any{"host": "studio", "mode": "525i5994", "yes": true}); isErr || res["status"] != "confirmed" {
-		t.Errorf("video-mode yes: %s", text)
+	if res, isErr, text := m.tool("atem_system", map[string]any{"subcommand": "video-mode", "host": "studio", "mode": "525i5994", "confirm": true}); isErr || res["status"] != "confirmed" {
+		t.Errorf("video-mode confirmed: %s", text)
 	}
-	// Reads, and bmdctl's own tools.
-	if res, isErr, text := m.tool("get_state", map[string]any{"host": "studio", "path": "mes.0.program.source"}); isErr || string(mustJSON(res["result"])) != "1" {
-		t.Errorf("get_state: %s", text)
+	// Reads.
+	if res, isErr, text := m.tool("atem_session", map[string]any{"subcommand": "state", "host": "studio", "path": "mes.0.program.source"}); isErr || string(mustJSON(res["result"])) != "1" {
+		t.Errorf("state: %s", text)
 	}
-	if _, isErr, text := m.tool("list_inputs", map[string]any{"host": "studio"}); isErr || !strings.Contains(text, "Camera 1") {
-		t.Errorf("list_inputs: %.300s", text)
+	if _, isErr, text := m.tool("atem_sources", map[string]any{"subcommand": "inputs", "host": "studio"}); isErr || !strings.Contains(text, "Camera 1") {
+		t.Errorf("inputs: %.300s", text)
 	}
 	if _, isErr, text := m.tool("list_hosts", nil); isErr || !strings.Contains(text, `"Deck 1"`) {
 		t.Errorf("list_hosts: %s", text)
 	}
-	if _, isErr, text := m.tool("list_inputs", map[string]any{"host": "deck"}); !isErr || !strings.Contains(text, "is a HyperDeck: it has no inputs") {
-		t.Errorf("list_inputs on a deck: %s", text)
-	}
 	// A deck's tools; a switcher's tool to a deck says whose it is.
-	if res, isErr, text := m.tool("hyperdeck_play", map[string]any{"host": "deck", "speed": 50}); isErr || res["status"] != "confirmed" {
-		t.Errorf("hyperdeck_play: %s", text)
+	if res, isErr, text := m.tool("hyperdeck_transport", map[string]any{"subcommand": "play", "host": "deck", "speed": 50}); isErr || res["status"] != "confirmed" {
+		t.Errorf("hyperdeck play: %s", text)
 	}
-	if _, isErr, text := m.tool("atem_cut", map[string]any{"host": "deck"}); !isErr || !strings.Contains(text, "is a HyperDeck: use the hyperdeck_ tools") {
-		t.Errorf("atem_cut on a deck: %s", text)
+	if _, isErr, text := m.tool("atem_switching", map[string]any{"subcommand": "cut", "host": "deck"}); !isErr || !strings.Contains(text, "is a HyperDeck: use the hyperdeck_ tools") {
+		t.Errorf("cut on a deck: %s", text)
 	}
-	if res, _, text := m.tool("hyperdeck_watch", map[string]any{"host": "deck", "seconds": 1}); res["status"] != "done" {
-		t.Errorf("hyperdeck_watch: %s", text)
+	if res, _, text := m.tool("hyperdeck_session", map[string]any{"subcommand": "watch", "host": "deck", "seconds": 1}); res["status"] != "done" {
+		t.Errorf("hyperdeck watch: %s", text)
 	}
-	// Files: sent from, and written to, this machine.
+	// Files: sent from, and written to, this machine; replacing a used
+	// slot needs confirm too.
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "logo.png"), testPNG(t), 0o644)
-	if res, isErr, text := m.tool("atem_media_upload", map[string]any{"host": "studio", "slot": 2, "file": filepath.Join(dir, "logo.png")}); isErr || res["status"] != "confirmed" {
+	upload := map[string]any{"subcommand": "upload", "host": "studio", "slot": 2, "file": filepath.Join(dir, "logo.png")}
+	if res, isErr, text := m.tool("atem_media", upload); isErr || res["status"] != "confirmed" {
 		t.Errorf("upload: %s", text)
 	}
+	if res, isErr, text := m.tool("atem_media", upload); !isErr || res["code"] != "destructive" || !strings.Contains(text, "confirm: true") {
+		t.Errorf("upload over a used slot: %s", text)
+	}
+	upload["confirm"] = true
+	if res, isErr, text := m.tool("atem_media", upload); isErr || res["status"] != "confirmed" {
+		t.Errorf("upload confirmed: %s", text)
+	}
 	out := filepath.Join(dir, "got.png")
-	if res, isErr, text := m.tool("atem_media_download", map[string]any{"host": "studio", "slot": 2, "file": out}); isErr || res["written"] == nil {
+	if res, isErr, text := m.tool("atem_media", map[string]any{"subcommand": "download", "host": "studio", "slot": 2, "file": out}); isErr || res["written"] == nil {
 		t.Errorf("download: %s", text)
 	}
 	if b, err := os.ReadFile(out); err != nil || !strings.HasPrefix(string(b), "\x89PNG") {
 		t.Errorf("downloaded: %v", err)
 	}
-	// What a tool takes, and what there is.
-	if _, isErr, text := m.tool("atem_program", map[string]any{"host": "studio", "nonsense": 1}); !isErr || !strings.Contains(text, `takes no "nonsense"`) {
+	// What a subcommand takes, and what there is.
+	if _, isErr, text := m.tool("atem_switching", map[string]any{"subcommand": "program", "host": "studio", "nonsense": 1}); !isErr ||
+		!strings.Contains(text, `atem_switching program takes no \"nonsense\"; it takes me, source`) {
 		t.Errorf("unknown argument: %s", text)
+	}
+	if _, isErr, text := m.tool("atem_switching", map[string]any{"subcommand": "frobnicate", "host": "studio"}); !isErr ||
+		!strings.Contains(text, `is not one of auto, aux, cut`) {
+		t.Errorf("unknown subcommand: %s", text)
+	}
+	if _, isErr, text := m.tool("atem_switching", map[string]any{"host": "studio"}); !isErr || !strings.Contains(text, `subcommand \"\" is not one of`) {
+		t.Errorf("no subcommand: %s", text)
 	}
 	if r := m.request("tools/call", map[string]any{"name": "frobnicate"}, false); r["error"].(map[string]any)["code"] != float64(-32602) {
 		t.Errorf("unknown tool: %v", r)
@@ -263,7 +291,7 @@ func TestMCPResources(t *testing.T) {
 	}
 	// The handshake era's subscription: a change is a notification.
 	m.request("resources/subscribe", map[string]any{"uri": uri}, false)
-	m.tool("atem_program", map[string]any{"host": "studio", "source": 5})
+	m.tool("atem_switching", map[string]any{"subcommand": "program", "host": "studio", "source": 5})
 	if n := m.note("notifications/resources/updated"); n["params"].(map[string]any)["uri"] != uri {
 		t.Errorf("updated: %v", n)
 	}
@@ -305,7 +333,7 @@ func TestMCPModern(t *testing.T) {
 	if ack["_meta"].(map[string]any)["io.modelcontextprotocol/subscriptionId"] != float64(id) {
 		t.Errorf("ack: %v", ack)
 	}
-	m.tool("atem_preview", map[string]any{"host": "studio", "source": 3})
+	m.tool("atem_switching", map[string]any{"subcommand": "preview", "host": "studio", "source": 3})
 	n := m.note("notifications/resources/updated")["params"].(map[string]any)
 	if n["uri"] != uri || n["_meta"].(map[string]any)["io.modelcontextprotocol/subscriptionId"] != float64(id) {
 		t.Errorf("updated: %v", n)

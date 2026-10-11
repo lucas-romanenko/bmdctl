@@ -136,7 +136,7 @@ var builtins = []struct{ name, summary string }{
 	{"man", "print the manual page, or write it with --dir"},
 	{"doctor", "check the engine, its socket, the hosts and that each answers"},
 	{"serve", "serve every command over HTTP/JSON on 127.0.0.1:8880: serve [--listen ADDRESS]"},
-	{"mcp", "an MCP server on stdin and stdout, a tool per command, for an AI agent"},
+	{"mcp", "an MCP server on stdin and stdout, a tool per command group, for an AI agent"},
 }
 
 // deviceGroups say what each device's commands are, for help.

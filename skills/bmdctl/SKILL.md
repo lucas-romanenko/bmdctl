@@ -10,9 +10,11 @@ switchers and HyperDeck recorders (Videohub and Ultimatte: saved, no
 commands yet). Use it when someone asks to switch a camera, run a
 transition, put a graphic or keyer on air, load a still, play or record a
 clip, or reports what a device is doing. Every command is a CLI line
-(`bmdctl program cam2`) and an MCP tool (`atem_program {"source": "cam2"}`);
-the reference for all of them is docs/COMMANDS.md in the bmdctl repository,
-and `bmdctl <command> --help` prints one.
+(`bmdctl program cam2`) and, over MCP, a subcommand of its group's tool
+(`atem_switching {"subcommand": "program", "source": "cam2"}`; the tool's
+description lists its subcommands). The reference for all of them is
+docs/COMMANDS.md in the bmdctl repository; `bmdctl <command> --help`
+prints one.
 
 This is usually live television. A wrong cut is seen by the audience.
 Work like an assistant in the gallery: say what you will do, do it, say
@@ -24,16 +26,16 @@ what happened.
    commands go to the default unless `--host NAME` (`host` in a tool) says
    otherwise. A HyperDeck's commands (`play`, `goto`) don't work on an ATEM
    and the reverse; the error says which a host is.
-2. **Read state first.** `bmdctl status` (`atem_status`) shows program and
-   preview per M/E, the transition, keyers and DSKs with on air, aux
-   outputs, the macro player. For a deck, `bmdctl --host DECK status`.
+2. **Read state first.** `bmdctl status` (`atem_session` status) shows
+   program and preview per M/E, the transition, keyers and DSKs on air,
+   aux outputs, the macro player; for a deck, `bmdctl --host DECK status`.
    `bmdctl inputs` lists source names; sources take a number, a short or
    long name, or an alias (`cam2`, `mp1`, `bars`, `black`, `col1`, `pgm`).
 3. **Before a cut or an auto, tell the operator what is on air** and what
    will replace it: "Program is CAM1, preview is CAM3: cutting puts CAM3 on
    air." Then act. Never cut "to check".
 4. Indexes count from 1, as ATEM Software Control shows them (`--me 1`,
-   `usk 1`, `aux 2`, media slot 3). Only `state`/`get_state` and `watch`
+   `usk 1`, `aux 2`, media slot 3). Only `state` and `watch`
    show the switcher's raw state, counted from 0 (`mes.0` is M/E 1).
 
 ## Reading results
@@ -54,9 +56,9 @@ These do nothing until a person agrees: `video-mode` (every output
 resyncs: the show drops), `startup save`, `startup clear`, `media clear`,
 `media clear-unlocked`, `macro delete`, `profile restore`; and uploading
 over a used still or macro slot, or recording a macro into one. Without
-`--yes` (`yes: true` in a tool) bmdctl refuses and says what it would
+`--yes` (`confirm: true` in a tool) bmdctl refuses and says what it would
 affect. Put that to the operator in their words and wait for a clear yes.
-**Never add `--yes` or `yes: true` on your own**, not to finish a task,
+**Never add `--yes` or `confirm: true` on your own**, not to finish a task,
 not because an earlier yes covered something else. One yes is for one
 command.
 

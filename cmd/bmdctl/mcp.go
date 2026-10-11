@@ -23,12 +23,12 @@ import (
 const mcpUsage = `usage: bmdctl mcp
 
 Runs a Model Context Protocol server on stdin and stdout, for an AI
-agent: a tool per command (atem_program, atem_usk_on_air, hyperdeck_play,
-...), with list_hosts, get_state and list_inputs, and each host's state
-as a resource it can subscribe to. Commands go through the engine,
-started if none runs, as any command's do. Destructive tools do nothing
-without yes: true and say what they would affect, for the agent to ask
-a person first. docs/AGENTS.md says how to add it to Claude Code and
+agent: a tool per command group (atem_switching, atem_usk, atem_media,
+hyperdeck_transport, ...), the command its subcommand argument, with
+list_hosts, and each host's state as a resource it can subscribe to.
+Commands go through the engine, started if none runs, as any command's
+do. Destructive subcommands do nothing without confirm: true and say
+what they would affect, for the agent to ask a person first. docs/AGENTS.md says how to add it to Claude Code and
 Claude Desktop.
 `
 
