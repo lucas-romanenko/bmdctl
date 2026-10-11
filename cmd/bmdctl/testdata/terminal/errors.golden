@@ -1,6 +1,6 @@
 $ bmdctl program Nobody
-! <red>error</>  source "Nobody": no input is named "Nobody"
-!        <dim>bmdctl inputs lists them</>
+! <red>error</>  no input "Nobody"
+!        <dim>1 CAM1 Camera 1 · 2 CAM2 Camera 2 · 1000… · bmdctl inputs for all</>
 [exit 1]
 
 $ bmdctl program
@@ -13,8 +13,8 @@ $ bmdctl media clear 1
 [exit 5]
 
 $ bmdctl program Nobody
-! error  source "Nobody": no input is named "Nobody"
-!        bmdctl inputs lists them
+! error  no input "Nobody"
+!        1 CAM1 Camera 1 · 2 CAM2 Camera 2 · 1000… · bmdctl inputs for all
 [exit 1]
 
 $ bmdctl --host 192.0.2.99 program 1

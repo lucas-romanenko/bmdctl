@@ -241,7 +241,26 @@ func TestTerminalReads(t *testing.T) {
 	golden(t, "reads.golden", tr.out.String())
 }
 
-// Errors: "error:" red, the message, the next step dim on its own line.
+// Sources as typed: an alias whatever the name (cam2, in2, mp1), a name,
+// the start of one; the line shows the switcher's short name, with what
+// was typed dim where it differs. An alias that shadows a name says so,
+// once ever.
+func TestTerminalSources(t *testing.T) {
+	b := newBench(t)
+	tr := &transcript{b: b}
+	tr.run("preview", "in2")
+	tr.run("preview", "Camera 1")
+	tr.run("aux", "1", "auxil")
+	tr.run("program", "MP1")
+	tr.run("input", "rename", "1", "--short-name", "cam2")
+	tr.run("program", "cam2")
+	tr.run("program", "cam2")
+	tr.run("program", "cam")
+	golden(t, "sources.golden", tr.out.String())
+}
+
+// Errors: "error" red, the message, the next step dim under it; a source
+// that names nothing lists what it could have been.
 func TestTerminalErrors(t *testing.T) {
 	b := newBench(t)
 	tr := &transcript{b: b}

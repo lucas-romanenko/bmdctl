@@ -140,6 +140,10 @@ func TestDryRun(t *testing.T) {
 	}{
 		{[]string{"program", "5"}, "000c000043506749" + "00000005"},
 		{[]string{"program", "3010", "--me", "2"}, "000c000043506749" + "01000bc2"},
+		// Aliases need no switcher: input 5, media player 1, aux 2.
+		{[]string{"program", "cam5"}, "000c000043506749" + "00000005"},
+		{[]string{"program", "mp1", "--me", "2"}, "000c000043506749" + "01000bc2"},
+		{[]string{"aux", "1", "aux2"}, "000c000043417553" + "01001f42"},
 		{[]string{"transition", "preview", "true", "--me", "2"}, "000c000043545072" + "01010000"},
 		{[]string{"transition", "preview", "on", "--me", "2"}, "000c000043545072" + "01010000"},
 		{[]string{"tbar", "20000"}, "000c000043545073" + "00002710"},
@@ -198,7 +202,7 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 		{[]string{"program", "--host"}, 1, "--host needs a value"},
 		{[]string{"--dry-run", "program"}, 1, "missing <source>: program <source>"},
 		{[]string{"--dry-run", "program", "70000"}, 1, "out of range"},
-		{[]string{"--dry-run", "program", "Camera 1"}, 1, "give the source id"},
+		{[]string{"--dry-run", "program", "Stage Left"}, 1, "give the source id"},
 		{[]string{"--dry-run", "program", "1", "--me", "0"}, 1, "counted from 1"},
 		{[]string{"--dry-run", "program", "5", "--bogus", "1"}, 1, "has no --bogus"},
 		{[]string{"--dry-run", "program", "5", "stray"}, 1, "unexpected \"stray\""},

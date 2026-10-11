@@ -148,6 +148,26 @@ type Note struct {
 	// Switcher note, and again once a command is done, so a terminal's
 	// header shows what is live.
 	OnAir *OnAir `json:"on_air,omitempty"`
+	// Alias: a source typed as an alias that is also an input's name;
+	// the alias won (sources.go).
+	Alias *Alias `json:"alias,omitempty"`
+	// NoInput: a source typed names no input; sent before the failure,
+	// with the inputs it could have been.
+	NoInput *NoInput `json:"no_input,omitempty"`
+}
+
+// Alias is a source an alias named, and the input whose name it shadowed.
+type Alias struct {
+	Typed    string `json:"typed"`
+	Source   Source `json:"source"`
+	Shadowed Source `json:"shadowed"`
+}
+
+// NoInput is a source that names nothing, and the switcher's first six
+// inputs.
+type NoInput struct {
+	Typed  string   `json:"typed"`
+	Inputs []Source `json:"inputs"`
 }
 
 // OnAir is M/E 1's program and preview sources: by id, and by name as a

@@ -61,11 +61,16 @@ func TestKeyerCommands(t *testing.T) {
 	if out := b.must(with("state", "--path", "dsks.0.properties.tie")...); out != "true\n" {
 		t.Errorf("tie after gain: %q", out)
 	}
-	// The rename shows in the names: the old one is gone, pointing at
-	// inputs, the new one works, and inputs shows it.
-	if code, _, errOut := b.run(with("program", "Camera 2")...); code != exitUsage ||
-		!strings.Contains(errOut, `no input is named "Camera 2" (bmdctl inputs lists them)`) {
-		t.Errorf("old name still resolves: %d %q", code, errOut)
+	// The rename shows in the names: the new one works, and inputs shows
+	// it. "Camera 2" still reaches input 2 as an alias, whatever its name;
+	// a name nothing has points at inputs.
+	b.must(with("program", "Camera 2")...)
+	if got := b.lastSent(t, "CPgI"); got != "00000002" {
+		t.Errorf("alias: %s", got)
+	}
+	if code, _, errOut := b.run(with("program", "Stage Right")...); code != exitUsage ||
+		!strings.Contains(errOut, `no input is named "Stage Right" (bmdctl inputs lists them)`) {
+		t.Errorf("unknown name: %d %q", code, errOut)
 	}
 	b.must(with("program", "stage left")...)
 	if got := b.lastSent(t, "CPgI"); got != "00000002" {

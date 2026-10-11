@@ -27,7 +27,10 @@ type call struct {
 	host  *host
 	sess  *atem.Session
 	state atem.State // as the request found it
-	res   atem.Resolver
+	res   table.Resolver
+	// noInput is what a source that named nothing could have been, for
+	// a note if the arguments don't parse.
+	noInput *NoInput
 	// predicted is M/E 1's program and preview as a cut or an auto
 	// transition asks for them, which no echo confirms.
 	predicted *OnAir
