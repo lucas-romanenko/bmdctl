@@ -14,6 +14,8 @@ before:
     # macOS and Linux they are symlinks to bmdctl, made here and kept as
     # symlinks in the archives; Windows gets copies (the *-windows builds).
     - sh -c 'rm -rf build/aliases && mkdir -p build/aliases && for a in atemctl hdctl vhctl ultctl; do ln -s bmdctl build/aliases/$a; done'
+    # The man page and the completion scripts, for the packages.
+    - sh -c 'rm -rf build/man build/completions && mkdir -p build/completions && go run ./cmd/bmdctl man --dir build/man && for s in bash zsh fish; do go run ./cmd/bmdctl completion $s > build/completions/bmdctl.$s; done'
 
 builds:
   - id: bmdctl
@@ -26,7 +28,8 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - &ldflags -s -w -X main.version={{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }}
+      # bmdctl version says the tag (v0.1.0); a snapshot, its own version.
+      - &ldflags -s -w -X main.version={{ if .IsSnapshot }}{{ .Version }}{{ else }}{{ .Tag }}{{ end }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }}
   - &windows
     id: bmdctl-windows
     main: ./cmd/bmdctl
@@ -78,6 +81,81 @@ archives:
 
 checksum:
   name_template: checksums.txt
+
+# deb and rpm for Linux: bmdctl in /usr/bin with the aliases linked to it,
+# its man page and completions.
+nfpms:
+  - id: packages
+    ids: [bmdctl]
+    package_name: bmdctl
+    file_name_template: "{{ .ConventionalFileName }}"
+    formats: [deb, rpm]
+    vendor: Lucas Romanenko
+    homepage: https://github.com/lucas-romanenko/bmdctl
+    maintainer: Lucas Romanenko <lucas-romanenko@users.noreply.github.com>
+    description: |-
+      Control Blackmagic Design ATEM switchers and HyperDeck recorders from the
+      command line, over HTTP (bmdctl serve) and from AI agents (bmdctl mcp).
+    license: MIT AND LGPL-3.0-only
+    section: video
+    bindir: /usr/bin
+    contents:
+      - src: /usr/bin/bmdctl
+        dst: /usr/bin/atemctl
+        type: symlink
+      - src: /usr/bin/bmdctl
+        dst: /usr/bin/hdctl
+        type: symlink
+      - src: /usr/bin/bmdctl
+        dst: /usr/bin/vhctl
+        type: symlink
+      - src: /usr/bin/bmdctl
+        dst: /usr/bin/ultctl
+        type: symlink
+      - src: build/man/bmdctl.1
+        dst: /usr/share/man/man1/bmdctl.1
+      - src: build/completions/bmdctl.bash
+        dst: /usr/share/bash-completion/completions/bmdctl
+      - src: /usr/share/bash-completion/completions/bmdctl
+        dst: /usr/share/bash-completion/completions/atemctl
+        type: symlink
+      - src: /usr/share/bash-completion/completions/bmdctl
+        dst: /usr/share/bash-completion/completions/hdctl
+        type: symlink
+      - src: /usr/share/bash-completion/completions/bmdctl
+        dst: /usr/share/bash-completion/completions/vhctl
+        type: symlink
+      - src: /usr/share/bash-completion/completions/bmdctl
+        dst: /usr/share/bash-completion/completions/ultctl
+        type: symlink
+      - src: build/completions/bmdctl.zsh
+        dst: /usr/share/zsh/vendor-completions/_bmdctl
+      - src: build/completions/bmdctl.fish
+        dst: /usr/share/fish/vendor_completions.d/bmdctl.fish
+      - src: LICENSE
+        dst: /usr/share/doc/bmdctl/LICENSE
+      - src: atem/LICENSE
+        dst: /usr/share/doc/bmdctl/atem/LICENSE
+      - src: atem/LICENSE-gpl3.txt
+        dst: /usr/share/doc/bmdctl/atem/LICENSE-gpl3.txt
+      - src: atem/NOTICE
+        dst: /usr/share/doc/bmdctl/atem/NOTICE
+
+# The Scoop manifest, written into this repository's scoop/ (not a bucket
+# repository) at each release, so Windows installs from its raw URL:
+#   scoop install https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/scoop/bmdctl.json
+scoops:
+  - ids: [bmdctl-windows]
+    name: bmdctl
+    repository:
+      owner: lucas-romanenko
+      name: bmdctl
+      branch: main
+    directory: scoop
+    commit_msg_template: "chore(scoop): bmdctl {{ .Tag }}"
+    homepage: https://github.com/lucas-romanenko/bmdctl
+    description: Control Blackmagic Design ATEM switchers and HyperDeck recorders from the command line.
+    license: MIT AND LGPL-3.0-only
 
 dockers_v2:
   - id: bmdctl

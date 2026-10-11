@@ -37,6 +37,11 @@ shows (colour, the prompt, the spinner) is snapshot-tested in
 regenerated with the scripts beside them (see the README there) against
 `../bmdwire` at `v1.3.0`.
 
+Releases are GoReleaser's: the owner pushes the `v*` tag; never tag.
+`goreleaser release --snapshot --clean` is the dry run (docs/PORTING.md,
+"Release", says what was checked); `install.sh`, `scoop/bmdctl.json` and
+the `Dockerfile` belong to it.
+
 ## The hardware rule
 
 The rule covers tests and development tooling: tests, examples, benchmarks,

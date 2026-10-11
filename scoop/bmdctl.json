@@ -1,0 +1,19 @@
+{
+    "##": "Install with: scoop install https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/scoop/bmdctl.json . GoReleaser rewrites this file at each release (.goreleaser.yml, scoops), with that release's archive and its hash.",
+    "version": "0.1.0",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/lucas-romanenko/bmdctl/releases/download/v0.1.0/bmdctl_0.1.0_windows_amd64.zip",
+            "bin": [
+                "bmdctl.exe",
+                "atemctl.exe",
+                "hdctl.exe",
+                "vhctl.exe",
+                "ultctl.exe"
+            ]
+        }
+    },
+    "homepage": "https://github.com/lucas-romanenko/bmdctl",
+    "license": "MIT AND LGPL-3.0-only",
+    "description": "Control Blackmagic Design ATEM switchers and HyperDeck recorders from the command line."
+}

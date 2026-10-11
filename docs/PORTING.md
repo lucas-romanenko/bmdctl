@@ -1911,6 +1911,62 @@ under 200 characters, claude.ai's limit for an uploaded skill.
 a typed line gets, so a renamed flag fails the build rather than misleads
 an agent. docs/AGENTS.md says how to install it.
 
+## Release (`.goreleaser.yml`, `install.sh`, `scoop/bmdctl.json`, `Dockerfile`)
+
+Phase 4. Pushing a `v*` tag runs `.github/workflows/release.yml`
+(GoReleaser v2); the owner tags. `goreleaser release --snapshot --clean`
+builds everything into `dist/` without publishing.
+
+- **Binaries:** macOS arm64 and amd64, Linux amd64 and arm64 (build
+  `bmdctl`), Windows amd64 (`bmdctl-windows` and the four alias builds),
+  static (`CGO_ENABLED=0`), `-trimpath`, stripped. `main.version` is the
+  tag (`bmdctl version` says `bmdctl v0.1.0 (<commit>, <date>)`), a
+  snapshot's own version for a snapshot; `main.commit` and `main.date`
+  as before.
+- **Archives:** `bmdctl_<version>_<os>_<arch>.tar.gz` (`.zip` on
+  Windows; version without the `v`, as GoReleaser names it), holding
+  bmdctl, the alias links (copies on Windows), README.md and the
+  licences. **Checksums:** `checksums.txt`.
+- **deb and rpm** (nfpm): bmdctl in `/usr/bin` with the aliases linked to
+  it, the man page (`bmdctl man`, made by a before hook) and the bash,
+  zsh and fish completions (bash's linked for each alias), the licences
+  under `/usr/share/doc/bmdctl`. The maintainer is the GitHub account's
+  no-reply address: a package must name one, and no address of the
+  owner's is put in a package without being asked.
+- **The image**, `ghcr.io/lucas-romanenko/bmdctl` (linux amd64 and arm64,
+  `<version>` and `latest`), is scratch with the binary, `HOME`,
+  `XDG_CONFIG_HOME` and `XDG_STATE_HOME` under the `/data` volume (scratch
+  has no home), the socket in the `/run/bmdctl` volume, and `engine
+  --serve` as its command: the engine in the foreground with the HTTP
+  API on 127.0.0.1:8880, for `--network host`.
+- **Scoop:** no bucket repository. GoReleaser writes the manifest into
+  this repository's `scoop/bmdctl.json` at each release (a commit to main
+  by the release workflow), with that release's archive, its hash and the
+  five binaries, so Windows installs from the raw URL. The file committed
+  before v0.1.0 names v0.1.0's archive without its hash, which only the
+  release can know; GoReleaser replaces it whole. No Homebrew tap.
+- **install.sh**, for macOS and Linux, is POSIX sh: it maps `uname -s`
+  and `uname -m` to the archive's names, takes the latest release from
+  the `/releases/latest` redirect (no API call, no rate limit) or
+  `BMDCTL_VERSION`, downloads the archive and `checksums.txt` with curl
+  or wget, refuses an archive whose SHA-256 (sha256sum or shasum)
+  doesn't match, installs to `BMDCTL_INSTALL_DIR`, else
+  `/usr/local/bin` as root and `~/.local/bin` otherwise, by rename so a
+  running bmdctl keeps its file, links the aliases, says when the
+  directory isn't on PATH, and ends `next: bmdctl connect <ip>`.
+  `BMDCTL_BASE_URL` points it elsewhere (a mirror, the tests).
+- **The dry run before v0.1.0** (`goreleaser release --snapshot --clean`,
+  GoReleaser 2.18.3): every artifact built. `bmdctl version` ran from the
+  Linux amd64 archive and its aliases, from the amd64 deb installed in
+  Debian and the amd64 rpm in Fedora, from the arm64 archive, deb, rpm and
+  image under QEMU's user mode, from the amd64 image (whose `engine
+  --serve` answered `/`, `/hosts` and `/openapi.json` on loopback), and
+  from the five Windows executables under wine. The macOS binaries were
+  checked to be Mach-O for their architecture with the version stamped,
+  but nothing here can run them. A tagged build in a throwaway clone
+  printed `bmdctl v0.1.0`. `internal/release` tests install.sh against a
+  release served on loopback, and the manifest against the config.
+
 ## Engine (`internal/engine`)
 
 A background process holding one `atem.Session` per switcher, so a
