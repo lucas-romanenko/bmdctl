@@ -1,3 +1,5 @@
+<img src=".github/banner.png" alt="bmdctl" width="100%">
+
 # bmdctl
 
 A command-line tool, and the Go libraries under it, for controlling
@@ -94,9 +96,12 @@ Go 1.27. The device packages use only the standard library.
   command table.
 - `docs/HARDWARE.md`: every session against a real switcher, and what
   it found.
+- `docs/BRAND.md`: the mark, wordmarks, colours and banner.
 
 ## Not affiliated with Blackmagic Design
 
-bmdctl is an independent project. It is not affiliated with, endorsed by or
-supported by Blackmagic Design Pty Ltd. ATEM, HyperDeck, Ultimatte and
-Videohub are trademarks of Blackmagic Design.
+Not affiliated with or endorsed by Blackmagic Design Pty Ltd.
+
+bmdctl is an independent project, and Blackmagic Design does not support
+it. ATEM, HyperDeck, Ultimatte and Videohub are trademarks of Blackmagic
+Design.
