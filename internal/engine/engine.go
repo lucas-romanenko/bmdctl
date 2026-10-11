@@ -334,7 +334,7 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	}
 	c.state = sess.State()
 	c.note(Note{Switcher: e.switcherNote(h, c.state, idle)})
-	c.noteOnAir(c.state)
+	c.noteOnAir() // once, before the command: the header shows what it found
 	c.res = Sources(atem.Resolver{State: c.state, FPS: req.FPS}, c)
 	c.args, err = entry.Parse(req.Params, c.res)
 	if err != nil {
@@ -357,17 +357,10 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	if entry.Destructive && !req.Yes && !c.alreadyHeld() {
 		return nil, false, c.refuseEntry() // a person may be asked
 	}
-	var result any
-	var confirmed bool
 	if !entry.Operation {
-		result, confirmed, err = c.sendEntry()
-	} else {
-		result, confirmed, err = o.run(c)
+		return c.sendEntry()
 	}
-	if err == nil && !entry.Stream {
-		c.noteOnAir(sess.State())
-	}
-	return result, confirmed, err
+	return o.run(c)
 }
 
 // CodeEngine: the engine can't serve this CLI (a protocol mismatch).

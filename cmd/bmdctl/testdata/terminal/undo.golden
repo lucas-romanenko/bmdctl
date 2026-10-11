@@ -3,50 +3,66 @@ $ bmdctl undo
   <dim>nothing to undo</>
 
 $ bmdctl program cam1
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
-  program     CAM2 → <red>CAM1</>                                   <dim># ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  program     CAM2 → <red>CAM1</>                                           <dim># ms</>
 
 $ bmdctl preview mp1
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
-  preview     CAM1 → <green>MP1</>                                    <dim># ms</>
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
+  preview     CAM1 → <green>MP1</>                                            <dim># ms</>
 
 $ bmdctl program cam1
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
-  program     <red>CAM1</>                                       <dim>already</>
+  program     <red>CAM1</>                                               <dim>already</>
 
 $ bmdctl aux 3 cam2
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
-  aux 3       0 → CAM2                                      <dim># ms</>
+  aux 3       0 → CAM2                                              <dim># ms</>
 
 $ bmdctl usk 2 on-air on
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
-  usk 2 on-air  off → <red>on</>                                    <dim># ms</>
+  usk 2 on-air  off → <red>on</>                                            <dim># ms</>
 
 $ bmdctl dsk toggle --dsk 2
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
-  dsk toggle DSK2  off → <red>on</>                                 <dim># ms</>
+  dsk toggle DSK2  off → <red>on</>                                         <dim># ms</>
 
 $ bmdctl undo
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
-  undo        dsk 2  on → off                               <dim># ms</>
+  undo        dsk 2  on → off                                       <dim># ms</>
 
 $ bmdctl undo
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
-  undo        key 2  on → off                               <dim># ms</>
+  undo        key 2  on → off                                       <dim># ms</>
 
 $ bmdctl undo
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
-  undo        aux 3  CAM2 → 0                               <dim># ms</>
+  undo        aux 3  CAM2 → 0                                       <dim># ms</>
+
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW MP1</>
+  undo        preview  MP1 → <green>CAM1</>                                   <dim># ms</>
 
 $ bmdctl undo
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
-  undo        preview  MP1 → <green>CAM1</>                           <dim># ms</>
-
-$ bmdctl undo
-<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
-  undo        program  CAM1 → <red>CAM2</>                          <dim># ms</>
+  undo        program  CAM1 → <red>CAM2</>                                  <dim># ms</>
 
 $ bmdctl undo
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
   <dim>nothing to undo</>
+
+$ bmdctl cut
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  cut         <red>CAM1</> on program · <green>CAM2</> on preview                     <dim># ms</>
+
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
+  undo        cut  <red>CAM2</> on program · <green>CAM1</> on preview                <dim># ms</>
+
+$ bmdctl auto
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  auto        <red>CAM1</> on program · <green>CAM2</> on preview                     <dim># ms</>
+
+$ bmdctl undo
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM2</>
+  undo        auto  <red>CAM2</> on program · <green>CAM1</> on preview               <dim># ms</>
 

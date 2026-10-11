@@ -96,6 +96,9 @@ type Switcher struct {
 
 	recording *recording // the macro being recorded (macros.go)
 	failNext  []uint8    // FTDE statuses for the next transfer requests
+	// uploadHeld, if set, holds the next upload's second budget until it
+	// is closed (HoldUpload).
+	uploadHeld <-chan struct{}
 }
 
 // holder is who holds a store lock.

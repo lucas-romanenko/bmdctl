@@ -90,9 +90,9 @@ func (c *cli) overview(g globals) int {
 }
 
 // overviewScreen is the overview at a terminal: a row per switcher, its
-// name bold, its address, model and video mode, and its session: how
-// long it has been open, or not connected, dim. The engine is bmdctl
-// version's.
+// name bold, its address, model and video mode, and at the end of the
+// line its session: how long it has been open, or not connected, dim.
+// The engine is bmdctl version's.
 func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string {
 	out := []string{""}
 	if len(list) == 0 {
@@ -101,6 +101,7 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 		return out
 	}
 	var cells [][]string
+	var sessions []string
 	for _, h := range list {
 		row := []string{c.colour(bold, h.Name), shortAddress(h.Address), "", "", c.colour(dim, "not connected")}
 		if h.Name == "" {
@@ -129,9 +130,12 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 				}
 			}
 		}
-		cells = append(cells, row)
+		cells = append(cells, row[:4])
+		sessions = append(sessions, row[4])
 	}
-	out = append(out, rows(cells)...)
+	for i, r := range rows(cells) {
+		out = append(out, trailing(r, sessions[i]))
+	}
 	if mine := c.build(); ov != nil && ov.Engine.Build != "" && mine != "" && mine != ov.Engine.Build {
 		out = append(out, "", indent+c.colour(dim, "the engine runs another build of bmdctl · bmdctl engine stop"))
 	}

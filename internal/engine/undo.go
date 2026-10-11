@@ -4,8 +4,9 @@ package engine
 
 // undo: the engine keeps, per switcher, what the last changes it sent to
 // program, preview, the aux outputs and the keyers' and DSKs' on air
-// replaced (twenty deep), and undo puts the last one back. Only changes
-// made through this engine, so from this machine; a change the switcher
+// replaced (twenty deep), and undo puts the last one back. A cut or an
+// auto transition keeps both buses, and undo cuts back. Only changes made
+// through this engine, so from this machine; a change the switcher
 // already held (sent nothing) isn't one. bmdwire v1.3.0 has no undo.
 
 import (
@@ -20,11 +21,16 @@ const undoDepth = 20
 
 // undoEntry is a change undo can put back: what it replaced.
 type undoEntry struct {
-	kind   string // program, preview, aux, key, dsk
+	kind   string // program, preview, aux, key, dsk, cut, auto
 	me     int
 	index  int // the aux output, keyer or DSK
 	source int // what program, preview or the aux had
 	on     bool
+	// preview is what preview had before a cut or an auto transition
+	// (source, program's); swapped, that the next transition took the
+	// background, so it swapped them.
+	preview int
+	swapped bool
 }
 
 // UndoResult is what undo put back.
@@ -51,6 +57,10 @@ func (c *call) remember() func() {
 		u = undoEntry{kind: "key", me: ix(a, "me"), index: ix(a, "keyer"), on: st.USKOnAir(ix(a, "me"), ix(a, "keyer"))}
 	case "dsk on-air", "dsk toggle", "dsk auto":
 		u = undoEntry{kind: "dsk", index: ix(a, "dsk"), on: st.DSKState(ix(a, "dsk")).OnAir}
+	case "cut", "auto":
+		me := ix(a, "me")
+		u = undoEntry{kind: c.entry.Path, me: me, source: st.ProgramSource(me), preview: st.PreviewSource(me),
+			swapped: st.TransitionSelection(me).Background}
 	default:
 		return func() {}
 	}
@@ -85,6 +95,9 @@ func opUndo(c *call) (any, bool, error) {
 	if !ok {
 		return UndoResult{}, false, nil
 	}
+	if u.kind == "cut" || u.kind == "auto" {
+		return c.undoCut(u)
+	}
 	st := c.state
 	var cmd atem.Command
 	var what string
@@ -115,5 +128,66 @@ func opUndo(c *call) (any, bool, error) {
 		return nil, false, err
 	}
 	c.note(Note{Values: []Value{v}})
+	return UndoResult{Undone: true, What: what, CommandResult: r}, confirmed, nil
+}
+
+// undoCut undoes a cut or an auto transition: program and preview go back
+// to what they were. Where they are as it left them and the next
+// transition still takes the background as it did, that is a cut, which
+// also takes back the keys it took on or off air. Where they have changed
+// since (not from here: that would be on the stack), each bus is set
+// back. A transition still running is left to finish.
+func (c *call) undoCut(u undoEntry) (any, bool, error) {
+	st := c.state
+	what := u.kind
+	if u.me > 0 {
+		what = fmt.Sprintf("ME%v %s", table.Index(u.me), what)
+	}
+	if st.TransitionInTransition(u.me) {
+		c.e.put(c.host.key, u)
+		return nil, false, codeErr(CodeUsage, "M/E %v is mid-transition: undo once it is done", table.Index(u.me))
+	}
+	prog, prev := st.ProgramSource(u.me), st.PreviewSource(u.me)
+	leftProg, leftPrev := u.source, u.preview
+	if u.swapped {
+		leftProg, leftPrev = u.preview, u.source
+	}
+	vals := []Value{
+		{Param: "program", Before: ptr(sourceName(st, prog)), After: sourceName(st, u.source)},
+		{Param: "preview", Before: ptr(sourceName(st, prev)), After: sourceName(st, u.preview)},
+	}
+	var cmds []atem.Command
+	switch {
+	case prog == leftProg && prev == leftPrev && st.TransitionSelection(u.me).Background == u.swapped:
+		cmds = []atem.Command{atem.Cut{ME: uint8(u.me)}}
+	default:
+		if prog != u.source {
+			cmds = append(cmds, atem.ProgramInput{ME: uint8(u.me), Source: uint16(u.source)})
+		}
+		if prev != u.preview {
+			cmds = append(cmds, atem.PreviewInput{ME: uint8(u.me), Source: uint16(u.preview)})
+		}
+	}
+	if len(cmds) == 0 {
+		// Both buses hold what they had before it: nothing to send.
+		c.note(Note{Values: vals})
+		return UndoResult{Undone: true, What: what, CommandResult: CommandResult{Already: true}}, true, nil
+	}
+	var r CommandResult
+	confirmed := true
+	for i, cmd := range cmds {
+		res, ok, err := c.send(cmd)
+		if err != nil {
+			if i == 0 {
+				c.e.put(c.host.key, u) // nothing undone: it can be tried again
+			}
+			return nil, false, err
+		}
+		if i == 0 {
+			r = res
+		}
+		confirmed = confirmed && ok
+	}
+	c.note(Note{Values: vals})
 	return UndoResult{Undone: true, What: what, CommandResult: r}, confirmed, nil
 }

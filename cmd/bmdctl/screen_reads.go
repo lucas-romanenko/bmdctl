@@ -89,32 +89,13 @@ func screenStatus(p *printer, _ engine.Response, raw json.RawMessage) view {
 			v.about = []string{strings.Join(s, ", ")}
 		}
 	}
-	// Keyers and DSKs end in their on-air state, in one column.
-	type keyRow struct{ label, what, state string }
-	var keys []keyRow
+	// Keyers and DSKs end in their on-air state, at the line's end.
 	var out []string
-	typeWidth := 0
+	var keyers []engine.KeyerStatus
 	for _, m := range r.MEs {
-		for _, k := range m.Keyers {
-			typeWidth = max(typeWidth, width(k.Type))
-		}
+		keyers = append(keyers, m.Keyers...)
 	}
-	onAir := func(on bool) string {
-		if on {
-			return c.colour(red, "on air")
-		}
-		return c.colour(dim, "off")
-	}
-	flush := func() {
-		w := 0
-		for _, k := range keys {
-			w = max(w, width(k.what))
-		}
-		for _, k := range keys {
-			out = append(out, labelled(k.label, padRight(k.what, w)+"  "+k.state))
-		}
-		keys = nil
-	}
+	typeWidth := keyerTypeWidth(keyers)
 	for _, m := range r.MEs {
 		out = append(out, labelled(fmt.Sprintf("ME %v", m.ME),
 			padRight(c.colour(red, "PGM  "+short(m.Program)), 20)+c.colour(green, "PVW  "+short(m.Preview))))
@@ -140,20 +121,16 @@ func screenStatus(p *printer, _ engine.Response, raw json.RawMessage) view {
 			if i == 0 {
 				label = "keys"
 			}
-			keys = append(keys, keyRow{label, fmt.Sprintf("%v  %s  %s / %s", k.Keyer, padRight(k.Type, typeWidth), short(k.Fill), short(k.Key)), onAir(k.OnAir)})
-		}
-		if len(r.MEs) > 1 {
-			flush()
+			out = append(out, trailing(labelled(label, keyerRow(k, typeWidth)), c.onAir(k.OnAir)))
 		}
 	}
 	for _, d := range r.DSKs {
-		state := onAir(d.OnAir)
+		state := c.onAir(d.OnAir)
 		if d.Tie {
 			state += c.colour(dim, ", tied")
 		}
-		keys = append(keys, keyRow{fmt.Sprintf("dsk %v", d.DSK), short(d.Fill) + " / " + short(d.Key), state})
+		out = append(out, trailing(labelled(fmt.Sprintf("dsk %v", d.DSK), short(d.Fill)+" / "+short(d.Key)), state))
 	}
-	flush()
 	out = append(out, auxRows(r.Aux)...)
 	macro := c.colour(dim, "idle")
 	switch {
@@ -185,6 +162,30 @@ func screenStatus(p *printer, _ engine.Response, raw json.RawMessage) view {
 	}
 	v.rows = out
 	return v
+}
+
+// onAir is a keyer's or DSK's state: on air red, off dim.
+func (c *cli) onAir(on bool) string {
+	if on {
+		return c.colour(red, "on air")
+	}
+	return c.colour(dim, "off")
+}
+
+// keyerRow is an upstream keyer as status and show keys both lay it out:
+// its number, its type (padded to typeWidth), fill / key. Its on-air
+// state goes at the end of the line (trailing).
+func keyerRow(k engine.KeyerStatus, typeWidth int) string {
+	return fmt.Sprintf("%v  %s  %s / %s", k.Keyer, padRight(k.Type, typeWidth), short(k.Fill), short(k.Key))
+}
+
+// keyerTypeWidth is the widest keyer type: the type column's width.
+func keyerTypeWidth(ks []engine.KeyerStatus) int {
+	w := 0
+	for _, k := range ks {
+		w = max(w, width(k.Type))
+	}
+	return w
 }
 
 // auxRows are the aux outputs, a run of outputs on one source as one
@@ -293,6 +294,7 @@ func screenInputs(p *printer, _ engine.Response, raw json.RawMessage) view {
 		}
 	}
 	var cells [][]string
+	var marks []string
 	hidden := 0
 	for _, in := range ins {
 		if hiddenPorts[in.PortType] && !p.flagOn("all") {
@@ -312,9 +314,13 @@ func screenInputs(p *printer, _ engine.Response, raw json.RawMessage) view {
 				mark = c.colour(green, "○ PVW")
 			}
 		}
-		cells = append(cells, []string{c.colour(dim, padLeft(id, idWidth)), in.Short, in.Long, mark})
+		cells = append(cells, []string{c.colour(dim, padLeft(id, idWidth)), in.Short, in.Long})
+		marks = append(marks, mark)
 	}
 	out := rows(cells)
+	for i := range out {
+		out[i] = trailing(out[i], marks[i])
+	}
 	if hidden > 0 {
 		out = append(out, "", indent+c.colour(dim, "bmdctl inputs --all adds outputs, masks and keys"))
 	}
@@ -380,6 +386,7 @@ func screenMacroList(p *printer, _ engine.Response, raw json.RawMessage) view {
 		idWidth = max(idWidth, len(m.Slot.String()))
 	}
 	var cells [][]string
+	var states []string // running, recording, invalid: at the line's end
 	hidden := 0
 	for _, m := range r.Macros {
 		state := ""
@@ -399,9 +406,13 @@ func screenMacroList(p *printer, _ engine.Response, raw json.RawMessage) view {
 		case !m.Used:
 			name = c.colour(dim, "(empty)")
 		}
-		cells = append(cells, []string{c.colour(dim, padLeft(m.Slot.String(), idWidth)), name, state, m.Description})
+		cells = append(cells, []string{c.colour(dim, padLeft(m.Slot.String(), idWidth)), name, m.Description})
+		states = append(states, state)
 	}
 	out := rows(cells)
+	for i := range out {
+		out[i] = trailing(out[i], states[i])
+	}
 	if hidden > 0 {
 		out = append(out, p.hidden(hidden, "empty slot"))
 	}
@@ -581,8 +592,12 @@ func screenUndo(p *printer, r engine.Response, raw json.RawMessage) view {
 }
 
 // undoChange is what undo changed: before → after, the after in its
-// tally colour.
+// tally colour; an undone cut or auto transition, what each bus has now,
+// as a cut says it.
 func (p *printer) undoChange(u engine.UndoResult) string {
+	if len(p.vals) == 2 && p.vals[0].Param == "program" && p.vals[1].Param == "preview" {
+		return p.c.colour(red, p.vals[0].After) + " on program · " + p.c.colour(green, p.vals[1].After) + " on preview"
+	}
 	for _, v := range p.vals {
 		after := v.After
 		switch {

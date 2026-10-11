@@ -32,9 +32,6 @@ type call struct {
 	// noInput is what a source that named nothing could have been, for
 	// a note if the arguments don't parse.
 	noInput *NoInput
-	// predicted is M/E 1's program and preview as a cut or an auto
-	// transition asks for them, which no echo confirms.
-	predicted *OnAir
 }
 
 // op runs an operation: its result, whether the switcher confirmed it,

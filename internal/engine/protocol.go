@@ -148,9 +148,9 @@ type Note struct {
 	// Values are what a command sets, each before and after, in the
 	// units it takes. The CLI shows a write from them.
 	Values []Value `json:"values,omitempty"`
-	// OnAir is what M/E 1 has on program and preview: sent with the
-	// Switcher note, and again once a command is done, so a terminal's
-	// header shows what is live.
+	// OnAir is what M/E 1 has on program and preview as the request
+	// found it: sent once, with the Switcher note, before the command
+	// runs, so a terminal's header shows what was live when it ran.
 	OnAir *OnAir `json:"on_air,omitempty"`
 	// Alias: a source typed as an alias that is also an input's name;
 	// the alias won (sources.go).
