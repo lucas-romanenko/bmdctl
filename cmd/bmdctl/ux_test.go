@@ -267,12 +267,15 @@ func TestReconnect(t *testing.T) {
 	if l := w.next2(t, 10*time.Second); !strings.HasSuffix(l, "  session to "+fake+" dropped") {
 		t.Errorf("dropped: %q", l)
 	}
-	cmd := make(chan [3]string)
-	go func() {
-		code, out, errOut := b.run(with("program", "2")...)
-		cmd <- [3]string{string(rune('0' + code)), out, errOut}
-	}()
-	time.Sleep(200 * time.Millisecond)
+	// The switcher comes back only once the command has said it waits.
+	pc, _, _ := b.cli("")
+	pe := newLineWriter()
+	pc.stderr = pe
+	cmd := make(chan int)
+	go func() { cmd <- pc.run(with("program", "2")) }()
+	if l := pe.next(t); l != "connecting to 192.0.2.10 …" {
+		t.Errorf("command meanwhile: %q", l)
+	}
 	sw.Silence(false)
 	// The dump coming back isn't printed; what changed while it was away
 	// is: the fake's dump has program CAM2, where program 1 left CAM1.
@@ -282,9 +285,15 @@ func TestReconnect(t *testing.T) {
 	if l := w.next(t); !strings.HasSuffix(l, "  program  ME1  CAM1 → CAM2") {
 		t.Errorf("after: %q", l)
 	}
-	r := <-cmd
-	if r[0] != "0" || r[2] != "connecting to 192.0.2.10 …\nATEM 1 M/E Constellation HD, 1080p50\n" {
-		t.Errorf("command meanwhile: %q", r)
+	if code := <-cmd; code != 0 {
+		t.Errorf("command meanwhile: exit %d", code)
+	}
+	if l := pe.next(t); l != "ATEM 1 M/E Constellation HD, 1080p50" {
+		t.Errorf("command meanwhile: %q", l)
+	}
+	pe.pw.Close()
+	for l := range pe.lines {
+		t.Errorf("command meanwhile, then: %q", l)
 	}
 	cancel()
 	if code := <-done; code != 0 {

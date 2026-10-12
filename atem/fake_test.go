@@ -76,6 +76,20 @@ func waitState(t *testing.T, s *atem.Session, d time.Duration, ok func(atem.Stat
 	}
 }
 
+// waitQueued waits until n transfers are queued on s's lane: a test that
+// starts one on another goroutine and must act while it waits (for a lock
+// another client holds) waits here, not for a sleep to be long enough.
+func waitQueued(t *testing.T, s *atem.Session, n int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for atem.QueuedTransfers(s) < n {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d transfers queued, want %d", atem.QueuedTransfers(s), n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // bmdwire#11: the silence timeout counts only datagrams accepted from the
 // switcher. A session that keeps sending to a switcher that has gone quiet,
 // while a foreign peer and garbage keep arriving, still times out; in

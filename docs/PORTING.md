@@ -237,7 +237,13 @@ two settings `Dial` needs a struct for.
   data had arrived (`AtemProtocol.connected`), the session empties the
   state, reopens `Ready`, fails waiters and publishes `ChangeDisconnected`.
   A zero-length command header (atemwire's `ConnectionError`) does the
-  same, then says goodbye and handshakes again.
+  same, then says goodbye and handshakes again. `Ready` is reopened first,
+  before any transfer or waiter is failed: atemwire's `'disconnected'`
+  handler clears `_session_ready` before `_reset_transfer_lane` runs. The
+  port first reopened it after the lane, so a caller told
+  `ErrDisconnected` could wait on `Ready`, find the old closed channel
+  and get `ErrNotReady` from its next call; CI hit it in
+  `TestDisconnectFailsWaitingTransfers` (2026-10-12).
 - **Bad packets.** A packet whose commands can't be decoded (a truncated
   header, a non-UTF-8 code, and from step 5 a parser error) loses its
   remaining commands and the session carries on: an exception escaping
@@ -2494,6 +2500,15 @@ comes back. Indexes in results count from 1, as the flags do
   `-short`). The tests for the deliberate differences are in
   `atem/fake_test.go` (package `atem_test`, which can shorten the silence
   timeout through `export_test.go`).
+- **Waiting in tests.** A test against the fake waits for a condition,
+  never for a sleep to be long enough: CI's runner is slower than a
+  desk. `Dial` returns only once the dump is in, so a test can send or
+  transfer straight after it. After a disconnect, it waits on `Ready`
+  (or `ChangeReady`) before the next one. A test that must act while a
+  transfer waits for a lock waits for it to be queued (`waitQueued`,
+  through `export_test.go`'s `QueuedTransfers`); one that must act while
+  a command waits for the switcher waits for its `connecting to` line.
+  A sleep only paces (a burst window, a slow dial).
 
 ## HyperDeck (`hyperdeck/`)
 
