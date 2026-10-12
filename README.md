@@ -2,166 +2,116 @@
 
 # bmdctl
 
-A command-line tool, and the Go libraries under it, for controlling
-Blackmagic Design production equipment over the network: ATEM switchers
-first, then HyperDeck recorders, Videohub routers and Ultimatte keyers.
+[![CI](https://github.com/lucas-romanenko/bmdctl/actions/workflows/ci.yml/badge.svg)](https://github.com/lucas-romanenko/bmdctl/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/lucas-romanenko/bmdctl)](https://github.com/lucas-romanenko/bmdctl/releases/latest)
 
-The libraries are a Go port of [bmdwire](https://github.com/lucas-romanenko/bmdwire)
-v1.3.0, the Python package behind WebATEM. They speak the devices' own
-protocols directly: no Blackmagic software, SDK or driver is involved.
+bmdctl is one binary that controls Blackmagic Design production equipment
+over the network. It runs ATEM switchers and HyperDeck recorders now;
+Videohub routers and Ultimatte keyers are next. It talks each device's own
+protocol (UDP 9910 to an ATEM, TCP 9993 to a HyperDeck), so no Blackmagic
+SDK, driver or ATEM Software Control is involved. A background engine keeps
+a session open to each device, and every command is also served over HTTP
+and to AI agents over MCP.
+
+```
+$ bmdctl connect 192.168.1.20
+STUDIO A  PGM CAM2 · PVW CAM1 · 1080p25 · connected 328 ms
+  saved as "STUDIO A", now the default
+$ bmdctl preview cam3
+STUDIO A  PGM CAM2 · PVW CAM1
+  preview     CAM1 → CAM3                                          27 ms
+$ bmdctl cut
+STUDIO A  PGM CAM2 · PVW CAM3
+  cut         CAM3 on program · CAM2 on preview                    30 ms
+$ bmdctl status
+STUDIO A  1080p25 · session 14s, idle 3s, pinned
+
+  ME 1        PGM  CAM3           PVW  CAM2
+              mix 1:00 · next background · FTB off
+```
 
 ## Install
 
-macOS and Linux, into `~/.local/bin` (`/usr/local/bin` as root), with the
-alias commands beside it:
+macOS and Linux, into `~/.local/bin` (`/usr/local/bin` as root), checked
+against the release's `checksums.txt`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/install.sh | sh
 ```
 
-It downloads the release for this machine from GitHub, checks it
-against the release's `checksums.txt` and prints the next step
-(`bmdctl connect <ip>`). `BMDCTL_VERSION=v0.1.0` picks a release,
-`BMDCTL_INSTALL_DIR` the directory.
-
 - **Windows** ([Scoop](https://scoop.sh)):
   `scoop install https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/scoop/bmdctl.json`
-  installs the latest release (Scoop lists it as `nightly`, since the
-  manifest follows the latest release rather than pinning one);
-  `scoop update bmdctl` fetches it again.
-- **Debian, Ubuntu, Fedora:** the `.deb` and `.rpm` on the
-  [releases page](https://github.com/lucas-romanenko/bmdctl/releases)
-  (`sudo apt install ./bmdctl_*.deb`), with the man page and completions.
-- **Docker:** `ghcr.io/lucas-romanenko/bmdctl`, which runs the engine
-  with the HTTP API (below).
-- **Go:** `go install github.com/lucas-romanenko/bmdctl/cmd/bmdctl@latest`.
+- **Debian, Ubuntu, Fedora:** the `.deb` or `.rpm` from the
+  [latest release](https://github.com/lucas-romanenko/bmdctl/releases/latest)
+  (`sudo apt install ./bmdctl_*_amd64.deb`), with the man page and
+  completions.
+- **Docker:** `ghcr.io/lucas-romanenko/bmdctl`, which runs the engine and
+  the HTTP API (`docker run -d --network host -v bmdctl:/data ghcr.io/lucas-romanenko/bmdctl`).
+- **Go 1.27:** `go install github.com/lucas-romanenko/bmdctl/cmd/bmdctl@latest`
 
-`atemctl`, `hdctl`, `vhctl` and `ultctl` are bmdctl for one device
-(`hdctl play` is `bmdctl hyperdeck play`); the archives and packages
-ship them as links to bmdctl, copies on Windows.
+The releases also install `atemctl`, `hdctl`, `vhctl` and `ultctl`:
+bmdctl for one device (`hdctl play` is `bmdctl hyperdeck play`).
+[docs/INSTALL.md](docs/INSTALL.md) covers PATH, completion, upgrading and
+removal.
 
-## Status
+## Quick start
 
-Early. It has run against one switcher, an ATEM 1 M/E Constellation HD,
-in eight sessions (docs/HARDWARE.md): reads, switching, stills, macros
-and profile save. The ATEM
-package has its wire layer: the UDP transport, a session that tracks the
-switcher's state, every state packet atemwire parses and every command
-it can send. It also moves stills and macros to and from the switcher,
-encodes and decodes macros, and saves and applies ASC-style profiles.
-The HyperDeck package speaks the HyperDeck Ethernet Protocol (TCP 9993):
-transport, clips, slots and the deck's notifications, checked against
-hyperdeckwire itself but not yet run against a deck. The CLI runs
-everything through a background engine that keeps a session open to
-each device; the first command starts it. Videohub and Ultimatte come
-later.
-
-```
-$ bmdctl connect 192.168.1.20         # asks what it is; saved by its own name, the default
-$ bmdctl status
-$ bmdctl program cam2
-$ bmdctl usk 1 on-air on --me 2
-$ bmdctl media upload 1 logo.png --name Logo
-$ bmdctl macro run "Open Show"
-$ bmdctl exec opening-cue.txt
-$ bmdctl --dry-run transition wipe --width 50 --pattern CircleIris
-001c0000435457700006000007001388000000000000000000000000
-$ hdctl --host "Deck 1" goto intro
-$ hdctl --host "Deck 1" play --loop --single-clip
+```sh
+bmdctl connect 192.168.1.20   # asks what answers there, saves it by its own name
+bmdctl status                 # program, preview, transition, keyers, aux
+bmdctl program cam2           # a number, cam2, mp1, bars, or the input's name
 ```
 
-`docs/COMMANDS.md` lists every command and the CLI's conventions; `bmdctl
-man` prints the same as a manual page, `bmdctl completion bash|zsh|fish`
-a completion script, and `bmdctl doctor` checks the setup.
+## Why
 
-### The engine under systemd or Docker
+- **Control over SSH.** Anything that can reach the switcher's network can
+  run it from a shell: a jump host, a laptop on the VPN, a script. Nothing
+  needs a desktop session or ATEM Software Control.
+- **Switcher configs in git.** `bmdctl profile save show.xml` writes ATEM
+  Software Control's XML and the media pool stills beside it. Commit them,
+  and a change to a show's setup is a diff. (`profile restore` loads one
+  back; it has not yet run on hardware.)
+- **AI agents over MCP.** `bmdctl mcp` gives Claude Code, Claude Desktop or
+  any MCP client a tool per command group. Destructive commands do nothing
+  until a person confirms. See [docs/AGENTS.md](docs/AGENTS.md).
 
-Any command starts the engine in the background, and restarts it after
-bmdctl is rebuilt or upgraded. To run it yourself, `bmdctl engine` runs
-it in the foreground and logs to stderr; that one answers whichever
-build of bmdctl sends to it, and is restarted by you. The image runs
-`bmdctl engine --serve`: the engine and the HTTP API. A switcher is
-reached over UDP on the local network, so give it the host's network;
-the API is then on the host's 127.0.0.1:8880, and its socket on a volume
-the host's bmdctl can use:
+Also:
 
-```
-docker run -d --network host -v bmdctl:/data -v /run/bmdctl:/run/bmdctl \
-    ghcr.io/lucas-romanenko/bmdctl
-BMDCTL_SOCKET=/run/bmdctl/bmdctl.sock bmdctl status
-curl -s localhost:8880/hosts
-```
-
-hosts.yml and the log are in the `/data` volume.
-
-### HTTP
-
-`bmdctl serve` serves every command over HTTP/JSON, through the engine:
-`POST /hosts/studio/program` with `{"source": "cam2"}`, `GET
-/hosts/studio/state`, `GET /hosts/studio/events` (server-sent events), and
-`GET /openapi.json`, generated from the command table. It listens on
-127.0.0.1:8880 and has no authentication, as WebATEM: whoever can reach it
-controls the devices. `bmdctl engine --serve` serves it from the engine's
-own process.
-
-| package     | ports                           | licence        |
-|-------------|---------------------------------|----------------|
-| `atem`      | `atemwire` (UDP 9910)           | LGPL-3.0-only  |
-| `hyperdeck` | `hyperdeckwire` (TCP 9993)      | MIT            |
-| `videohub`  | `videohubwire` (TCP 9990)       | MIT            |
-| `ultimatte` | `ultimattewire`                 | MIT            |
-| `cmd/bmdctl`| the CLI                         | MIT            |
-
-`atem` is LGPL because atemwire is: it is a fork of
-[pyatem](https://git.sr.ht/~martijnbraam/pyatem) by Martijn Braam and the
-OpenAtem contributors. See `atem/NOTICE`.
-
-## What it is not
-
-- No GUI and no TUI. bmdctl is a command you run, or a library you import.
-- No scheduling. It does not run things at a time or on a cue; use cron, a
-  show-control system or your own code for that.
-- No telemetry. It sends nothing anywhere except to the devices you point
-  it at.
-
-## Building
-
-```
-go build ./...
-go vet ./...
-go test -race ./...
-go run ./cmd/bmdctl version
-```
-
-Go 1.27. The device packages use only the standard library. Releases are
-GoReleaser's (`.goreleaser.yml`): pushing a `v*` tag runs
-`.github/workflows/release.yml`, which builds the archives, packages,
-image and checksums (it commits nothing: `scoop/bmdctl.json` always
-names the latest release's archive);
-`goreleaser release --snapshot --clean` builds them all locally into
-`dist/` without publishing.
+- Scheduled changes: an `exec` cue file run from cron; every line is checked before the first is sent.
+- Show control: call `bmdctl` from Companion's shell action, Node-RED's exec node or Home Assistant's `shell_command`.
+- Tally: `bmdctl watch --json` prints each program, preview and tally change as one JSON line.
+- Fleets: loop over `bmdctl hosts --json` and run the same command, or `profile save`, on every switcher.
+- Teaching and CI: `--dry-run` prints a command's bytes with no switcher; the tests run against a fake switcher.
+- A Raspberry Pi (64-bit OS) beside the switcher can run the engine and the HTTP API (`bmdctl engine --serve`).
 
 ## Documentation
 
-- `docs/SURFACE-atem.md`: everything atemwire can do, copied from bmdwire
-  v1.3.0. It is the specification for the `atem` package.
-- `docs/SURFACE-hyperdeck.md`: everything hyperdeckwire can do, written
-  from bmdwire v1.3.0's code. It is the specification for the
-  `hyperdeck` package.
-- `docs/PORTING.md`: every decision the port makes, and every place it
-  differs from bmdwire.
-- `docs/COMMANDS.md`: every command the CLI knows, generated from the
-  command table.
-- `docs/AGENTS.md`: bmdctl for AI agents: the MCP server (`bmdctl mcp`)
-  and how to add it to Claude Code and Claude Desktop.
-- `docs/HARDWARE.md`: every session against a real switcher, and what
-  it found.
-- `docs/BRAND.md`: the mark, wordmarks, colours and banner.
+- [docs/GUIDE.md](docs/GUIDE.md): a walkthrough, task by task, with
+  what each command prints.
+- [docs/COMMANDS.md](docs/COMMANDS.md): every command and flag, generated
+  from the command table (`bmdctl man` prints the same).
+- [docs/AGENTS.md](docs/AGENTS.md): the MCP server and the Claude skill.
+- [docs/HARDWARE.md](docs/HARDWARE.md): what has run on real hardware (one
+  ATEM so far, no HyperDeck yet) and what hasn't.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the packages, the
+  engine and the tests fit together.
+- [CONTRIBUTING.md](CONTRIBUTING.md): building, testing and adding a
+  command.
 
-## Not affiliated with Blackmagic Design
+## Credits
 
-Not affiliated with or endorsed by Blackmagic Design Pty Ltd.
+- [bmdwire](https://github.com/lucas-romanenko/bmdwire), the Python
+  original by the same author. bmdctl's device packages are a port of its
+  v1.3.0 libraries.
+- [pyatem](https://git.sr.ht/~martijnbraam/pyatem) by Martijn Braam and the
+  OpenAtem contributors, for the ATEM protocol groundwork. atemwire, which
+  `atem/` ports, is a fork of it ([atem/NOTICE](atem/NOTICE)).
+- Skaarhoj and the ATEM community, for early protocol notes.
 
-bmdctl is an independent project, and Blackmagic Design does not support
-it. ATEM, HyperDeck, Ultimatte and Videohub are trademarks of Blackmagic
-Design.
+## Licence
+
+`atem/` is LGPL-3.0-only ([atem/LICENSE](atem/LICENSE)), as atemwire, the
+pyatem fork it ports, is. Everything else is MIT ([LICENSE](LICENSE)).
+
+Not affiliated with or endorsed by Blackmagic Design Pty Ltd. ATEM,
+HyperDeck, Videohub and Ultimatte are trademarks of Blackmagic Design.
