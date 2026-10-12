@@ -173,6 +173,11 @@ func (b *bench) cli(stdin string) (*cli, *bytes.Buffer, *bytes.Buffer) {
 		return env
 	}
 	c.spawn = func(string, []string, []string) error { return errors.New("tests start no engine") }
+	// Opening a session takes 8 ms, whatever the machine: a header near
+	// 72 columns drops its connect time when that has two digits
+	// (screen.go, headerLine), so a real time made goldens depend on
+	// the machine's speed.
+	c.connectTook = func(time.Time) time.Duration { return 8 * time.Millisecond }
 	return c, &o, &e
 }
 

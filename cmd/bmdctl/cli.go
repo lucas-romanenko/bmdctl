@@ -91,8 +91,12 @@ type cli struct {
 	// scr is what has been laid out at a terminal (screen.go); shared
 	// with exec's lines, so they share one header.
 	scr *screenState
-	// connectAt is when "connecting to ..." was said.
-	connectAt time.Time
+	// connectAt is when "connecting to ..." was said; connectTook is how
+	// long opening the session has taken since then (time.Since). Tests
+	// fix it, so a header's width, and what it drops to fit 72 columns,
+	// doesn't depend on how fast the machine connects.
+	connectAt   time.Time
+	connectTook func(since time.Time) time.Duration
 	// spinner is the one a request shows while it waits (spin), if any;
 	// spinAfter is how long a wait goes before it shows (tests lengthen
 	// it, so a slow machine can't draw one).
@@ -121,7 +125,7 @@ func newCLI(stdout, stderr io.Writer) *cli {
 	return &cli{stdin: os.Stdin, stdout: stdout, stderr: stderr, env: os.Getenv, environ: os.Environ,
 		reg: reg, spawn: engine.Spawn, build: sync.OnceValue(buildID), engineConfig: func(c engine.Config) engine.Config { return c },
 		ctx: context.Background(), dialATEM: atem.Dial, said: map[string]bool{}, discover: browse,
-		bannered: new(bool), scr: &screenState{}, spinAfter: spinAfter, now: time.Now,
+		bannered: new(bool), scr: &screenState{}, spinAfter: spinAfter, now: time.Now, connectTook: time.Since,
 		dialTCP: func(ctx context.Context, addr string) (net.Conn, error) { return d.DialContext(ctx, "tcp", addr) }}
 }
 
@@ -437,7 +441,7 @@ func (c *cli) sayConnecting(g globals, who string) {
 // the spinner goes on, saying next.
 func (c *cli) sayConnected(name, addr string, sw engine.Switcher, next string) time.Duration {
 	c.connecting = false
-	took := max(time.Since(c.connectAt), time.Millisecond)
+	took := max(c.connectTook(c.connectAt), time.Millisecond)
 	if c.terminal() {
 		if c.spinner != nil {
 			c.spinner.set(next)
