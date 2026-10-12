@@ -169,7 +169,35 @@ release:
     owner: lucas-romanenko
     name: bmdctl
   prerelease: auto
+  # Above the changelog on the release page: where to start, and what has
+  # run on real hardware.
+  header: |
+    Install with `curl -fsSL https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/install.sh | sh`, Scoop, the deb or rpm below, or `ghcr.io/lucas-romanenko/bmdctl:{{ .Version }}` ([docs/INSTALL.md](https://github.com/lucas-romanenko/bmdctl/blob/{{ .Tag }}/docs/INSTALL.md)).
 
+    New to bmdctl? [docs/GUIDE.md](https://github.com/lucas-romanenko/bmdctl/blob/{{ .Tag }}/docs/GUIDE.md) walks through it, task by task. What has run on real hardware, and what hasn't yet: [docs/HARDWARE.md](https://github.com/lucas-romanenko/bmdctl/blob/{{ .Tag }}/docs/HARDWARE.md).
+
+# The release notes: commits since the last tag, from GitHub, grouped by
+# their conventional-commit type. Each line is the commit and its subject,
+# with no author; chore commits are left out.
 changelog:
   use: github
   sort: asc
+  format: "{{ .SHA }} {{ .Message }}"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Documentation
+      regexp: '^.*?docs(\(.+\))??!?:.+$'
+      order: 2
+    - title: Build
+      regexp: '^.*?build(\(.+\))??!?:.+$'
+      order: 3
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - '^.*?chore(\(.+\))??!?:.+$'
