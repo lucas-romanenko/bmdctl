@@ -1,0 +1,14 @@
+# The module has no dependencies, so only the workflows' actions are
+# watched. Updates come weekly, as one pull request.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope

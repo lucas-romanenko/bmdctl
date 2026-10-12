@@ -1,0 +1,51 @@
+name: Device support
+description: Ask for a device or model bmdctl doesn't handle yet, or report how one behaves.
+labels: [device support]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        bmdctl controls ATEM switchers and HyperDeck recorders today, and
+        has run on one ATEM model (docs/HARDWARE.md). Videohub and
+        Ultimatte are next. Reports of other models, working or not, are
+        how that list grows.
+  - type: input
+    id: device
+    attributes:
+      label: Device model
+      placeholder: ATEM Television Studio HD8 ISO
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware
+      placeholder: "9.6"
+    validations:
+      required: true
+  - type: textarea
+    id: want
+    attributes:
+      label: What you want to do with it
+      description: The commands or features you need.
+    validations:
+      required: true
+  - type: textarea
+    id: probe
+    attributes:
+      label: What bmdctl sees
+      description: |
+        If bmdctl reaches the device, paste what `bmdctl connect ADDRESS`
+        and `bmdctl info` (or, for a HyperDeck, `bmdctl --host NAME status`)
+        print, and `bmdctl version`.
+      render: text
+  - type: dropdown
+    id: test
+    attributes:
+      label: Can you test changes on it?
+      options:
+        - "Yes, on a spare device"
+        - "Yes, but only read-only commands"
+        - "No"
+    validations:
+      required: true
