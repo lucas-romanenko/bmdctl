@@ -119,7 +119,8 @@ the "Tested on" table and the "Unverified" list at its top up to date.
   lines; `TestSkillCommands` checks its command lines). `docs/AGENTS.md`
   says how agents use both.
 - `.github/banner.gif` (`banner.png` is its still), `.github/mark/`: the
-  README banner and the mark.
+  README banner and the mark. `docs/brand/social-preview.png` is the
+  repository's social preview (uploaded in Settings by hand).
   `docs/BRAND.md` is their spec; follow it for anything branded.
 
 ## Terminal output

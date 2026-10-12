@@ -120,6 +120,24 @@ Used as is. To regenerate it:
 - The GIF is two frames, the cursor on and then off, 0.55s each,
   looping forever. The still is the first frame.
 
+## Social preview
+
+`docs/brand/social-preview.png`, 1280×640, is the image GitHub shows when
+the repository is linked. GitHub has no API for it: upload it in the
+repository's Settings, under Social preview.
+
+- `#0A0B0C` ground, the 168px dark mark at 96px from the left, then the
+  title at 112px with its tagline at 28px, as in the banner.
+- Below, one line of terminal output in a `#141618` panel with a
+  `#34383C` border: a cut, the new program source in `--pgm` and the new
+  preview source in `--pvw`, its time dim (`#7E8386`).
+- Everything stays 96px inside the left and right edges.
+- `docs/brand/social-preview.html` is its source:
+  `google-chrome --headless=new --hide-scrollbars --window-size=1280,640
+  --virtual-time-budget=8000 --screenshot=social-preview.png
+  social-preview.html`, from `docs/brand/`, renders it (it loads IBM Plex
+  Mono from Google Fonts).
+
 ## Legal
 
 The README says "Not affiliated with or endorsed by Blackmagic Design Pty
