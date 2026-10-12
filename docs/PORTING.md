@@ -1340,7 +1340,11 @@ response doesn't carry comes in note frames (Engine, "Notes":
 - **bmdctl alone** is one dim line, `bmdctl <version>`, then a row per
   switcher (name bold, address, model, video mode, `● 4m` for a session
   open four minutes, else `not connected` dim), then `bmdctl help` dim;
-  with none, how to add one (`bmdctl connect ADDRESS`). The engine,
+  with none, how to add one (`bmdctl connect ADDRESS`). A HyperDeck's
+  row is a switcher's: its model and video format, and its session or
+  `not connected` (a pipe's, `no session`); only a device bmdctl has no
+  commands for (Videohub, Ultimatte) says `no commands yet`, which every
+  device but an ATEM said until after the presentation pass. The engine,
   the commit and the hosts file are `bmdctl version`'s, which at a
   terminal prints them under the version. There is no other banner, and
   no prompt before results.
