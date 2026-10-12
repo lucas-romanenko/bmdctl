@@ -217,7 +217,7 @@ func TestLockHeldByAnotherClient(t *testing.T) {
 		_, err := s.DownloadStill(ctxFor(t, 5*time.Second), 2)
 		done <- err
 	}()
-	time.Sleep(100 * time.Millisecond)
+	waitQueued(t, s, 1)
 	sw.ReleaseLock(0)
 	if err := <-done; err != nil {
 		t.Fatalf("the waiting download: %v", err)
@@ -240,9 +240,10 @@ func TestXFCLeavesAQueuedTransferAlone(t *testing.T) {
 		_, err := s.DownloadStill(ctxFor(t, 5*time.Second), 2)
 		done <- err
 	}()
-	time.Sleep(50 * time.Millisecond)
+	waitQueued(t, s, 1)
+	// The release follows the *XFC on the wire, so the session handles
+	// the *XFC with the download still queued.
 	sw.Send(fakeatem.Command("*XFC", []byte{0, 0, 0, 2, 0, 0, 0, 0}))
-	time.Sleep(50 * time.Millisecond)
 	sw.ReleaseLock(0)
 	if err := <-done; err != nil {
 		t.Fatalf("the queued download: %v", err)
@@ -261,7 +262,7 @@ func TestDisconnectFailsWaitingTransfers(t *testing.T) {
 		_, err := s.DownloadStill(ctxFor(t, 5*time.Second), 2)
 		done <- err
 	}()
-	time.Sleep(50 * time.Millisecond)
+	waitQueued(t, s, 1)
 	sw.Send(make([]byte, 8)) // corruption: re-handshake
 	if err := <-done; !errors.Is(err, atem.ErrDisconnected) {
 		t.Fatalf("err %v", err)

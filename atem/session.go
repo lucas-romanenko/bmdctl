@@ -602,6 +602,15 @@ func (s *Session) onSilence() {
 // disconnected is atemwire's "disconnected" event and what follows it:
 // the state is emptied and nothing is ready until the next dump completes.
 func (s *Session) disconnected() {
+	// Not ready before anyone is told ErrDisconnected, as atemwire's
+	// 'disconnected' handler clears _session_ready before the lane is
+	// reset: a caller that hears it and waits on Ready must not find the
+	// old, closed channel.
+	if s.readyClosed {
+		s.readyClosed = false
+		ready := make(chan struct{})
+		s.ready.Store(&ready)
+	}
 	// The last-run macro latch lives on ATEMConnection, not in mixerstate,
 	// so it survives.
 	last := s.state.Macros.LastRun
@@ -612,11 +621,6 @@ func (s *Session) disconnected() {
 	// A transfer in flight died with the session; the new one must not
 	// inherit its queue or locks (_reset_transfer_lane).
 	s.resetLane(ErrDisconnected)
-	if s.readyClosed {
-		s.readyClosed = false
-		ready := make(chan struct{})
-		s.ready.Store(&ready)
-	}
 	// A waiter could otherwise be satisfied by the next dump, which would
 	// say nothing about whether its command was applied.
 	for key, ws := range s.waiters {
