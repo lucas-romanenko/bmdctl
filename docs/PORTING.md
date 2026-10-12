@@ -2159,7 +2159,7 @@ lives until 10 minutes pass without a request, unless pinned.
   is `{args, command, echo, state}`: the arguments for display, the
   opcode, the key waited for and the echoed packet.
 - **A cut or an auto transition waits for what the switcher reports of
-  it** (`call.effect`, after CI failed on every push from `68fadb8`).
+  it** (`call.effect`, after CI failed on every push from `90f3cdd`).
   Neither has an echo, so `Send` returned as soon as the packet was
   queued, and the next request (the next line of exec, an `undo`)
   could read the state from before the switcher's answer arrived: on CI's
