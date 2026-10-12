@@ -62,7 +62,8 @@ Everything else runs against `internal/fixtures` or the fake switcher in
 `docs/HARDWARE.md` records every hardware session. After each one
 (whoever ran it), append a section: date, commit, switcher model,
 protocol version, video mode, what was run, what happened and what
-changed because of it. Never rewrite an earlier section.
+changed because of it. Never rewrite an earlier section. Then bring
+the "Tested on" table and the "Unverified" list at its top up to date.
 
 ## Rules
 
