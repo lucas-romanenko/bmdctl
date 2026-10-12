@@ -7,6 +7,62 @@ the video mode), what was run, what happened, and what changed because
 of it. The rules for hardware tests (which switchers, read-only unless
 `BMDCTL_TEST_WRITE=1`, what is never done) are in `CLAUDE.md`.
 
+The two summaries below are kept up to date with the log: after a
+session, add what it verified to "Tested on" and take it off
+"Unverified".
+
+## Tested on
+
+One switcher so far, in eight sessions. The firmware version wasn't
+recorded; the switcher's `_ver` packet reported protocol 2.30.
+
+| Device | Firmware | Video mode | Verified | Date |
+|---|---|---|---|---|
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | The connect (handshake, state dump, video mode), `info`, `status`, `state`, `watch` | 2026-10-10 |
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | `preview` and `cut`, with `watch` showing them live | 2026-10-10 |
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | Still upload (a premultiplied PNG, scaled up with bars above and below), download, clear; the switcher returned the frame unchanged | 2026-10-10 |
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | `macro list`, `macro download` and `decode` (re-encoded byte for byte), `profile save` with its stills, `audio meters` (Fairlight) | 2026-10-10 |
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | A host renamed to its ATEM Setup name (hosts.yml version 1 to 2), `--host` by prefix, an unknown source refused before sending | 2026-10-10 |
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | `program`; a write the switcher already holds sends nothing (`already`) | 2026-10-11 |
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | Terminal output: the header, `connect`, `disconnect`, the `[y/N]` prompt, a profile's `✓` steps, `-t` | 2026-10-11 |
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | `cut` and `auto` confirmed by the switcher's reports; `undo` of a cut; `undo` refused mid-transition | 2026-10-11 |
+
+## Unverified
+
+Not yet run against real hardware. Most of it is tested against the
+fakes and, for the protocol, against bmdwire's own code.
+
+- **Other devices and modes:** any ATEM but the Constellation HD, and
+  any video mode but 1080p25.
+- **Any HyperDeck command on a real deck.** The protocol is checked
+  against hyperdeckwire, not a deck.
+- **Hosts:** `hosts discover`; `hosts add --as`; a rename made in ATEM
+  Setup while bmdctl is in use; the device probe (`connect ADDRESS`
+  asking what answers), which came after the last session.
+- **Sessions:** a session that drops and reconnects (`watch`'s `session
+  dropped` and `reconnected`, the connecting line on a reconnect).
+- **undo:** undo of an auto once its transition is done; undo after a
+  change from a panel, which sets each bus back instead of cutting.
+- **Writes:** every command that changes the switcher other than
+  `program`, `preview`, `cut`, `auto`, `undo` and the still transfers:
+  keyers, DSKs, aux, transition settings, audio, colour, multiviewer,
+  macro run and record. Commands the table marks unverified say so when
+  sent.
+- **Transfers and profiles:** macro upload; `profile restore`; a still
+  that isn't premultiplied (JPEG, GIF, `--premultiply off`); a fit that
+  shrinks the image or adds bars at the sides; the progress bar on a
+  slow transfer.
+- **Classic audio:** every `classic-audio` command, `classic-audio
+  meters`, and the dB scale `audio master` and `audio levels` put the
+  classic mixer's volume on.
+- **Terminal layout** since the seventh session's changes: the header
+  and the column-72 statuses.
+- **Platforms:** the Windows engine and its named pipe (the executables
+  ran only under Wine); the macOS binaries; zsh and fish completion in a
+  real shell; the Docker image against a switcher.
+- **Integrations:** `bmdctl serve` against a switcher; `bmdctl mcp`
+  from Claude Code or Claude Desktop.
+
 ## 2026-10-10: first run
 
 - **Commit:** `576c4fd`, the head of main when the run was reported (the
