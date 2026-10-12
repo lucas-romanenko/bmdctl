@@ -18,6 +18,8 @@ failed on every push from `90f3cdd` to `817ee63` while a plain
 `go test ./...` passed. Nothing in the default build or test run touches
 the network beyond loopback.
 
+Before every commit: go test -race ./<package> for every package you touched, not just the tests you were working on. Red CI from a test you didn't run is a wasted push.
+
 After every push, wait for CI and check it (`gh run watch`, then
 `gh run list --limit 1`) before reporting green. Local green is not
 green.
