@@ -610,6 +610,7 @@ func TestSpinnerRuns(t *testing.T) {
 	b.onDial = func(*fakeatem.Switcher) { time.Sleep(500 * time.Millisecond) }
 	c, o, e := b.cli("")
 	c.tty, c.ttyErr = true, true
+	c.connectTook = time.Since // the real time, which the bench fixes at 8 ms
 	if code := c.run(with("program", "cam1")); code != 0 {
 		t.Fatalf("exit %d: %q", code, e)
 	}
