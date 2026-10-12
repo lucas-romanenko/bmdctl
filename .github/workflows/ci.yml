@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # No go.sum (no dependencies), so there is nothing to key a cache on.
+          cache: false
       - name: Build
         run: go build ./...
       - name: Vet
