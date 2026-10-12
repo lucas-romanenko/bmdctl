@@ -65,7 +65,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: first run
 
-- **Commit:** `576c4fd`, the head of main when the run was reported (the
+- **Commit:** `21219e3`, the head of main when the run was reported (the
   report didn't name the commit).
 - **Switcher:** ATEM 1 M/E Constellation HD, protocol 2.30, 1080p25.
 - **Run:** reads only, through the engine: the connect (`Dial`: the
@@ -73,7 +73,7 @@ fakes and, for the protocol, against bmdwire's own code.
   itself), `info`, `status`, `state` and `watch`. No other command was
   sent to the switcher.
 - **Result:** all of them worked.
-- **Changed because of it** (`b7b9aff`):
+- **Changed because of it** (`9f3e85e`):
   - `watch` was swamped by the clock's `Time` packets: they are left out
     unless `--all`. Its human form named changes by opcode and printed
     raw JSON: it now uses atemwire's state names and gives program and
@@ -86,7 +86,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: second run, writes
 
-- **Commit:** `8de68ca`.
+- **Commit:** `9144f87`.
 - **Switcher:** the report didn't restate it; the first run's was an
   ATEM 1 M/E Constellation HD, protocol 2.30, 1080p25.
 - **Run:** the first commands that change the switcher, through the
@@ -111,7 +111,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: third run, stills
 
-- **Commit:** `1bf974a`.
+- **Commit:** `7cbcb44`.
 - **Switcher:** the same ATEM 1 M/E Constellation HD as the first run
   (protocol 2.30, 1080p25; the report didn't restate them, and the
   frames were 1920×1080).
@@ -148,7 +148,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: fourth run, macros, profile save, meters
 
-- **Commit:** `c1c354a`.
+- **Commit:** `45d4d40`.
 - **Switcher:** the same Constellation as the first run: the saved
   profile names the ATEM 1 M/E Constellation HD at 1080p25. The report
   didn't restate the protocol version.
@@ -181,7 +181,7 @@ fakes and, for the protocol, against bmdwire's own code.
     `-327.679993`, where bmdwire's own docs say ATEM Software Control
     writes `-327.68`. The profile saved on this run has `-327.679993`
     in its macros.
-- **Changed because of it** (`3de8b9c`): a Fairlight strip op with no
+- **Changed because of it** (`377fff6`): a Fairlight strip op with no
   `sourceId` now encodes the stereo one, and a silenced Fairlight gain
   decodes as `-327.68`. Both are deliberate differences in
   `docs/PORTING.md`, to be filed against bmdwire. In the commit that
@@ -194,8 +194,8 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: fifth run, the UX pass
 
-- **Commit:** `274d6a2`. The engine's log gives its version as
-  `v0.0.0-20261011010118-274d6a26df98+dirty`: Go marks a build dirty for
+- **Commit:** `7218b1e`. The engine's log gives its version as
+  `v0.0.0-20261011010118-7218b1e4e386+dirty`: Go marks a build dirty for
   untracked files too, and the checkout had untracked scratch files;
   `git status` after the commit showed no changed tracked file.
 - **Switcher:** the Constellation at 192.168.81.85, named "Studio ATEM"
@@ -223,7 +223,7 @@ fakes and, for the protocol, against bmdwire's own code.
     the session had been idle and when it drops.
   - `program cam1` ended with its next step: `(bmdctl inputs lists
     them)`.
-- **Changed because of it** (`877d29a`): a write's before → after column
+- **Changed because of it** (`12be2b6`): a write's before → after column
   is as wide as a change between the switcher's two longest source names,
   not a fixed 24; `bmdctl` and `status` show the git commit the engine
   was built from, the build ID kept for the stale-engine check; `bmdctl`
@@ -242,10 +242,10 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-11: seventh run, the output rework
 
-- **Commit:** `4d3c452`. The engine's log gives its version as
-  `v0.0.0-20261011052018-4d3c4529be7c+dirty`: the checkout had untracked
+- **Commit:** `817ee63`. The engine's log gives its version as
+  `v0.0.0-20261011052018-817ee630519b+dirty`: the checkout had untracked
   files (the brand handoff, a screenshot), no changed tracked file. The
-  sixth run (2026-10-10 21:45, `489c74e` by the engine's log) has no
+  sixth run (2026-10-10 21:45, `70a96b8` by the engine's log) has no
   section here.
 - **Switcher:** the Constellation at 192.168.81.85, "Studio ATEM": the
   engine's log reports an ATEM 1 M/E Constellation HD at 1080p25. The
@@ -273,14 +273,14 @@ fakes and, for the protocol, against bmdwire's own code.
     row ended in tables, so `status` and `show keys` put one keyer's
     on-air state in different columns.
   - Nothing tested that a bar is drawn for a transfer over 200 ms.
-- **Changed because of it** (`ef5b25f`): a cut or an auto keeps both
+- **Changed because of it** (`2c02b28`): a cut or an auto keeps both
   buses for undo, and undo cuts again (or, where the buses changed
   since, sets each back); the header shows program and preview as the
   command found them (one `on_air` note, before the command); every
   status ends at column 72, results and tables alike, and `status` and
   `show keys` share a keyer's columns; `TestUploadBar` checks, at a
   forced terminal with the real 200 ms, that an upload draws its bar at
-  least once and leaves none. Before that (`cfacc73`, to make CI's
+  least once and leaves none. Before that (`c611203`, to make CI's
   goldens deterministic), a cut waits for the switcher's `PrgI` and
   `PrvI` before it answers, and an auto for its first `TrPs` or `PrgI`:
   an undo 10 ms after a cut, as in this run, could otherwise read the
@@ -301,13 +301,13 @@ fakes and, for the protocol, against bmdwire's own code.
   out of order: no report was written at the time. It is from the
   engine's log alone, which says what was sent and how long it took,
   not what the terminal showed.
-- **Commit:** `489c74e`. The engine's log gives its version as
-  `v0.0.0-20261011014228-489c74e55047`, not marked dirty.
+- **Commit:** `70a96b8`. The engine's log gives its version as
+  `v0.0.0-20261011014228-70a96b8c5504`, not marked dirty.
 - **Switcher:** the Constellation at 192.168.81.85, "Studio ATEM": the
   engine's log reports an ATEM 1 M/E Constellation HD at 1080p25. The
   log doesn't give the protocol version (2.30 on the first run).
 - **Run:** in six seconds by the engine's log, from 21:44:57. The engine
-  of the previous build (`274d6a2`) was stopped and one of this build
+  of the previous build (`7218b1e`) was stopped and one of this build
   started. Then `preview`, whose request opened the session (connected
   in about 320 ms); `program` (32 ms); `status`; `bmdctl engine
   status`; `inputs`; `state`; `program cam1`, refused before sending (no
@@ -321,7 +321,7 @@ fakes and, for the protocol, against bmdwire's own code.
   for the source already on preview, a switcher doesn't report a value
   that didn't change, and the engine waited its whole timeout for an
   echo that never came. Everything else answered at once.
-- **Changed because of it** (`e975fc5`): a write the switcher already
+- **Changed because of it** (`d1ca2cf`): a write the switcher already
   holds sends nothing. The engine reads the value through the
   command's reader first and answers confirmed with `"already": true`,
   and a terminal says `already` where the time goes. The seventh run
@@ -330,8 +330,8 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-11: eighth run, cut and auto confirmation, undo
 
-- **Commit:** `63c6d37`. The engine's log gives its version as
-  `v0.0.0-20261011153407-63c6d37d2e0a+dirty`: the checkout's untracked
+- **Commit:** `72419ea`. The engine's log gives its version as
+  `v0.0.0-20261011153407-72419eaf4a05+dirty`: the checkout's untracked
   files, as in the seventh run.
 - **Switcher:** the Constellation at 192.168.81.85, "Studio ATEM": the
   engine's log reports an ATEM 1 M/E Constellation HD at 1080p25. The

@@ -14,7 +14,7 @@ go build ./... && go vet ./... && go test -race ./...
 
 All three must be green after every commit. `-race` is what CI runs
 (`.github/workflows/ci.yml`); without it the timing differs, and CI
-failed on every push from `68fadb8` to `4d3c452` while a plain
+failed on every push from `90f3cdd` to `817ee63` while a plain
 `go test ./...` passed. Nothing in the default build or test run touches
 the network beyond loopback.
 
