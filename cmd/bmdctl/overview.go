@@ -6,10 +6,12 @@ package main
 // running engine and never starts one, so it opens no session.
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -62,7 +64,7 @@ func (c *cli) overview(g globals) int {
 	if ov != nil {
 		for i, sw := range ov.Switchers {
 			if !used[i] {
-				list = append(list, overviewHost{Name: sw.Name, Address: sw.Host, Device: "atem", Session: &ov.Switchers[i]})
+				list = append(list, overviewHost{Name: sw.Name, Address: sw.Host, Device: cmp.Or(sw.Device, "atem"), Session: &ov.Switchers[i]})
 			}
 		}
 	}
@@ -107,7 +109,7 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 		if h.Name == "" {
 			row[0] = c.colour(bold, shortAddress(h.Address))
 		}
-		if h.Device != "atem" {
+		if !c.hasCommands(h.Device) {
 			row[2], row[4] = h.Device, c.colour(dim, "no commands yet")
 		}
 		if s := h.Session; s != nil {
@@ -140,6 +142,13 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 		out = append(out, "", indent+c.colour(dim, "the engine runs another build of bmdctl · bmdctl engine stop"))
 	}
 	return append(out, "", indent+c.colour(dim, "bmdctl help"))
+}
+
+// hasCommands says whether bmdctl has commands for a host's device: an
+// ATEM's or a HyperDeck's line is a switcher's, the others say they have
+// none yet. A host with no device is an ATEM.
+func (c *cli) hasCommands(device string) bool {
+	return device == "" || slices.Contains(c.reg.Devices(), device)
 }
 
 // sessionSince is when the engine opened its session to host.
@@ -182,7 +191,7 @@ func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost, noHosts bo
 	var hostRows [][]string
 	for _, h := range list {
 		row := []string{paintWho(c.colour, h.Name, shortAddress(h.Address)), "", "", c.colour(dim, "no session")}
-		if h.Device != "atem" {
+		if !c.hasCommands(h.Device) {
 			row[1] = h.Device
 			row[3] = "no commands yet"
 		}

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"reflect"
 	"regexp"
@@ -172,6 +173,17 @@ func TestChangeColumn(t *testing.T) {
 	}
 }
 
+// The overview's "no commands yet" is for the devices bmdctl has no
+// commands for, not every device but an ATEM.
+func TestOverviewHasCommands(t *testing.T) {
+	c := newCLI(io.Discard, io.Discard)
+	for device, want := range map[string]bool{"": true, "atem": true, "hyperdeck": true, "videohub": false, "ultimatte": false} {
+		if got := c.hasCommands(device); got != want {
+			t.Errorf("hasCommands(%q) = %v, want %v", device, got, want)
+		}
+	}
+}
+
 // bmdctl alone: the engine, then a line per host with its model, video
 // mode, how its session stands and which is the default.
 func TestOverview(t *testing.T) {
@@ -186,7 +198,7 @@ func TestOverview(t *testing.T) {
 	collapse := func(s string) string { return regexp.MustCompile(` {2,}`).ReplaceAllString(s, "  ") }
 	want := "engine  running, pid \\d+, up \\ds, 2 sessions\n" +
 		"studio \\(192.0.2.10\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds  \\(default\\)\n" +
-		"deck \\(192.0.2.20\\)  hyperdeck  no commands yet\n" +
+		"deck \\(192.0.2.20\\)  no session\n" +
 		"spare \\(192.0.2.11\\)  no session\n" +
 		"ATEM 1 M/E Constellation HD \\(192.0.2.50\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds\n"
 	if code != 0 || errOut != "" || !regexp.MustCompile("^"+want+"$").MatchString(collapse(out)) {

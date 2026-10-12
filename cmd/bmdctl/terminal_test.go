@@ -23,6 +23,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
+	"github.com/lucas-romanenko/bmdctl/internal/fakehyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
@@ -481,13 +482,25 @@ func TestTerminalErrors(t *testing.T) {
 // pipe; bmdctl version has the commit, the hosts file and the engine.
 func TestTerminalBanner(t *testing.T) {
 	b := newBench(t)
+	// A HyperDeck's line is a switcher's: its model and video format and
+	// its session (deck, which answers), or not connected (deck2).
+	b.net.Deck("192.0.2.20", fakehyperdeck.New())
 	b.must("hosts", "add", "192.0.2.10", "--as", "studio")
 	b.must("hosts", "add", "192.0.2.11", "--as", "spare")
 	b.must("hosts", "add", "192.0.2.20", "--as", "deck", "--device", "hyperdeck")
+	b.must("hosts", "add", "192.0.2.21", "--as", "deck2", "--device", "hyperdeck")
 	b.must("hosts", "default", "studio")
 	b.must("--host", "spare", "disconnect")
+	b.must("--host", "deck", "status")
 	tr := &transcript{b: b}
 	tr.run()
+	// A pipe's deck lines are a switcher's too.
+	out := b.must()
+	for _, want := range []string{`(?m)^deck \(192\.0\.2\.20\) +HyperDeck Studio HD Mini +1080p25 +ready, idle`, `(?m)^deck2 \(192\.0\.2\.21\) +no session$`} {
+		if !regexp.MustCompile(want).MatchString(out) {
+			t.Errorf("pipe: no line matching %s in\n%s", want, out)
+		}
+	}
 	tr.run("program", "cam1") // an ordinary command: no banner
 	tr.run("version")
 	// A command that starts the engine: no banner either.
