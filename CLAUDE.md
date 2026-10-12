@@ -118,6 +118,9 @@ the "Tested on" table and the "Unverified" list at its top up to date.
   the MCP server. `skills/bmdctl/SKILL.md`: the Claude skill (under 150
   lines; `TestSkillCommands` checks its command lines). `docs/AGENTS.md`
   says how agents use both.
+- `docs/GUIDE.md`, `docs/INSTALL.md`, `docs/ARCHITECTURE.md` and
+  `CONTRIBUTING.md` are written by hand: when a command's output, a
+  flag or a path changes, check the guide's sample of it.
 - `.github/banner.gif` (`banner.png` is its still), `.github/mark/`: the
   README banner and the mark. `docs/brand/social-preview.png` is the
   repository's social preview (uploaded in Settings by hand).
