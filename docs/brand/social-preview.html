@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- The repository's social preview, rendered to social-preview.png (docs/BRAND.md, "Social preview"). -->
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; background: #0A0B0C; }
+  body { font-family: "IBM Plex Mono", monospace; color: #EDEDEA; position: relative; }
+  .lockup { position: absolute; left: 96px; top: 128px; display: flex; align-items: center; gap: 56px; }
+  .lockup img { width: 168px; height: 168px; display: block; }
+  .title { font-size: 112px; line-height: 1; white-space: nowrap; display: flex; align-items: baseline; }
+  .title .p { color: #2FD07A; font-weight: 600; }
+  .title .bmd { color: #9A9E9F; font-weight: 400; letter-spacing: -0.04em; }
+  .title .ctl { color: #EDEDEA; font-weight: 600; letter-spacing: -0.04em; }
+  .title .cur { display: inline-block; width: 0.53em; height: 0.83em; background: #EDEDEA; margin-left: 0.15em; transform: translateY(0.02em); }
+  .tag { font-size: 28px; color: #7E8386; margin-top: 26px; white-space: nowrap; }
+  .term { position: absolute; left: 96px; right: 96px; top: 420px; background: #141618; border: 1px solid #34383C; border-radius: 14px; padding: 30px 36px; font-size: 30px; white-space: pre; }
+  .d { color: #7E8386; } .pgm { color: #D62718; font-weight: 600; } .pvw { color: #2FD07A; font-weight: 600; }
+  .t { position: absolute; right: 36px; top: 30px; }
+</style></head>
+<body>
+  <div class="lockup">
+    <img src="../../.github/mark/bmdctl-mark-512-dark.png" alt="">
+    <div>
+      <div class="title"><span class="p">$&nbsp;</span><span class="bmd">bmd</span><span class="ctl">ctl</span><span class="cur"></span></div>
+      <div class="tag"># control Blackmagic devices from the command line</div>
+    </div>
+  </div>
+  <div class="term">cut   <span class="pgm">CAM3</span> on program · <span class="pvw">CAM2</span> on preview<span class="t d">30 ms</span></div>
+</body></html>
