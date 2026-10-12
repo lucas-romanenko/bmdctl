@@ -1,0 +1,30 @@
+name: Feature request
+description: Something bmdctl should do that it doesn't.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The job, in a sentence or two, and what gets in the way today.
+      placeholder: Load a different lower third into DSK 2 at each segment change, from our rundown system.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+      description: A command, a flag, an output, an API route. A command line you would like to type is ideal.
+    validations:
+      required: true
+  - type: input
+    id: devices
+    attributes:
+      label: Devices
+      description: Which devices this involves.
+      placeholder: ATEM Constellation 8K, HyperDeck Studio 4K Pro
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do now
+      description: "Optional: any workaround, and other tools you have tried."

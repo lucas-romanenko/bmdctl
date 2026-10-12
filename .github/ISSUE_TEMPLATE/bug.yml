@@ -1,0 +1,71 @@
+name: Bug report
+description: Something bmdctl does wrong with a device, or on its own.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The device, its firmware and the exact output
+        are what make a bug fixable: bmdctl has run on few models so far
+        (docs/HARDWARE.md lists them).
+  - type: input
+    id: device
+    attributes:
+      label: Device model
+      description: As ATEM Setup or HyperDeck Setup shows it, or none if no device is involved.
+      placeholder: ATEM Mini Pro ISO
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware
+      description: The device's firmware version, from ATEM Setup or HyperDeck Setup.
+      placeholder: "9.6"
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: bmdctl version
+      description: Paste what `bmdctl version` prints, and say how you installed it and on which OS.
+      placeholder: |
+        bmdctl v0.1.0 (e8eb8b9, 2026-10-11T19:11:25Z)
+        install.sh on macOS 15, Apple silicon
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The exact command line you ran.
+      placeholder: bmdctl usk 1 on-air on --me 2
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output with -t
+      description: |
+        Run the command again at a terminal with `-t` and paste everything
+        it printed, errors included. For a script, add `--json` instead.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What should have happened, and what the device did (ATEM Software Control or the panel is a good witness).
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Engine log
+      description: |
+        Optional: the lines from around the time in the engine's log,
+        `~/.local/state/bmdctl/engine.log` (`%LocalAppData%\bmdctl\engine.log`
+        on Windows). `bmdctl doctor` output helps for connection problems.
+      render: text
