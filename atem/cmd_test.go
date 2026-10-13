@@ -458,6 +458,13 @@ func TestUpstreamKeyerOps(t *testing.T) {
 		{KeyerKeyframeRun{RunTo: KeyframeRunToInfinite, Direction: Set[uint8](5)}, "RFlK"},
 	})
 
+	// test_upstream_keyer_migration.py::test_run_flying_key_infinite_direction_includes_direction
+	// (bmdwire#22): the location at byte 5 under mask bit 1. By name, and
+	// all ten, in flykey_test.go.
+	if b := emit(t, KeyerKeyframeRun{RunTo: KeyframeRunToInfinite, Direction: Set[uint8](5)}); hex.EncodeToString(b[8:]) != "0200000004050000" {
+		t.Errorf("RFlK %x", b[8:])
+	}
+
 	// test_upstream_keyer_migration.py::test_configure_usk_luma_uses_tenths_scale
 	if b := emit(t, KeyPropertiesLuma{Clip: Set(50.0), Gain: Set(50.0)}); string(b[4:8]) != "CKLm" ||
 		u16At(b, 12) != 500 || u16At(b, 14) != 500 {

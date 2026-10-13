@@ -539,6 +539,7 @@ func (f *KeyPropertiesDVEField) BorderColorRGB() (r, g, b float64) {
 }
 
 // KeyPropertiesFlyField is KeFS, mixerstate['key-properties-fly'][me][keyer].
+// RunToInfiniteIndex is RFlK's location, echoed: a FlyKeyLocationNames byte.
 type KeyPropertiesFlyField struct {
 	Index              uint8 `json:"index"`
 	Keyer              uint8 `json:"keyer"`

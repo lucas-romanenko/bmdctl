@@ -19,7 +19,8 @@ import (
 )
 
 // The oracle, internal/fixtures/oracle/macro.json, records what bmdwire
-// v1.3.0's codec does; gen_macro.py beside it says how.
+// v1.3.0's codec does with bmdwire#22 merged (v1.3.0-3-g6ef831f);
+// gen_macro.py beside it says how.
 
 type oracleResult struct {
 	Bytes   *string         `json:"bytes"`
@@ -62,7 +63,7 @@ func loadOracle(t *testing.T) oracle {
 	if err := json.Unmarshal(fixtures.Bytes(t, "oracle/macro.json"), &o); err != nil {
 		t.Fatal(err)
 	}
-	if o.Bmdwire != "v1.3.0" {
+	if o.Bmdwire != "v1.3.0-3-g6ef831f" {
 		t.Fatalf("oracle generated from bmdwire %s", o.Bmdwire)
 	}
 	return o

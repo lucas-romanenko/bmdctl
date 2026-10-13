@@ -193,8 +193,8 @@ func dFlyKeyRunToInfinity(p params) []Param {
 	return append(head, Param{"location", name})
 }
 
-// eFlyKeyRunToInfinity raises for MiddleCentre: the table has no entry
-// for it (SURFACE §5.4 item 9).
+// eFlyKeyRunToInfinity takes a location's name or its number; another
+// name raises.
 func eFlyKeyRunToInfinity(a attrs) []byte {
 	me := a.masked8(mEBI)
 	keyer := byte(mask(a.int("keyIndex"), 8))

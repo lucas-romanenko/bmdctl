@@ -344,6 +344,16 @@ func videoModeNames() map[string]uint64 {
 	return m
 }
 
+// flyKeyLocations is FlyKeyLocationNames by name, as
+// helpers.FLYKEY_LOCATION_BY_NAME; a number still goes through as is.
+func flyKeyLocations() map[string]uint64 {
+	m := map[string]uint64{}
+	for k, v := range FlyKeyLocationNames {
+		m[v] = uint64(k)
+	}
+	return m
+}
+
 // stripParams are the source and channel that address a Fairlight strip.
 func stripParams() []fp {
 	ch := def("channel", "Channel", table.Int, "-1", "-1 for a stereo strip, 0 or 1 for a split-mono half")
@@ -493,8 +503,8 @@ func commandSpecs() []spec {
 			params: []fp{pME, pKeyer, names(req("keyframe", "Keyframe", table.Enum, "", "keyframe"), keyframeNames)}},
 		{path: "usk keyframe-run", summary: "Fly the key to a keyframe.", cmd: KeyerKeyframeRun{}, complete: true,
 			params: []fp{pME, pKeyer, names(req("to", "RunTo", table.Enum, "", "keyframe to fly to"), keyframeNames),
-				opt("direction", "Direction", table.Uint, "",
-					"direction for runToInfinite; atemwire's two encodings agree on 1-4 and 6-9 (1 top left ... 9 bottom right) and disagree on the centre (5 or 0)")}},
+				names(opt("direction", "Direction", table.Enum, "",
+					"where runToInfinite flies the key: CentreOfKey, or the 3x3 grid row by row"), flyKeyLocations())}},
 
 		// §1.5 keyer-dsk
 		{path: "dsk on-air", summary: "Put a downstream keyer on or off air.", cmd: DkeyOnair{}, echo: "DskS:<dsk>",

@@ -4,7 +4,8 @@
 
     python3 -I gen_macro.py /path/to/bmdwire macro.json [fixtures/macro]
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.3.0. The C
+/path/to/bmdwire must be a checkout of bmdwire at v1.3.0-3-g6ef831f: tag
+v1.3.0 with bmdwire#22 (the fly-key locations) merged. The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it. The
 third argument is the directory of macro bytecode samples; it defaults to
 ../macro beside this script (internal/fixtures/macro).
@@ -466,7 +467,7 @@ def dump(c):
 
 
 with open(OUT, 'w') as f:
-    f.write('{"bmdwire":"v1.3.0","python":%s,"generator":"internal/fixtures/oracle/gen_macro.py",\n'
+    f.write('{"bmdwire":"v1.3.0-3-g6ef831f","python":%s,"generator":"internal/fixtures/oracle/gen_macro.py",\n'
             % json.dumps(platform.python_version()))
     f.write('"decode":[\n' + ',\n'.join(dump(c) for c in decode_cases) + '\n],\n')
     f.write('"encode":[\n' + ',\n'.join(dump(c) for c in encode_cases) + '\n]}\n')

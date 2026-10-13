@@ -322,12 +322,14 @@ var dvePatternNames = map[int]string{
 	34: "GraphicLogoWipe",
 }
 
-// flyKeyLocationNames is _FLYKEY_LOCATION_NAMES (FlyKeyRunToInfinity). It
-// has no 5 and no MiddleCentre, so encoding MiddleCentre raises (SURFACE
-// §5.4 item 9).
+// flyKeyLocationNames is _FLYKEY_LOCATION_NAMES (FlyKeyRunToInfinity),
+// which since bmdwire#22 (b89fcb7) is helpers.FLYKEY_LOCATION_NAMES, the
+// table the live RFlK uses: a copy of atem.FlyKeyLocationNames. 0 is
+// CentreOfKey and 1-9 the 3x3 grid, 5 MiddleCentre, as ATEM Software
+// Control's recorded macro holds them.
 var flyKeyLocationNames = map[int]string{
 	0: "CentreOfKey", 1: "TopLeft", 2: "TopCentre", 3: "TopRight", 4: "MiddleLeft",
-	6: "MiddleRight", 7: "BottomLeft", 8: "BottomCentre", 9: "BottomRight",
+	5: "MiddleCentre", 6: "MiddleRight", 7: "BottomLeft", 8: "BottomCentre", 9: "BottomRight",
 }
 
 // uskTypeNames is _USK_TYPE_NAMES (KeyType).
