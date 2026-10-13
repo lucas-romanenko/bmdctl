@@ -449,12 +449,9 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-13: eleventh run, a dual-mono profile restore
 
-- **Commit:** the report didn't name the build. Input 1's halves
-  getting their own values needs `a0296f6` (the dual-mono port,
-  bmdwire#23) or later; main was at `dc06dbf`.
-- **Switcher:** the report didn't name the unit, its firmware or the
-  video mode; "Tested on" takes them to be the tenth run's (a 1 M/E
-  Constellation HD on firmware 9.2.1, 1080p25).
+- **Commit:** `dc06dbf`, the head of main.
+- **Switcher:** TEST ATEM 2, an ATEM 1 M/E Constellation HD on firmware
+  9.2.1, 1080p25.
 - **Run:** with input 1 in Dual Mono in ATEM Software Control:
   - `profile save before.xml`, a backup.
   - `profile restore
