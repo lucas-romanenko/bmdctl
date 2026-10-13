@@ -11,7 +11,6 @@ package macro
 import (
 	"encoding/binary"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
@@ -86,9 +85,18 @@ func TestDecoderXPosSignedNegative(t *testing.T) {
 	assertParam(t, op, "keyIndex", "0")
 }
 
-// The live -1048577 keeps its precision rather than rounding to -16.
-func TestDecoderXPosOffByOneKeepsPrecision(t *testing.T) {
-	assertParam(t, decodeOne(t, "op004a-0c004a0000000c00ffffefff.bin"), "xPosition", "-16.000015")
+// The live -1048577 is what BMD's CKDV-to-bytecode pipeline makes of wire
+// -16000, and the XML ASC wrote for it said -16: six significant digits
+// (bmdwire#24). Encoding "-16" gives -1048576, one step off, as restoring
+// ASC's own XML does. test_decoder_xpos_off_by_one_reads_as_asc_writes_it.
+func TestDecoderXPosOffByOneReadsAsASCWritesIt(t *testing.T) {
+	op := decodeOne(t, "op004a-0c004a0000000c00ffffefff.bin")
+	assertParam(t, op, "xPosition", "-16")
+	b, err := EncodeOp(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertBytes(t, b[8:12], i32b(-1048576))
 }
 
 // pos_y = 9000 wire (XML 9): 589824.
@@ -112,15 +120,11 @@ func TestDecoderDVEMaskTopSigned(t *testing.T) {
 		wantOp("DVEKeyMaskTop", "mixEffectBlockIndex", "0", "keyIndex", "0", "top", "-4.5"))
 }
 
-// mask_bottom = 7200 wire: 471859, 7.19998... to six decimals.
+// mask_bottom = 7200 wire: 471859, 7.1999969..., which ASC writes as 7.2
+// (six significant digits).
 func TestDecoderDVEMaskBottomSigned(t *testing.T) {
-	op := decodeOne(t, "op0037-0c00370000000c0033330700.bin")
-	if op.ID != "DVEKeyMaskBottom" {
-		t.Errorf("id %s", op.ID)
-	}
-	if v, _ := op.Get("bottom"); !strings.HasPrefix(v, "7.199") {
-		t.Errorf("bottom %q", v)
-	}
+	assertOp(t, decodeOne(t, "op0037-0c00370000000c0033330700.bin"),
+		wantOp("DVEKeyMaskBottom", "mixEffectBlockIndex", "0", "keyIndex", "0", "bottom", "7.2"))
 }
 
 func TestDecoderDVEMaskLeftSigned(t *testing.T) {

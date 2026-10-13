@@ -143,7 +143,7 @@ func assertOps(t *testing.T, got []Op, want ...Op) {
 func TestDecodeFairlightStripFaderGain(t *testing.T) {
 	assertOps(t, decodeFixture(t, "op014b-14004b01010046430001ffffffffffff33f3ffff.bin"),
 		wantOp("FairlightAudioMixerInputSourceFaderGain",
-			"input", "Camera1", "sourceId", "18446744073709486336", "gain", "-0.050003"))
+			"input", "Camera1", "sourceId", "18446744073709486336", "gain", "-0.0500031")) // -3277/65536, six significant digits
 }
 
 func TestDecodeFairlightStripMixType(t *testing.T) {
@@ -216,7 +216,7 @@ func TestDecodeVideoModeUnknownIntFallsBackToString(t *testing.T) {
 
 func TestDecodeFairlightMasterFaderGain(t *testing.T) {
 	assertOps(t, decodeFixture(t, "op016b-08006b0185ebfeff.bin"),
-		wantOp("FairlightAudioMixerMasterOutFaderGain", "gain", "-1.080002"))
+		wantOp("FairlightAudioMixerMasterOutFaderGain", "gain", "-1.08")) // -70779/65536 = -1.0800018...
 }
 
 // Bytecode, decoded and encoded again, is byte-identical for every capture.

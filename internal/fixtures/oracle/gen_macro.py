@@ -4,8 +4,9 @@
 
     python3 -I gen_macro.py /path/to/bmdwire macro.json [fixtures/macro]
 
-/path/to/bmdwire must be a checkout of bmdwire at v1.3.0-3-g6ef831f: tag
-v1.3.0 with bmdwire#22 (the fly-key locations) merged. The C
+/path/to/bmdwire must be a checkout of bmdwire at v1.3.0-9-g785aac7: tag
+v1.3.0 with bmdwire#22 (the fly-key locations), #23 (dual-mono Fairlight
+inputs) and #24 (macro floats to six significant digits) merged. The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it. The
 third argument is the directory of macro bytecode samples; it defaults to
 ../macro beside this script (internal/fixtures/macro).
@@ -203,9 +204,15 @@ TARGETED = {
              ([40, 30, 20, 10], [0, 0, 0, 0], [255, 255, 255, 255], [10, 2, 0, 192])],
     0x0007: [struct.pack('<I', f) for f in (0, 1, 30, 0xffffffff)],
 }
-# Q16.16 values at the six-decimal rounding ties and other formatting edges.
+# Q16.16 values at the six-decimal rounding ties and other formatting edges,
+# and since bmdwire#24's six significant digits: the silenced gain and its
+# neighbours, exact ties at the seventh digit (12345.25, 12345.75, 1234.125,
+# 123.0625, 12.03125, 1.015625, 0.1015625), the switch to an exponent below
+# 1e-4 (6 and 7) and a carry to the next digit (655359).
 FIXED = [0, 1, -1, 2, 3, 512, 1536, 2560, -512, -1536, 32768, 65536, -65536, -1048576, -1048577,
-         471859, 589824, 98304, 0x7fffffff, -0x80000000, 33, 65535, 6553, 5243, -5243, -3277, -70779]
+         471859, 589824, 98304, 0x7fffffff, -0x80000000, 33, 65535, 6553, 5243, -5243, -3277, -70779,
+         -21474836, -21474837, -21474835, 809058304, 809091072, -80879616, 8065024, 788480, 66560,
+         6656, 6, 7, -7, 655359]
 for code in (0x0029, 0x004A, 0x0036, 0x0058, 0x007E, 0x001C, 0x009C):
     head = {0x007E: bytes([0, 0x88, 0x6c, 0x02]), 0x001C: bytes([1, 0, 0x6c, 0x02]),
             0x009C: bytes([1, 0, 0, 0])}.get(code, bytes([0, 1, 0x0c, 0]))
@@ -467,7 +474,7 @@ def dump(c):
 
 
 with open(OUT, 'w') as f:
-    f.write('{"bmdwire":"v1.3.0-3-g6ef831f","python":%s,"generator":"internal/fixtures/oracle/gen_macro.py",\n'
+    f.write('{"bmdwire":"v1.3.0-9-g785aac7","python":%s,"generator":"internal/fixtures/oracle/gen_macro.py",\n'
             % json.dumps(platform.python_version()))
     f.write('"decode":[\n' + ',\n'.join(dump(c) for c in decode_cases) + '\n],\n')
     f.write('"encode":[\n' + ',\n'.join(dump(c) for c in encode_cases) + '\n]}\n')
