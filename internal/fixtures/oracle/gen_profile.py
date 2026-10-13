@@ -318,8 +318,12 @@ def build(code, idx=()):
     return bytes(b)
 
 
+# Downloads are built from the single-op samples (op<code>-<hex>.bin), not
+# whole macros such as flykey-10.bin, so adding one doesn't change the draw.
 MACRO_SAMPLES = []
 for fn in sorted(os.listdir(os.path.join(HERE, '..', 'macro'))):
+    if not fn.startswith('op'):
+        continue
     with open(os.path.join(HERE, '..', 'macro', fn), 'rb') as f:
         MACRO_SAMPLES.append(f.read())
 
