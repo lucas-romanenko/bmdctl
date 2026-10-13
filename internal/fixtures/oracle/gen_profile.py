@@ -4,9 +4,9 @@
 
     python3 -I gen_profile.py /path/to/bmdwire profile.json
 
-/path/to/bmdwire must be a checkout of bmdwire at v1.3.0-6-g5404931: tag
-v1.3.0 with bmdwire#22 (the fly-key locations) and #23 (dual-mono Fairlight
-inputs) merged. The C
+/path/to/bmdwire must be a checkout of bmdwire at v1.3.0-9-g785aac7: tag
+v1.3.0 with bmdwire#22 (the fly-key locations), #23 (dual-mono Fairlight
+inputs) and #24 (macro floats to six significant digits) merged. The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it, and
 nothing touches the network: saves read a mixerstate, applies go to a
 recording connection.
@@ -1062,7 +1062,7 @@ for s in saves:
     except Exception as e:
         s['reparse'] = exc(e)
 
-out = {'bmdwire': 'v1.3.0-6-g5404931', 'generator': 'internal/fixtures/oracle/gen_profile.py',
+out = {'bmdwire': 'v1.3.0-9-g785aac7', 'generator': 'internal/fixtures/oracle/gen_profile.py',
        'golden': golden, 'saves': saves, 'applies': applies, 'commands': COMMANDS, 'parses': parses}
 with open(OUT, 'w') as f:
     json.dump(out, f, separators=(',', ':'), sort_keys=True, ensure_ascii=False)

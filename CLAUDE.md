@@ -1,7 +1,8 @@
 # bmdctl: notes for future sessions
 
-bmdctl is a Go port of bmdwire v1.3.0 (`../bmdwire`, checked out at tag
-`v1.3.0`, commit `cea58c2`) plus one CLI binary. Read `docs/PORTING.md`
+bmdctl is a Go port of bmdwire v1.3.0 (`../bmdwire`; tag `v1.3.0`, commit
+`cea58c2`), with the fixes merged after it that `docs/PORTING.md`
+("Source of truth") lists, plus one CLI binary. Read `docs/PORTING.md`
 before changing anything in `atem/`: it records every decision already
 made, so you follow it instead of re-deriving it. Add to it whenever you
 make a new one.
@@ -37,7 +38,8 @@ shows (colour, the prompt, the spinner) is snapshot-tested in
 `go test ./cmd/bmdctl -run TestTerminal -update` and read the diff. The oracles in
 `internal/fixtures/oracle/` and `hyperdeck/testdata/oracle/` are
 regenerated with the scripts beside them (see the README there) against
-`../bmdwire` at `v1.3.0`.
+`../bmdwire` at the version each file records (`v1.3.0`, or for
+`macro.json` and `profile.json` `v1.3.0-9-g785aac7`).
 
 Releases are GoReleaser's: the owner pushes the `v*` tag; never tag.
 `goreleaser release --snapshot --clean` is the dry run (docs/PORTING.md,

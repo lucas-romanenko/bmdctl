@@ -103,18 +103,20 @@ func boolStr(v bool) string {
 	return "False"
 }
 
-// fmtScalar is _fmt_scalar: at most six decimals, trailing zeros and point
-// dropped, zero as "0". Go's 'f' formatting rounds the exact binary value
-// half to even, as Python's does.
+// fmtScalar is _fmt_scalar as bmdwire#24 (4011dcb) made it: six
+// significant digits with trailing zeros dropped, the way ATEM Software
+// Control's XML writes every float (Python's '%.6g', C++'s default stream
+// precision), so -21474836/65536 is "-327.68" and -5243/65536
+// "-0.0800018"; zero (and -0) is "0". Go's 'g' formatting rounds the exact
+// binary value half to even, as Python's does (oracle/macro.json pins the
+// ties). Above 10 that is fewer decimals than Q16.16 resolves, so a decode
+// and re-encode can move a value by a few 1/65536 steps, as saving and
+// restoring through ASC does.
 func fmtScalar(v float64) string {
 	if v == 0 {
 		return "0"
 	}
-	s := strings.TrimRight(strings.TrimRight(strconv.FormatFloat(v, 'f', 6, 64), "0"), ".")
-	if s == "" {
-		return "0"
-	}
-	return s
+	return strconv.FormatFloat(v, 'g', 6, 64)
 }
 
 // q16 is the Q16.16 decode every fixed-point attribute uses.

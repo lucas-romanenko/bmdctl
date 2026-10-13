@@ -10,16 +10,18 @@ it. When you make a new decision, add it here in the same commit.
   tag `v1.3.0`, commit `cea58c2`). Cite that tag wherever the port refers
   to bmdwire, in comments and docs alike, so a reader knows which version a
   claim was checked against.
-- **Fixes merged after v1.3.0** that the port takes too, each a bmdwire PR
-  settled by a capture from ATEM Software Control:
-  bmdwire#22 (`b89fcb7`, merged as `6ef831f`), the fly-key locations
-  ("Commands"); bmdwire#23 (`d86ed31`, merged as `5404931`), dual-mono
-  Fairlight inputs in profiles ("Profiles"). Each is ported in its own commit with bmdwire's new tests
-  and fixtures, and the oracles it changes are regenerated at its merge
+- **Fixes merged after v1.3.0** that the port takes too, each a bmdwire
+  PR settled by a capture from ATEM Software Control: bmdwire#22
+  (`b89fcb7`, merged as `6ef831f`), the fly-key locations ("Commands");
+  bmdwire#23 (`d86ed31`, merged as `5404931`), dual-mono Fairlight
+  inputs in profiles ("Profiles"); bmdwire#24 (`4011dcb`, merged as
+  `785aac7`), macro floats to six significant digits ("Macro codec").
+  Each is ported in its own commit with bmdwire's new tests and
+  fixtures, and the oracles it changes are regenerated at its merge
   (`internal/fixtures/README.md` says which file is at which commit; the
   rest come out byte for byte the same there). Code that follows one of
-  them cites it by PR and commit; v1.3.0 everywhere else means v1.3.0 with
-  these merged.
+  them cites it by PR and commit; v1.3.0 everywhere else means v1.3.0
+  with these merged.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
   header naming the version: bmdwire's at the last of those merges, whose
   §5.4 marks each fix. It is the specification for `atem/`. Its body says
@@ -820,16 +822,35 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   for stereo), the form bmdwire says ATEM Software Control writes
   (`_resolve_source_id`'s docstring, `docs/PROFILE_FORMAT.md`), and the
   encoder takes the signed form too.
-- **Two fixes** (see "Deliberate differences"): a Fairlight strip op with
-  no `sourceId` gets the stereo one, and a silenced Fairlight gain decodes
-  as `-327.68`.
+- **Floats are written as ATEM Software Control writes them**
+  (bmdwire#24, `4011dcb`): `fmtScalar` is `_fmt_scalar`'s six
+  significant digits (`%.6g`), so Q16.16 -21474836 is `-327.68` (the
+  silenced fader), -5243 `-0.0800018`, 471859 `7.2`, and 1
+  `1.52588e-05`. Every float in the macros of twelve ASC exports from
+  one Constellation HD has this form; v1.3.0's six decimals missed 50 of
+  their 399 distinct strings. It is one rule for every value and
+  attribute, so the port's special case for the silenced gain
+  (bmdwire#17, a deliberate difference until now) is gone. Above 10 it
+  keeps fewer decimals than Q16.16 resolves, so a decode and re-encode
+  can move a value by a few 1/65536 steps, as saving and restoring
+  through ASC does (the live -1048577 reads `-16` and encodes as
+  -1048576). Go's `FormatFloat(v, 'g', 6, 64)` rounds the exact binary
+  value half to even as Python does: checked against Python on every
+  Q16.16 value in ±2^20, a million random ones and 181,076 exact ties at
+  the seventh digit, and the oracle pins ties, the switch to an exponent
+  and a carry. `floatformat_test.go` ports `test_macro_float_format.py`:
+  the 98 ops of `profile/macro_floats_asc.xml` decode back to ASC's
+  strings (v1.3.0's formatting gets 62 of their 98 values wrong), and
+  the recorded silenced and -0.08 faders round-trip with their bytes.
+- **One fix** (see "Deliberate differences"): a Fairlight strip op with
+  no `sourceId` gets the stereo one.
 - **Not matched:** Unicode classification uses Go's tables (17.0) where
   CPython 3.12 uses 15.0, so characters assigned since differ as digits and
   in `repr()` escapes; Go strings that aren't valid UTF-8 act as U+FFFD;
   messages follow CPython 3.12's wording. The per-op "decode failure"
   warning is not logged (the op's decodeError holds it).
 - **Verification.** `internal/fixtures/oracle/macro.json` (`gen_macro.py`,
-  CPython 3.12.3, bmdwire `v1.3.0-3-g6ef831f`) holds 1,988 bytecode cases
+  CPython 3.12.3, bmdwire `v1.3.0-9-g785aac7`) holds 2,128 bytecode cases
   (the 33 `macro/` samples, random/short/edge parameter blocks for every op
   code and unknown ones, multi-op streams) and 4,273 op dicts from
   attribute pools.
@@ -921,12 +942,13 @@ and a zero value selects nothing.
 - **Not ported:** `download_media_pool_images` (needs still download and PNG
   export), `_source_symbol` (unused), `_ProtocolAdapter`/`_resolve_connection`.
 - **Verification:** `oracle/profile.json` from `gen_profile.py` (bmdwire
-  `v1.3.0-6-g5404931`) holds the golden's state, 46 saves, 274 applies (18,628 events, 30 raising) and 130
-  parses, all replayed byte for byte. The golden's state holds a TStP media
-  player of 3010, more than a u8, so the golden test injects that one value
-  through the saver's `stingerSource` hook. `profile_test.go` ports
-  bmdwire's profile tests one for one; `e2e_test.go` applies and saves
-  through a Session against the fake switcher.
+  `v1.3.0-9-g785aac7`) holds the golden's state, 46 saves, 274 applies
+  (18,628 events, 30 raising) and 130 parses, all replayed byte for
+  byte. The golden's state holds a TStP media player of 3010, more than
+  a u8, so the golden test injects that one value through the saver's
+  `stingerSource` hook. `profile_test.go` ports bmdwire's profile tests
+  one for one; `e2e_test.go` applies and saves through a Session against
+  the fake switcher.
 - **Save is verified on hardware** (the fourth run, docs/HARDWARE.md):
   `profile save` from a Constellation wrote the XML with its six macros,
   and the one used still as a PNG beside it. ATEM Software Control 9.3.2
@@ -2946,18 +2968,6 @@ has a test that fails on bmdwire's behaviour: against the fake switcher
   "Macro codec"). `TestMissingSourceIDIsStereo`,
   `TestStereoSourceIDRoundTrips`. `TestEncodeMatchesAtemwire` rewrites
   bmdwire's bytes for the 42 oracle cases this changes.
-- **bmdwire#17: a silenced Fairlight gain decodes as `-327.68`.** A
-  silenced fader is recorded as -327.68 dB in Q16.16,
-  -21474836 (bytes `ec 51 b8 fe`). `_fmt_scalar` (`_helpers.py:90-97`)
-  prints six decimals, `-327.679993`; bmdwire's `docs/PROFILE_FORMAT.md`
-  (lines 802-804) says ATEM Software Control writes `-327.68`. Here
-  every Fairlight `gain` (strip and master faders, EQ, EQ band, input,
-  dynamics, headphones) decodes that one value as `-327.68`, which
-  encodes back to the same bytes. Other values keep `_fmt_scalar`'s
-  form. bmdwire's comments suggest ASC writes six significant digits
-  throughout (`-0.0800018` where `_fmt_scalar` gives `-0.080002`,
-  `fairlight.py:45-49`), but two examples are too little to change every
-  value on. `TestSilencedGainIsASCs`, `TestSilencedGainOnly`.
 
 ## SURFACE.md and the code
 
@@ -2967,7 +2977,7 @@ follows the code.
 - **Version.** SURFACE.md says it describes 1.2.0 (`028ac26`); the port
   follows v1.3.0 (`cea58c2`), which has every fix §5.4 marks as made after
   1.2.0, and the fixes merged after 1.3.0 that §5.4 also marks
-  (`b89fcb7`, `d86ed31`; "Source of truth").
+  (`b89fcb7`, `d86ed31`, `4011dcb`; "Source of truth").
 - **§1 conventions, source names.** The private table also maps 4030 to
   `CleanFeed1` (alongside 7001); SURFACE.md's list leaves 4030 out.
 - **§2.4 `audio-input` (`AMIP`)** is listed as indexed by source; atemwire

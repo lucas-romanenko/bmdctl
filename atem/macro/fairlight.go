@@ -44,35 +44,11 @@ const enableTrailingMarker = 0x000C
 // run carries it.
 const stereoSourceID = 0xFFFFFFFFFFFF0100
 
-// silencedGain is the gain a silenced Fairlight fader is recorded with:
-// -327.68 dB (the i16 minimum over 100) in Q16.16.
-const silencedGain = -21474836
-
-// gainQ16 is q16 for a Fairlight gain, except that the silenced value is
-// written as ATEM Software Control writes it, "-327.68" (bmdwire v1.3.0
-// docs/PROFILE_FORMAT.md), where _fmt_scalar's six decimals give
-// "-327.679993". Both encode to the same bytes. A deliberate difference
-// (PORTING.md).
-func gainQ16(v int32) string {
-	if v == silencedGain {
-		return "-327.68"
-	}
-	return q16(int64(v))
-}
-
-// fpAttr is q16 for a fixed-point attribute, gainQ16 for a gain.
-func fpAttr(name string, v int32) string {
-	if name == "gain" {
-		return gainQ16(v)
-	}
-	return q16(int64(v))
-}
-
 func dFairlightStripFaderGain(p params) []Param {
 	source := p.u16(0)
 	sid := p.u64(4)
 	gain := p.i32(12)
-	return []Param{{"input", sourceToSymbol(int(source))}, {"sourceId", utoa(sid)}, {"gain", gainQ16(gain)}}
+	return []Param{{"input", sourceToSymbol(int(source))}, {"sourceId", utoa(sid)}, {"gain", q16(int64(gain))}}
 }
 
 func dFairlightStripMixType(p params) []Param {
@@ -87,7 +63,7 @@ func dFairlightStripMixType(p params) []Param {
 }
 
 func dFairlightMasterFaderGain(p params) []Param {
-	return []Param{{"gain", gainQ16(p.i32(0))}}
+	return []Param{{"gain", q16(int64(p.i32(0)))}}
 }
 
 // stripPrefix is _strip_prefix_decode: the input and sourceId attributes.
@@ -125,7 +101,7 @@ func resolveSourceID(a attrs) uint64 {
 // [prefix, i32 Q16.16]. Every caller is signed.
 func dStripValueFP(p params, name string) []Param {
 	head := stripPrefix(p)
-	return append(head, Param{name, fpAttr(name, p.i32(12))})
+	return append(head, Param{name, q16(int64(p.i32(12)))})
 }
 
 func eStripValueFP(a attrs, fam uint16, name string) []byte {
@@ -196,7 +172,7 @@ func eEQBandFrequency(a attrs) []byte {
 func dEQBandFP(p params, name string) []Param {
 	head := stripPrefix(p)
 	v := p.i32(16)
-	return append(head, Param{"band", p.str(12)}, Param{name, fpAttr(name, v)})
+	return append(head, Param{"band", p.str(12)}, Param{name, q16(int64(v))})
 }
 
 // eEQBandFP range-checks the value last, after the prefix, as atemwire
@@ -227,7 +203,7 @@ func stripEnable(code uint16, id string, fam uint16, byte13 byte, trailing uint1
 
 // --- Headphones: four ops, one codec, attribute gain. ---
 
-func dHPGain(p params) []Param { return []Param{{"gain", gainQ16(p.i32(0))}} }
+func dHPGain(p params) []Param { return []Param{{"gain", q16(int64(p.i32(0)))}} }
 func eHPGain(a attrs) []byte   { return i32le(a.fixed("gain")) }
 
 // --- Strip fader, mix type and master fader ---
