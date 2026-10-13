@@ -49,6 +49,49 @@ var transStyleNames = map[int]string{0: "Mix", 1: "Dip", 2: "Wipe", 3: "DVE", 4:
 // mixOptionNames is MIX_OPTION_NAMES: a Fairlight strip's mix option bit.
 var mixOptionNames = map[int]string{0x01: "Off", 0x02: "On", 0x04: "AudioFollowVideo"}
 
+// The Fairlight strip ids, from bmdwire#23 (d86ed31). An <AudioSource id>
+// is the strip's 8-byte wire address (the one CFSP, CEBP and FASP carry:
+// six 0xFF bytes, the split byte, the channel byte) read as a signed i64;
+// macro ops carry the same value unsigned as sourceId. Captured from an
+// ASC Save Switcher State with input 1 in Dual Mono:
+//
+//	-65280  ff..ff 01 00  a stereo strip: channel -1 in the setters
+//	-256    ff..ff ff 00  split, channel 0: a dual-mono left half, and
+//	                      the natively mono XLR (1301)
+//	-255    ff..ff ff 01  split, channel 1: a dual-mono right half
+const (
+	audioSourceStereoID = -65280 // AUDIO_SOURCE_STEREO_ID
+	audioSourceSplitID  = -256   // AUDIO_SOURCE_SPLIT_ID, plus the channel
+)
+
+// audioSourceID is audio_source_id: the <AudioSource id> of the strip the
+// setters address as channel, -1 for stereo, 0 or 1 for a split half.
+func audioSourceID(channel int) int {
+	if channel == -1 {
+		return audioSourceStereoID
+	}
+	return audioSourceSplitID + channel
+}
+
+// audioSourceChannel is audio_source_channel: the setters' channel for an
+// <AudioSource id>, 0 or 1 when its split byte is 0xFF, else -1 (stereo).
+// The id is int()'s, masked to 64 bits, so the unsigned form a macro's
+// sourceId holds names the same channel. An absent id, or one int()
+// refuses, is stereo, as apply always took it.
+func audioSourceChannel(id *string) int {
+	if id == nil {
+		return -1
+	}
+	low, ok := pyIntMod(*id, 1<<16)
+	if !ok {
+		return -1
+	}
+	if low>>8 == 0xFF && low&0xFF <= 1 {
+		return int(low & 0xFF)
+	}
+	return -1
+}
+
 // eqShapeNames is EQ_SHAPE_NAMES: an EQ band's filter bit.
 var eqShapeNames = map[int]string{
 	0x01: "LowShelf", 0x02: "LowPass", 0x04: "BandPass",

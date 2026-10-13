@@ -3,8 +3,8 @@
 Every recorded packet, bytecode sample and profile XML in bmdwire v1.3.0's
 `atemwire/tests/` (tag `v1.3.0`, commit `cea58c2`), plus the two state
 snapshot JSON files beside them, and those the fixes merged into bmdwire
-after v1.3.0 that the port follows added (bmdwire#22; the origin names the
-commit). `oracle/` and `dump/` are the exceptions:
+after v1.3.0 that the port follows added (bmdwire#22 and #23; the origin
+names the commit). `oracle/` and `dump/` are the exceptions:
 they are generated, not copied from bmdwire's tests (see below). Byte strings were copied raw from the Python
 literals; where a test builds one from an expression (`bytes([...]) +
 struct.pack(...)`), the file holds the bytes that expression evaluates to.
@@ -83,10 +83,11 @@ Macro bytecode samples (little-endian ops: `u16 length, u16 op code, params`), n
 
 ## profile/
 
-The ASC-style profile XML that `Profile.to_xml` must reproduce byte for byte for the single-M/E fixture state.
+ASC-style profile XML: the golden `Profile.to_xml` must reproduce byte for byte for the single-M/E fixture state, and ATEM Software Control's own export of a dual-mono input.
 
 | file | bytes | origin | notes |
 |---|---|---|---|
+| `profile_fairlight_dual_mono_asc.xml` | 26143 | `test_profile_dual_mono.py` (bmdwire#23, `d86ed31`), every test | live: the `<FairlightAudioMixer>` of a Save Switcher State ASC 9.3.2 wrote for a 1 M/E Constellation HD (firmware 9.2.1) on 2026-10-13, otherwise unedited. Input 1 in Dual Mono with its halves set apart (left `-256`: fader -10 dB, pan -50, EQ band 0 +3 dB; right `-255`: -20 dB, +50, -3 dB), input 2 stereo (`-65280`), 1301 the XLR (`-256`). Copied verbatim |
 | `profile_single_me_save_golden.xml` | 29583 | `test_profile_granular.py::test_single_me_save_byte_identical_to_pre_4c1_golden` | copied verbatim |
 
 ## snapshot/
@@ -104,9 +105,10 @@ Generated, not copied: what bmdwire itself does with a given input,
 recorded by running it (and, in `imaging.json`, what WebATEM's frame
 preparation does). Each file has the script that made it beside it; rerun
 it against a bmdwire checkout at the version the file's `bmdwire` field
-and its row name to regenerate: tag `v1.3.0`, or for `macro.json`
-`v1.3.0-3-g6ef831f` (`6ef831f`, v1.3.0 with bmdwire#22 merged). The
-other five come out byte for byte the same at that commit.
+and its row name to regenerate: tag `v1.3.0`; for `macro.json`
+`v1.3.0-3-g6ef831f` (`6ef831f`, v1.3.0 with bmdwire#22 merged); for
+`profile.json` `v1.3.0-6-g5404931` (`5404931`, with #23 merged too). Each
+file comes out byte for byte the same at any later one of those commits.
 
 ```
 cd internal/fixtures/oracle
@@ -130,7 +132,7 @@ or the script does. `gen_recv.py` and `gen_send.py` stub the C extension;
 | `imaging.json` | 327121 | `gen_imaging.py`, calling bmdwire v1.3.0's `atemwire/imaging.py`: `rgb_to_atem`, `atem_to_rgb` and `rle_encode` run its C extension (`mediaconvertmodule.c`, compiled unmodified against a stand-in `Python.h` with this Python's CFLAGS), `rle_decode` is its pure Python; and WebATEM's `_prepare_frame` (atem-web-control v2.0.2, `atem_control/uploader.py` lines 292-310, reproduced in the script with an in-memory image in place of the file, on Pillow 10.2.0) | 84 `rgb_to_atem` cases (both premultiply settings; edge, saturated and random pixels; every 24-bit colour in both pixel slots; ragged lengths), 43 `atem_to_rgb` (alpha and chroma edges, bytes at and above 0x80, every (Y, Cb) and (Y, Cr) pair, 1 MiB of random words), 129 `rle_encode` (runs of 1 to 7 and long runs at the start, middle and end, the reserved 0xFE word, ragged lengths, random runs), 225 `rle_decode` (encoder outputs, hand-built, truncated and malformed streams; 40 raise), 219 fits of six generated patterns from 80 source shapes (wider, taller, equal aspect, 1 pixel wide or tall, up- and downscaled, already the target size) to nine targets from 5x3 to 1920x1080. Large inputs come from generators the Go test reimplements; large outputs are SHA-256 digests. Each case records the bytes or the exception (name, and message for the C functions). `TestImagingMatchesAtemwire` and `TestFitFrameMatchesWebATEM` replay them all |
 | `macro.json` | 1196248 | `gen_macro.py`, calling bmdwire v1.3.0-3-g6ef831f's `decode_macro_bytecode`, `encode_single_op` and `encode_macro_bytecode` | 1,988 bytecode cases (the 33 `macro/` samples; random, short and enum-walking parameter blocks for all 146 known op codes and for unknown ones; multi-op streams, empty, truncated and with bogus lengths), each with the ops atemwire decodes (ids, attribute names in dict order, values), the warning that stopped it if any, and what re-encoding those ops gives; and 4,273 op dicts built from attribute pools (enum names, numbers, numeric strings, out-of-range values, missing attributes, unknown ids, garbage) with the bytes `encode_single_op` returned or the class and message of what it raised. Recorded with CPython 3.12.3, whose messages it quotes. `TestDecodeMatchesAtemwire` and `TestEncodeMatchesAtemwire` replay them all |
 | `readers.json` | 1122122 | `gen_readers.py`, feeding packets to bmdwire v1.3.0's `AtemProtocol.save_field_data` and calling its 88 readers (`atemwire.messages.*` functions whose first parameter is `mx`) and the six `state.py` helpers they use | 23 scenarios, 2,129 packets fed and 7,048 calls: the empty state, all-zero, all-0xFF and all-0x80 payloads, twelve random switchers of 1 to 4 M/Es with partial packet sets, split and stereo Fairlight strips, names with whitespace Python and Go disagree on, HyperDeck slot planning, every video mode, chroma sample values on decimal rounding ties, overwrites, and every index argument the state has plus out-of-range ones. Each call records the result as JSON (or the exception). `TestReadersMatchAtemwire` replays them all |
-| `profile.json` | 2013802 | `gen_profile.py`, running bmdwire v1.3.0's `Profile.from_atem`, `Profile.apply` and `Profile.from_xml`/`to_xml`; states are built by feeding packets to `AtemProtocol.save_field_data`, and the stand-in states of `test_profile_granular.py` and `test_profile_roundtrip.py` are recorded with each stand-in replaced by its real `Recv` class | the golden's state (`test_profile_granular.py::_synthetic_mixerstate`, checked to reproduce `profile/profile_single_me_save_golden.xml`); 46 saves (six packet-built switchers of 1 to 4 M/Es with partial packet sets, Fairlight strips split and not, macros downloaded as bytecode, empty or failing, bound HyperDecks; their SaveOptions variants; the stand-in states; every video mode) with the XML, the macro slots downloaded and whether it parses back; 274 applies of the golden, the saves, perturbed saves, 29 hand-written documents (legacy and SD video mode labels, missing sections, NaN, infinities, huge and malformed values, unknown enum names, odd HyperDeck addresses) and 11 macro pools (ops raising ValueError, struct.error, OSError and OverflowError, upload failures, no protocol) under several ApplyOptions onto live states of 1 and 4 M/Es, each recording the 18,628 events in order (18,066 commands as bytes, from a table of 4,140; 354 commands get_command refused, which the connection drops; 87 macro uploads; 121 pauses) and the ApplyResult or what apply raised (30 raise); 130 parses (66 documents to their output, 64 refusals). `TestSaveGolden`, `TestSaveMatchesAtemwire`, `TestApplyMatchesAtemwire` and `TestParseMatchesAtemwire` replay them all |
+| `profile.json` | 2020549 | `gen_profile.py`, running bmdwire v1.3.0-6-g5404931's `Profile.from_atem`, `Profile.apply` and `Profile.from_xml`/`to_xml`; states are built by feeding packets to `AtemProtocol.save_field_data`, and the stand-in states of `test_profile_granular.py` and `test_profile_roundtrip.py` are recorded with each stand-in replaced by its real `Recv` class | the golden's state (`test_profile_granular.py::_synthetic_mixerstate`, checked to reproduce `profile/profile_single_me_save_golden.xml`); 46 saves (six packet-built switchers of 1 to 4 M/Es with partial packet sets, Fairlight strips split and not, macros downloaded as bytecode, empty or failing, bound HyperDecks; their SaveOptions variants; the stand-in states; every video mode) with the XML, the macro slots downloaded and whether it parses back; 274 applies of the golden, the saves, perturbed saves, 29 hand-written documents (legacy and SD video mode labels, missing sections, NaN, infinities, huge and malformed values, unknown enum names, odd HyperDeck addresses) and 11 macro pools (ops raising ValueError, struct.error, OSError and OverflowError, upload failures, no protocol) under several ApplyOptions onto live states of 1 and 4 M/Es, each recording the 18,628 events in order (18,066 commands as bytes, from a table of 4,214; 354 commands get_command refused, which the connection drops; 87 macro uploads; 121 pauses) and the ApplyResult or what apply raised (30 raise); 130 parses (66 documents to their output, 64 refusals). `TestSaveGolden`, `TestSaveMatchesAtemwire`, `TestApplyMatchesAtemwire` and `TestParseMatchesAtemwire` replay them all |
 
 ## dump/
 

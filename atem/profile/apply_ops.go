@@ -619,7 +619,7 @@ type stripFields struct {
 // setFairlightStrip is set_fairlight_strip: the arguments (delayFrames'
 // _int among them) are evaluated first, then the mix option is looked up,
 // then each dB and the pan converted in the command's field order.
-func (a *applier) setFairlightStrip(source float64, f stripFields) error {
+func (a *applier) setFairlightStrip(source float64, channel int, f stripFields) error {
 	if f.delayErr != nil {
 		return f.delayErr
 	}
@@ -649,7 +649,7 @@ func (a *applier) setFairlightStrip(source float64, f stripFields) error {
 		return a.drop("CFSP", "source or delay out of range")
 	}
 	return a.send(atem.FairlightStripProperties{
-		Source: src, Channel: -1, Delay: delay, Gain: f.gain, EQEnable: f.eqEnable,
+		Source: src, Channel: channel, Delay: delay, Gain: f.gain, EQEnable: f.eqEnable,
 		EQGain: f.eqGain, DynamicsGain: f.dynGain, Balance: f.pan, Volume: f.volume, State: state,
 	})
 }
@@ -695,7 +695,7 @@ func bandConvert(f bandFields) (shape, freqRange *uint8, freq *int, err error) {
 	return shape, freqRange, freq, nil
 }
 
-func (a *applier) setFairlightEQBand(source, band float64, f bandFields) error {
+func (a *applier) setFairlightEQBand(source float64, channel int, band float64, f bandFields) error {
 	shape, freqRange, freq, err := bandConvert(f)
 	if err != nil {
 		return err
@@ -706,7 +706,7 @@ func (a *applier) setFairlightEQBand(source, band float64, f bandFields) error {
 		return a.drop("CEBP", "source or band out of range")
 	}
 	return a.send(atem.FairlightEQBandProperties{
-		Source: src, Channel: -1, Band: b, Enabled: &f.enabled, Shape: shape,
+		Source: src, Channel: channel, Band: b, Enabled: &f.enabled, Shape: shape,
 		FrequencyRange: freqRange, Frequency: freq, Gain: &f.gain, Q: &f.q,
 	})
 }

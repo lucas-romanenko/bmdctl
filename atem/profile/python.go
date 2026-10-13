@@ -200,30 +200,40 @@ func pyFloat(s string) (float64, bool) {
 // pyIntDigitLimit is CPython's default int max str digits.
 const pyIntDigitLimit = 4300
 
-// pyInt is Python's int() of a str in base 10: surrounding whitespace, a
-// sign, Unicode digits and single underscores between digits. It returns
-// the value as a float64 (exact for anything a wire field can hold) and
-// whether the string was a valid int, which int() refuses past 4300 digits.
-func pyInt(s string) (float64, bool) {
+// pyIntDigits is what Python's int() of a str in base 10 accepts:
+// surrounding whitespace, a sign, Unicode digits and single underscores
+// between digits. It returns the sign, the ASCII digits and whether the
+// string was a valid int, which int() refuses past 4300 digits.
+func pyIntDigits(s string) (neg bool, digits string, ok bool) {
 	t, ok := pyNumberASCII(s)
 	if !ok {
-		return 0, false
+		return false, "", false
 	}
-	neg := false
 	if t != "" && (t[0] == '+' || t[0] == '-') {
 		neg = t[0] == '-'
 		t = t[1:]
 	}
 	if t == "" || t[0] == '_' {
-		return 0, false
+		return false, "", false
 	}
 	if t, ok = pyUnderscores(t); !ok {
-		return 0, false
+		return false, "", false
 	}
 	if t == "" || strings.IndexFunc(t, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
-		return 0, false
+		return false, "", false
 	}
 	if len(t) > pyIntDigitLimit {
+		return false, "", false
+	}
+	return neg, t, true
+}
+
+// pyInt is Python's int() of a str in base 10 (pyIntDigits). It returns
+// the value as a float64 (exact for anything a wire field can hold) and
+// whether the string was a valid int.
+func pyInt(s string) (float64, bool) {
+	neg, t, ok := pyIntDigits(s)
+	if !ok {
 		return 0, false
 	}
 	v, _ := strconv.ParseFloat(t, 64)
@@ -231,6 +241,24 @@ func pyInt(s string) (float64, bool) {
 		v = -v
 	}
 	return v + 0, true // + 0 turns -0 into 0, as Python's int has no -0
+}
+
+// pyIntMod is int(s) % m, exact for any int() accepts: the low bits of
+// int(s) & mask when m is a power of two, as Python's two's-complement &
+// gives them for a negative int.
+func pyIntMod(s string, m uint64) (uint64, bool) {
+	neg, t, ok := pyIntDigits(s)
+	if !ok {
+		return 0, false
+	}
+	var r uint64
+	for i := 0; i < len(t); i++ {
+		r = (r*10 + uint64(t[i]-'0')) % m
+	}
+	if neg && r != 0 {
+		r = m - r
+	}
+	return r, true
 }
 
 // attrFloat is _float(s, default): an absent or empty attribute, or one

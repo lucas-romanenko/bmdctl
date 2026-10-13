@@ -551,6 +551,20 @@ type stripRef struct {
 	props *atem.FairlightStripPropertiesField
 }
 
+// split is _is_split_strip: one half of a split input (is_split 0xFF).
+func (r stripRef) split() bool { return r.props != nil && r.props.IsSplit == 0xFF }
+
+// subchannel is _strip_subchannel: the subchannel in a
+// "<source>.<subchannel>" strip id, 0 if it has none.
+func (r stripRef) subchannel() int {
+	_, sub, _ := strings.Cut(r.id, ".")
+	n, err := strconv.Atoi(sub)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 // fairlight is _build_fairlight.
 func (s *saver) fairlight(root *Element) {
 	st := s.st
@@ -578,10 +592,8 @@ func (s *saver) fairlight(root *Element) {
 	inputs := fa.SubElement("AudioInputs")
 	comp, lim, exp := st.FairlightCompressor(), st.FairlightLimiter(), st.FairlightExpander()
 
-	// fairlight-strip-properties grouped by source. atemwire keeps a
-	// source's strips in the order their FASP first arrived; the state
-	// doesn't record arrival, so they go in subchannel order, the order a
-	// switcher sends them in.
+	// fairlight-strip-properties grouped by source, each source's in the
+	// subchannel order of their ids (left half first), as ASC writes them.
 	bySource := map[int][]stripRef{}
 	for id, strip := range st.Fairlight.Strips {
 		if strip == nil || strip.Properties == nil {
@@ -596,7 +608,7 @@ func (s *saver) fairlight(root *Element) {
 	}
 	for _, refs := range bySource {
 		slices.SortFunc(refs, func(a, b stripRef) int {
-			return cmp.Or(cmp.Compare(a.props.Subchannel, b.props.Subchannel), strings.Compare(a.id, b.id))
+			return cmp.Or(cmp.Compare(a.subchannel(), b.subchannel()), strings.Compare(a.id, b.id))
 		})
 	}
 
@@ -606,11 +618,23 @@ func (s *saver) fairlight(root *Element) {
 			continue
 		}
 		mono := ai.Split == 1
-		aiE := inputs.SubElement("AudioInput")
+		refs := bySource[int(src)]
+		// A dual-mono input reports two split strips, its halves. FAIP's
+		// split byte for one wasn't captured, so it isn't read for that.
+		halves := 0
+		for _, ref := range refs {
+			if ref.split() {
+				halves++
+			}
+		}
 		config := "Stereo"
-		if mono {
+		switch {
+		case halves > 1:
+			config = "DualMono"
+		case mono:
 			config = "Mono"
 		}
+		aiE := inputs.SubElement("AudioInput")
 		setAttrs(aiE, "configuration", config, "id", int(src))
 		if ai.Level == 1 || ai.Level == 2 {
 			level := "ProLine"
@@ -620,7 +644,6 @@ func (s *saver) fairlight(root *Element) {
 			aiE.SubElement("Analog").Set("level", level)
 		}
 
-		refs := bySource[int(src)]
 		if len(refs) == 0 {
 			refs = []stripRef{{id: fmt.Sprintf("%d.0", src)}}
 		}
@@ -638,16 +661,20 @@ func (s *saver) fairlight(root *Element) {
 		"talkbackGain", -10, "talkbackMute", true, "sidetoneGain", -10)
 }
 
-// audioSource writes one strip of a source. Its id is ASC's sentinel for
-// the input's stereo or mono configuration, the same for both halves of a
-// split input, and no subchannel is recorded (SURFACE.md §5.4 item 8).
+// audioSource writes one strip of a source. Its id is the strip's wire
+// address as ASC writes it (audioSourceID): -256 or -255 for a split half
+// by subchannel, -256 for a mono input's strip (the XLR's, however its
+// FASP reports it), -65280 for stereo.
 func (s *saver) audioSource(aiE *Element, src int, mono bool, ref stripRef,
 	comp map[string]atem.CompressorView, lim map[string]atem.LimiterView, exp map[string]atem.ExpanderView) {
 	sp := ref.props
 	srcE := aiE.SubElement("AudioSource")
-	sid := -65280
-	if mono {
-		sid = -256
+	sid := audioSourceStereoID
+	switch {
+	case ref.split():
+		sid = audioSourceID(ref.subchannel())
+	case mono:
+		sid = audioSourceSplitID
 	}
 	volume, gain, pan, mix := -10000, 0, 0, 0x01
 	if sp != nil {

@@ -1051,8 +1051,11 @@ func ptr[T any](v T) *T { return &v }
 
 // fairlight is _apply_fairlight: the master (one field per CFMP, as ASC
 // sends them), master EQ bands (CMBP), master dynamics (CMCP, CMLP), then
-// every strip. Both halves of a split-mono input go to channel -1, so the
-// second overwrites the first (SURFACE.md §5.4 item 8).
+// every strip, each to the channel its id names (audioSourceChannel): a
+// dual-mono input's halves to 0 and 1, the XLR's -256 to 0, a stereo strip
+// to -1. An input's configuration is never changed (atemwire has no
+// command for it), so a dual-mono profile restores onto an input that is
+// already in Dual Mono.
 func (a *applier) fairlight() error {
 	fa := a.root.Find("FairlightAudioMixer")
 	if fa == nil {
@@ -1124,8 +1127,12 @@ func (a *applier) fairlight() error {
 		if src <= 0 {
 			continue
 		}
-		label := "fairlight.strip[" + intString(src) + "]"
 		for _, srcE := range ai.FindAll("AudioSource") {
+			channel := audioSourceChannel(srcE.attr("id"))
+			label := "fairlight.strip[" + intString(src) + "]"
+			if channel != -1 {
+				label = fmt.Sprintf("fairlight.strip[%s.%d]", intString(src), channel)
+			}
 			f := stripFields{
 				gain:      ptr(attrFloat(srcE.attr("inputGain"), 0)),
 				pan:       ptr(attrFloat(srcE.attr("pan"), 0)),
@@ -1138,21 +1145,21 @@ func (a *applier) fairlight() error {
 				d, err := attrInt(s, 0)
 				f.delay, f.delayErr = &d, err
 			}
-			if err := a.setFairlightStrip(src, f); err != nil {
+			if err := a.setFairlightStrip(src, channel, f); err != nil {
 				a.res.NoteError(label, err)
 			} else {
 				nStrips++
 			}
 
 			if eq := srcE.Find("Equalizer"); eq != nil {
-				if err := a.setFairlightStrip(src, stripFields{
+				if err := a.setFairlightStrip(src, channel, stripFields{
 					eqEnable: ptr(attrBool(eq.attr("enabled"), false)),
 					eqGain:   ptr(attrFloat(eq.attr("gain"), 0)),
 				}); err != nil {
 					a.res.NoteError(label+".eq", err)
 				}
 				for _, band := range eq.FindAll("EqualizerBand") {
-					if err := a.eqBand(src, band, label+".eq"); err != nil {
+					if err := a.eqBand(src, channel, band, label+".eq"); err != nil {
 						return err
 					}
 					nBands++
@@ -1160,12 +1167,12 @@ func (a *applier) fairlight() error {
 			}
 
 			if dyn := srcE.Find("DynamicsProcessor"); dyn != nil {
-				if err := a.setFairlightStrip(src, stripFields{
+				if err := a.setFairlightStrip(src, channel, stripFields{
 					dynGain: ptr(attrFloat(dyn.attr("makeupGain"), 0)),
 				}); err != nil {
 					a.res.NoteError(label+".dynamics", err)
 				}
-				a.dynamicsBlock(src, dyn, label)
+				a.dynamicsBlock(src, channel, dyn, label)
 			}
 		}
 	}
@@ -1204,24 +1211,24 @@ func (a *applier) masterEQBand(e *Element) error {
 	return nil
 }
 
-// eqBand is _apply_eq_band: one CEBP on channel -1.
-func (a *applier) eqBand(src float64, e *Element, label string) error {
+// eqBand is _apply_eq_band: one CEBP.
+func (a *applier) eqBand(src float64, channel int, e *Element, label string) error {
 	band, err := attrInt(e.attr("index"), 0)
 	if err != nil {
 		return err
 	}
-	if err := a.setFairlightEQBand(src, band, readBand(e)); err != nil {
+	if err := a.setFairlightEQBand(src, channel, band, readBand(e)); err != nil {
 		a.res.NoteError(label+".band["+intString(band)+"]", err)
 	}
 	return nil
 }
 
 // dynamicsBlock is _apply_dynamics_block: a strip's Compressor, Limiter
-// and Expander (CICP, CILP, CIXP), each on channel -1.
-func (a *applier) dynamicsBlock(src float64, dyn *Element, label string) {
+// and Expander (CICP, CILP, CIXP).
+func (a *applier) dynamicsBlock(src float64, channel int, dyn *Element, label string) {
 	if comp := dyn.Find("Compressor"); comp != nil {
 		c := atem.FairlightCompressorProperties{
-			Channel:   -1,
+			Channel:   channel,
 			Enabled:   ptr(attrBool(comp.attr("enabled"), false)),
 			Threshold: ptr(attrFloat(comp.attr("threshold"), 0)),
 			Ratio:     ptr(attrFloat(comp.attr("ratio"), 0)),
@@ -1238,7 +1245,7 @@ func (a *applier) dynamicsBlock(src float64, dyn *Element, label string) {
 	}
 	if lim := dyn.Find("Limiter"); lim != nil {
 		c := atem.FairlightLimiterProperties{
-			Channel:   -1,
+			Channel:   channel,
 			Enabled:   ptr(attrBool(lim.attr("enabled"), false)),
 			Threshold: ptr(attrFloat(lim.attr("threshold"), 0)),
 			Attack:    ptr(attrFloat(lim.attr("attack"), 0)),
@@ -1258,7 +1265,7 @@ func (a *applier) dynamicsBlock(src float64, dyn *Element, label string) {
 			mode = 1 // "gate"
 		}
 		c := atem.FairlightExpanderProperties{
-			Channel:   -1,
+			Channel:   channel,
 			Enabled:   ptr(attrBool(exp.attr("enabled"), false)),
 			Mode:      &mode,
 			Threshold: ptr(attrFloat(exp.attr("threshold"), 0)),
