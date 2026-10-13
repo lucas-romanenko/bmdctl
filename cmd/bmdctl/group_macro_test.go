@@ -135,3 +135,23 @@ func TestMacroCommands(t *testing.T) {
 		t.Errorf("empty slot: %d %q", code, errOut)
 	}
 }
+
+// A macro with a name and no ops uploads as empty bytecode, and the
+// switcher keeps it as a macro, so macro list shows it: a Constellation
+// did (docs/HARDWARE.md, the tenth run).
+func TestMacroUploadEmptyThenList(t *testing.T) {
+	b := newBench(t)
+	file := filepath.Join(t.TempDir(), "empty.xml")
+	os.WriteFile(file, []byte(`<Macro index="22" name="empty-test"/>`), 0o644)
+	out := b.must(with("macro", "upload", "23", file)...)
+	if !strings.Contains(out, "confirmed") || !strings.Contains(out, `"empty-test" from 0 ops`) {
+		t.Errorf("upload: %q", out)
+	}
+	// Slot 23, counted from 1, is the switcher's slot 22.
+	if got, name, _, ok := b.switchers()[0].Macro(22); !ok || len(got) != 0 || name != "empty-test" {
+		t.Errorf("switcher holds %v %x %q", ok, got, name)
+	}
+	if out := b.must(with("macro", "list")...); !strings.Contains(out, "macro 23  empty-test") {
+		t.Errorf("list:\n%s", out)
+	}
+}

@@ -2505,11 +2505,11 @@ comes back. Indexes in results count from 1, as the flags do
   answers the next requests with FTDE (5 also takes the lock away, 6 leaves
   it held); `PutStill`, `Still`, `PutMacro`, `Macro` and `LockedBySession`
   fill and inspect it. An empty macro upload (FTSD of length 0, then FTFD)
-  empties the slot here. A switcher doesn't: it stores a macro with the
-  upload's name and description and no ops (the tenth run,
-  docs/HARDWARE.md), which is what profile apply sends one for, as
-  atemwire's comment says ASC's "Restore from State" does. The fake
-  doesn't model that yet.
+  stores a macro with the upload's name and description and no ops, as
+  a switcher does (the tenth run, docs/HARDWARE.md), which is what
+  profile apply sends one for, as atemwire's comment says ASC's "Restore
+  from State" does. Until the tenth run the fake emptied the slot
+  instead; `TestMacroUploadEmptyThenList` uploads one and lists it.
 - **The dump** (`internal/fixtures/dump/initial-dump.bin`) is synthetic:
   bmdwire's tests contain no recorded one. `gen_dump.py` builds 88
   commands from the values of bmdwire's `build_full_state`

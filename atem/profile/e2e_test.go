@@ -124,11 +124,10 @@ func TestApplyThenSaveAgainstTheFakeSwitcher(t *testing.T) {
 			t.Fatalf("slot %d: %v %x %q %q", slot, ok, bc, name, desc)
 		}
 	}
-	// The fake switcher takes an empty upload as clearing the slot.
-	// (atemwire expects the name and description to land; the fake's model
-	// of an empty macro upload is its own.)
-	if _, _, _, ok := sw.Macro(5); ok {
-		t.Fatal("slot 5 holds a macro")
+	// The empty upload leaves a macro with its name and description and no
+	// ops, as a switcher keeps it.
+	if bc, name, desc, ok := sw.Macro(5); !ok || len(bc) != 0 || name != "Dropped" || desc != "no ops left" {
+		t.Fatalf("slot 5: %v %x %q %q", ok, bc, name, desc)
 	}
 
 	// The echoes and macro properties reach the session's state.
@@ -136,7 +135,7 @@ func TestApplyThenSaveAgainstTheFakeSwitcher(t *testing.T) {
 	for {
 		st := s.State()
 		ready := st.AuxSource(0) == 3 && st.InputLabel(2).Long == "Second camera"
-		for _, slot := range []int{0, 3, 9} {
+		for _, slot := range []int{0, 3, 5, 9} {
 			ready = ready && st.MacroEntry(slot).IsUsed
 		}
 		if ready {
@@ -162,6 +161,8 @@ func TestApplyThenSaveAgainstTheFakeSwitcher(t *testing.T) {
 		// with its name only, as atemwire saves a failed download.
 		{Index: 2, Name: "Half Time", Description: "", Ops: []macro.Op{}},
 		{Index: 3, Name: macros[3].name, Description: macros[3].desc, Ops: macros[3].ops},
+		// The name-only macro the restore left, saved as it was restored.
+		{Index: 5, Name: "Dropped", Description: "no ops left", Ops: []macro.Op{}},
 		{Index: 9, Name: "Keep", Description: "left alone", Ops: keep},
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
@@ -181,7 +182,8 @@ func TestApplyThenSaveAgainstTheFakeSwitcher(t *testing.T) {
 		t.Fatal("the renamed input isn't in the saved profile")
 	}
 
-	// And the saved profile applies back as it was: the same uploads.
+	// And the saved profile applies back as it was: the same uploads, the
+	// name-only macro among them.
 	out, err := saved.ToXML()
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +193,7 @@ func TestApplyThenSaveAgainstTheFakeSwitcher(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err = again.Apply(ctx, s, profile.MacrosOnly())
-	if err != nil || len(res.Errors) != 0 || !slices.Contains(res.Applied, "macros (4/4 restored, 0 failed)") {
+	if err != nil || len(res.Errors) != 0 || !slices.Contains(res.Applied, "macros (5/5 restored, 0 failed)") {
 		t.Fatalf("%v %q %q", err, res.Applied, res.Errors)
 	}
 	if bc, _, _, _ := sw.Macro(9); !bytes.Equal(bc, keepBC) {
