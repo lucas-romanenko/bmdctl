@@ -905,7 +905,11 @@ and a zero value selects nothing.
   left at an address a dual-mono input doesn't have, and the XLR went to
   -1 too (SURFACE §5.4 item 8, a trap the port had inherited).
   `dualmono_test.go` ports bmdwire's tests on its fixture,
-  `profile/profile_fairlight_dual_mono_asc.xml`; not yet run on hardware.
+  `profile/profile_fairlight_dual_mono_asc.xml`. On hardware (the
+  eleventh run, docs/HARDWARE.md), `profile restore` of that fixture with
+  only `--audio` gave each half of input 1 its own fader, pan and EQ in
+  ASC and moved the XLR, and a save wrote input 1 as `DualMono` with
+  -256 and -255.
 - **Apply runs atemwire's 17 sections in order.** Each operation is a
   function that makes the checks the operation makes when called, and
   records what fails as `_safe` does. Those checks: round() or int() of NaN
@@ -961,8 +965,9 @@ and a zero value selects nothing.
   with that name and no ops: in the tenth run, `profile restore
   --macros-only` of `<Macro index="22" name="empty-test"/>` left slot 23
   holding empty-test, in `macro list` and in ASC's Macros window. A
-  name-only macro is a macro, so restore must not skip it. Apply's
-  other sections are not yet verified on hardware.
+  name-only macro is a macro, so restore must not skip it. Of apply's
+  other sections only the Fairlight mixer is verified on hardware (the
+  eleventh run; see "Fairlight strips are saved and applied per half").
 
 ## Command table and CLI (`internal/table`, `atem/table.go`, `cmd/bmdctl`)
 

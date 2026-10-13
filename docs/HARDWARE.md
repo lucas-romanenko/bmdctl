@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher model so far, in ten sessions. Its firmware was first
+One switcher model so far, in eleven sessions. Its firmware was first
 recorded in the tenth, 9.2.1; before that the rows give the protocol
 version the switcher's `_ver` packet reported, 2.30.
 
@@ -29,6 +29,7 @@ version the switcher's `_ver` packet reported, 2.30.
 | ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | `cut` and `auto` confirmed by the switcher's reports; `undo` of a cut; `undo` refused mid-transition | 2026-10-11 |
 | ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | The v0.1.1 release binary (darwin_arm64) on macOS, from a second machine over VPN; `bmdctl mcp` from Claude Code: its 15 tools, a state read, `program` confirmed; `watch --filter PrgI -t` | 2026-10-12 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | A `profile save` opened in ATEM Software Control 9.3.2's Restore dialog, every section listed; `profile restore --macros-only` of a name-only macro, which the switcher keeps | 2026-10-13 |
+| ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile restore` of the Fairlight mixer alone (`--macros-only --macros off --audio`): a dual-mono input's halves each to their own strip, the XLR to ASC's address for it; `profile save` of a dual-mono input as `DualMono` | 2026-10-13 |
 
 ## Unverified
 
@@ -50,14 +51,14 @@ fakes and, for the protocol, against bmdwire's own code.
   `program`, `preview`, `cut`, `auto`, `undo` and the still transfers:
   keyers (among them `usk keyframe-run runToInfinite --direction` by
   ATEM Software Control's location names, bmdwire#22), DSKs, aux,
-  transition settings, audio, colour, multiviewer, macro run and record.
-  Commands the table marks unverified say so when sent.
+  transition settings, audio (the Fairlight commands have gone out only
+  inside the eleventh session's profile restore; no `audio` command has
+  run), colour, multiviewer, macro run and record. Commands the table
+  marks unverified say so when sent.
 - **Transfers and profiles:** macro upload of a macro with ops (the
   tenth session uploaded only an empty one); `profile restore` beyond
-  `--macros-only`, a dual-mono input's halves among it (bmdwire#23: each
-  to its own strip); `profile save` since bmdwire#23 and #24 (a
-  dual-mono input as `DualMono` with ids -256 and -255, macro floats to
-  six significant digits); a still that isn't premultiplied (JPEG, GIF,
+  `--macros-only` and the Fairlight mixer; macro floats in a `profile
+  save` since bmdwire#24 (six significant digits); a still that isn't premultiplied (JPEG, GIF,
   `--premultiply off`); a fit that shrinks the image or adds bars at the
   sides; the progress bar on a slow transfer.
 - **Classic audio:** every `classic-audio` command, `classic-audio
@@ -445,3 +446,47 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Not yet verified on hardware:** `profile restore` beyond
   `--macros-only`; macro upload of a macro with ops; otherwise as after
   the ninth run.
+
+## 2026-10-13: eleventh run, a dual-mono profile restore
+
+- **Commit:** the report didn't name the build. Input 1's halves
+  getting their own values needs `a0296f6` (the dual-mono port,
+  bmdwire#23) or later; main was at `dc06dbf`.
+- **Switcher:** the report didn't name the unit, its firmware or the
+  video mode; "Tested on" takes them to be the tenth run's (a 1 M/E
+  Constellation HD on firmware 9.2.1, 1080p25).
+- **Run:** with input 1 in Dual Mono in ATEM Software Control:
+  - `profile save before.xml`, a backup.
+  - `profile restore
+    internal/fixtures/profile/profile_fairlight_dual_mono_asc.xml
+    --macros-only --macros off --audio`: bmdwire#23's fixture, ASC
+    9.3.2's own export of a Constellation HD with input 1 in Dual Mono
+    (left -10 dB, pan -50, first EQ band a low shelf at 35 Hz, +3 dB;
+    right -20 dB, pan +50, a low shelf at 46 Hz, -3 dB; the XLR and
+    input 2 at -inf; master -0.08 dB), with every section but the
+    Fairlight mixer off.
+  - ASC's Fairlight mixer checked, then `profile save after.xml`.
+- **Result:** it worked.
+  - The restore reported 2 applied and 7 skipped, the counts the fake
+    switcher gives for the same command (`TestProfileRestoreAudioOnly`):
+    the master dynamics and the 15 strips applied; video mode, inputs,
+    multiview, macros, camera control, talkback and program/preview
+    gated off.
+  - In ASC, input 1's left half read -10 dB, pan -50, its EQ shelf up,
+    and the right -20 dB, pan +50, its shelf down: each half got its
+    own values. The XLR (Mic), which apply now sends to channel 0
+    (ASC's -256) instead of -1, went from -10 dB to -inf. Input 2 read
+    -inf, the master -0.08 dB.
+  - `after.xml` had `configuration="DualMono"` once, for input 1, with
+    ids -256 and -255 for its halves and -256 for the XLR: save writes
+    a dual-mono input as ASC does.
+  - `before.xml` was overwritten by an accidental second run of the
+    save, after the restore, so the mixer was reset by hand.
+- **Changed because of it:** nothing in the code. In the commit that
+  added this section, `docs/PORTING.md` records the dual-mono restore
+  and save as verified on hardware, and the Unverified list above drops
+  them.
+- **Not yet verified on hardware:** `profile restore` beyond
+  `--macros-only` and the Fairlight mixer; `usk keyframe-run
+  --direction` by location name; macro floats in a `profile save` since
+  bmdwire#24; otherwise as after the tenth run.
