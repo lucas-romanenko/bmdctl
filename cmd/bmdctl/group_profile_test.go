@@ -5,8 +5,10 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -111,5 +113,47 @@ func TestProfileCommands(t *testing.T) {
 	os.WriteFile("broken.xml", []byte(`<Profile><Unclosed></Profile>`), 0o644)
 	if code, _, errOut := b.run(with("profile", "restore", "broken.xml", "--yes")...); code != exitUsage || !strings.Contains(errOut, "broken.xml") {
 		t.Errorf("broken: %d %q", code, errOut)
+	}
+}
+
+// Audio alone: --macros-only starts from nothing but the macros, --macros
+// off takes them away and --audio adds the Fairlight mixer. Restoring ATEM
+// Software Control's export of a dual-mono input (bmdwire#23) that way
+// applies the mixer and nothing else, each half of input 1 to its own
+// strip address and the XLR to ASC's -256.
+func TestProfileRestoreAudioOnly(t *testing.T) {
+	b := newBench(t)
+	t.Chdir(t.TempDir())
+	os.WriteFile("dm.xml", fixtures.Bytes(t, "profile/profile_fairlight_dual_mono_asc.xml"), 0o644)
+	var r struct {
+		Result engine.ProfileResult `json:"result"`
+	}
+	out := b.must(with("profile", "restore", "dm.xml", "--yes", "--macros-only", "--macros", "off", "--audio", "--json")...)
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if !slices.Equal(r.Result.Applied, []string{"fairlight.master.dynamics", "fairlight (15 strips, 90 EQ bands)"}) ||
+		len(r.Result.Errors) != 0 {
+		t.Errorf("applied %v, errors %v", r.Result.Applied, r.Result.Errors)
+	}
+	// 15 strips, each sent its fader, EQ and dynamics CFSP.
+	eventually(t, "45 CFSP at the switcher", func() bool { return len(b.sent("CFSP")) >= 45 })
+	addr := map[uint16]map[string]bool{}
+	for _, c := range b.sent("CFSP") {
+		src := uint16(c[10])<<8 | uint16(c[11])
+		if addr[src] == nil {
+			addr[src] = map[string]bool{}
+		}
+		addr[src][fmt.Sprintf("%x", c[16:24])] = true
+	}
+	for src, want := range map[uint16][]string{
+		1: {"ffffffffffffff00", "ffffffffffffff01"}, 2: {"ffffffffffff0100"}, 1301: {"ffffffffffffff00"},
+	} {
+		if len(addr[src]) != len(want) || !addr[src][want[0]] || !addr[src][want[len(want)-1]] {
+			t.Errorf("source %d sent to %v, want %v", src, addr[src], want)
+		}
+	}
+	if n := len(b.sent("CTTp")) + len(b.sent("CPgI")) + len(b.sent("CMPr")); n != 0 {
+		t.Errorf("%d commands outside the mixer", n)
 	}
 }

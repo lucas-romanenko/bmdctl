@@ -48,12 +48,16 @@ fakes and, for the protocol, against bmdwire's own code.
   change from a panel, which sets each bus back instead of cutting.
 - **Writes:** every command that changes the switcher other than
   `program`, `preview`, `cut`, `auto`, `undo` and the still transfers:
-  keyers, DSKs, aux, transition settings, audio, colour, multiviewer,
-  macro run and record. Commands the table marks unverified say so when
-  sent.
+  keyers (among them `usk keyframe-run runToInfinite --direction` by
+  ATEM Software Control's location names, bmdwire#22), DSKs, aux,
+  transition settings, audio, colour, multiviewer, macro run and record.
+  Commands the table marks unverified say so when sent.
 - **Transfers and profiles:** macro upload of a macro with ops (the
   tenth session uploaded only an empty one); `profile restore` beyond
-  `--macros-only`; a still that isn't premultiplied (JPEG, GIF,
+  `--macros-only`, a dual-mono input's halves among it (bmdwire#23: each
+  to its own strip); `profile save` since bmdwire#23 and #24 (a
+  dual-mono input as `DualMono` with ids -256 and -255, macro floats to
+  six significant digits); a still that isn't premultiplied (JPEG, GIF,
   `--premultiply off`); a fit that shrinks the image or adds bars at the
   sides; the progress bar on a slow transfer.
 - **Classic audio:** every `classic-audio` command, `classic-audio
