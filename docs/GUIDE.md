@@ -787,5 +787,5 @@ before and after. A destructive subcommand does nothing without
 `confirm: true`, and says what it would affect for the agent to put to
 you. The skill in `skills/bmdctl/` teaches an agent to work a live show
 this way; [AGENTS.md](AGENTS.md) says how to install it and describes
-the tools. Neither Claude Code nor Claude Desktop has been tried with the
-server yet ([HARDWARE.md](HARDWARE.md#unverified)).
+the tools. It has been run from Claude Code against a switcher; Claude
+Desktop hasn't been tried yet ([HARDWARE.md](HARDWARE.md#unverified)).
