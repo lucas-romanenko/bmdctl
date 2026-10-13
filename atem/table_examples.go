@@ -280,7 +280,7 @@ var examples = map[string][]string{
 	"usk keyframe-run": {
 		"usk 1 keyframe-run a",
 		"usk 1 keyframe-run full",
-		"usk 1 keyframe-run runToInfinite --direction 3",
+		"usk 1 keyframe-run runToInfinite --direction MiddleCentre",
 	},
 	"usk keyframe-set": {
 		"usk 1 keyframe-set a",

@@ -10,10 +10,20 @@ it. When you make a new decision, add it here in the same commit.
   tag `v1.3.0`, commit `cea58c2`). Cite that tag wherever the port refers
   to bmdwire, in comments and docs alike, so a reader knows which version a
   claim was checked against.
+- **Fixes merged after v1.3.0** that the port takes too, each a bmdwire PR
+  settled by a capture from ATEM Software Control:
+  bmdwire#22 (`b89fcb7`, merged as `6ef831f`), the fly-key locations
+  ("Commands"). Each is ported in its own commit with bmdwire's new tests
+  and fixtures, and the oracles it changes are regenerated at its merge
+  (`internal/fixtures/README.md` says which file is at which commit; the
+  rest come out byte for byte the same there). Code that follows one of
+  them cites it by PR and commit; v1.3.0 everywhere else means v1.3.0 with
+  these merged.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the tag. It is the specification for `atem/`. Its body says
+  header naming the version: bmdwire's at the last of those merges, whose
+  §5.4 marks each fix. It is the specification for `atem/`. Its body says
   it describes 1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in
-  v1.3.0, so it describes v1.3.0 apart from those marks.
+  what the port follows, so it describes that apart from those marks.
 - `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
   bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md.
 - Where SURFACE.md and the Python code disagree, the code at v1.3.0 wins,
@@ -448,6 +458,22 @@ arguments, `Validator`.
   the fly state (`KeFS`) for the two keyframes the wire format doesn't
   document; `MAct`'s depends on the action. Echo keys are a Go addition and
   unverified on hardware like everything §4.4 says about confirmation.
+- **Fly-key locations are one table** (bmdwire#22, `b89fcb7`).
+  `FlyKeyLocationNames` is `helpers.FLYKEY_LOCATION_NAMES`: 0 CentreOfKey
+  and 1-9 the 3x3 grid row by row, so 5 is MiddleCentre. It is `RFlK`'s
+  direction byte, `KeFS` byte 5 and macro op 0x0056's location, as ASC's
+  RFlK, KeFS and recorded macro for each of its ten locations showed.
+  `atem/macro` keeps a copy, checked equal by
+  `TestFlyKeyLocationNamesMatchAtem` as with the video modes. `usk
+  keyframe-run --direction` takes ASC's names, and a number still goes
+  through unchecked (WebATEM sends numbers). In v1.3.0 the macro table had
+  no 5, so MiddleCentre was refused and a profile apply dropped the op,
+  and the op's docstring called 5 the centre and had no 0. ASC sends 0x6E
+  in RFlK's padding byte 3; atemwire, and so the port, 0. Pinned by
+  `flykey_test.go` in `atem` and `atem/macro`: the ten RFlK payloads by
+  name and by byte, the KeFS echoes, and `macro/flykey-10.bin`, the
+  80-byte recorded macro, decoding to ASC's names in click order and
+  encoding back byte for byte.
 - **Narrower than atemwire on purpose:** `HyperdeckSettings` takes only
   dotted-quad IPv4 (atemwire's `inet_aton` also takes `"10.1"`-style
   shorthand); `CameraControl` string data must be a string or `[]byte`
@@ -786,7 +812,7 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
 - **Quirks kept** (SURFACE §5.4 item 9 and more): unknown style/key-type
   strings encode as Mix/Luma and unknown mix type as On; mask 0 decodes as
   Background; u16/u32 values and several index bytes are masked silently
-  while others raise; MiddleCentre raises; a missing `MacroSleep.frames` is
+  while others raise; a missing `MacroSleep.frames` is
   0; marker bytes are rewritten; strip/master fader gain and HyperDeckInput
   overflow raise `struct.error`; HyperDeck addresses accept whatever glibc
   `inet_aton` accepts. `sourceId` decodes unsigned (`18446744073709486336`
@@ -802,9 +828,10 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   messages follow CPython 3.12's wording. The per-op "decode failure"
   warning is not logged (the op's decodeError holds it).
 - **Verification.** `internal/fixtures/oracle/macro.json` (`gen_macro.py`,
-  CPython 3.12.3) holds 1,987 bytecode cases (the 32 `macro/` samples,
-  random/short/edge parameter blocks for every op code and unknown ones,
-  multi-op streams) and 4,272 op dicts from attribute pools.
+  CPython 3.12.3, bmdwire `v1.3.0-3-g6ef831f`) holds 1,988 bytecode cases
+  (the 33 `macro/` samples, random/short/edge parameter blocks for every op
+  code and unknown ones, multi-op streams) and 4,273 op dicts from
+  attribute pools.
   `TestDecodeMatchesAtemwire` and `TestEncodeMatchesAtemwire` require the
   same ops (ids, names, order, values), stop warnings, bytes, and error
   class and message (bmdwire's bytes for a strip op with no `sourceId`
@@ -2918,7 +2945,8 @@ follows the code.
 
 - **Version.** SURFACE.md says it describes 1.2.0 (`028ac26`); the port
   follows v1.3.0 (`cea58c2`), which has every fix §5.4 marks as made after
-  1.2.0.
+  1.2.0, and the fixes merged after 1.3.0 that §5.4 also marks
+  (`b89fcb7`; "Source of truth").
 - **§1 conventions, source names.** The private table also maps 4030 to
   `CleanFeed1` (alongside 7001); SURFACE.md's list leaves 4030 out.
 - **§2.4 `audio-input` (`AMIP`)** is listed as indexed by source; atemwire

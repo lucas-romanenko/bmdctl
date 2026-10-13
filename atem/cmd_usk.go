@@ -28,6 +28,19 @@ const (
 	KeyframeRunToInfinite uint8 = 4
 )
 
+// FlyKeyLocationNames is helpers.FLYKEY_LOCATION_NAMES (bmdwire#22,
+// b89fcb7): where KeyframeRunToInfinite flies the key
+// (KeyerKeyframeRun.Direction), by ATEM Software Control's name. 1-9 are
+// the 3x3 grid row by row from the top left, so 5 is MiddleCentre; 0 is
+// CentreOfKey, a tenth location. A capture of ASC settled it: its RFlK for
+// each of the ten carried this byte at payload byte 5, KeFS echoed it, and
+// the same runs recorded as a macro hold it as FlyKeyRunToInfinity's
+// location. atem/macro keeps a copy.
+var FlyKeyLocationNames = map[uint8]string{
+	0: "CentreOfKey", 1: "TopLeft", 2: "TopCentre", 3: "TopRight", 4: "MiddleLeft",
+	5: "MiddleCentre", 6: "MiddleRight", 7: "BottomLeft", 8: "BottomCentre", 9: "BottomRight",
+}
+
 // KeyOnAir is CKOn (KeyOnAirCommand, op set_usk_on_air).
 type KeyOnAir struct {
 	ME, Keyer uint8
@@ -582,8 +595,9 @@ func (c KeyerKeyframeSet) build() *wire {
 // KeyerKeyframeRun is RFlK (KeyerKeyframeRunCommand; ops
 // run_flying_key_keyframe, run_flying_key_infinite_direction): fly the key
 // to a keyframe. Direction (mask bit 1) only matters for
-// KeyframeRunToInfinite; atemwire's two tables disagree on its encoding
-// (SURFACE.md §5.4 item 10). No echo of its own.
+// KeyframeRunToInfinite: it is the location, a FlyKeyLocationNames byte,
+// sent as given. ASC sends 0x6E in padding byte 3, atemwire 0. No echo of
+// its own.
 type KeyerKeyframeRun struct {
 	ME, Keyer uint8
 	RunTo     uint8 // KeyframeA ... KeyframeRunToInfinite

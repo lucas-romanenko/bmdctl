@@ -32,6 +32,7 @@ func TestKeyerCommands(t *testing.T) {
 		{[]string{"usk", "1", "keyframe-set", "a"}, "SFKF", "00000100", true},
 		{[]string{"usk", "1", "keyframe-set", "full"}, "SFKF", "00000300", true},
 		{[]string{"usk", "1", "keyframe-run", "b"}, "RFlK", "0000000002000000", false},
+		{[]string{"usk", "1", "keyframe-run", "runToInfinite", "--direction", "MiddleCentre"}, "RFlK", "0200000004050000", false},
 		{[]string{"dsk", "on-air", "on", "--dsk", "2"}, "CDsL", "01010000", true},
 		{[]string{"dsk", "tie", "on"}, "CDsT", "00010000", true},
 		{[]string{"dsk", "rate", "0:20", "--dsk", "2"}, "CDsR", "01140000", true},

@@ -1765,7 +1765,7 @@ Fly the key to a keyframe.
 ```
 bmdctl usk 1 keyframe-run a
 bmdctl usk 1 keyframe-run full
-bmdctl usk 1 keyframe-run runToInfinite --direction 3
+bmdctl usk 1 keyframe-run runToInfinite --direction MiddleCentre
 ```
 
 No echo.
@@ -1775,7 +1775,7 @@ No echo.
 | `<keyer>` | uint, 1-256, counted from 1 | required | upstream keyer |
 | `<to>` | enum, 0-255: a=1 b=2 full=3 runToInfinite=4 | required | keyframe to fly to |
 | `--me` | uint, 1-256, counted from 1 | default 1 | M/E |
-| `--direction` | uint, 0-255 | optional | direction for runToInfinite; atemwire's two encodings agree on 1-4 and 6-9 (1 top left ... 9 bottom right) and disagree on the centre (5 or 0) |
+| `--direction` | enum, 0-255: CentreOfKey=0 TopLeft=1 TopCentre=2 TopRight=3 MiddleLeft=4 MiddleCentre=5 MiddleRight=6 BottomLeft=7 BottomCentre=8 BottomRight=9 | optional | where runToInfinite flies the key: CentreOfKey, or the 3x3 grid row by row |
 
 ### `bmdctl atem usk <keyer> keyframe-set <keyframe>`
 

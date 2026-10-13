@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 // Package fixtures embeds the packets, bytecode samples, profile XML and
-// state snapshots copied from bmdwire v1.3.0's atemwire test suite. The
-// README beside this file lists where each one came from.
+// state snapshots copied from bmdwire's atemwire test suite (v1.3.0's, and
+// what the fixes the port follows after it added). The README beside this
+// file lists where each one came from.
 package fixtures
 
 import (
