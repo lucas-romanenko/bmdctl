@@ -135,15 +135,23 @@ func TestMacroRoundTrip(t *testing.T) {
 	if err != nil || !bytes.Equal(down, code) {
 		t.Fatalf("download: %v", err)
 	}
-	// An empty slot downloads as empty bytes; empty bytecode empties a slot.
+	// An empty slot downloads as empty bytes. Empty bytecode leaves a macro
+	// with its name and no ops, used, which downloads as empty bytes too.
 	if down, err := s.DownloadMacro(ctxFor(t, 5*time.Second), 7); err != nil || down == nil || len(down) != 0 {
 		t.Fatalf("empty slot: %x %v", down, err)
 	}
-	if err := s.UploadMacro(ctxFor(t, 5*time.Second), 2, "", "", nil); err != nil {
+	if err := s.UploadMacro(ctxFor(t, 5*time.Second), 2, "empty-test", "", nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, ok := sw.Macro(2); ok {
-		t.Fatal("the slot wasn't emptied")
+	if got, name, _, ok := sw.Macro(2); !ok || len(got) != 0 || name != "empty-test" {
+		t.Fatalf("the switcher has %v %x %q", ok, got, name)
+	}
+	waitState(t, s, 2*time.Second, func(st atem.State) bool {
+		p := st.Macros.Properties[2]
+		return p != nil && p.IsUsed && p.Name == "empty-test"
+	})
+	if down, err := s.DownloadMacro(ctxFor(t, 5*time.Second), 2); err != nil || len(down) != 0 {
+		t.Fatalf("name-only macro: %x %v", down, err)
 	}
 	// The macro store never takes a lock.
 	if sw.LockedBySession(0xffff) || s.State().Locks[0xffff] != nil {

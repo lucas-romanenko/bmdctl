@@ -241,15 +241,12 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 		it := &item{data: x.got, name: cstring(c[2:66]), description: cstring(c[66:194])}
 		copy(it.hash[:], c[194:210])
 		done := Command("FTDC", []byte{byte(tid >> 8), byte(tid), 1, 2})
+		// Empty bytecode is stored too, a macro with its name and no ops:
+		// a Constellation keeps one (docs/HARDWARE.md, the tenth run).
+		sw.store(x.store)[x.slot] = it
 		if x.store == storeMacros {
-			if len(x.got) == 0 {
-				delete(sw.macros, x.slot)
-				return [][]byte{done, macroProperties(x.slot, nil)}
-			}
-			sw.macros[x.slot] = it
 			return [][]byte{done, macroProperties(x.slot, it)}
 		}
-		sw.stills[x.slot] = it
 		return [][]byte{done, fileInfo(x.slot, it)}
 	}
 	return nil

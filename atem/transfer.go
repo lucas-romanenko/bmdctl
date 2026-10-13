@@ -360,8 +360,9 @@ func (s *Session) DownloadMacro(ctx context.Context, slot int) ([]byte, error) {
 
 // UploadMacro uploads bytecode to macro slot slot (0-based) with a name and
 // description (cut to 64 and 128 bytes): FTSD (mode 0x0300), FTCD budgets,
-// FTDa chunks, FTFD with the bytecode's MD5, FTDC. Empty bytecode empties
-// the slot (FTSD and FTFD together, no budget). It is atemwire's
+// FTDa chunks, FTFD with the bytecode's MD5, FTDC. Empty bytecode (FTSD
+// and FTFD together, no budget) doesn't empty the slot: the switcher keeps
+// a macro with the name and description and no ops. It is atemwire's
 // upload_macro_bytecode; without a context deadline it gives up after
 // MacroTimeout.
 func (s *Session) UploadMacro(ctx context.Context, slot int, name, description string, bytecode []byte) error {
