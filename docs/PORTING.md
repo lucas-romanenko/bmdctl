@@ -881,8 +881,18 @@ and a zero value selects nothing.
   through a Session against the fake switcher.
 - **Save is verified on hardware** (the fourth run, docs/HARDWARE.md):
   `profile save` from a Constellation wrote the XML with its six macros,
-  and the one used still as a PNG beside it. Apply (`profile restore`)
-  is not yet verified on hardware.
+  and the one used still as a PNG beside it. ATEM Software Control 9.3.2
+  opens a save (the tenth run, a Constellation on firmware 9.2.1) in its
+  Restore dialog with every section listed and no warning; the items it
+  greys are hardware the unit lacks.
+- **Name-only macros are restored, never skipped.** A `<Macro>` with a
+  name and no ops (or none that encode) is uploaded as empty bytecode,
+  as atemwire's `_apply_macros` does, and a switcher keeps it as a macro
+  with that name and no ops: in the tenth run, `profile restore
+  --macros-only` of `<Macro index="22" name="empty-test"/>` left slot 23
+  holding empty-test, in `macro list` and in ASC's Macros window. A
+  name-only macro is a macro, so restore must not skip it. Apply's
+  other sections are not yet verified on hardware.
 
 ## Command table and CLI (`internal/table`, `atem/table.go`, `cmd/bmdctl`)
 
@@ -2495,10 +2505,11 @@ comes back. Indexes in results count from 1, as the flags do
   answers the next requests with FTDE (5 also takes the lock away, 6 leaves
   it held); `PutStill`, `Still`, `PutMacro`, `Macro` and `LockedBySession`
   fill and inspect it. An empty macro upload (FTSD of length 0, then FTFD)
-  empties the slot, following atemwire's comment that ASC's "Restore from
-  State" uses it for empty macros; profile apply also sends one to restore
-  a macro's name without ops, and whether a switcher keeps that name is
-  unverified on hardware.
+  empties the slot here. A switcher doesn't: it stores a macro with the
+  upload's name and description and no ops (the tenth run,
+  docs/HARDWARE.md), which is what profile apply sends one for, as
+  atemwire's comment says ASC's "Restore from State" does. The fake
+  doesn't model that yet.
 - **The dump** (`internal/fixtures/dump/initial-dump.bin`) is synthetic:
   bmdwire's tests contain no recorded one. `gen_dump.py` builds 88
   commands from the values of bmdwire's `build_full_state`

@@ -13,8 +13,9 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher so far, in nine sessions. The firmware version wasn't
-recorded; the switcher's `_ver` packet reported protocol 2.30.
+One switcher model so far, in ten sessions. Its firmware was first
+recorded in the tenth, 9.2.1; before that the rows give the protocol
+version the switcher's `_ver` packet reported, 2.30.
 
 | Device | Firmware | Video mode | Verified | Date |
 |---|---|---|---|---|
@@ -27,6 +28,7 @@ recorded; the switcher's `_ver` packet reported protocol 2.30.
 | ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | Terminal output: the header, `connect`, `disconnect`, the `[y/N]` prompt, a profile's `✓` steps, `-t` | 2026-10-11 |
 | ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | `cut` and `auto` confirmed by the switcher's reports; `undo` of a cut; `undo` refused mid-transition | 2026-10-11 |
 | ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | The v0.1.1 release binary (darwin_arm64) on macOS, from a second machine over VPN; `bmdctl mcp` from Claude Code: its 15 tools, a state read, `program` confirmed; `watch --filter PrgI -t` | 2026-10-12 |
+| ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | A `profile save` opened in ATEM Software Control 9.3.2's Restore dialog, every section listed; `profile restore --macros-only` of a name-only macro, which the switcher keeps | 2026-10-13 |
 
 ## Unverified
 
@@ -49,10 +51,11 @@ fakes and, for the protocol, against bmdwire's own code.
   keyers, DSKs, aux, transition settings, audio, colour, multiviewer,
   macro run and record. Commands the table marks unverified say so when
   sent.
-- **Transfers and profiles:** macro upload; `profile restore`; a still
-  that isn't premultiplied (JPEG, GIF, `--premultiply off`); a fit that
-  shrinks the image or adds bars at the sides; the progress bar on a
-  slow transfer.
+- **Transfers and profiles:** macro upload of a macro with ops (the
+  tenth session uploaded only an empty one); `profile restore` beyond
+  `--macros-only`; a still that isn't premultiplied (JPEG, GIF,
+  `--premultiply off`); a fit that shrinks the image or adds bars at the
+  sides; the progress bar on a slow transfer.
 - **Classic audio:** every `classic-audio` command, `classic-audio
   meters`, and the dB scale `audio master` and `audio levels` put the
   classic mixer's volume on.
@@ -403,3 +406,38 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Not yet verified on hardware:** the macOS amd64 binary; `bmdctl mcp`
   from Claude Desktop; MCP's state subscription; `bmdctl serve` against
   a switcher; otherwise as after the eighth run.
+
+## 2026-10-13: tenth run, profiles and ATEM Software Control
+
+- **Commit:** the report didn't name the build or the machine.
+- **Switcher:** an ATEM 1 M/E Constellation HD on firmware 9.2.1, the
+  first session to record the firmware. The report didn't name the unit
+  (the earlier runs' was "TEST ATEM 2") or restate the protocol version
+  or video mode (2.30 and 1080p25 on earlier runs).
+- **Run:** two checks against ATEM Software Control 9.3.2.
+  - `profile save` to `4-bench.xml` on the Desktop, then that file
+    opened in ASC's Restore dialog.
+  - `profile restore --macros-only` of a profile holding `<Macro
+    index="22" name="empty-test"/>`, a macro with a name and no ops,
+    then `macro list`, and ASC's Macros window.
+- **Result:** both worked.
+  - ASC listed every section of the save in its Restore dialog and gave
+    no warning. The items it greyed are hardware the unit lacks, not
+    something missing from the file.
+  - Slot 23 (index 22, counting from 0) then held a macro named
+    empty-test with no ops, in `bmdctl macro list` and in ASC's Macros
+    window. Apply uploads a macro without ops as empty bytecode, as
+    atemwire does, and the switcher keeps it as a macro: restore must
+    not skip name-only macros.
+  - The `profile save` result line cut the long path from the right,
+    and the size column after it was lost.
+- **Changed because of it:** nothing in the code. In the commit that
+  added this section, `docs/PORTING.md` records the save opening in ASC
+  and the restore of a name-only macro as verified on hardware, and
+  that the fake switcher, which empties the slot on an empty macro
+  upload, differs from a switcher there. Issue #6 asks for a long path
+  to be shortened from the left (`…/Desktop/4-bench.xml`), keeping the
+  size.
+- **Not yet verified on hardware:** `profile restore` beyond
+  `--macros-only`; macro upload of a macro with ops; otherwise as after
+  the ninth run.
