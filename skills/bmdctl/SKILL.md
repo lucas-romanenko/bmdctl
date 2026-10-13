@@ -29,8 +29,9 @@ what happened.
 2. **Read state first.** `bmdctl status` (`atem_session` status) shows
    program and preview per M/E, the transition, keyers and DSKs on air,
    aux outputs, the macro player; for a deck, `bmdctl --host DECK status`.
-   `bmdctl inputs` lists source names; sources take a number, a short or
-   long name, or an alias (`cam2`, `mp1`, `bars`, `black`, `col1`, `pgm`).
+   Sources take a number, a short or long name, or an alias (`cam2`, `mp1`,
+   `bars`, `black`, `col1`, `pgm`). To look an input up by name or number,
+   call `bmdctl inputs` (`atem_sources` inputs); never dump `state` for it.
 3. **Before a cut or an auto, tell the operator what is on air** and what
    will replace it: "Program is CAM1, preview is CAM3: cutting puts CAM3 on
    air." Then act. Never cut "to check".
@@ -59,8 +60,7 @@ over a used still or macro slot, or recording a macro into one. Without
 `--yes` (`confirm: true` in a tool) bmdctl refuses and says what it would
 affect. Put that to the operator in their words and wait for a clear yes.
 **Never add `--yes` or `confirm: true` on your own**, not to finish a task,
-not because an earlier yes covered something else. One yes is for one
-command.
+not because an earlier yes covered something else. One yes is for one command.
 
 ## Sequences: use exec
 

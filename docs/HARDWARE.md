@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher so far, in eight sessions. The firmware version wasn't
+One switcher so far, in nine sessions. The firmware version wasn't
 recorded; the switcher's `_ver` packet reported protocol 2.30.
 
 | Device | Firmware | Video mode | Verified | Date |
@@ -26,6 +26,7 @@ recorded; the switcher's `_ver` packet reported protocol 2.30.
 | ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | `program`; a write the switcher already holds sends nothing (`already`) | 2026-10-11 |
 | ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | Terminal output: the header, `connect`, `disconnect`, the `[y/N]` prompt, a profile's `✓` steps, `-t` | 2026-10-11 |
 | ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | `cut` and `auto` confirmed by the switcher's reports; `undo` of a cut; `undo` refused mid-transition | 2026-10-11 |
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | The v0.1.1 release binary (darwin_arm64) on macOS, from a second machine over VPN; `bmdctl mcp` from Claude Code: its 15 tools, a state read, `program` confirmed; `watch --filter PrgI -t` | 2026-10-12 |
 
 ## Unverified
 
@@ -58,10 +59,11 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Terminal layout** since the seventh session's changes: the header
   and the column-72 statuses.
 - **Platforms:** the Windows engine and its named pipe (the executables
-  ran only under Wine); the macOS binaries; zsh and fish completion in a
-  real shell; the Docker image against a switcher.
+  ran only under Wine); the macOS amd64 binary; zsh and fish completion
+  in a real shell; the Docker image against a switcher.
 - **Integrations:** `bmdctl serve` against a switcher; `bmdctl mcp`
-  from Claude Code or Claude Desktop.
+  from Claude Desktop; MCP's state subscription
+  (`bmdctl://hosts/{host}/state`).
 
 ## 2026-10-10: first run
 
@@ -367,3 +369,37 @@ fakes and, for the protocol, against bmdwire's own code.
   restore, `classic-audio meters`, a still that isn't premultiplied, a
   fit that shrinks the image or adds bars at the sides, and every other
   command that changes the switcher.
+
+## 2026-10-12: ninth run, the macOS release and MCP
+
+- **Commit:** `98cf772`, tagged `v0.1.1`: the release's darwin_arm64
+  binary, not a build from a checkout.
+- **Switcher:** "TEST ATEM 2", the Constellation of the earlier runs,
+  from a second machine: a Mac reaching it over a VPN. The report didn't
+  restate the model, protocol version or video mode (an ATEM 1 M/E
+  Constellation HD, protocol 2.30, 1080p25 on earlier runs).
+- **Run:** at a terminal, `version`, `connect`, `status` and `inputs`.
+  Then `bmdctl mcp` from Claude Code, added with `claude mcp add bmdctl
+  -- bmdctl mcp`: a query of the state, and a program change through
+  MCP. Alongside, `watch --filter PrgI -t` ran from a shell.
+- **Result:** all of it worked.
+  - The release binary ran on macOS, and the four commands answered
+    over the VPN.
+  - Claude Code listed 15 tools (the twelve ATEM groups, the two
+    HyperDeck ones and `list_hosts`). Its query of the state matched
+    what the terminal showed.
+  - The program change through MCP, MP1 → Cam7, was confirmed.
+  - `watch --filter PrgI -t` logged 14 program changes, each with the
+    right time.
+  - To confirm "Cam7", the agent dumped the whole state with `--json`
+    and parsed it with Python, where `inputs` answers that.
+  - No MCP tool waits for a change, so the agent watched from a shell
+    (by issue #2, a background shell it lost control of).
+- **Changed because of it:** nothing in the code. In the commit that
+  added this section, `skills/bmdctl/SKILL.md` says to look an input up
+  by name or number with `inputs` (`atem_sources` inputs), never by
+  dumping `state`. Issue #2 asks for an MCP tool that waits for the next
+  change.
+- **Not yet verified on hardware:** the macOS amd64 binary; `bmdctl mcp`
+  from Claude Desktop; MCP's state subscription; `bmdctl serve` against
+  a switcher; otherwise as after the eighth run.
