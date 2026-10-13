@@ -5,8 +5,8 @@
 package profile
 
 // The oracle replays: internal/fixtures/oracle/profile.json, recorded from
-// bmdwire v1.3.0 by gen_profile.py, and the golden XML of
-// test_profile_granular.py.
+// bmdwire v1.3.0 with bmdwire#22 and #23 merged (v1.3.0-6-g5404931) by
+// gen_profile.py, and the golden XML of test_profile_granular.py.
 
 import (
 	"bytes"
@@ -136,7 +136,7 @@ func loadOracle(t *testing.T) *profileOracle {
 	data := fixtures.Bytes(t, "oracle/profile.json")
 	oracleOnce.Do(func() {
 		oracleErr = json.Unmarshal(data, &oracleData)
-		if oracleErr == nil && oracleData.Bmdwire != "v1.3.0" {
+		if oracleErr == nil && oracleData.Bmdwire != "v1.3.0-6-g5404931" {
 			oracleErr = fmt.Errorf("oracle generated from bmdwire %s", oracleData.Bmdwire)
 		}
 	})

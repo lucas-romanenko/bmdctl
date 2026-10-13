@@ -13,7 +13,8 @@ it. When you make a new decision, add it here in the same commit.
 - **Fixes merged after v1.3.0** that the port takes too, each a bmdwire PR
   settled by a capture from ATEM Software Control:
   bmdwire#22 (`b89fcb7`, merged as `6ef831f`), the fly-key locations
-  ("Commands"). Each is ported in its own commit with bmdwire's new tests
+  ("Commands"); bmdwire#23 (`d86ed31`, merged as `5404931`), dual-mono
+  Fairlight inputs in profiles ("Profiles"). Each is ported in its own commit with bmdwire's new tests
   and fixtures, and the oracles it changes are regenerated at its merge
   (`internal/fixtures/README.md` says which file is at which commit; the
   rest come out byte for byte the same there). Code that follows one of
@@ -861,9 +862,29 @@ and a zero value selects nothing.
   download leaves the macro with its name and description only. A decode
   warning is logged and the ops before it are kept. Save fails only when
   ctx ends.
-- **Fairlight strip order:** atemwire writes a source's strips in FASP
-  arrival order, which the state doesn't keep, so they go in subchannel
-  order (the order a switcher sends them).
+- **Fairlight strips are saved and applied per half** (bmdwire#23,
+  `d86ed31`). An `<AudioSource id>` is the strip's wire address read as a
+  signed i64, as ASC's export of an input in Dual Mono showed: -65280 a
+  stereo strip (channel -1), -256 split channel 0 (a dual-mono input's
+  left half, and the XLR's one strip), -255 split channel 1. Save writes
+  `DualMono` when an input reports two split strips (FASP `is_split`
+  0xFF), with each half's own id, left first: a source's strips go in the
+  subchannel order of their ids, as atemwire now sorts them, so the
+  port's stand-in for FASP arrival order is gone. A mono input's strip
+  (the XLR's) keeps -256 however its FASP reports it; FAIP byte 10 for a
+  dual-mono input wasn't captured, so save doesn't read it for that. Apply
+  sends each strip to the channel its id names (`audioSourceChannel`:
+  `int()` of the id, Python's spellings and the unsigned form a macro's
+  `sourceId` holds included, masked to 64 bits; anything else is stereo,
+  as before), and an error names the half (`fairlight.strip[1.1]`). Apply
+  can't change an input's configuration (atemwire has no command for it),
+  so a dual-mono profile restores onto an input that is already in Dual
+  Mono. In v1.3.0 save wrote `Stereo` and -65280 for both halves, and
+  apply sent every strip to channel -1, so the right half landed on the
+  left at an address a dual-mono input doesn't have, and the XLR went to
+  -1 too (SURFACE §5.4 item 8, a trap the port had inherited).
+  `dualmono_test.go` ports bmdwire's tests on its fixture,
+  `profile/profile_fairlight_dual_mono_asc.xml`; not yet run on hardware.
 - **Apply runs atemwire's 17 sections in order.** Each operation is a
   function that makes the checks the operation makes when called, and
   records what fails as `_safe` does. Those checks: round() or int() of NaN
@@ -899,8 +920,8 @@ and a zero value selects nothing.
   Unicode tables, not expat's Appendix B.
 - **Not ported:** `download_media_pool_images` (needs still download and PNG
   export), `_source_symbol` (unused), `_ProtocolAdapter`/`_resolve_connection`.
-- **Verification:** `oracle/profile.json` from `gen_profile.py` holds the
-  golden's state, 46 saves, 274 applies (18,628 events, 30 raising) and 130
+- **Verification:** `oracle/profile.json` from `gen_profile.py` (bmdwire
+  `v1.3.0-6-g5404931`) holds the golden's state, 46 saves, 274 applies (18,628 events, 30 raising) and 130
   parses, all replayed byte for byte. The golden's state holds a TStP media
   player of 3010, more than a u8, so the golden test injects that one value
   through the saver's `stingerSource` hook. `profile_test.go` ports
@@ -2946,7 +2967,7 @@ follows the code.
 - **Version.** SURFACE.md says it describes 1.2.0 (`028ac26`); the port
   follows v1.3.0 (`cea58c2`), which has every fix §5.4 marks as made after
   1.2.0, and the fixes merged after 1.3.0 that §5.4 also marks
-  (`b89fcb7`; "Source of truth").
+  (`b89fcb7`, `d86ed31`; "Source of truth").
 - **§1 conventions, source names.** The private table also maps 4030 to
   `CleanFeed1` (alongside 7001); SURFACE.md's list leaves 4030 out.
 - **§2.4 `audio-input` (`AMIP`)** is listed as indexed by source; atemwire
