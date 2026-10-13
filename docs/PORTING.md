@@ -1948,8 +1948,13 @@ add it to Claude Code and Claude Desktop is docs/AGENTS.md.
   tool and in a group its device declares, that no schema has a
   top-level `oneOf`, `anyOf` or `allOf`, and that `destructiveHint` and
   `confirm` go with the destructive groups.
-  Nothing here has been tried with Claude Code or Claude Desktop
-  themselves.
+- **Verified from Claude Code** (the ninth run, docs/HARDWARE.md): v0.1.1
+  on a Mac, added with `claude mcp add bmdctl -- bmdctl mcp`, listed the
+  fifteen tools; a read of the state matched the terminal, and `program`
+  through `atem_switching` (MP1 → Cam7) answered confirmed. Claude
+  Desktop hasn't been tried, nor the state subscription from either. No
+  tool waits for a change, so an agent that has to watch runs `bmdctl
+  watch` in a shell instead (issue #2).
 
 ## The Claude skill (`skills/bmdctl/SKILL.md`)
 
@@ -2042,15 +2047,20 @@ builds everything into `dist/` without publishing.
   --serve` answered `/`, `/hosts` and `/openapi.json` on loopback), and
   from the five Windows executables under wine. The macOS binaries were
   checked to be Mach-O for their architecture with the version stamped,
-  but nothing here can run them. A tagged build in a throwaway clone
-  printed `bmdctl v0.1.0`. `internal/release` tests install.sh against a
-  release served on loopback, and the manifest against the config.
+  but nothing here could run them (one has since run on a Mac: below).
+  A tagged build in a throwaway clone printed `bmdctl v0.1.0`.
+  `internal/release` tests install.sh against a release served on
+  loopback, and the manifest against the config.
   After the Scoop change it ran again (`--skip=docker`): the archives
   are `bmdctl_<os>_<arch>`, no manifest is written, the deb's and the
   rpm's maintainer is lucas@romanenko.com, the Windows zip holds the
   five executables at its top (the manifest's `bin`), and install.sh
   installed bmdctl and its aliases from the Linux amd64 archive and
   `checksums.txt` served on loopback.
+- **On a Mac** (the ninth run, docs/HARDWARE.md): v0.1.1's darwin_arm64
+  binary ran `version`, `connect`, `status`, `inputs`, `watch` and `mcp`
+  against the Constellation over a VPN. The darwin_amd64 binary hasn't
+  been run.
 
 ## Engine (`internal/engine`)
 
