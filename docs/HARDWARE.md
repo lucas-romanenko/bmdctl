@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher model so far, in twelve sessions. Its firmware was first
+One switcher model so far, in thirteen sessions. Its firmware was first
 recorded in the tenth, 9.2.1; before that the rows give the protocol
 version the switcher's `_ver` packet reported, 2.30.
 
@@ -31,6 +31,7 @@ version the switcher's `_ver` packet reported, 2.30.
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | A `profile save` opened in ATEM Software Control 9.3.2's Restore dialog, every section listed; `profile restore --macros-only` of a name-only macro, which the switcher keeps | 2026-10-13 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile restore` of the Fairlight mixer alone (`--macros-only --macros off --audio`): a dual-mono input's halves each to their own strip, the XLR to ASC's address for it; `profile save` of a dual-mono input as `DualMono` | 2026-10-13 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile save` of a full media pool (20 stills, 8 different): 46 s, each still 1.8 s on the wire, as long as ATEM Software Control's own downloads take (a capture) | 2026-10-14 |
+| ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile save` with the still cache: the full pool's first save 16.2 s (each of 8 pictures downloaded once), the second 0.9 s (none downloaded) | 2026-10-14 |
 
 ## Unverified
 
@@ -542,3 +543,29 @@ fakes and, for the protocol, against bmdwire's own code.
   protocol details go to bmdwire first (CLAUDE.md, "bmdwire first").
   The capture, `saveall.pcapng` (956 MB), stays out of git.
 - **Not yet verified on hardware:** as after the eleventh run.
+
+## 2026-10-14: thirteenth run, profile saves from the still cache
+
+- **Commit:** `797a3dc`, built from the working tree before it was
+  committed, run as an engine of its own (its own socket and config,
+  state and cache directories) beside the installed one.
+- **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD, protocol
+  2.30, firmware 9.2.1, 1080p25; the media pool as the twelfth run left
+  it, 20 stills of 8 different pictures.
+- **Run:** `profile save` twice, `--json`, timed, into an empty still
+  cache.
+- **Result:** both saves worked, every still written.
+  - The first took 16.2 s from the command to the answer, the engine's
+    start and the connect included: each of the 8 pictures downloaded
+    once, the other 12 slots marked `from_cache` (a picture already
+    fetched for another slot). The twelfth run's save, every slot
+    downloaded, took 46 s.
+  - The second took 0.9 s: all 20 stills `from_cache`, nothing
+    downloaded.
+  - The cache held 8 PNGs, 27 MB; the save's folder 8 files, as the
+    repeats share their names.
+- **Changed because of it:** nothing; it confirms the still cache
+  (`internal/stillcache`) on hardware.
+- **Not yet verified on hardware:** a restore of a profile with
+  renamed (`<name>_2`) or unnamed stills; otherwise as after the
+  eleventh run.
