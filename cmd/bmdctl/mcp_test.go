@@ -171,7 +171,7 @@ func TestMCPTools(t *testing.T) {
 	if len(names) < 10 || len(names) > 20 {
 		t.Errorf("%d tools", len(names))
 	}
-	for _, n := range []string{"list_hosts", "atem_switching", "atem_usk", "atem_media", "atem_system", "atem_session",
+	for _, n := range []string{"list_hosts", "wait_for_change", "atem_switching", "atem_usk", "atem_media", "atem_system", "atem_session",
 		"atem_sources", "hyperdeck_transport", "hyperdeck_session"} {
 		if names[n] == nil {
 			t.Errorf("no tool %s", n)
@@ -380,6 +380,36 @@ func TestMCPHostForms(t *testing.T) {
 	}
 	if _, isErr, text := m.tool("atem_switching", map[string]any{"subcommand": "cut", "host": "no such host!"}); !isErr || !strings.Contains(text, `"no such host!" is neither a host in hosts.yml nor an address`) {
 		t.Errorf("no host: %v %s", isErr, text)
+	}
+}
+
+// wait_for_change (#2): a cursor taken before a write, then a wait from
+// it, has the write's change; a deck's changes come the same way.
+func TestMCPWaitForChange(t *testing.T) {
+	b := newBench(t)
+	deck := fakehyperdeck.New()
+	b.net.Deck(fakehyperdeck.Address, deck)
+	b.must("hosts", "add", "192.0.2.10", "--as", "studio")
+	b.must("hosts", "add", fakehyperdeck.Address, "--as", "deck")
+	m := b.mcp(t)
+	m.request("initialize", map[string]any{"protocolVersion": "2025-11-25"}, false)
+	res, isErr, text := m.tool("wait_for_change", map[string]any{"host": "studio", "timeout_s": 0})
+	cursor, _ := res["cursor"].(string)
+	if isErr || cursor == "" || res["timed_out"] != true {
+		t.Fatalf("a cursor: %s", text)
+	}
+	m.tool("atem_switching", map[string]any{"subcommand": "program", "host": "studio", "source": 5})
+	res, isErr, text = m.tool("wait_for_change", map[string]any{"host": "studio", "cursor": cursor, "timeout_s": 10, "filter": []string{"PrgI"}})
+	if isErr || res["cursor"] == cursor || !strings.Contains(text, `"key":"PrgI:0","value":{"index":0,"source":5}`) || strings.Contains(text, `"TlSr"`) {
+		t.Errorf("the program change: %s", text)
+	}
+	res, isErr, text = m.tool("wait_for_change", map[string]any{"host": "deck", "timeout_s": 0})
+	if isErr || res["cursor"] == "" {
+		t.Fatalf("a deck's cursor: %s", text)
+	}
+	m.tool("hyperdeck_transport", map[string]any{"subcommand": "play", "host": "deck"})
+	if _, isErr, text := m.tool("wait_for_change", map[string]any{"host": "deck", "cursor": res["cursor"], "timeout_s": 10}); isErr || !strings.Contains(text, `"key":"transport"`) {
+		t.Errorf("the deck's change: %s", text)
 	}
 }
 

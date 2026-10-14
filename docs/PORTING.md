@@ -2087,7 +2087,8 @@ add it to Claude Code and Claude Desktop is docs/AGENTS.md.
   costs a model's context more than it gives and is harder to choose
   from than fifteen groups; before the first release this replaced
   that, and `get_state` and `list_inputs`, which are now `atem_session`
-  `state` and `atem_sources` `inputs`; `list_hosts` stays.
+  `state` and `atem_sources` `inputs`; `list_hosts` stays, and
+  `wait_for_change` came after (below).
 - **The schema is flat, the subcommand its discriminator.** A
   discriminated union (`oneOf` of one object per subcommand) would say
   exactly which arguments each takes, but Claude's API accepts no
@@ -2152,6 +2153,38 @@ add it to Claude Code and Claude Desktop is docs/AGENTS.md.
   cancels gets nothing more. The `watch` subcommands of `atem_session`
   and `hyperdeck_session` collect a stream's changes for `seconds` (5 by default, at most 60) or
   `count` (20) and return them.
+- **wait_for_change** (#2; `wait.go`): a long poll, for an agent that
+  can't take notifications. The first agent in the ninth hardware run
+  ran `bmdctl watch --filter PrgI` in a background shell and lost
+  control of it, because every tool returned at once and the `watch`
+  subcommand's `seconds` lose whatever changes between two calls. The
+  first call for a host starts the engine's watch for it (by device and
+  address) and waits for its `watching`, as a subscription does; from
+  then each change goes into that host's log, numbered from 1, the last
+  1000 kept. A `cursor` is the log's id and a number
+  (`mg9x2k1q1-42`), opaque to the agent: a call returns the changes
+  after it that pass `filter`, at most 100 (`more: true` past that),
+  waiting up to `timeout_s` (0 to 60, default 30) for the first and
+  then 250 ms more for those right behind it (a cut is several packets;
+  a deadline still ends it), and the cursor of the last change it
+  looked at, those `filter` left out included, so they aren't looked
+  at again. No cursor starts from now, so `timeout_s: 0` is how to
+  mark a place before acting. A cursor of another log (the server
+  restarted, the watch idled out or ended) or older than the log keeps
+  says `missed: true` and starts from what there is. `filter` is
+  `watch --filter`'s prefix match, done here, since one watch serves
+  every call; `disconnected` and `ready` always pass. The watch runs
+  without `--all`, so Time and the index and Fairlight tallies never
+  come, filter or not. It stops ten minutes after the last call ends
+  (`waitIdle`), so the session it holds in use can idle out; one that
+  ends (the session closed) fails the calls waiting on it with its
+  reason, and the next call starts another. The changes are the
+  engine's `ChangeEvent`s as `watch --json` has them, in `events`, not
+  also in `result` as the `watch` subcommand doubles them: an agent
+  polling in a loop pays for every byte. A separate tool, not a
+  subcommand of `atem_session`: subcommands are table entries, and a
+  cursor is the MCP server's state, not a command's; one tool serves
+  both devices.
 - **Concurrency.** Each request runs on its own goroutine, answers are
   written whole under a lock, and `notifications/cancelled` cancels the
   request it names (a stream, a transfer).
@@ -2162,8 +2195,11 @@ add it to Claude Code and Claude Desktop is docs/AGENTS.md.
   used slot both ways, reads, `list_hosts`, a deck's tools and a
   switcher's tool sent to a deck, files both ways, unknown arguments and
   subcommands, resources and both kinds of subscription, the modern
-  revision's discover, `resultType`, version error and cancellation.
-  `internal/mcp` checks that every entry is a subcommand of exactly one
+  revision's discover, `resultType`, version error and cancellation, and
+  `wait_for_change` from a cursor over a write, on a switcher and a
+  deck. `internal/mcp` drives `wait_for_change` against a fake watch
+  (`wait_test.go`: cursors, waking, the burst, filters, missed and more,
+  a watch that ends or can't start, the idle stop, arguments), and checks that every entry is a subcommand of exactly one
   tool and in a group its device declares, that no schema has a
   top-level `oneOf`, `anyOf` or `allOf`, and that `destructiveHint` and
   `confirm` go with the destructive groups.
@@ -2172,8 +2208,9 @@ add it to Claude Code and Claude Desktop is docs/AGENTS.md.
   fifteen tools; a read of the state matched the terminal, and `program`
   through `atem_switching` (MP1 → Cam7) answered confirmed. Claude
   Desktop hasn't been tried, nor the state subscription from either. No
-  tool waits for a change, so an agent that has to watch runs `bmdctl
-  watch` in a shell instead (issue #2).
+  tool waited for a change, so an agent that had to watch ran `bmdctl
+  watch` in a shell instead (issue #2, since answered by
+  `wait_for_change`, not yet tried from Claude Code).
 
 ## The Claude skill (`skills/bmdctl/SKILL.md`)
 

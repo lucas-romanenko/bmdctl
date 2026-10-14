@@ -8,8 +8,8 @@ together:
 - **`bmdctl mcp`**, a Model Context Protocol server: fifteen tools, one
   per command group (`atem_switching`, `atem_usk`, `atem_media`,
   `hyperdeck_transport`, ...) with the command as its `subcommand`, plus
-  `list_hosts`, and each host's state as a resource the agent can
-  subscribe to.
+  `list_hosts` and `wait_for_change`, and each host's state as a
+  resource the agent can subscribe to.
 - **The skill** in `skills/bmdctl/`, which tells the agent how to work a
   live show safely: read before writing, say what is on air before a cut,
   ask a person before anything destructive, and the recipes for common
@@ -117,11 +117,22 @@ Desktop hasn't been tried with bmdctl yet
 - **Files** are on the machine running `bmdctl mcp`: `atem_media`
   `upload` reads the path it is given, downloads write where `file`
   says.
-- **Watching**: subscribe to `bmdctl://hosts/<host>/state` and the server
-  sends a notification on each change (at most four a second); read the
-  resource for the state. The `watch` subcommand of `atem_session` and
+- **Watching**: `wait_for_change` waits for the next change on a host
+  (up to `timeout_s`, 30 seconds by default, at most 60) and returns it
+  with a `cursor`; given that cursor, the next call starts where this
+  one ended, so a change between the two is not lost. To see what an
+  action does, take a cursor first (`timeout_s: 0` returns at once),
+  act, then wait from it. `filter` takes key prefixes (`PrgI`,
+  `KeOn:0`), as `watch --filter` does. `missed: true` means changes
+  are gone (the cursor is from an earlier server, or over a thousand
+  changes old): read the state to catch up. The server watches a host
+  from its first call until ten minutes after its last, and the
+  session counts as in use meanwhile. Or subscribe to
+  `bmdctl://hosts/<host>/state` and the server sends a notification on
+  each change (at most four a second); read the resource for the
+  state. The `watch` subcommand of `atem_session` and
   `hyperdeck_session` collects a few `seconds` of changes and returns
-  them, for an agent without subscriptions.
+  them.
 - **Both protocol eras**: the server answers clients of the current
   revision (2026-07-28, no handshake) and of the `initialize` revisions
   before it.
