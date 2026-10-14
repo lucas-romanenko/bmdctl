@@ -2,8 +2,8 @@
 
 // Package mcp is bmdctl's Model Context Protocol server (bmdctl mcp): a
 // tool per command group of the table, the command its subcommand
-// argument, plus list_hosts, and each host's state as a resource a
-// client can subscribe to, over stdio. It speaks both eras of the protocol: the
+// argument, plus list_hosts and wait_for_change, and each host's state as
+// a resource a client can subscribe to, over stdio. It speaks both eras of the protocol: the
 // current revision (2026-07-28: the version in every request's _meta,
 // server/discover, subscriptions/listen) and the initialize-handshake
 // revisions before it (2025-11-25 back to 2024-11-05: resources/subscribe),
@@ -92,6 +92,9 @@ type Server struct {
 	inflight  map[string]context.CancelFunc // by request id
 	cancelled map[string]bool               // request ids the client cancelled
 	subs      map[string]context.CancelFunc // legacy resources/subscribe, by URI
+	logs      map[string]*changeLog         // wait_for_change's watches, by device and address
+	gens      int                           // the logs started, for their ids
+	base      context.Context               // Serve's: the logs' watches end with it
 	wg        sync.WaitGroup
 }
 
@@ -100,7 +103,8 @@ func New(cfg Config) *Server {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.DiscardHandler)
 	}
-	s := &Server{cfg: cfg, inflight: map[string]context.CancelFunc{}, cancelled: map[string]bool{}, subs: map[string]context.CancelFunc{}}
+	s := &Server{cfg: cfg, inflight: map[string]context.CancelFunc{}, cancelled: map[string]bool{}, subs: map[string]context.CancelFunc{},
+		logs: map[string]*changeLog{}, base: context.Background()}
 	s.tools = tools(cfg.Registry)
 	s.byKey = map[string]*tool{}
 	for i := range s.tools {
@@ -130,6 +134,7 @@ func (e *rpcError) Error() string { return e.Message }
 func (s *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
 	s.enc = json.NewEncoder(w)
 	ctx, cancel := context.WithCancel(ctx)
+	s.base = ctx
 	defer func() {
 		cancel()
 		s.wg.Wait()
@@ -267,7 +272,7 @@ func (s *Server) serverInfo() map[string]any {
 }
 
 // Instructions are what the server tells a model about using it.
-const Instructions = `bmdctl controls Blackmagic Design devices on the local network: ATEM switchers and HyperDeck recorders. There is a tool per command group (atem_switching, atem_transition, atem_usk, atem_dsk, atem_media, ... and hyperdeck_transport, hyperdeck_session), each with a subcommand argument and that subcommand's arguments. list_hosts names the devices; a tool's host argument takes a host's name or an address, and leaving it out uses the default host. Read before you write: atem_session with subcommand status says what is on program and preview; tell the operator what is on air before a cut or an auto. Results say "status": confirmed (the device reported it back), sent (no confirmation exists for it), already (the device held it; nothing was sent) or rejected. Destructive subcommands refuse without confirm: true and say what they would affect: ask the operator and pass confirm only once they agree, for that one call. Indexes (M/Es, keyers, DSKs, aux outputs, media and macro slots) count from 1. Subscribe to bmdctl://hosts/{host}/state to hear of changes.`
+const Instructions = `bmdctl controls Blackmagic Design devices on the local network: ATEM switchers and HyperDeck recorders. There is a tool per command group (atem_switching, atem_transition, atem_usk, atem_dsk, atem_media, ... and hyperdeck_transport, hyperdeck_session), each with a subcommand argument and that subcommand's arguments. list_hosts names the devices; a tool's host argument takes a host's name or an address, and leaving it out uses the default host. Read before you write: atem_session with subcommand status says what is on program and preview; tell the operator what is on air before a cut or an auto. Results say "status": confirmed (the device reported it back), sent (no confirmation exists for it), already (the device held it; nothing was sent) or rejected. Destructive subcommands refuse without confirm: true and say what they would affect: ask the operator and pass confirm only once they agree, for that one call. Indexes (M/Es, keyers, DSKs, aux outputs, media and macro slots) count from 1. To follow changes, call wait_for_change: it waits for the next change and returns it with a cursor, and the next call given that cursor misses nothing in between (or subscribe to bmdctl://hosts/{host}/state).`
 
 func (s *Server) capabilities() map[string]any {
 	return map[string]any{

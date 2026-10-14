@@ -119,8 +119,8 @@ bmdctl watch --json --filter PrgI:0 |
 "PrgI:0","value":{"index":0,"source":5},"time":"13:43:28.120"}`. Keys are
 the opcode and indexes from 0 (`KeOn:0:1` is M/E 1 keyer 2); `TlSr` is the
 tally (`{"tally":{"5":{"program":true,"preview":false}}}`); `disconnected`
-then `ready` mean the session dropped and came back. In MCP, subscribe to
-`bmdctl://hosts/<host>/state` instead.
+then `ready` mean the session dropped and came back. In MCP, rather than
+`watch` in a background shell, loop on `wait_for_change` with each `cursor`.
 
 **5. HyperDeck playback cue** (deck "Deck 1" feeding ATEM input 4):
 ```

@@ -73,7 +73,7 @@ fakes and, for the protocol, against bmdwire's own code.
   in a real shell; the Docker image against a switcher.
 - **Integrations:** `bmdctl serve` against a switcher; `bmdctl mcp`
   from Claude Desktop; MCP's state subscription
-  (`bmdctl://hosts/{host}/state`).
+  (`bmdctl://hosts/{host}/state`) and `wait_for_change`.
 
 ## 2026-10-10: first run
 

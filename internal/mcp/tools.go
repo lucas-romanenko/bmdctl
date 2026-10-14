@@ -5,7 +5,7 @@ package mcp
 // The tools: one per command group of the table (atem.Groups,
 // hyperdeck.Groups: atem_switching, atem_usk, hyperdeck_transport, ...),
 // the subcommand a parameter whose enum is the group's commands, the
-// other parameters theirs; and list_hosts.
+// other parameters theirs; list_hosts; and wait_for_change (wait.go).
 
 import (
 	"context"
@@ -30,7 +30,7 @@ type tool struct {
 
 	device  string
 	subs    map[string]*table.Entry // by subcommand
-	special string                  // list_hosts
+	special string                  // list_hosts, wait_for_change
 }
 
 // readOnly are the entries that change nothing on a device: they read
@@ -77,7 +77,8 @@ func tools(reg *table.Registry) []tool {
 	out := []tool{{Name: "list_hosts", Title: "List hosts", special: "list_hosts",
 		Description: "The devices bmdctl knows (hosts.yml): each one's name, alias (a short name it goes by as well), address and type (atem, hyperdeck, videohub, ultimatte), and the default host. Call it first to learn what a host argument can be, and which tools a host takes: an atem host the atem_ tools, a hyperdeck host the hyperdeck_ tools.",
 		InputSchema: table.Schema{"type": "object", "properties": table.Schema{}, "additionalProperties": false},
-		Annotations: map[string]any{"title": "List hosts", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}}
+		Annotations: map[string]any{"title": "List hosts", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}},
+		waitTool}
 	for _, d := range reg.Devices() {
 		for _, g := range reg.Groups(d) {
 			out = append(out, groupTool(d, g, reg.GroupEntries(d, g.Name)))
@@ -259,9 +260,12 @@ func toolOK(out map[string]any) map[string]any {
 		"structuredContent": out, "isError": false}
 }
 
-// call runs a tool and returns its result: list_hosts, or the
-// subcommand of a group's tool, with its arguments.
+// call runs a tool and returns its result: list_hosts, wait_for_change,
+// or the subcommand of a group's tool, with its arguments.
 func (s *Server) call(ctx context.Context, t *tool, args map[string]any) map[string]any {
+	if t.special == "wait_for_change" {
+		return s.waitForChange(ctx, args)
+	}
 	if t.special == "list_hosts" {
 		f, err := s.cfg.Hosts()
 		if err != nil {
