@@ -8,6 +8,8 @@
 /.claude/
 /*.bin
 /*.xml
+/*.pcap
+/*.pcapng
 /ATEM Media Pool/
 /build/
 /site/
