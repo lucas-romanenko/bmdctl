@@ -41,7 +41,7 @@ func responses() obj {
 // OpenAPI is the API's OpenAPI 3.1 document.
 func OpenAPI(reg *table.Registry, version string) obj {
 	host := obj{"name": "host", "in": "path", "required": true, "schema": obj{"type": "string"},
-		"description": "a host's name in hosts.yml, in any case, or any unambiguous start of one; or an address (an ATEM's, unless the path names the device)"}
+		"description": "a host's name or alias in hosts.yml, in any case, or any unambiguous start of one; or an address (an ATEM's, unless the path names the device)"}
 	query := func(name, typ, desc string) obj {
 		return obj{"name": name, "in": "query", "schema": obj{"type": typ}, "description": desc}
 	}
@@ -50,7 +50,7 @@ func OpenAPI(reg *table.Registry, version string) obj {
 		query("timeout", "string", "how long to wait for the device's confirmation, like 2s (default 5s)"),
 		query("fps", "integer", "the frame rate for rates given as seconds:frames (default: the device's)")}
 	paths := obj{
-		"/hosts": obj{"get": obj{"operationId": "list_hosts", "summary": "The hosts in hosts.yml: name, address, device, and the default.",
+		"/hosts": obj{"get": obj{"operationId": "list_hosts", "summary": "The hosts in hosts.yml: name, alias, address, device, and the default.",
 			"responses": obj{"200": obj{"description": "{ok, result: {default, hosts}}", "content": obj{"application/json": obj{"schema": obj{"$ref": "#/components/schemas/Response"}}}}}}},
 		"/hosts/{host}/state": obj{"get": obj{"operationId": "get_state", "summary": "The device's state, as the engine's session holds it.",
 			"parameters": []any{host, query("path", "string", "a dotted key into the state: mes.0.program, transport.status")},

@@ -55,7 +55,7 @@ func TestComplete(t *testing.T) {
 		{[]string{"media", "upload", "--file", ""}, []string{completeFiles}},
 		{[]string{"exec", ""}, []string{completeFiles}},
 		{[]string{"--host", "s"}, []string{"studio", "spare"}},
-		{[]string{"hosts", ""}, []string{"list", "add", "rm", "default", "discover"}},
+		{[]string{"hosts", ""}, []string{"list", "add", "rm", "alias", "default", "discover"}},
 		{[]string{"hosts", "rm", "st"}, []string{"studio"}},
 		{[]string{"hosts", "add", "1.2.3.4", "--as", "x", "--device", "h"}, []string{"hyperdeck"}},
 		{[]string{"completion", ""}, []string{"bash", "zsh", "fish"}},
@@ -70,6 +70,22 @@ func TestComplete(t *testing.T) {
 			t.Errorf("%q: %q, want %q", c.args, got, c.want)
 		}
 	}
+	// A host's alias is a name it goes by.
+	b.must("hosts", "alias", "spare", "bk")
+	for _, c := range []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"--host", "b"}, []string{"bk"}},
+		{[]string{"hosts", "alias", ""}, []string{"studio", "spare", "bk"}},
+		{[]string{"hosts", "alias", "spare", "--"}, []string{"--as", "--device", "--dry-run", "--for", "--fps", "--help", "--host",
+			"--json", "--no-color", "--quiet", "--rm", "--timeout", "--timestamps", "--yes"}},
+	} {
+		if got := complete(c.args...); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%q: %q, want %q", c.args, got, c.want)
+		}
+	}
+	b.must("hosts", "alias", "spare", "--rm")
 	// Flags are the optional arguments; the positional ones' --name form
 	// is accepted but not offered.
 	got := complete("program", "--")

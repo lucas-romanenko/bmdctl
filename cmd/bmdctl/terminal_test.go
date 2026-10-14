@@ -778,3 +778,22 @@ func TestSplitStep(t *testing.T) {
 		}
 	}
 }
+
+// Hosts at a terminal: hosts alias names the host in a header, its
+// address dim, and says the change as a result; bmdctl alone lists each
+// host's alias before its name.
+func TestTerminalHosts(t *testing.T) {
+	b := newBench(t)
+	b.must("hosts", "add", "192.0.2.10", "--as", "BC 1.2 - TESTTt")
+	b.must("hosts", "add", "192.0.2.11", "--as", "studio")
+	tr := &transcript{b: b}
+	tr.run("hosts", "alias", "BC 1.2 - TESTTt", "bc")
+	tr.run("hosts", "alias", "bc", "BC")
+	tr.run("hosts", "alias", "bc", "bt")
+	tr.run("hosts", "alias", "bt", "--rm")
+	tr.run("hosts", "alias", "BC 1.2 - TESTTt", "--rm")
+	tr.run("hosts", "alias", "BC 1.2 - TESTTt", "bc")
+	tr.run("hosts", "alias", "studio", "cut")
+	tr.run()
+	golden(t, "hosts.golden", strings.ReplaceAll(tr.out.String(), shortVersion(), "VERSION"))
+}

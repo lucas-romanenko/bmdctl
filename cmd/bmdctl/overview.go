@@ -23,6 +23,7 @@ import (
 // switcher the engine has a session to that isn't one.
 type overviewHost struct {
 	Name    string           `json:"name,omitempty"`
+	Alias   string           `json:"alias,omitempty"`
 	Address string           `json:"address"`
 	Device  string           `json:"device"`
 	Default bool             `json:"default,omitempty"`
@@ -50,7 +51,7 @@ func (c *cli) overview(g globals) int {
 	var list []overviewHost
 	used := map[int]bool{}
 	for _, h := range f.Hosts {
-		oh := overviewHost{Name: h.Label(), Address: h.Address, Device: h.Device, Default: strings.EqualFold(h.Label(), f.Default)}
+		oh := overviewHost{Name: h.Label(), Alias: h.Alias, Address: h.Address, Device: h.Device, Default: strings.EqualFold(h.Label(), f.Default)}
 		if ov != nil {
 			for i, sw := range ov.Switchers {
 				if !used[i] && hosts.SameAddress(sw.Host, h.Address) {
@@ -92,9 +93,9 @@ func (c *cli) overview(g globals) int {
 }
 
 // overviewScreen is the overview at a terminal: a row per switcher, its
-// name bold, its address, model and video mode, and at the end of the
-// line its session: how long it has been open, or not connected, dim.
-// The engine is bmdctl version's.
+// alias if any host has one, its name bold, its address, model and video
+// mode, and at the end of the line its session: how long it has been
+// open, or not connected, dim. The engine is bmdctl version's.
 func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string {
 	out := []string{""}
 	if len(list) == 0 {
@@ -132,8 +133,11 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 				}
 			}
 		}
-		cells = append(cells, row[:4])
-		sessions = append(sessions, row[4])
+		if aliased(list) {
+			row = append([]string{h.Alias}, row...)
+		}
+		cells = append(cells, row[:len(row)-1])
+		sessions = append(sessions, row[len(row)-1])
 	}
 	for i, r := range rows(cells) {
 		out = append(out, trailing(r, sessions[i]))
@@ -142,6 +146,12 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 		out = append(out, "", indent+c.colour(dim, "the engine runs another build of bmdctl · bmdctl engine stop"))
 	}
 	return append(out, "", indent+c.colour(dim, "bmdctl help"))
+}
+
+// aliased reports whether a host in the list has an alias: the overview
+// then has a column for them, before the names.
+func aliased(list []overviewHost) bool {
+	return slices.ContainsFunc(list, func(h overviewHost) bool { return h.Alias != "" })
 }
 
 // hasCommands says whether bmdctl has commands for a host's device: an
@@ -210,6 +220,9 @@ func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost, noHosts bo
 		}
 		if h.Default {
 			row = append(row, c.colour(dim, "(default)"))
+		}
+		if aliased(list) {
+			row = append([]string{h.Alias}, row...)
 		}
 		hostRows = append(hostRows, row)
 	}

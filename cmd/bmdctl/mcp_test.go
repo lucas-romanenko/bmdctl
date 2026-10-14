@@ -343,3 +343,39 @@ func TestMCPModern(t *testing.T) {
 		t.Errorf("ping: %v", r)
 	}
 }
+
+// A tool's host takes what --host does: a host's alias, its name, the
+// start of either, or an address; list_hosts says each host's alias.
+func TestMCPHostForms(t *testing.T) {
+	b := newBench(t)
+	b.net.Deck("192.0.2.20", fakehyperdeck.New())
+	b.must("hosts", "add", "192.0.2.10", "--as", "BC 1.2 - TESTTt")
+	b.must("hosts", "add", "192.0.2.20", "--as", "Deck One", "--device", "hyperdeck")
+	b.must("hosts", "alias", "BC 1.2 - TESTTt", "bc")
+	b.must("hosts", "alias", "deck one", "d1")
+	m := b.mcp(t)
+	m.request("initialize", map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{},
+		"clientInfo": map[string]any{"name": "test", "version": "1"}}, false)
+	if _, _, text := m.tool("list_hosts", nil); !strings.Contains(text, `"alias":"bc"`) || !strings.Contains(text, `"alias":"d1"`) {
+		t.Errorf("list_hosts: %s", text)
+	}
+	for _, host := range []string{"bc", "BC", "bc 1.2", "192.0.2.10"} {
+		before := len(b.sent("DCut"))
+		if _, isErr, text := m.tool("atem_switching", map[string]any{"subcommand": "cut", "host": host}); isErr {
+			t.Errorf("host %q: %s", host, text)
+		}
+		if got := b.dialled(); len(b.sent("DCut")) != before+1 || len(got) != 1 || got[0] != "192.0.2.10:9910" {
+			t.Errorf("host %q: dialled %v", host, got)
+		}
+	}
+	// The deck by its alias and the start of it: an ATEM tool says what it is.
+	for _, host := range []string{"d1", "D", "deck"} {
+		if _, isErr, text := m.tool("atem_switching", map[string]any{"subcommand": "cut", "host": host}); !isErr ||
+			!strings.Contains(text, "Deck One (192.0.2.20) is a HyperDeck: use the hyperdeck_ tools") {
+			t.Errorf("host %q: %v %s", host, isErr, text)
+		}
+	}
+	if _, isErr, text := m.tool("atem_switching", map[string]any{"subcommand": "cut", "host": "no such host!"}); !isErr || !strings.Contains(text, `"no such host!" is neither a host in hosts.yml nor an address`) {
+		t.Errorf("no host: %v %s", isErr, text)
+	}
+}

@@ -134,7 +134,7 @@ var builtins = []struct{ name, summary string }{
 	{"help", "this help; 'bmdctl' alone shows the engine and the switchers"},
 	{"version", "print bmdctl's version"},
 	{"engine", "run the background engine in the foreground; engine stop|status"},
-	{"hosts", "name switchers by their own names: hosts list|add|rm|default|discover"},
+	{"hosts", "name switchers by their own names: hosts list|add|rm|alias|default|discover"},
 	{"exec", "run the commands in a file, one per line: exec FILE|-"},
 	{"completion", "print a shell completion script: completion bash|zsh|fish"},
 	{"man", "print the manual page, or write it with --dir"},
@@ -206,10 +206,10 @@ Commands:
 
 func globalHelp(w io.Writer) {
 	fmt.Fprint(w, `Flags, accepted anywhere on the line:
-  --host H       the switcher: a name from 'bmdctl hosts' in any case, or
-                 any unambiguous start of one, or host[:port] (UDP 9910 by
-                 default); else $BMDCTL_HOST, else the last --host, else
-                 the default host
+  --host H       the switcher: a name or alias from 'bmdctl hosts' in any
+                 case, or any unambiguous start of one, or host[:port] (UDP
+                 9910 by default); else $BMDCTL_HOST, else the last --host,
+                 else the default host
   --json         print the engine's JSON response as it is
   --quiet, -q    print nothing on stdout; the exit status tells
   --yes, -y      allow a destructive command
@@ -323,6 +323,14 @@ func (c *cli) run(args []string) int {
 		return c.fail(exitUsage, "bmdctl: unknown command %q (bmdctl --help lists them)", first)
 	}
 	return c.runDevice(g, device, words, tokens)
+}
+
+// isCommand reports whether a line's first word is a command: a
+// built-in, a device's word, or the first word of any device's command.
+// Such a word is never a host (a host's alias can't be one).
+func (c *cli) isCommand(word string) bool {
+	return word == "__complete" || slices.ContainsFunc(builtins, func(b struct{ name, summary string }) bool { return b.name == word }) ||
+		slices.Contains(hosts.Devices, word) || c.deviceWith(word) != ""
 }
 
 // deviceWith returns the first device one of whose commands starts with

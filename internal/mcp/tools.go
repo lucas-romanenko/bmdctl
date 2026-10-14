@@ -71,11 +71,11 @@ func Subcommand(e table.Entry) string {
 }
 
 var hostProp = table.Schema{"type": "string",
-	"description": "the device: a host's name from list_hosts (any case, or the start of one) or an address; the default host if left out"}
+	"description": "the device: a host's name or alias from list_hosts (any case, or the start of one) or an address; the default host if left out"}
 
 func tools(reg *table.Registry) []tool {
 	out := []tool{{Name: "list_hosts", Title: "List hosts", special: "list_hosts",
-		Description: "The devices bmdctl knows (hosts.yml): each one's name, address and type (atem, hyperdeck, videohub, ultimatte), and the default host. Call it first to learn what a host argument can be, and which tools a host takes: an atem host the atem_ tools, a hyperdeck host the hyperdeck_ tools.",
+		Description: "The devices bmdctl knows (hosts.yml): each one's name, alias (a short name it goes by as well), address and type (atem, hyperdeck, videohub, ultimatte), and the default host. Call it first to learn what a host argument can be, and which tools a host takes: an atem host the atem_ tools, a hyperdeck host the hyperdeck_ tools.",
 		InputSchema: table.Schema{"type": "object", "properties": table.Schema{}, "additionalProperties": false},
 		Annotations: map[string]any{"title": "List hosts", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}}
 	for _, d := range reg.Devices() {
