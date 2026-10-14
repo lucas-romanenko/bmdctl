@@ -1,0 +1,36 @@
+$ bmdctl hosts alias Block C - TEST bc
+<b>Block C - TEST</>  <dim>192.0.2.10</>
+  alias       bc
+
+$ bmdctl hosts alias bc BC
+<b>Block C - TEST</>  <dim>192.0.2.10</>
+  alias       bc → BC
+
+$ bmdctl hosts alias bc bt
+<b>Block C - TEST</>  <dim>192.0.2.10</>
+  alias       BC → bt
+
+$ bmdctl hosts alias bt --rm
+<b>Block C - TEST</>  <dim>192.0.2.10</>
+  alias       bt → <dim>none</>
+
+$ bmdctl hosts alias Block C - TEST --rm
+<b>Block C - TEST</>  <dim>192.0.2.10</>
+  alias       <dim>none</>                                               <dim>already</>
+
+$ bmdctl hosts alias Block C - TEST bc
+<b>Block C - TEST</>  <dim>192.0.2.10</>
+  alias       bc
+
+$ bmdctl hosts alias studio cut
+! <red>error</>  "cut" is a command, so it can't be an alias
+[exit 1]
+
+$ bmdctl 
+<dim>bmdctl VERSION</>
+
+  bc  <b>Block C - TEST</>  192.0.2.10  ATEM 1 M/E Constellation H…      ● 0s
+      <b>studio</>           192.0.2.11  ATEM 1 M/E Constellation H…      ● 0s
+
+  <dim>bmdctl help</>
+

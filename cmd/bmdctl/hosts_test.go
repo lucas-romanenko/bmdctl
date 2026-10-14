@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -390,5 +391,87 @@ func TestHostsDiscover(t *testing.T) {
 	found = nil
 	if _, out, _ := run(); !strings.HasPrefix(out, "no switcher announced itself in 2s;") {
 		t.Errorf("none: %q", out)
+	}
+}
+
+// hosts alias gives a host a short name it goes by as well as its own,
+// wherever a name is taken. A command's word, another host's name or
+// alias, or something a line can't carry as one word is refused; another
+// alias replaces it, --rm takes it away. hosts and bmdctl alone show it.
+func TestHostsAlias(t *testing.T) {
+	b := newBench(t)
+	b.must("hosts", "add", "192.0.2.10", "--as", "Block C - TEST")
+	b.must("hosts", "add", "192.0.2.11", "--as", "studio")
+	if out := b.must("hosts", "alias", "Block C - TEST", "bc"); out != "alias bc: Block C - TEST (192.0.2.10)\n" {
+		t.Errorf("alias: %q", out)
+	}
+	for _, spec := range []string{"bc", "BC", "block", "192.0.2.10"} {
+		if got := b.wentTo(t, "DCut", "--host", spec, "cut"); got != "192.0.2.10:9910" {
+			t.Errorf("--host %q: %s", spec, got)
+		}
+	}
+	if got := b.cliLastHost(); got != "Block C - TEST" {
+		t.Errorf("last host %q: the name, not the alias", got)
+	}
+	for _, c := range []struct{ alias, want string }{
+		{"cut", `"cut" is a command, so it can't be an alias`},
+		{"CUT", `"CUT" is a command, so it can't be an alias`},
+		{"atem", `"atem" is a command, so it can't be an alias`},
+		{"hosts", `"hosts" is a command, so it can't be an alias`},
+		{"play", `"play" is a command, so it can't be an alias`}, // a HyperDeck's
+		{"Bc", `"bc" is Block C - TEST's alias already`},
+		{"bc 2", `alias "bc 2": one word, no spaces`},
+		{"192.0.2.99", `alias "192.0.2.99": that is an address`},
+	} {
+		if code, _, errOut := b.run("hosts", "alias", "studio", c.alias); code != exitUsage || errOut != "bmdctl hosts alias: "+c.want+"\n" {
+			t.Errorf("alias %q: %d %q", c.alias, code, errOut)
+		}
+	}
+	if code, _, errOut := b.run("hosts", "alias", "studio"); code != exitUsage || !strings.Contains(errOut, "takes NAME SHORT") {
+		t.Errorf("no alias: %d %q", code, errOut)
+	}
+	if code, _, errOut := b.run("hosts", "alias", "nobody", "x"); code != exitUsage || errOut != "bmdctl hosts alias: no host named nobody (bmdctl hosts lists them)\n" {
+		t.Errorf("no host: %d %q", code, errOut)
+	}
+	// A host's own name by its alias; another alias replaces it.
+	if out := b.must("hosts", "alias", "bc", "bt"); out != "alias bt: Block C - TEST (192.0.2.10), was bc\n" {
+		t.Errorf("replace: %q", out)
+	}
+	if out := b.must("hosts", "alias", "studio", "s"); out != "alias s: studio (192.0.2.11)\n" {
+		t.Errorf("studio: %q", out)
+	}
+	if out := b.must("hosts"); out != "Block C - TEST  192.0.2.10  atem    alias bt, calls itself \"ATEM 1 M/E Constellation HD\"\n"+
+		"studio           192.0.2.11  atem    alias s, calls itself \"ATEM 1 M/E Constellation HD\"\n" {
+		t.Errorf("list: %q", out)
+	}
+	if out := b.must("hosts", "--json"); !strings.Contains(out, `"as":"Block C - TEST","alias":"bt","address":"192.0.2.10","device":"atem"}`) {
+		t.Errorf("list --json: %s", out)
+	}
+	// bmdctl alone: the alias, then the name.
+	if out := b.must(); !regexp.MustCompile(`(?m)^bt +Block C - TEST \(192\.0\.2\.10\) +ATEM 1 M/E Constellation HD +1080p50 +ready`).MatchString(out) ||
+		!regexp.MustCompile(`(?m)^s +studio \(192\.0\.2\.11\) +ATEM`).MatchString(out) {
+		t.Errorf("overview:\n%s", out)
+	}
+	if out := b.must("--json"); !strings.Contains(out, `"name":"Block C - TEST","alias":"bt","address":"192.0.2.10"`) {
+		t.Errorf("overview --json: %s", out)
+	}
+	raw, _ := os.ReadFile(filepath.Join(b.env["XDG_CONFIG_HOME"], "bmdctl", "hosts.yml"))
+	if !strings.Contains(string(raw), "version: 3\n") || !strings.Contains(string(raw), "    alias: bt\n") {
+		t.Errorf("hosts.yml:\n%s", raw)
+	}
+	// --rm takes it away; the file is version 2 again with none left.
+	if out := b.must("hosts", "alias", "bt", "--rm"); out != "no alias: Block C - TEST (192.0.2.10), was bt\n" {
+		t.Errorf("rm: %q", out)
+	}
+	b.must("hosts", "alias", "studio", "--rm")
+	if out := b.must("hosts", "alias", "studio", "--rm", "--json"); out != `{"ok":true,"confirmed":false,"result":{"name":"ATEM 1 M/E Constellation HD","as":"studio","address":"192.0.2.11","device":"atem"},"took_ms":0}`+"\n" {
+		t.Errorf("rm --json: %s", out)
+	}
+	raw, _ = os.ReadFile(filepath.Join(b.env["XDG_CONFIG_HOME"], "bmdctl", "hosts.yml"))
+	if !strings.Contains(string(raw), "version: 2\n") || strings.Contains(string(raw), "alias:") {
+		t.Errorf("hosts.yml:\n%s", raw)
+	}
+	if out := b.must(); strings.HasPrefix(out, " ") || !regexp.MustCompile(`(?m)^studio \(192\.0\.2\.11\)`).MatchString(out) {
+		t.Errorf("overview without aliases:\n%s", out)
 	}
 }

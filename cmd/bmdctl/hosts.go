@@ -175,6 +175,7 @@ const hostsUsage = `usage: bmdctl hosts [list]
        bmdctl hosts add ADDRESS [--as NAME] [--device atem|hyperdeck|videohub|ultimatte]
        bmdctl hosts discover [--for SECONDS]
        bmdctl hosts rm NAME
+       bmdctl hosts alias NAME SHORT|--rm
        bmdctl hosts default [NAME]
 
 Names the devices you use, in $XDG_CONFIG_HOME/bmdctl/hosts.yml, by
@@ -186,10 +187,13 @@ Videohub's or Ultimatte's as it reports it. --as gives it another, for
 two devices with one name. Adding an address again asks again. 'hosts discover' adds every switcher that
 announces itself on the network (Bonjour), by its own name. When a
 switcher is renamed in ATEM Setup, the next command to it renames its
-host and says so; --host still takes the old name.
+host and says so; --host still takes the old name. 'hosts alias' gives
+a host a short name it goes by as well (one word, not a command's, not
+another host's name or alias); another alias replaces it, --rm takes it
+away.
 
---host takes a host's name in any case, any unambiguous start of one,
-or an address; a bare address is an ATEM unless the command line names
+--host takes a host's name or alias in any case, any unambiguous start
+of one, or an address; a bare address is an ATEM unless the command line names
 another device. Without --host a command goes to $BMDCTL_HOST, else the
 host the last --host named, else the default. Setting the default also
 makes it the host commands go to now.
@@ -204,9 +208,13 @@ func (c *cli) hostsCommand(g globals, words, tokens []string) int {
 	if len(words) > 0 {
 		sub, words = words[0], words[1:]
 	}
-	device, as, wait := "", "", 2*time.Second
+	device, as, wait, rm := "", "", 2*time.Second, false
 	for i := 0; i < len(tokens); i++ {
 		name, value, hasValue := strings.Cut(strings.TrimPrefix(tokens[i], "--"), "=")
+		if sub == "alias" && name == "rm" && !hasValue {
+			rm = true
+			continue
+		}
 		ok := sub == "add" && (name == "device" || name == "as") || sub == "discover" && name == "for"
 		if !ok {
 			return c.fail(exitUsage, "bmdctl hosts %s: unexpected %q", sub, tokens[i])
@@ -299,6 +307,19 @@ func (c *cli) hostsCommand(g globals, words, tokens []string) int {
 			c.setLastHost("")
 		}
 		return c.emitLocal(g, removed, "removed "+removed.Label())
+	case "alias":
+		if rm && !args(1, "NAME with --rm") || !rm && !args(2, "NAME SHORT") {
+			return exitUsage
+		}
+		h, code := match(words[0])
+		if h == nil {
+			return code
+		}
+		alias := ""
+		if !rm {
+			alias = words[1]
+		}
+		return c.hostsAlias(g, f, path, h, alias)
 	case "default":
 		if len(words) == 0 {
 			if f.Default == "" {
@@ -322,6 +343,56 @@ func (c *cli) hostsCommand(g globals, words, tokens []string) int {
 	}
 	fmt.Fprint(c.stderr, hostsUsage)
 	return exitUsage
+}
+
+// hostsAlias gives h the alias, or with "" takes its alias away. A
+// command's word is refused, in any case: the first word of a line is a
+// command before it is a host.
+func (c *cli) hostsAlias(g globals, f *hosts.File, path string, h *hosts.Host, alias string) int {
+	if alias != "" && c.isCommand(strings.ToLower(alias)) {
+		return c.fail(exitUsage, "bmdctl hosts alias: %q is a command, so it can't be an alias", alias)
+	}
+	before := h.Alias
+	if err := f.SetAlias(h, alias); err != nil {
+		return c.fail(exitUsage, "bmdctl hosts alias: %v", err)
+	}
+	if h.Alias != before {
+		if err := f.Save(path); err != nil {
+			return c.fail(exitUsage, "bmdctl hosts alias: %v", err)
+		}
+	}
+	who := fmt.Sprintf("%s (%s)", h.Label(), shortAddress(h.Address))
+	if c.terminal() {
+		change, status := h.Alias, ""
+		switch {
+		case h.Alias == before:
+			status = "already"
+			if h.Alias == "" {
+				change = c.colour(dim, "none")
+			}
+		case h.Alias == "":
+			change = before + " → " + c.colour(dim, "none")
+		case before != "":
+			change = before + " → " + h.Alias
+		}
+		c.hostHeader(*h)
+		fmt.Fprintln(c.stdout, c.resultLine("alias", change, status))
+		return exitOK
+	}
+	msg := fmt.Sprintf("alias %s: %s", h.Alias, who)
+	if h.Alias == "" {
+		msg = "no alias: " + who
+	}
+	if before != "" && before != h.Alias {
+		msg += ", was " + before
+	}
+	return c.emitLocal(g, *h, msg)
+}
+
+// hostHeader names a host at a terminal for a command that opens no
+// session: its name bold, its address dim.
+func (c *cli) hostHeader(h hosts.Host) {
+	fmt.Fprintln(c.stdout, c.colour(bold, h.Label())+"  "+c.colour(dim, shortAddress(h.Address)))
 }
 
 // hostsAdd adds the device at addr, by the name it gives itself unless
@@ -566,6 +637,9 @@ func (c *cli) printHosts(g globals, f *hosts.File) int {
 			mark = "default"
 		}
 		var notes []string
+		if h.Alias != "" {
+			notes = append(notes, "alias "+h.Alias)
+		}
 		if h.As != "" && h.Name != "" {
 			notes = append(notes, fmt.Sprintf("calls itself %q", h.Name))
 		}

@@ -113,7 +113,7 @@ func (c *cli) completeCommand(args []string) int {
 
 // builtinFlags are the flags of the built-ins that take their own.
 var builtinFlags = map[string][]string{
-	"engine": {"--log-level"}, "exec": {"--continue"}, "hosts": {"--as", "--device", "--for"}, "man": {"--dir"},
+	"engine": {"--log-level"}, "exec": {"--continue"}, "hosts": {"--as", "--device", "--for", "--rm"}, "man": {"--dir"},
 }
 
 // complete returns the candidates for the last of args, the word being
@@ -183,8 +183,8 @@ func (c *cli) complete(args []string) []string {
 	case "hosts":
 		switch {
 		case len(words) == 1:
-			return match(cur, []string{"list", "add", "rm", "default", "discover"})
-		case len(words) == 2 && (words[1] == "rm" || words[1] == "default"):
+			return match(cur, []string{"list", "add", "rm", "alias", "default", "discover"})
+		case len(words) == 2 && (words[1] == "rm" || words[1] == "default" || words[1] == "alias"):
 			return match(cur, c.hostNames())
 		}
 		return nil
@@ -281,7 +281,7 @@ func (c *cli) completeValue(cur string, e *table.Entry, p table.Param, g globals
 	return nil
 }
 
-// hostNames are the names the hosts in hosts.yml go by.
+// hostNames are the names and aliases the hosts in hosts.yml go by.
 func (c *cli) hostNames() []string {
 	f, _, err := c.loadHosts()
 	if err != nil {
@@ -290,6 +290,9 @@ func (c *cli) hostNames() []string {
 	var out []string
 	for _, h := range f.Hosts {
 		out = append(out, h.Label())
+		if h.Alias != "" {
+			out = append(out, h.Alias)
+		}
 	}
 	return out
 }

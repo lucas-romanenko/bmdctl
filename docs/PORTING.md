@@ -1718,7 +1718,16 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   A file with an alias is written as `version: 3`; without one, still
   version 2, so bmdctl v0.1.x, which refuses a key it doesn't know, reads
   every file it could before and says "a newer one wrote it?" of one it
-  can't.
+  can't. `hosts alias NAME SHORT` sets one (another replaces it, `--rm`
+  takes it away) and refuses, besides what `CheckAlias` does, any
+  command's word in any case (a built-in, a device's word, the first word
+  of any device's command: `cut`, `hosts`, `play`), since a line's first
+  word is a command before it is a host. `hosts` notes it (`alias bc`)
+  and `bmdctl` lists it before the name, in a column of its own only
+  when some host has one, so a pipe's lines are as they were without
+  aliases. At a terminal `hosts alias` names the host as a header does
+  (bold, its address dim: no session says more) and the change as a
+  result, `alias  bt → bc`, `none` dim, `already` where nothing changed.
 - **Which host.** `--host`, else `$BMDCTL_HOST`, else the host the last
   `--host` named, else the default. Each is resolved (`File.Resolve`): a
   host's name in any case; else the name one went by (`was`); else an IP

@@ -66,13 +66,27 @@ Deck 1    192.168.1.50  hyperdeck
   added STUDIO B (192.168.1.21), which calls itself "ATEM 1 M/E Constellation HD"
   ```
 
+- **A short name:** a device's own name can be awkward to type. `hosts
+  alias NAME SHORT` gives it a short one it goes by as well, wherever a
+  name is taken; `bmdctl` and `hosts` show it before the name.
+
+  ```
+  $ bmdctl hosts alias "Block C - TEST" bc
+  alias bc: Block C - TEST (192.168.1.22)
+  $ bmdctl --host bc cut
+  ```
+
+  An alias is one word, and can't be a command's (`cut`, `hosts`) or
+  another host's name or alias. Another alias replaces it; `hosts alias
+  bc --rm` takes it away.
 - **Renamed in ATEM Setup:** the next command to that switcher renames
   its host in hosts.yml and says so once. `--host` still takes the old
   name, so scripts keep working.
 - **Which host a command goes to:** `--host`, else `$BMDCTL_HOST`, else
   the host the last `--host` named, else the default. `--host` takes a
-  name in any case, any unambiguous start of one (`--host "studio b"`,
-  `--host deck`), the name a host had before a rename, or an address.
+  name or an alias in any case, any unambiguous start of one (`--host
+  "studio b"`, `--host deck`), the name a host had before a rename, or an
+  address.
 - **`hosts discover`** adds every ATEM that announces itself over
   Bonjour within 2 seconds (`--for 5s` waits longer). Bonjour doesn't
   cross VLANs or VPNs; there, add switchers by address.
