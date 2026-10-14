@@ -34,7 +34,7 @@ root:
 
 | Task | Command |
 |---|---|
-| Build, vet, test (what CI runs) | `go build ./... && go vet ./... && go test -race ./...` |
+| Build, vet, test (what CI runs) | `gofmt -l .` (prints nothing), then `go build ./... && go vet ./... && go test -race ./...` |
 | Run the CLI from source | `go run ./cmd/bmdctl <command>` |
 | Regenerate docs/COMMANDS.md and docs/commands/ after a table change | `go generate ./cmd/bmdctl` |
 | Rewrite the terminal goldens after an output change | `go test ./cmd/bmdctl -run TestTerminal -update`, then read the diff |

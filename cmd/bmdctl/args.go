@@ -17,15 +17,15 @@ type globals struct {
 	// hostWord: host came from the line's first word (bmdctl HOST ...),
 	// not --host, so it doesn't become the last host used.
 	hostWord bool
-	json    bool
-	quiet   bool
-	yes     bool
-	dryRun  bool
-	help    bool
-	noColor bool
-	stamp   bool // -t: results start with the time of day, at a terminal
-	fps     int  // 0: the switcher's
-	timeout time.Duration
+	json     bool
+	quiet    bool
+	yes      bool
+	dryRun   bool
+	help     bool
+	noColor  bool
+	stamp    bool // -t: results start with the time of day, at a terminal
+	fps      int  // 0: the switcher's
+	timeout  time.Duration
 }
 
 // globalFlags maps each global flag (--name) to whether it takes a value.

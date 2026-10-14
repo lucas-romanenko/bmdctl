@@ -74,10 +74,18 @@ func (n *Net) DeckAt(host string) *fakehyperdeck.Deck {
 }
 
 // Videohub puts a router at host that sends preamble on 9990.
-func (n *Net) Videohub(host, preamble string) { n.mu.Lock(); n.videohubs[host] = preamble; n.mu.Unlock() }
+func (n *Net) Videohub(host, preamble string) {
+	n.mu.Lock()
+	n.videohubs[host] = preamble
+	n.mu.Unlock()
+}
 
 // Ultimatte puts a keyer at host that sends prelude on 9998.
-func (n *Net) Ultimatte(host, prelude string) { n.mu.Lock(); n.ultimattes[host] = prelude; n.mu.Unlock() }
+func (n *Net) Ultimatte(host, prelude string) {
+	n.mu.Lock()
+	n.ultimattes[host] = prelude
+	n.mu.Unlock()
+}
 
 // ProbeATEM answers the handshake for a host with a switcher, through a
 // fake one; anywhere else nothing answers, at once.

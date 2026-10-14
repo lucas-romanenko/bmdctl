@@ -21,6 +21,14 @@ jobs:
           go-version-file: go.mod
           # No go.sum (no dependencies), so there is nothing to key a cache on.
           cache: false
+      - name: Format
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "$unformatted"
+            echo "gofmt: the files above need formatting (gofmt -w)"
+            exit 1
+          fi
       - name: Build
         run: go build ./...
       - name: Vet

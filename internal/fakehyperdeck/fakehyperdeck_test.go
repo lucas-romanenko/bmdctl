@@ -12,7 +12,7 @@ import (
 
 func TestParams(t *testing.T) {
 	for in, want := range map[string]paramSet{
-		"slot id: 2":                              {"slot id": "2"},
+		"slot id: 2": {"slot id": "2"},
 		"clip id: 3 loop: true single clip: true": {"clip id": "3", "loop": "true", "single clip": "true"},
 		"name: Intro Loop animation.mp4":          {"name": "Intro Loop animation.mp4"},
 		"clip id: 3 name: a b.mov":                {"clip id": "3", "name": "a b.mov"},
