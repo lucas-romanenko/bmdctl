@@ -35,8 +35,8 @@ jobs:
       TITLE: SURFACE drift from bmdwire
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: lucas-romanenko/bmdwire
           ref: main
@@ -54,7 +54,7 @@ jobs:
           else
             echo "drift=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.compare.outputs.drift == 'true'
         with:
           name: surface-drift
