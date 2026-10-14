@@ -1440,8 +1440,13 @@ response doesn't carry comes in note frames (Engine, "Notes":
   command refused says what it does (`video mode resyncs every output`,
   `dangers`).
 - **bmdctl alone** is one dim line, `bmdctl <version>`, then a row per
-  switcher (name bold, address, model, video mode, `● 4m` for a session
-  open four minutes, else `not connected` dim), then `bmdctl help` dim;
+  switcher (its alias, in a column only when some host has one; name
+  bold, address, model, video mode, `● 4m` for a session open four
+  minutes, else `not connected` dim), then `bmdctl help` dim. The
+  default's row has `*` in its indent's first column, and the last line
+  says so: `* default · bmdctl use HOST · bmdctl help` (the mock has no
+  mark; the indent keeps the columns where they were, as kubectl's and
+  git's `*` do);
   with none, how to add one (`bmdctl connect ADDRESS`). A HyperDeck's
   row is a switcher's: its model and video format, and its session or
   `not connected` (a pipe's, `no session`); only a device bmdctl has no
@@ -1768,6 +1773,20 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   aliases with the commands in the first place (after a device's word,
   that device's hosts), and completes the rest of the line for the host
   the first word names.
+- **`use HOST`** (#3) makes a host the default without opening a
+  session: `hosts default HOST` in two words (hosts.yml's `default` and
+  the last host both), so every command that names no host goes there.
+  It takes what `hosts default` does, a host (by name, alias, the start
+  of either, its address), and for an address no host has points at
+  `hosts add`. `$BMDCTL_HOST` still wins, which it says on stderr. At a
+  terminal: the host as a header, then `default  studio → bc` (each by
+  its alias, else its name), `already` where it was the default and the
+  last host both. `bmdctl` marks the default: the host a command naming
+  none goes to now (`$BMDCTL_HOST`, else the last `--host`, else
+  hosts.yml's `default`), not hosts.yml's `default` alone, which a
+  `--host` since may have left behind; the pipe's `(default)` and
+  `--json`'s `default` mean the same. Before `use`, they marked
+  hosts.yml's.
 - **Which device.** A device word on the line (`bmdctl atem ...`) wins;
   else a named host's `device`; else ATEM, so a bare address is an ATEM
   (except `connect ADDRESS`, which asks: Device probe, below). A device

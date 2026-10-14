@@ -809,5 +809,10 @@ func TestTerminalHosts(t *testing.T) {
 	tr.run("progam", "2")
 	tr.run("st", "cut")
 	tr.run("bc", "progam", "2")
+	// use makes a host the default; bmdctl marks it.
+	tr.run("use", "bc")
+	tr.run("use", "bc")
+	tr.run("use", "stage")
+	tr.run()
 	golden(t, "hosts.golden", strings.ReplaceAll(tr.out.String(), shortVersion(), "VERSION"))
 }

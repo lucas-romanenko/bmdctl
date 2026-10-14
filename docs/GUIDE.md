@@ -102,6 +102,15 @@ Deck 1    192.168.1.50  hyperdeck
   ```
 
   In an `exec` file, a line's first word names its host the same way.
+- **Changing the default:** `bmdctl use HOST` makes a host the one
+  commands without a host go to, without connecting (`connect HOST` also
+  pins a session). `bmdctl` marks it `*`. `$BMDCTL_HOST`, when set,
+  still wins, and `use` says so.
+
+  ```
+  $ bmdctl use bc
+  default host: BC 1.2 - TESTTt
+  ```
 - **`hosts discover`** adds every ATEM that announces itself over
   Bonjour within 2 seconds (`--for 5s` waits longer). Bonjour doesn't
   cross VLANs or VPNs; there, add switchers by address.
@@ -157,9 +166,9 @@ engine. `bmdctl status` is the switcher at a glance:
 $ bmdctl
 bmdctl v0.1.0
 
-  STUDIO A  192.168.1.20  ATEM 1 M/E Constellation HD  1080p25      ● 4m
+* STUDIO A  192.168.1.20  ATEM 1 M/E Constellation HD  1080p25      ● 4m
 
-  bmdctl help
+  * default · bmdctl use HOST · bmdctl help
 $ bmdctl status
 STUDIO A  1080p25 · session 4m, idle 12s, pinned
 

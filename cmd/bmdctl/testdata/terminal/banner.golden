@@ -3,10 +3,10 @@ $ bmdctl
 
   <b>studio</>  192.0.2.10  ATEM 1 M/E Constellation HD  1080p50          ● 0s
   <b>spare</>   192.0.2.11                                       <dim>not connected</>
-  <b>deck</>    192.0.2.20  HyperDeck Studio HD Mini     1080p25          ● 0s
+* <b>deck</>    192.0.2.20  HyperDeck Studio HD Mini     1080p25          ● 0s
   <b>deck2</>   192.0.2.21                                       <dim>not connected</>
 
-  <dim>bmdctl help</>
+  <dim>* default · bmdctl use HOST · bmdctl help</>
 
 $ bmdctl program cam1
 <b>studio</>  <dim>PGM CAM2 · PVW CAM1</>

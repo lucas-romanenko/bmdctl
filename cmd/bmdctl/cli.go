@@ -139,6 +139,7 @@ var builtins = []struct{ name, summary string }{
 	{"version", "print bmdctl's version"},
 	{"engine", "run the background engine in the foreground; engine stop|status"},
 	{"hosts", "name switchers by their own names: hosts list|add|rm|alias|default|discover"},
+	{"use", "make a host the default, where commands that name none go: use HOST"},
 	{"exec", "run the commands in a file, one per line: exec FILE|-"},
 	{"completion", "print a shell completion script: completion bash|zsh|fish"},
 	{"man", "print the manual page, or write it with --dir"},
@@ -285,6 +286,8 @@ func (c *cli) run(args []string) int {
 		return c.engineCommand(g, words[1:], tokens)
 	case "hosts":
 		return c.hostsCommand(g, words[1:], tokens)
+	case "use":
+		return c.useCommand(g, words[1:], tokens)
 	case "exec":
 		return c.execCommand(g, words[1:], tokens)
 	case "completion":

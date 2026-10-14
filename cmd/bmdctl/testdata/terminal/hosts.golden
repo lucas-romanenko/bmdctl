@@ -57,3 +57,24 @@ $ bmdctl bc progam 2
 !        <dim>bmdctl --help lists them</>
 [exit 1]
 
+$ bmdctl use bc
+<b>BC 1.2 - TESTTt</>  <dim>192.0.2.10</>
+  default     bc
+
+$ bmdctl use bc
+<b>BC 1.2 - TESTTt</>  <dim>192.0.2.10</>
+  default     bc                                                 <dim>already</>
+
+$ bmdctl use stage
+<b>stage</>  <dim>192.0.2.13</>
+  default     bc → stage
+
+$ bmdctl 
+<dim>bmdctl VERSION</>
+
+  bc  <b>BC 1.2 - TESTTt</>  192.0.2.10  ATEM 1 M/E Constellation H…      ● 0s
+      <b>studio</>           192.0.2.11  ATEM 1 M/E Constellation H…      ● 0s
+*     <b>stage</>            192.0.2.13  ATEM 1 M/E Constellation H…      ● 0s
+
+  <dim>* default · bmdctl use HOST · bmdctl help</>
+
