@@ -12,15 +12,15 @@ $ bmdctl disconnect
 
 $ bmdctl connect
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms</>
-  connect     pinned until disconnect
+  connect     pinned until disconnect or 1h idle
 
 $ bmdctl connect 192.0.2.10
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
-  connect     pinned until disconnect
+  connect     pinned until disconnect or 1h idle
 
 $ bmdctl connect 192.0.2.11
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1 · connected # ms</>
-  connect     pinned until disconnect
+  connect     pinned until disconnect or 1h idle
 !   <dim>not saved: "ATEM 1 M/E Constellation HD" is another host's name</>
 !   <dim>bmdctl hosts add 192.0.2.11 --as NAME saves it</>
 

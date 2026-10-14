@@ -77,6 +77,7 @@ var refExit = []refItem{
 
 var refEnv = []refItem{
 	{"BMDCTL_HOST", "The host a command goes to when --host doesn't name one."},
+	{"BMDCTL_PIN_IDLE", "How long a session `connect` pinned may go without a command before the engine closes it: a duration (90m, 2h) or seconds, 0 for never; an hour unless set. Read when the engine starts."},
 	{"BMDCTL_SOCKET", "The engine's socket (a pipe name on Windows), instead of $XDG_RUNTIME_DIR/bmdctl.sock."},
 	{"XDG_CONFIG_HOME, XDG_STATE_HOME, XDG_RUNTIME_DIR", "Where hosts.yml, the engine's log and last host, and the socket live."},
 	{"NO_COLOR", "Set to anything: no colour, even on a terminal, as --no-color."},

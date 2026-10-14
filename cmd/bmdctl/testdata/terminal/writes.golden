@@ -48,7 +48,7 @@ $ bmdctl program cam1 --me 1
 
 $ bmdctl connect
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM1 · PVW CAM1</>
-  connect     pinned until disconnect
+  connect     pinned until disconnect or 1h idle
 
 $ bmdctl disconnect
 <b>ATEM 1 M/E Constellation HD</>  disconnected

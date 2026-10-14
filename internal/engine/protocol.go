@@ -214,8 +214,9 @@ type Switcher struct {
 	// this one, in a note.
 	IdleS int `json:"idle_s"`
 	// DropS is how long the session may go unused before it closes, from
-	// the end of the request in a note, from now in an overview; 0 when
-	// pinned.
+	// the end of the request in a note, from now in an overview, pinned
+	// (PinIdleTimeout) or not; 0 when it never closes (a pin with
+	// BMDCTL_PIN_IDLE=0, or an engine from before pins closed).
 	DropS int    `json:"drop_s,omitempty"`
 	Error string `json:"error,omitempty"` // the last dial's failure, with no session
 	// NameWidth is the widest of the switcher's sources as a line shows

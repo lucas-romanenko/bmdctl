@@ -222,8 +222,11 @@ func screenConnect(p *printer, _ engine.Response, raw json.RawMessage) view {
 		out = append(out, indent+c.colour(bold, fmt.Sprintf("%q is now the default", p.saved.name)))
 	default:
 		state := "pinned until disconnect"
-		if !s.Pinned {
-			state = fmt.Sprintf("closes after %v idle", time.Duration(s.IdleCloseS)*time.Second)
+		switch {
+		case s.Pinned && s.IdleCloseS > 0:
+			state = "pinned until disconnect or " + span(time.Duration(s.IdleCloseS)*time.Second) + " idle"
+		case !s.Pinned:
+			state = "closes after " + span(time.Duration(s.IdleCloseS)*time.Second) + " idle"
 		}
 		out = append(out, c.resultLine("connect", state, ""))
 	}

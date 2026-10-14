@@ -69,7 +69,7 @@ func deckOperations() []operation {
 				{Name: "address", Kind: table.String,
 					Help: "an address (saved to hosts.yml by the name the deck gives itself, as the default) or a host's name; else the default"},
 				{Name: "pin", Kind: table.Bool, Default: "true",
-					Help: "keep the session open until disconnect; false lets it close after 10 idle minutes"},
+					Help: "keep the session open until disconnect or an hour without a command ($BMDCTL_PIN_IDLE); false lets it close after 10 idle minutes"},
 				typeParam}},
 			run: opConnect},
 		{entry: table.Entry{Path: "disconnect", Summary: "Close the engine's session to the deck, pinned or not."},
@@ -173,10 +173,8 @@ func (e *Engine) deckNote(h *host, st hyperdeck.State, idle time.Duration) *Swit
 	pinned := h.pinned
 	e.mu.Unlock()
 	sw := &Switcher{Host: h.key, Device: "hyperdeck", Name: st.Name(), Product: st.Model(),
-		VideoMode: st.Transport["video format"], Ready: true, Pinned: pinned, IdleS: int(idle.Seconds())}
-	if !pinned {
-		sw.DropS = int(e.idle.Seconds())
-	}
+		VideoMode: st.Transport["video format"], Ready: true, Pinned: pinned, IdleS: int(idle.Seconds()),
+		DropS: int(e.closesAfter(pinned).Seconds())}
 	return sw
 }
 

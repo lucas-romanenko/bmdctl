@@ -87,12 +87,12 @@ func TestSessionCommands(t *testing.T) {
 		}
 	}
 
-	// connect pins the session; disconnect closes it; the next command
-	// opens a new one.
-	if out := b.must(with("connect")...); out != "ATEM 1 M/E Constellation HD (192.0.2.10)  connected, pinned: open until disconnect\n" {
+	// connect pins the session, for an hour without a command;
+	// disconnect closes it; the next command opens a new one.
+	if out := b.must(with("connect")...); !regexp.MustCompile(`^ATEM 1 M/E Constellation HD \(192\.0\.2\.10\)  connected, pinned, drops at \d\d:\d\d if unused\n$`).MatchString(out) {
 		t.Errorf("connect: %q", out)
 	}
-	if out := b.must(with("status")...); !strings.Contains(out, "\nsession     ready, idle 0s, pinned: open until disconnect\n") {
+	if out := b.must(with("status")...); !regexp.MustCompile(`\nsession     ready, idle 0s, pinned, drops at \d\d:\d\d if unused\n`).MatchString(out) {
 		t.Errorf("status when pinned:\n%s", out)
 	}
 	if out := b.must("engine", "status"); !strings.Contains(out, "ready, pinned") {
@@ -207,7 +207,7 @@ func TestWatch(t *testing.T) {
 // what connect always printed.
 func TestConnectSaves(t *testing.T) {
 	b := newBench(t)
-	if out := b.must("connect", "192.0.2.10"); out != "ATEM 1 M/E Constellation HD (192.0.2.10)  connected, pinned: open until disconnect\n" {
+	if out := b.must("connect", "192.0.2.10"); !regexp.MustCompile(`^ATEM 1 M/E Constellation HD \(192\.0\.2\.10\)  connected, pinned, drops at \d\d:\d\d if unused\n$`).MatchString(out) {
 		t.Errorf("connect: %q", out)
 	}
 	hosts := b.must("hosts", "--json")

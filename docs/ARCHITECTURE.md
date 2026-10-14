@@ -179,9 +179,9 @@ One request per connection, one JSON object per line:
   Commands are packed into packets of up to 1200 bytes, no two packets
   closer than 10 ms, as atemwire paces them.
 - **The engine keeps one session per `host:port`.** Concurrent requests
-  share one dial. A session closes 10 minutes after its last request
-  unless pinned (`connect`); one whose `Connected` went false is
-  replaced on the next request.
+  share one dial. A session closes 10 minutes after its last request,
+  or an hour if pinned (`connect`; `BMDCTL_PIN_IDLE`); one whose
+  `Connected` went false is replaced on the next request.
 
 `hyperdeck.Session` has the same shape over TCP: one owner, one reader,
 answers matched to commands in order, and state kept from the deck's
