@@ -464,13 +464,15 @@ func TestStaleEngineRestarts(t *testing.T) {
 	b := newBench(t)
 	restart := func(build string, bg bool) *engine.Engine {
 		b.engine().Stop()
+		// The old engine removes its socket before it lets go of its
+		// lock (unixListener.Close), so wait for the lock, not the socket.
 		eventually(t, "the old engine to go", func() bool {
-			_, err := os.Stat(b.env["BMDCTL_SOCKET"])
-			return os.IsNotExist(err)
+			err := b.startEngine(engine.Config{BuildID: build, Background: bg})
+			if err != nil && !errors.Is(err, engine.ErrRunning) {
+				t.Fatal(err)
+			}
+			return err == nil
 		})
-		if err := b.startEngine(engine.Config{BuildID: build, Background: bg}); err != nil {
-			t.Fatal(err)
-		}
 		return b.engine()
 	}
 	// cli is a bmdctl of build b whose spawn starts an engine of build.
