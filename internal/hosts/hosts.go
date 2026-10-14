@@ -4,10 +4,11 @@
 // devices a user has named, each with its address and device type, and
 // which one is the default.
 //
-//	version: 2
+//	version: 3
 //	default: Studio
 //	hosts:
 //	  - name: Studio
+//	    alias: st
 //	    address: 192.168.81.85
 //	    device: atem
 //	  - name: ATEM 1 M/E Constellation HD
@@ -17,15 +18,17 @@
 //
 // A switcher's name is the one it gives itself: the name set in ATEM
 // Setup, else its model. "as" is a name given with --as, which the host
-// goes by instead (two switchers can give themselves one name). "was" is
-// the name a host went by before its switcher renamed it, which --host
-// still takes. A file without "version" was written before switchers
-// named their hosts; it reads as it is, its names standing until each
-// switcher's own replaces them.
+// goes by instead (two switchers can give themselves one name). "alias"
+// is a short name given with 'hosts alias', which a host also goes by.
+// "was" is the name a host went by before its switcher renamed it, which
+// --host still takes. A file without "version" was written before
+// switchers named their hosts; it reads as it is, its names standing
+// until each switcher's own replaces them. A file is written as version
+// 2 unless a host has an alias, which bmdctl before version 3 can't read.
 //
 // The file is YAML, but only this shape of it: top-level "version",
 // "default" and "hosts", the hosts a block list of
-// name/as/was/address/device mappings, values plain or quoted scalars,
+// name/as/alias/was/address/device mappings, values plain or quoted scalars,
 // and comments. Anything else is an error with its line number, so a
 // hand edit that bmdctl would misread is caught. The standard library
 // has no YAML reader, and the CLI uses only the standard library.
@@ -43,8 +46,10 @@ import (
 	"unicode"
 )
 
-// Version is the file format Save writes.
-const Version = 2
+// Version is the newest file format, which Save writes when a host has
+// an alias (version 3); without one it writes version 2, which bmdctl
+// before aliases reads too.
+const Version = 3
 
 // Devices are the device types a host can be.
 var Devices = []string{"atem", "hyperdeck", "videohub", "ultimatte"}
@@ -56,6 +61,9 @@ type Host struct {
 	Name string `json:"name"`
 	// As is a name given with --as, which the host goes by instead.
 	As string `json:"as,omitempty"`
+	// Alias is a short name given with 'hosts alias', which the host
+	// goes by as well.
+	Alias string `json:"alias,omitempty"`
 	// Was is the name the host went by before its switcher renamed it;
 	// --host still takes it.
 	Was     string `json:"was,omitempty"`
@@ -93,13 +101,11 @@ func Load(path string) (*File, error) {
 	return f, nil
 }
 
-// Find returns the host going by this name, ignoring case, or else the
-// one that went by it before (Was), or nil.
+// Find returns the host going by this name or alias, ignoring case, or
+// else the one that went by it before (Was), or nil.
 func (f *File) Find(name string) *Host {
-	for i := range f.Hosts {
-		if strings.EqualFold(f.Hosts[i].Label(), name) {
-			return &f.Hosts[i]
-		}
+	if h := f.Named(name); h != nil {
+		return h
 	}
 	for i := range f.Hosts {
 		if f.Hosts[i].Was != "" && strings.EqualFold(f.Hosts[i].Was, name) {
@@ -142,46 +148,62 @@ func HostPart(addr string) string {
 	return h
 }
 
-// Resolve finds what spec names: a host by its name in any case, by the
-// name it went by before, by its address, or by any unambiguous prefix of
-// its name; else an address no host has. It returns the host (nil for
-// such an address) and the address.
+// Resolve finds what spec names: a host by its name or alias in any
+// case, by the name it went by before, by its address, or by any
+// unambiguous prefix of its name or alias; else an address no host has.
+// It returns the host (nil for such an address) and the address.
 func (f *File) Resolve(spec string) (*Host, string, error) {
-	if h := f.Find(spec); h != nil {
+	h, err := f.Match(spec)
+	switch {
+	case err != nil:
+		return nil, "", err
+	case h != nil:
 		return h, h.Address, nil
+	case net.ParseIP(HostPart(spec)) != nil && CheckAddress(spec) == nil:
+		return nil, spec, nil
+	case CheckAddress(spec) != nil:
+		return nil, "", fmt.Errorf("%q is neither a host in hosts.yml nor an address", spec)
+	}
+	return nil, spec, nil
+}
+
+// Match is Resolve without the addresses no host has: the host spec names
+// by its name or alias, the name it went by before, its address, or an
+// unambiguous prefix of its name or alias; nil when it names none, and an
+// error when it could be several.
+func (f *File) Match(spec string) (*Host, error) {
+	if h := f.Find(spec); h != nil {
+		return h, nil
 	}
 	if net.ParseIP(HostPart(spec)) != nil && CheckAddress(spec) == nil {
-		return f.atAddress(spec)
+		return f.FindAddress(spec), nil
 	}
 	var hits []*Host
 	for i := range f.Hosts {
-		if strings.HasPrefix(strings.ToLower(f.Hosts[i].Label()), strings.ToLower(spec)) && spec != "" {
-			hits = append(hits, &f.Hosts[i])
+		h := &f.Hosts[i]
+		if spec != "" && (hasPrefixFold(h.Label(), spec) || h.Alias != "" && hasPrefixFold(h.Alias, spec)) {
+			hits = append(hits, h)
 		}
 	}
 	switch len(hits) {
 	case 1:
-		return hits[0], hits[0].Address, nil
+		return hits[0], nil
 	case 0:
 	default:
 		var names []string
 		for _, h := range hits {
 			names = append(names, strconv.Quote(h.Label()))
 		}
-		return nil, "", fmt.Errorf("%q could be %s: give more of the name", spec, orList(names))
+		return nil, fmt.Errorf("%q could be %s: give more of the name", spec, orList(names))
 	}
-	if CheckAddress(spec) != nil {
-		return nil, "", fmt.Errorf("%q is neither a host in hosts.yml nor an address", spec)
+	if CheckAddress(spec) == nil {
+		return f.FindAddress(spec), nil
 	}
-	return f.atAddress(spec)
+	return nil, nil
 }
 
-// atAddress is the host at addr and its address, or no host and addr.
-func (f *File) atAddress(addr string) (*Host, string, error) {
-	if h := f.FindAddress(addr); h != nil {
-		return h, h.Address, nil
-	}
-	return nil, addr, nil
+func hasPrefixFold(s, prefix string) bool {
+	return strings.HasPrefix(strings.ToLower(s), strings.ToLower(prefix))
 }
 
 // orList is "a", "a or b", "a, b or c".
@@ -202,20 +224,58 @@ func (f *File) Add(h Host) error {
 		return fmt.Errorf("%s is already a host, %s", h.Address, o.Label())
 	}
 	if o := f.Named(h.Label()); o != nil {
-		return fmt.Errorf("another host goes by %q (%s): give this one its own name with --as NAME", o.Label(), HostPart(o.Address))
+		return fmt.Errorf("another host goes by %q (%s): give this one its own name with --as NAME", o.goesBy(h.Label()), HostPart(o.Address))
 	}
 	f.Hosts = append(f.Hosts, h)
 	return nil
 }
 
-// Named is the host going by name, ignoring case, or nil: Find without
-// the names hosts went by before.
+// Named is the host going by name, as its name or its alias, ignoring
+// case, or nil: Find without the names hosts went by before.
 func (f *File) Named(name string) *Host {
 	for i := range f.Hosts {
 		if strings.EqualFold(f.Hosts[i].Label(), name) {
 			return &f.Hosts[i]
 		}
 	}
+	for i := range f.Hosts {
+		if f.Hosts[i].Alias != "" && strings.EqualFold(f.Hosts[i].Alias, name) {
+			return &f.Hosts[i]
+		}
+	}
+	return nil
+}
+
+// goesBy is the name of h's that name matched, as h spells it: its alias,
+// else its Label.
+func (h Host) goesBy(name string) string {
+	if h.Alias != "" && strings.EqualFold(h.Alias, name) {
+		return h.Alias
+	}
+	return h.Label()
+}
+
+// SetAlias gives h the short name alias, which it goes by as well as its
+// name; "" takes its alias away. An alias CheckAlias refuses, h's own
+// name, and a name or alias another host goes by are refused.
+func (f *File) SetAlias(h *Host, alias string) error {
+	if alias == "" {
+		h.Alias = ""
+		return nil
+	}
+	if err := CheckAlias(alias); err != nil {
+		return err
+	}
+	if strings.EqualFold(alias, h.Label()) {
+		return fmt.Errorf("%s goes by %q already", h.Label(), h.Label())
+	}
+	if o := f.Named(alias); o != nil && o != h {
+		if strings.EqualFold(o.Alias, alias) {
+			return fmt.Errorf("%q is %s's alias already", o.Alias, o.Label())
+		}
+		return fmt.Errorf("another host goes by %q (%s)", o.Label(), HostPart(o.Address))
+	}
+	h.Alias = alias
 	return nil
 }
 
@@ -231,7 +291,7 @@ func (f *File) Rename(h *Host, name string) error {
 	}
 	if h.As == "" {
 		if o := f.Named(name); o != nil && o != h {
-			return fmt.Errorf("another host goes by %q (%s)", o.Label(), HostPart(o.Address))
+			return fmt.Errorf("another host goes by %q (%s)", o.goesBy(name), HostPart(o.Address))
 		}
 	}
 	old := h.Label()
@@ -260,7 +320,7 @@ func (f *File) Remove(name string) error {
 }
 
 // Check reports what is wrong with the file: bad hosts, two hosts going
-// by one name, a default that isn't a host.
+// by one name (or alias), a default that isn't a host.
 func (f *File) Check() []error {
 	var errs []error
 	seen := map[string]bool{}
@@ -268,11 +328,17 @@ func (f *File) Check() []error {
 		if err := h.Check(); err != nil {
 			errs = append(errs, err)
 		}
-		k := strings.ToLower(h.Label())
-		if seen[k] {
-			errs = append(errs, fmt.Errorf("%s is named twice", h.Label()))
+		names := []string{h.Label()}
+		if h.Alias != "" && !strings.EqualFold(h.Alias, h.Label()) {
+			names = append(names, h.Alias)
 		}
-		seen[k] = true
+		for _, n := range names {
+			k := strings.ToLower(n)
+			if seen[k] {
+				errs = append(errs, fmt.Errorf("%s is named twice", n))
+			}
+			seen[k] = true
+		}
 	}
 	if f.Default != "" && f.Find(f.Default) == nil {
 		errs = append(errs, fmt.Errorf("the default, %s, is not a host", f.Default))
@@ -288,6 +354,11 @@ func (h Host) Check() error {
 	if h.As != "" {
 		if err := CheckName(h.As); err != nil {
 			return err
+		}
+	}
+	if h.Alias != "" {
+		if err := CheckAlias(h.Alias); err != nil {
+			return fmt.Errorf("%s: %w", h.Label(), err)
 		}
 	}
 	if err := CheckAddress(h.Address); err != nil {
@@ -312,6 +383,28 @@ func CheckName(name string) error {
 		return fmt.Errorf("host name %q: longer than 100 characters", name)
 	case strings.IndexFunc(name, unicode.IsControl) >= 0:
 		return fmt.Errorf("host name %q: no control characters", name)
+	}
+	return nil
+}
+
+// CheckAlias refuses an alias a command line couldn't carry as one word:
+// empty, with a space or a control character in it, starting with a
+// dash, longer than 100 characters, or an IP address, which names a
+// device itself.
+func CheckAlias(alias string) error {
+	switch {
+	case alias == "":
+		return errors.New("an alias can't be empty")
+	case strings.IndexFunc(alias, unicode.IsSpace) >= 0:
+		return fmt.Errorf("alias %q: one word, no spaces", alias)
+	case strings.IndexFunc(alias, unicode.IsControl) >= 0:
+		return fmt.Errorf("alias %q: no control characters", alias)
+	case strings.HasPrefix(alias, "-"):
+		return fmt.Errorf("alias %q: it can't start with a dash", alias)
+	case len([]rune(alias)) > 100:
+		return fmt.Errorf("alias %q: longer than 100 characters", alias)
+	case net.ParseIP(HostPart(alias)) != nil:
+		return fmt.Errorf("alias %q: that is an address", alias)
 	}
 	return nil
 }
@@ -370,10 +463,15 @@ func (f *File) Save(path string) error {
 // Marshal renders the file.
 func (f *File) Marshal() []byte {
 	var b strings.Builder
-	b.WriteString("# bmdctl's hosts: 'bmdctl hosts add|rm|default|discover' edit this file.\n")
+	b.WriteString("# bmdctl's hosts: 'bmdctl hosts add|rm|alias|default|discover' edit this file.\n")
 	b.WriteString("# A switcher's name is the one it gives itself, kept up to date; \"as\" is\n")
-	b.WriteString("# one given with --as instead, \"was\" its name before, which --host takes.\n")
-	fmt.Fprintf(&b, "version: %d\n", Version)
+	b.WriteString("# one given with --as instead, \"alias\" a short one it goes by as well,\n")
+	b.WriteString("# \"was\" its name before, which --host takes.\n")
+	version := 2
+	if slices.ContainsFunc(f.Hosts, func(h Host) bool { return h.Alias != "" }) {
+		version = Version
+	}
+	fmt.Fprintf(&b, "version: %d\n", version)
 	if f.Default != "" {
 		fmt.Fprintf(&b, "default: %s\n", scalar(f.Default))
 	}
@@ -386,6 +484,9 @@ func (f *File) Marshal() []byte {
 		fmt.Fprintf(&b, "  - name: %s\n", scalar(h.Name))
 		if h.As != "" {
 			fmt.Fprintf(&b, "    as: %s\n", scalar(h.As))
+		}
+		if h.Alias != "" {
+			fmt.Fprintf(&b, "    alias: %s\n", scalar(h.Alias))
 		}
 		if h.Was != "" {
 			fmt.Fprintf(&b, "    was: %s\n", scalar(h.Was))
@@ -532,6 +633,8 @@ func Parse(b []byte) (*File, error) {
 			dst = &cur.Name
 		case "as":
 			dst = &cur.As
+		case "alias":
+			dst = &cur.Alias
 		case "was":
 			dst = &cur.Was
 		case "address":
@@ -539,7 +642,7 @@ func Parse(b []byte) (*File, error) {
 		case "device":
 			dst = &cur.Device
 		default:
-			return fail("unknown key %q (name, as, was, address, device)", key)
+			return fail("unknown key %q (name, as, alias, was, address, device)", key)
 		}
 		if *dst != "" {
 			return fail("%s given twice", key)
