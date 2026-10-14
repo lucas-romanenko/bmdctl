@@ -22,8 +22,9 @@ commands a command line takes, without "bmdctl" (a leading one is
 allowed). Quote arguments with spaces as a shell would; # starts a
 comment. Every line is checked before the first is sent, so a typo can't
 leave a cue half run. The host is resolved once, from --host or as any
-command resolves it, and every line goes there unless it gives its own
---host. The flags given to exec apply to every line.
+command resolves it, and every line goes there unless it names its own:
+with --host, or as its first word ('studio-b cut'). The flags given to
+exec apply to every line.
 
 It stops at the first command that fails, with that command's exit
 status, unless --continue, which runs every line and exits with the
@@ -68,15 +69,18 @@ func (c *cli) execCommand(g globals, words, tokens []string) int {
 	if err != nil {
 		return c.fail(exitUsage, "bmdctl exec %s: %v", words[0], err)
 	}
+	// The host is resolved once, for every line that names none of its
+	// own: by --host, or its first word, which wins over exec's host.
+	execHost := ""
+	if t, err := c.resolveTarget(g); err == nil {
+		execHost = t.Address
+		if t.Host != nil {
+			execHost = t.Host.Label()
+		}
+	}
 	// The flags exec was given go on every line, before the line's own,
 	// which win.
 	var common []string
-	if t, err := c.resolveTarget(g); err == nil {
-		common = append(common, "--host", t.Address)
-		if t.Host != nil {
-			common[1] = t.Host.Label()
-		}
-	}
 	for _, f := range []struct {
 		on   bool
 		flag string
@@ -117,7 +121,7 @@ func (c *cli) execCommand(g globals, words, tokens []string) int {
 			return c.fail(exitUsage, "bmdctl exec: interrupted before line %d", l.n)
 		}
 		sub := *c
-		sub.noRemember = true
+		sub.noRemember, sub.execHost = true, execHost
 		sub.ttyIn = false // a cue doesn't stop to ask: its lines were checked for --yes
 		if term {
 			sub.lineNo = padLeft(fmt.Sprint(l.n), numWidth) + "  "
@@ -156,6 +160,9 @@ func (c *cli) execCommand(g globals, words, tokens []string) int {
 func (c *cli) checkLine(args []string) error {
 	g, words, tokens, err := splitLine(args)
 	if err != nil {
+		return err
+	}
+	if words, _, err = c.hostWord(&g, words); err != nil {
 		return err
 	}
 	if len(words) == 0 {

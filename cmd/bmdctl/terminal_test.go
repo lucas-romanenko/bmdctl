@@ -38,10 +38,11 @@ import (
 // each printed: "$ bmdctl ..." then stdout's lines, then stderr's after
 // "! ", then the exit status if it isn't 0.
 type transcript struct {
-	b   *bench
-	env map[string]string // set for the next line only
-	in  *string           // stdin for the next line only, a terminal
-	out strings.Builder
+	b      *bench
+	env    map[string]string // set for the next line only
+	in     *string           // stdin for the next line only, a terminal
+	noHost bool              // lines go where they say, not --host the fake's
+	out    strings.Builder
 }
 
 func (tr *transcript) run(args ...string) {
@@ -60,7 +61,11 @@ func (tr *transcript) run(args ...string) {
 	for k, v := range tr.env {
 		tr.b.env[k] = v
 	}
-	code := c.run(with(args...))
+	line := with(args...)
+	if tr.noHost {
+		line = args
+	}
+	code := c.run(line)
 	if in != "" {
 		out := strings.Replace(o.String(), "[y/N] ", "[y/N] "+in, 1)
 		o.Reset()
@@ -795,5 +800,14 @@ func TestTerminalHosts(t *testing.T) {
 	tr.run("hosts", "alias", "BC 1.2 - TESTTt", "bc")
 	tr.run("hosts", "alias", "studio", "cut")
 	tr.run()
+	// The first word names the host; one that is neither a command nor a
+	// host lists the hosts.
+	tr.noHost = true
+	b.must("hosts", "add", "192.0.2.13", "--as", "stage")
+	tr.run("bc", "program", "cam1")
+	tr.run("STUDIO", "preview", "cam1")
+	tr.run("progam", "2")
+	tr.run("st", "cut")
+	tr.run("bc", "progam", "2")
 	golden(t, "hosts.golden", strings.ReplaceAll(tr.out.String(), shortVersion(), "VERSION"))
 }

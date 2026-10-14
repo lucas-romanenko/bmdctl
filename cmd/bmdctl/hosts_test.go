@@ -475,3 +475,109 @@ func TestHostsAlias(t *testing.T) {
 		t.Errorf("overview without aliases:\n%s", out)
 	}
 }
+
+// bmdctl HOST COMMAND: a first word that is a command is the command;
+// otherwise one that names a host (its name or alias, the start of
+// either, its address) or is an IP address is the host, for that command
+// alone; otherwise it is refused, listing the hosts. --host wins.
+func TestHostWord(t *testing.T) {
+	b := newBench(t)
+	b.must("hosts", "add", "192.0.2.10", "--as", "BC 1.2 - TESTTt")
+	b.must("hosts", "add", "192.0.2.11", "--as", "studio")
+	b.must("hosts", "add", "192.0.2.13", "--as", "stage")
+	b.must("hosts", "add", "192.0.2.14", "--as", "info") // a command's name
+	b.must("hosts", "add", "192.0.2.20", "--as", "deck", "--device", "hyperdeck")
+	b.must("hosts", "alias", "BC 1.2 - TESTTt", "bc")
+	b.must("hosts", "alias", "deck", "d1")
+	b.must("hosts", "default", "studio")
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"bc", "cut"}, "192.0.2.10:9910"},
+		{[]string{"BC", "cut"}, "192.0.2.10:9910"},
+		{[]string{"BC 1.2 - TESTTt", "cut"}, "192.0.2.10:9910"},
+		{[]string{"bc 1", "cut"}, "192.0.2.10:9910"},
+		{[]string{"192.0.2.10", "cut"}, "192.0.2.10:9910"},
+		{[]string{"192.0.2.12", "cut"}, "192.0.2.12:9910"}, // an address no host has
+		{[]string{"STUD", "cut"}, "192.0.2.11:9910"},
+		{[]string{"atem", "bc", "cut"}, "192.0.2.10:9910"},        // after a device's word
+		{[]string{"--host", "stage", "bc", "cut"}, "192.0.2.13:9910"}, // --host wins
+		{[]string{"cut"}, "192.0.2.13:9910"},                          // and is the last used, as ever
+	} {
+		if got := b.wentTo(t, "DCut", c.args...); got != c.want {
+			t.Errorf("%q: went to %s, want %s", c.args, got, c.want)
+		}
+	}
+	// The host word is for its command alone: commands go where they did.
+	b.must("hosts", "default", "studio")
+	b.must("bc", "cut")
+	if got := b.cliLastHost(); got != "studio" {
+		t.Errorf("last host after bmdctl bc cut: %q", got)
+	}
+	if got := b.wentTo(t, "DCut", "cut"); got != "192.0.2.11:9910" {
+		t.Errorf("after the host word: %s", got)
+	}
+	// A command is a command, whatever a host is called.
+	if out := b.must("info"); !strings.HasPrefix(out, "studio (192.0.2.11)") {
+		t.Errorf("info: %q", out)
+	}
+	// The host's device decides the command's.
+	if code, _, errOut := b.run("d1", "cut"); code != exitUsage || errOut != "bmdctl: deck (192.0.2.20) is a HyperDeck; bmdctl hyperdeck --help\n" {
+		t.Errorf("deck: %d %q", code, errOut)
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"progam", "2"}, `bmdctl: no command or host named "progam"; hosts: bc, studio, stage, info, d1 (bmdctl --help lists the commands)`},
+		{[]string{"studio.local", "cut"}, `bmdctl: no command or host named "studio.local"; hosts: bc, studio, stage, info, d1 (bmdctl --help lists the commands)`},
+		{[]string{"st", "cut"}, `bmdctl: "st" could be "studio" or "stage": give more of the name (bmdctl hosts lists them)`},
+		{[]string{"bc", "progam"}, `bmdctl: unknown command "progam" (bmdctl --help lists them)`},
+	} {
+		if code, _, errOut := b.run(c.args...); code != exitUsage || errOut != c.want+"\n" {
+			t.Errorf("%q: %d %q", c.args, code, errOut)
+		}
+	}
+	if code, out, _ := b.run("progam", "--json"); code != exitUsage || !strings.HasPrefix(out, `{"ok":false,"code":"usage","error":"bmdctl: no command or host named \"progam\"; hosts: bc,`) {
+		t.Errorf("--json: %d %s", code, out)
+	}
+	// The host alone is bmdctl alone.
+	if out := b.must("bc"); !strings.HasPrefix(out, "engine  running") {
+		t.Errorf("bmdctl bc: %q", out)
+	}
+	// An alias binary's line starts with the host as well.
+	before := len(b.sent("DCut"))
+	c, _, e := b.cli("")
+	c.alias, c.aliasName = "atem", "atemctl"
+	if code := c.run([]string{"stage", "cut"}); code != exitOK || len(b.sent("DCut")) != before+1 {
+		t.Errorf("atemctl stage cut: %d %s", code, e)
+	}
+	// exec: a line's host word wins over exec's host, and its own --host
+	// over both.
+	b.must("hosts", "default", "studio")
+	script := filepath.Join(b.dir, "cue.txt")
+	os.WriteFile(script, []byte("bc cut\ncut\n--host stage bc cut\nbmdctl stage cut\n"), 0o644)
+	count := func() map[string]int {
+		n := map[string]int{}
+		for i, sw := range b.switchers() {
+			for _, c := range sw.Commands() {
+				if string(c[4:8]) == "DCut" {
+					n[b.dialled()[i]]++
+				}
+			}
+		}
+		return n
+	}
+	was := count()
+	b.must("exec", script, "--host", "studio")
+	eventually(t, "the cuts", func() bool {
+		now := count()
+		return now["192.0.2.10:9910"] == was["192.0.2.10:9910"]+1 && now["192.0.2.11:9910"] == was["192.0.2.11:9910"]+1 &&
+			now["192.0.2.13:9910"] == was["192.0.2.13:9910"]+2
+	})
+	os.WriteFile(script, []byte("cut\nprogam 2\n"), 0o644)
+	if code, _, errOut := b.run("exec", script); code != exitUsage || !strings.Contains(errOut, "line 2:") {
+		t.Errorf("exec checks a line's first word: %d %q", code, errOut)
+	}
+}

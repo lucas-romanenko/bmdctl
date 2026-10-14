@@ -1728,8 +1728,9 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   aliases. At a terminal `hosts alias` names the host as a header does
   (bold, its address dim: no session says more) and the change as a
   result, `alias  bt → bc`, `none` dim, `already` where nothing changed.
-- **Which host.** `--host`, else `$BMDCTL_HOST`, else the host the last
-  `--host` named, else the default. Each is resolved (`File.Resolve`): a
+- **Which host.** `--host` (or the first word, below), else
+  `$BMDCTL_HOST`, else the host the last `--host` named, else the
+  default. Each is resolved (`File.Resolve`): a
   host's name in any case; else the name one went by (`was`); else an IP
   address (with any port), finding the host at it if there is one; else
   any unambiguous start of a host's name (an ambiguous one lists the
@@ -1741,6 +1742,32 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   commands go to the new default at once. The default is the
   configured, portable choice; last used is this machine's memory of the
   most recent explicit one.
+- **The host as the first word** (#3). `bmdctl HOST COMMAND ...` is
+  `bmdctl --host HOST COMMAND ...` for that command alone (`hostWord`).
+  The rule: a first word that is a command is the command (a built-in,
+  a device's word, the first word of any device's command, not only the
+  target's: otherwise a host called `play` would shadow a HyperDeck's
+  command); otherwise a word that names a host (`File.Match`: its name
+  or alias in any case, the start of either, `was`, its address) or is
+  an IP address is the host; otherwise the line is refused, `no command
+  or host named "x"`, with the hosts listed (each by its alias, else its
+  name, shell-quoted) as the hint. A DNS name no host has is not taken,
+  unlike `--host`'s: any word is a valid DNS name, so a mistyped command
+  would be dialled. An ambiguous start is the ambiguity error `--host`
+  gives. After a device's word the next word is taken the same way, a
+  command being that device's: so `bmdctl atem bc cut` and an alias
+  binary's line (`hdctl deck play`, which reads as `bmdctl hyperdeck deck
+  play`) work. `--host`, given too, wins, and the word is dropped. The
+  word doesn't set "last used", as `--host` does: `bmdctl use HOST` is
+  how the default moves, and a one-off `bmdctl bc cut` leaving the next
+  `cut` on bc would cut the wrong switcher. A word after a host that
+  isn't a command is `unknown command`, as before. exec passes its host
+  to its lines as a default under both (`cli.execHost`) instead of as a
+  `--host` flag, so a line's first word wins over exec's host and the
+  line's own `--host` over both. Completion offers the hosts' names and
+  aliases with the commands in the first place (after a device's word,
+  that device's hosts), and completes the rest of the line for the host
+  the first word names.
 - **Which device.** A device word on the line (`bmdctl atem ...`) wins;
   else a named host's `device`; else ATEM, so a bare address is an ATEM
   (except `connect ADDRESS`, which asks: Device probe, below). A device

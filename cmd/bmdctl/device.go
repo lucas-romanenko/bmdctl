@@ -136,7 +136,7 @@ func (c *cli) request(g globals, e *table.Entry, req engine.Request) int {
 	}
 	req.Host = t.Address
 	code := c.send(g, e, req, out, label)
-	if g.hostSet && code != exitUnreachable && !c.noRemember {
+	if g.hostSet && !g.hostWord && code != exitUnreachable && !c.noRemember {
 		// The host by the name it goes by, not the start of it typed,
 		// which a host added later could make ambiguous.
 		last := g.host

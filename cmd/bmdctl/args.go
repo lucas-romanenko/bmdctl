@@ -14,6 +14,9 @@ import (
 type globals struct {
 	host    string
 	hostSet bool
+	// hostWord: host came from the line's first word (bmdctl HOST ...),
+	// not --host, so it doesn't become the last host used.
+	hostWord bool
 	json    bool
 	quiet   bool
 	yes     bool

@@ -34,3 +34,26 @@ $ bmdctl
 
   <dim>bmdctl help</>
 
+$ bmdctl bc program cam1
+<b>BC 1.2 - TESTTt</>  <dim>PGM CAM2 · PVW CAM1</>
+  program     CAM2 → <red>CAM1</>                                           <dim># ms</>
+
+$ bmdctl STUDIO preview cam1
+<b>studio</>  <dim>PGM CAM2 · PVW CAM1</>
+  preview     <green>CAM1</>                                               <dim>already</>
+
+$ bmdctl progam 2
+! <red>error</>  no command or host named "progam"
+!        <dim>hosts: bc · studio · stage · bmdctl --help lists the commands</>
+[exit 1]
+
+$ bmdctl st cut
+! <red>error</>  "st" could be "studio" or "stage": give more of the name
+!        <dim>bmdctl hosts lists them</>
+[exit 1]
+
+$ bmdctl bc progam 2
+! <red>error</>  unknown command "progam"
+!        <dim>bmdctl --help lists them</>
+[exit 1]
+

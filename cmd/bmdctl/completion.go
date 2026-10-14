@@ -124,6 +124,7 @@ func (c *cli) complete(args []string) []string {
 	}
 	cur, before := args[len(args)-1], args[:len(args)-1]
 	g, words, tokens, _ := splitLine(before)
+	words, hosted, _ := c.hostWord(&g, words)
 	prev := ""
 	if len(before) > 0 {
 		prev = before[len(before)-1]
@@ -206,12 +207,20 @@ func (c *cli) complete(args []string) []string {
 	case "version", "man", "doctor", "help":
 		return nil
 	}
-	// The next word of a command, or the value of its next argument.
+	// The next word of a command, or the value of its next argument; in
+	// the first place, or after a device's word, a host too.
 	var cands []string
 	if len(words) == 0 {
 		for _, b := range builtins {
 			cands = append(cands, b.name)
 		}
+	}
+	switch {
+	case hosted || g.hostSet:
+	case len(words) == 0:
+		cands = append(cands, c.hostNames()...)
+	case len(words) == 1 && slices.Contains(hosts.Devices, words[0]):
+		cands = append(cands, c.hostNamesOf(words[0])...)
 	}
 	next, _ := c.reg.Next(device, path)
 	for _, x := range next {
@@ -282,13 +291,20 @@ func (c *cli) completeValue(cur string, e *table.Entry, p table.Param, g globals
 }
 
 // hostNames are the names and aliases the hosts in hosts.yml go by.
-func (c *cli) hostNames() []string {
+func (c *cli) hostNames() []string { return c.hostNamesOf("") }
+
+// hostNamesOf are hostNames of one device's hosts, or every host's for
+// "".
+func (c *cli) hostNamesOf(device string) []string {
 	f, _, err := c.loadHosts()
 	if err != nil {
 		return nil
 	}
 	var out []string
 	for _, h := range f.Hosts {
+		if device != "" && h.Device != device {
+			continue
+		}
 		out = append(out, h.Label())
 		if h.Alias != "" {
 			out = append(out, h.Alias)

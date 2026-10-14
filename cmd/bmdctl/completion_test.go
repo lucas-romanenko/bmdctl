@@ -32,7 +32,7 @@ func TestComplete(t *testing.T) {
 		}
 		return true
 	}
-	if got := complete(""); !has(got, "version", "engine", "hosts", "exec", "completion", "man", "program", "transition", "usk") {
+	if got := complete(""); !has(got, "version", "engine", "hosts", "exec", "completion", "man", "program", "transition", "usk", "studio", "spare") {
 		t.Errorf("first word: %v", got)
 	}
 	for _, c := range []struct {
@@ -77,6 +77,14 @@ func TestComplete(t *testing.T) {
 		want []string
 	}{
 		{[]string{"--host", "b"}, []string{"bk"}},
+		// The first word is a command or a host; after a host, its commands.
+		{[]string{"bk"}, []string{"bk"}},
+		{[]string{"spa"}, []string{"spare"}},
+		{[]string{"spare", "pro"}, []string{"profile", "program"}},
+		{[]string{"atem", "bk"}, []string{"bk"}},
+		{[]string{"spare", "sp"}, nil},
+		{[]string{"--host", "studio", "sp"}, nil},
+		{[]string{"spare", "usk", "1", "o"}, []string{"on-air"}},
 		{[]string{"hosts", "alias", ""}, []string{"studio", "spare", "bk"}},
 		{[]string{"hosts", "alias", "spare", "--"}, []string{"--as", "--device", "--dry-run", "--for", "--fps", "--help", "--host",
 			"--json", "--no-color", "--quiet", "--rm", "--timeout", "--timestamps", "--yes"}},
