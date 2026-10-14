@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/hyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
+	"github.com/lucas-romanenko/bmdctl/internal/fakeclock"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
@@ -437,5 +439,156 @@ func TestUndoCut(t *testing.T) {
 	})
 	if u := undo(); !u.Undone || u.What != "cut" {
 		t.Errorf("undo after the transition: %+v", u)
+	}
+}
+
+// syncBuffer is a log the engine writes from its goroutines while a test
+// reads it.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// A pinned session closes after an hour without a request (#7), by the
+// engine's clock: a request starts the hour again, a watch holds the
+// session for as long as it runs, and one gone unused past the hour that
+// hasn't closed yet is stale. BMDCTL_PIN_IDLE=0 (PinIdle < 0) keeps the
+// old way. The engine logs pins and expiries.
+func TestPinnedSessionExpires(t *testing.T) {
+	clock := fakeclock.New(time.Date(2026, 10, 11, 16, 55, 0, 0, time.UTC))
+	var log syncBuffer
+	r := newRig(t, Config{Clock: clock, Logger: slog.New(slog.NewTextHandler(&log, nil))})
+	connect := Request{Device: "atem", Host: fakeatem.Address, Path: "connect"}
+	session := func() *SessionStatus {
+		t.Helper()
+		st := r.status()
+		if len(st.Sessions) == 0 {
+			return nil
+		}
+		return &st.Sessions[0]
+	}
+	r.must(connect)
+	if s := session(); s == nil || !s.Pinned || s.IdleS != 0 || s.IdleCloseS != 3600 || s.Stale || s.AgeS != 0 {
+		t.Fatalf("pinned: %+v", s)
+	}
+	clock.Advance(59 * time.Minute)
+	if s := session(); s == nil || s.IdleS != 59*60 || s.IdleCloseS != 60 || s.AgeS != 59*60 || s.Stale {
+		t.Fatalf("after 59 minutes: %+v", s)
+	}
+	// A command starts the hour again.
+	r.must(program("2"))
+	clock.Advance(59 * time.Minute)
+	if s := session(); s == nil || s.IdleS != 59*60 || s.AgeS != 118*60 {
+		t.Fatalf("59 minutes after a command: %+v", s)
+	}
+	clock.Advance(time.Minute)
+	if s := session(); s != nil {
+		t.Fatalf("an hour idle: %+v", s)
+	}
+	for _, want := range []string{
+		`msg="pinned session" host=192.0.2.10:9910 device=atem closes_after_idle=1h0m0s`,
+		`msg="closing pinned session: idle past the pin timeout" host=192.0.2.10:9910 device=atem idle=1h0m0s age=1h59m0s pin_idle=1h0m0s`,
+	} {
+		if !strings.Contains(log.String(), want) {
+			t.Errorf("log lacks %s:\n%s", want, log.String())
+		}
+	}
+
+	// A watch is a request for as long as it runs: the session isn't
+	// idle, however long it watches.
+	r.must(connect)
+	ctx, cancel := context.WithCancel(context.Background())
+	watching, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := Dial(ctx, r.sock)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		var once sync.Once
+		Call(ctx, conn, Request{Device: "atem", Host: fakeatem.Address, Path: "watch"}, func(f Frame) error {
+			if f.Response != nil {
+				once.Do(func() { close(watching) })
+			}
+			return nil
+		})
+	}()
+	<-watching
+	clock.Advance(3 * time.Hour)
+	if s := session(); s == nil || s.Busy != 1 || s.IdleS != 0 || s.IdleCloseS != 0 || s.Stale {
+		t.Fatalf("watching for three hours: %+v", s)
+	}
+	cancel()
+	<-done
+	eventually(t, "the watch to end", func() bool { s := session(); return s != nil && s.Busy == 0 })
+	clock.Advance(59 * time.Minute)
+	if s := session(); s == nil {
+		t.Fatal("closed 59 minutes after the watch")
+	}
+	clock.Advance(time.Minute)
+	if s := session(); s != nil {
+		t.Fatalf("an hour after the watch: %+v", s)
+	}
+
+	// Past the hour and not closed yet (the machine slept through it):
+	// stale, until it is gone.
+	r.must(connect)
+	clock.Skip(2 * time.Hour)
+	if s := session(); s == nil || !s.Stale || s.IdleS != 7200 || s.IdleCloseS != 0 {
+		t.Fatalf("slept through it: %+v", s)
+	}
+	var ov Overview
+	json.Unmarshal(r.must(Request{Device: "engine", Path: "overview"}).Result.(json.RawMessage), &ov)
+	if len(ov.Switchers) != 1 || !ov.Switchers[0].Pinned || ov.Switchers[0].IdleS != 7200 || ov.Switchers[0].DropS != 0 {
+		t.Errorf("overview: %+v", ov.Switchers)
+	}
+	clock.Advance(0)
+	if s := session(); s != nil {
+		t.Fatalf("woken: %+v", s)
+	}
+
+	// Unpinned, ten minutes, as ever.
+	r.must(Request{Device: "atem", Host: fakeatem.Address, Path: "connect", Params: map[string]string{"pin": "false"}})
+	if s := session(); s == nil || s.Pinned || s.IdleCloseS != 600 {
+		t.Fatalf("unpinned: %+v", s)
+	}
+	clock.Advance(10 * time.Minute)
+	if s := session(); s != nil {
+		t.Fatalf("unpinned, ten minutes idle: %+v", s)
+	}
+	if n := r.dials.Load(); n != 4 {
+		t.Errorf("%d dials", n)
+	}
+}
+
+// BMDCTL_PIN_IDLE=0: a pinned session stays until disconnect.
+func TestPinNeverExpires(t *testing.T) {
+	clock := fakeclock.New(time.Date(2026, 10, 11, 16, 55, 0, 0, time.UTC))
+	r := newRig(t, Config{Clock: clock, PinIdle: -1})
+	resp := r.must(Request{Device: "atem", Host: fakeatem.Address, Path: "connect"})
+	var ss SessionStatus
+	json.Unmarshal(resp.Result.(json.RawMessage), &ss)
+	if !ss.Pinned || ss.IdleCloseS != 0 {
+		t.Errorf("connect: %+v", ss)
+	}
+	clock.Advance(48 * time.Hour)
+	if st := r.status(); len(st.Sessions) != 1 || st.Sessions[0].Stale || st.Sessions[0].IdleS != 48*3600 || st.Sessions[0].IdleCloseS != 0 {
+		t.Fatalf("two days: %+v", st.Sessions)
+	}
+	if n := clock.Pending(); n != 0 {
+		t.Errorf("%d timers for a pin that never closes", n)
 	}
 }

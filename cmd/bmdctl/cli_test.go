@@ -667,3 +667,68 @@ func TestExamples(t *testing.T) {
 		t.Errorf("help:\n%s", out)
 	}
 }
+
+// BMDCTL_PIN_IDLE says how long a pinned session may go unused, read when
+// the engine starts: a duration or seconds, 0 for never. A bad one stops
+// an engine run by hand; one a command started logs it and keeps the
+// hour.
+func TestPinIdleEnv(t *testing.T) {
+	for v, want := range map[string]time.Duration{"": 0, "90m": 90 * time.Minute, "2h": 2 * time.Hour, "600": 10 * time.Minute,
+		"0": -1, "0s": -1, "off": -1, "Never": -1} {
+		if got, err := pinIdle(v); err != nil || got != want {
+			t.Errorf("%q: %v %v, want %v", v, got, err, want)
+		}
+	}
+	if _, err := pinIdle("soon"); err == nil || err.Error() != `$BMDCTL_PIN_IDLE "soon": not a positive duration like 2s or 500ms, or 0 for never` {
+		t.Errorf("soon: %v", err)
+	}
+	b := newBench(t)
+	b.engine().Stop()
+	run := func(env string, args ...string) (stop func() (int, string)) {
+		t.Helper()
+		b.env[PinIdleEnv] = env
+		c, _, errOut := b.cli("")
+		done := make(chan int)
+		go func() { done <- c.run(args) }()
+		return func() (int, string) {
+			select {
+			case code := <-done:
+				return code, errOut.String()
+			case <-time.After(100 * time.Millisecond):
+			}
+			b.must("engine", "stop") // or says none runs, if it failed slowly
+			return <-done, errOut.String()
+		}
+	}
+	pinIdleS := func() int {
+		var st struct{ Result engine.Status }
+		eventually(t, "the engine", func() bool { code, _, _ := b.run("engine", "status"); return code == 0 })
+		json.Unmarshal([]byte(b.must("engine", "status", "--json")), &st)
+		return st.Result.PinIdleS
+	}
+	if code, errOut := run("soon", "engine")(); code != exitUsage || !strings.Contains(errOut, `bmdctl engine: $BMDCTL_PIN_IDLE "soon"`) {
+		t.Errorf("bad, by hand: %d %q", code, errOut)
+	}
+	stop := run("90m", "engine")
+	if got := pinIdleS(); got != 5400 {
+		t.Errorf("90m: %d", got)
+	}
+	if code, errOut := stop(); code != 0 || !strings.Contains(errOut, "pin_idle=1h30m0s") {
+		t.Errorf("90m: %d %q", code, errOut)
+	}
+	stop = run("never", "engine")
+	if got := pinIdleS(); got != 0 {
+		t.Errorf("never: %d", got)
+	}
+	stop()
+	stop = run("soon", "engine", "--background")
+	if got := pinIdleS(); got != 3600 {
+		t.Errorf("bad, background: %d", got)
+	}
+	stop()
+	log, _ := os.ReadFile(filepath.Join(b.env["XDG_STATE_HOME"], "bmdctl", "engine.log"))
+	if !strings.Contains(string(log), `level=WARN msg="ignoring BMDCTL_PIN_IDLE"`) {
+		t.Errorf("log:\n%s", log)
+	}
+	delete(b.env, PinIdleEnv)
+}

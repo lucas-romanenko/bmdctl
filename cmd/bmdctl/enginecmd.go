@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,34 @@ import (
 
 // spawnWait is how long a command waits for an engine it started.
 const spawnWait = 5 * time.Second
+
+// PinIdleEnv names the variable that says how long a pinned session may
+// go without a command before the engine closes it, read when the engine
+// starts.
+const PinIdleEnv = "BMDCTL_PIN_IDLE"
+
+// pinIdle reads $BMDCTL_PIN_IDLE: a duration (90m, 2h) or seconds; 0,
+// off or never for pins that never close (engine.Config.PinIdle < 0);
+// unset, the engine's hour.
+func pinIdle(v string) (time.Duration, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "":
+		return 0, nil
+	case "off", "never":
+		return -1, nil
+	}
+	if d, err := time.ParseDuration(v); err == nil && d == 0 {
+		return -1, nil
+	}
+	if f, err := strconv.ParseFloat(v, 64); err == nil && f == 0 {
+		return -1, nil
+	}
+	d, err := parseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("$%s %q: %v, or 0 for never", PinIdleEnv, v, err)
+	}
+	return d, nil
+}
 
 // connectEngine connects to the engine, starting one in the background
 // if none is listening, and then calling spawned (if not nil).
@@ -92,8 +121,10 @@ through it. Any command starts one in the background when none is
 running, and restarts one it started from another build of bmdctl;
 'bmdctl engine' runs one in the foreground instead, for systemd or
 Docker, logging to stderr as well as its log file, which answers every
-build. A session closes after 10 minutes without a command unless
-'connect' pinned it.
+build. A session closes after 10 minutes without a command, or one
+'connect' pinned after an hour ($BMDCTL_PIN_IDLE, read when the engine
+starts: 90m, 2h, or 0 for never); a watch or an MCP subscription is a
+command for as long as it runs.
 
 --serve also serves every command over HTTP/JSON from the engine's own
 process (bmdctl serve --help says what), on --listen, 127.0.0.1:8880
@@ -171,6 +202,12 @@ func (c *cli) serveEngine(g engineFlags) int {
 			return c.fail(exitUsage, "bmdctl engine: --log-level %q: not debug, info, warn or error", g.logLevel)
 		}
 	}
+	// A bad BMDCTL_PIN_IDLE stops an engine run by hand; one a command
+	// starts logs it and keeps the hour, or no command could run.
+	pin, pinErr := pinIdle(c.env(PinIdleEnv))
+	if pinErr != nil && !g.bg {
+		return c.fail(exitUsage, "bmdctl engine: %v", pinErr)
+	}
 	sock := paths.Socket(c.env)
 	l, err := engine.Listen(sock)
 	// An engine stopping (for a client of another build) holds its lock
@@ -208,8 +245,11 @@ func (c *cli) serveEngine(g engineFlags) int {
 		logPath = ""
 	}
 	logger := slog.New(slog.NewTextHandler(io.MultiWriter(sinks...), &slog.HandlerOptions{Level: level}))
+	if pinErr != nil {
+		logger.Warn("ignoring "+PinIdleEnv, "err", pinErr, "pin_idle", engine.PinIdleTimeout)
+	}
 	e := engine.New(c.engineConfig(engine.Config{Registry: c.reg, Logger: logger, Version: versionString(),
-		Commit: commitString(), BuildID: c.build(), Background: g.bg, Socket: sock, LogPath: logPath}))
+		Commit: commitString(), BuildID: c.build(), Background: g.bg, Socket: sock, LogPath: logPath, PinIdle: pin}))
 	stop := context.AfterFunc(c.ctx, e.Stop)
 	defer stop()
 	if g.serve != "" {

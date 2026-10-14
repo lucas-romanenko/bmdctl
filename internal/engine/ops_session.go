@@ -33,7 +33,7 @@ func sessionOperations() []operation {
 				{Name: "address", Kind: table.String,
 					Help: "an address (asked what answers there, then saved to hosts.yml by the name it gives itself, as the default) or a host's name; else the default"},
 				{Name: "pin", Kind: table.Bool, Default: "true",
-					Help: "keep the session open until disconnect; false lets it close after 10 idle minutes"},
+					Help: "keep the session open until disconnect or an hour without a command ($BMDCTL_PIN_IDLE); false lets it close after 10 idle minutes"},
 				typeParam}},
 			run: opConnect},
 		{entry: table.Entry{Path: "disconnect", Summary: "Close the engine's session to the switcher, pinned or not."},
@@ -233,10 +233,8 @@ func opConnect(c *call) (any, bool, error) {
 	pin := c.args.Value("pin").(bool)
 	c.e.pin(c.host, pin)
 	ss := c.e.sessionStatus(c.host)
-	ss.Pinned, ss.IdleCloseS = pin, 0
-	if !pin {
-		ss.IdleCloseS = int(c.e.idle.Seconds()) // from when this request ends
-	}
+	// From when this request ends; 0 for a pin that never closes.
+	ss.Pinned, ss.IdleCloseS = pin, int(c.e.closesAfter(pin).Seconds())
 	return ss, false, nil
 }
 

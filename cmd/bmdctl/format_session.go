@@ -37,6 +37,25 @@ func onAir(c *cli, on bool) string {
 	return "off air"
 }
 
+// span is a duration as a limit is said: 10m, 1h, 1h30m, 45s.
+func span(d time.Duration) string {
+	d = d.Round(time.Second)
+	h, m, s := int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60
+	var b strings.Builder
+	for _, p := range []struct {
+		n    int
+		unit string
+	}{{h, "h"}, {m, "m"}, {s, "s"}} {
+		if p.n > 0 {
+			fmt.Fprintf(&b, "%d%s", p.n, p.unit)
+		}
+	}
+	if b.Len() == 0 {
+		return "0s"
+	}
+	return b.String()
+}
+
 func sessionLine(s engine.SessionStatus) string {
 	state := "connecting"
 	switch {
@@ -68,9 +87,13 @@ func (p *printer) sessionUse() string {
 	} else {
 		parts = append(parts, "idle "+since(time.Duration(sw.IdleS)*time.Second))
 	}
-	if sw.Pinned {
+	switch {
+	case sw.Pinned && sw.DropS > 0:
+		at := time.Now().Add(time.Duration(sw.DropS) * time.Second)
+		parts = append(parts, fmt.Sprintf("pinned, drops at %s if unused", at.Format("15:04")))
+	case sw.Pinned:
 		parts = append(parts, "pinned: open until disconnect")
-	} else if sw.DropS > 0 {
+	case sw.DropS > 0:
 		at := time.Now().Add(time.Duration(sw.DropS) * time.Second)
 		parts = append(parts, fmt.Sprintf("drops at %s if unused", at.Format("15:04")))
 	}
@@ -152,11 +175,13 @@ func formatConnect(p *printer, _ engine.Response, raw json.RawMessage) []string 
 	var s engine.SessionStatus
 	json.Unmarshal(raw, &s)
 	state := "connected"
+	at := time.Now().Add(time.Duration(s.IdleCloseS) * time.Second)
 	switch {
+	case s.Pinned && s.IdleCloseS > 0:
+		state += fmt.Sprintf(", pinned, drops at %s if unused", at.Format("15:04"))
 	case s.Pinned:
 		state += ", pinned: open until disconnect"
 	case s.IdleCloseS > 0:
-		at := time.Now().Add(time.Duration(s.IdleCloseS) * time.Second)
 		state += fmt.Sprintf(", drops at %s if unused", at.Format("15:04"))
 	}
 	return []string{p.whoOut() + "  " + state}

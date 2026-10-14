@@ -1458,7 +1458,7 @@ response doesn't carry comes in note frames (Engine, "Notes":
 - **`connect ADDRESS`** prints the header, then `saved as "<name>", now
   the default` (bold: bmdctl's own) and, the first time ever, `tab
   completes input names` (dim); `connect` alone, `connect  pinned until
-  disconnect`.
+  disconnect or 1h idle` (until disconnect, with `BMDCTL_PIN_IDLE=0`).
 - **`-t`** (`--timestamps`) starts each result line with the time of
   day, `HH:MM:SS`, dim, after the indent (and exec's line number). Only
   at a terminal; exec passes it to its lines.
@@ -2240,7 +2240,8 @@ command costs a round trip instead of a connect and a whole state dump,
 and the switcher's live state is at hand to read a command line. It
 replaces atemwire's connection pool (`acquire_connection`, reference
 counts, a 2 s grace timer) with the policy phase 3 asked for: a session
-lives until 10 minutes pass without a request, unless pinned.
+lives until 10 minutes pass without a request, or an hour if pinned
+(#7; until then a pin lasted until disconnect).
 
 - **Where.** `$BMDCTL_SOCKET`, else `$XDG_RUNTIME_DIR/bmdctl.sock`, else
   `bmdctl-<uid>/bmdctl.sock` in `$TMPDIR` or `/tmp` (macOS and most
@@ -2337,6 +2338,35 @@ lives until 10 minutes pass without a request, unless pinned.
   is replaced on the next request; one that is re-handshaking after a
   silence is waited for (up to 15 s) before the state is read. The idle
   clock starts when the last request using a session ends.
+- **Pinned sessions close too** (#7: an engine kept a pinned session to
+  a studio switcher for two days, 41 hours after its last command, and
+  was a second client nobody knew of during a hardware capture). A
+  pinned session closes after `PinIdleTimeout`, an hour, without a
+  request; `BMDCTL_PIN_IDLE` (read by `bmdctl engine` when it starts,
+  `Config.PinIdle`) sets it: a duration or seconds, `0`, `off` or `never`
+  for the old way. A bad value stops an engine run by hand and is logged
+  (and the hour kept) by one a command started, which would otherwise
+  fail every command. Idle means what it does unpinned: no request
+  using the session, so a `watch`, or an MCP or HTTP subscription (each
+  a `watch` request), keeps it open for as long as it runs, and its idle
+  clock starts when it ends. `connect` pins and `connect --pin false`
+  unpins; each change is logged (`pinned session`, `unpinned session`,
+  with `closes_after_idle`), and so is an expiry, with how long it was
+  idle and how old it was. The engine keeps its sessions' times by a
+  `Clock` (`Config.Clock`; `internal/fakeclock` in tests, whose
+  `AfterFunc` returns a stop func so it needn't import the engine), so
+  a test runs an hour in a moment. A status says, per session, its age
+  (`age_s`, by the engine's clock, since a CLI's may differ from a
+  container's), how long it has been idle (`idle_s`, 0 while in use),
+  how long until it closes (`idle_close_s`, pinned or not) and `stale`:
+  idle past its timeout and not yet closed, as when the machine slept
+  through the timer; the engine's status has `pin_idle_s` (0, never, as
+  an engine from before #7 reports it). A note's `drop_s` is a pinned
+  session's too, so `status` says `pinned, drops at 15:04 if unused`,
+  and `connect` at a terminal `pinned until disconnect or 1h idle`. No
+  maximum lifetime for the engine itself (#7 asked to consider one): a
+  session that idles out is what held the switcher, and an engine with
+  no sessions holds nothing.
 - **Wire commands** are built and validated in the engine, then sent:
   with an echo key through `SendAndWait`, waiting `timeout_ms` (default
   5 s, `--timeout`), `confirmed` once it arrives; without one through

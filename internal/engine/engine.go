@@ -7,8 +7,8 @@
 //
 // The CLI talks to it over a Unix socket (a named pipe on Windows) with
 // one JSON request per connection and JSON replies (protocol.go). A
-// session idles out after IdleTimeout without use unless it is pinned.
-// docs/PORTING.md, "Engine", records the decisions.
+// session closes after IdleTimeout without use, or PinIdleTimeout if it
+// is pinned. docs/PORTING.md, "Engine", records the decisions.
 package engine
 
 import (
@@ -35,6 +35,27 @@ import (
 // IdleTimeout is how long an unpinned session lives without a request.
 const IdleTimeout = 10 * time.Minute
 
+// PinIdleTimeout is how long a pinned session lives without a request
+// (#7: one was held for two days, a second client nobody knew of).
+const PinIdleTimeout = time.Hour
+
+// Clock is the time the engine keeps its sessions by: when each was
+// opened and last used, and when it closes. Tests give a fake one
+// (internal/fakeclock).
+type Clock interface {
+	Now() time.Time
+	// AfterFunc calls f in its own goroutine once d has passed, unless
+	// stop is called first; stop reports whether it stopped the call.
+	AfterFunc(d time.Duration, f func()) (stop func() bool)
+}
+
+// realClock is the machine's.
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now() }
+
+func (realClock) AfterFunc(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop }
+
 // Config sets up an Engine.
 type Config struct {
 	// Registry holds the commands the engine runs (NewRegistry).
@@ -56,6 +77,11 @@ type Config struct {
 	Logger *slog.Logger
 	// IdleTimeout overrides IdleTimeout when positive.
 	IdleTimeout time.Duration
+	// PinIdle overrides PinIdleTimeout when positive; negative, pinned
+	// sessions never close (BMDCTL_PIN_IDLE=0).
+	PinIdle time.Duration
+	// Clock is the sessions' time; nil means the machine's.
+	Clock Clock
 	// Version, Socket and LogPath are reported by the status request.
 	Version, Socket, LogPath string
 	// Commit is the git commit the engine was built from, short, for
@@ -75,7 +101,9 @@ type Config struct {
 type Engine struct {
 	cfg     Config
 	log     *slog.Logger
-	idle    time.Duration
+	idle    time.Duration // an unpinned session's idle timeout
+	pinIdle time.Duration // a pinned one's; 0, never
+	clock   Clock
 	started time.Time
 	ops     map[string]operation
 
@@ -110,21 +138,30 @@ type host struct {
 	dialing chan struct{} // closed when the dial in progress ends
 	dialErr error
 	pinned  bool
-	busy    int // requests using the session now
-	idle    *time.Timer
+	busy    int         // requests using the session now
+	idle    func() bool // stops the idle timeout's call, if one waits
 	opened  time.Time
 	used    time.Time
 }
 
 // New returns an engine; Serve starts it answering.
 func New(cfg Config) *Engine {
-	e := &Engine{cfg: cfg, log: cfg.Logger, idle: cfg.IdleTimeout, started: time.Now(),
+	e := &Engine{cfg: cfg, log: cfg.Logger, idle: cfg.IdleTimeout, pinIdle: cfg.PinIdle, clock: cfg.Clock, started: time.Now(),
 		hosts: map[string]*host{}, undo: map[string][]undoEntry{}, done: make(chan struct{}), ops: atemOperations()}
 	if e.log == nil {
 		e.log = slog.New(slog.DiscardHandler)
 	}
 	if e.idle <= 0 {
 		e.idle = IdleTimeout
+	}
+	switch {
+	case e.pinIdle == 0:
+		e.pinIdle = PinIdleTimeout
+	case e.pinIdle < 0:
+		e.pinIdle = 0
+	}
+	if e.clock == nil {
+		e.clock = realClock{}
 	}
 	if e.cfg.Dial == nil {
 		d := atem.Dialer{Logger: e.log}
@@ -174,7 +211,12 @@ func (e *Engine) Serve(l Listener) error {
 	}
 	e.listener = l
 	e.mu.Unlock()
-	e.log.Info("engine listening", "socket", l.Addr(), "pid", os.Getpid(), "version", e.cfg.Version, "build", e.cfg.BuildID)
+	pinIdle := "never"
+	if e.pinIdle > 0 {
+		pinIdle = e.pinIdle.String()
+	}
+	e.log.Info("engine listening", "socket", l.Addr(), "pid", os.Getpid(), "version", e.cfg.Version, "build", e.cfg.BuildID,
+		"idle_timeout", e.idle, "pin_idle", pinIdle)
 	for {
 		c, err := l.Accept()
 		if err != nil {
@@ -220,7 +262,7 @@ func (e *Engine) stop() {
 	var sessions []devSession
 	for k, h := range e.hosts {
 		if h.idle != nil {
-			h.idle.Stop()
+			h.idle()
 		}
 		if h.sess != nil {
 			sessions = append(sessions, h.sess)
@@ -467,7 +509,7 @@ func (e *Engine) acquireSession(ctx context.Context, device, addr string, connec
 			go h.sess.Close()
 		}
 		if h.idle != nil {
-			h.idle.Stop()
+			h.idle()
 		}
 		h = nil
 	}
@@ -480,11 +522,11 @@ func (e *Engine) acquireSession(ctx context.Context, device, addr string, connec
 	}
 	var idle time.Duration
 	if h.busy == 0 && !h.used.IsZero() {
-		idle = time.Since(h.used)
+		idle = e.clock.Now().Sub(h.used)
 	}
 	h.busy++
 	if h.idle != nil {
-		h.idle.Stop()
+		h.idle()
 		h.idle = nil
 	}
 	release := func() { e.release(h) }
@@ -564,7 +606,7 @@ func (e *Engine) dial(h *host) {
 		if e.stopping {
 			go s.Close()
 		} else {
-			h.sess, h.opened = s, time.Now()
+			h.sess, h.opened = s, e.clock.Now()
 		}
 	}
 	close(ch)
@@ -599,39 +641,72 @@ func videoModeLabel(st atem.State) string {
 }
 
 // release ends one request's use of h; the last one out starts the idle
-// clock unless h is pinned.
+// clock: IdleTimeout, or PinIdleTimeout if h is pinned.
 func (e *Engine) release(h *host) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	h.busy--
-	h.used = time.Now()
+	h.used = e.clock.Now()
 	e.scheduleIdle(h)
 }
 
+// closesAfter is how long a session goes unused before it closes:
+// pinned or not. 0 is never.
+func (e *Engine) closesAfter(pinned bool) time.Duration {
+	if pinned {
+		return e.pinIdle
+	}
+	return e.idle
+}
+
+// scheduleIdle starts h's idle timeout, for what is left of it since h
+// was last used, unless a request is using h. With e.mu held.
 func (e *Engine) scheduleIdle(h *host) {
-	if h.busy > 0 || h.pinned || e.stopping {
+	if h.busy > 0 || e.stopping {
 		return
 	}
 	if h.idle != nil {
-		h.idle.Stop()
+		h.idle()
+		h.idle = nil
 	}
-	h.idle = time.AfterFunc(e.idle, func() { e.expire(h) })
+	d := e.closesAfter(h.pinned)
+	if d <= 0 {
+		return
+	}
+	left := max(0, d-e.clock.Now().Sub(h.used))
+	h.idle = e.clock.AfterFunc(left, func() { e.expire(h) })
 }
 
+// expire closes h's session once it has gone unused for its idle
+// timeout, saying so in the log with how old it was; if it hasn't (it
+// was pinned since), it waits the rest.
 func (e *Engine) expire(h *host) {
 	e.mu.Lock()
-	if h.busy > 0 || h.pinned || e.hosts[h.key] != h || time.Since(h.used) < e.idle {
+	d := e.closesAfter(h.pinned)
+	idle := e.clock.Now().Sub(h.used)
+	if h.busy > 0 || d <= 0 || e.hosts[h.key] != h || e.stopping {
+		e.mu.Unlock()
+		return
+	}
+	if idle < d {
+		e.scheduleIdle(h)
 		e.mu.Unlock()
 		return
 	}
 	delete(e.hosts, h.key)
-	s := h.sess
+	s, pinned, age := h.sess, h.pinned, e.clock.Now().Sub(h.opened)
 	h.sess = nil
 	e.mu.Unlock()
-	if s != nil {
-		e.log.Info("closing idle session", "host", h.key)
-		s.Close()
+	if s == nil {
+		return
 	}
+	attrs := []any{"host", h.key, "device", h.device, "idle", idle.Round(time.Second), "age", age.Round(time.Second)}
+	if pinned {
+		e.log.Info("closing pinned session: idle past the pin timeout", append(attrs, "pin_idle", d)...)
+	} else {
+		e.log.Info("closing idle session", attrs...)
+	}
+	s.Close()
 }
 
 // disconnect closes addr's ATEM session, pinned or not. Requests using
@@ -654,7 +729,8 @@ func (e *Engine) disconnectKey(key string) (bool, error) {
 	}
 	delete(e.hosts, key)
 	if h.idle != nil {
-		h.idle.Stop()
+		h.idle()
+		h.idle = nil
 	}
 	s := h.sess
 	h.sess, h.pinned = nil, false
@@ -667,13 +743,26 @@ func (e *Engine) disconnectKey(key string) (bool, error) {
 	return true, nil
 }
 
-// pin keeps h's session open until disconnect.
+// pin keeps h's session open until disconnect, or until it has gone
+// PinIdleTimeout unused; unpinned, IdleTimeout. A change is logged.
 func (e *Engine) pin(h *host, on bool) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	changed := h.pinned != on
 	h.pinned = on
-	if !on {
-		e.scheduleIdle(h)
+	e.scheduleIdle(h)
+	after := e.closesAfter(on)
+	e.mu.Unlock()
+	if !changed {
+		return
+	}
+	closes := "never"
+	if after > 0 {
+		closes = after.String()
+	}
+	if on {
+		e.log.Info("pinned session", "host", h.key, "device", h.device, "closes_after_idle", closes)
+	} else {
+		e.log.Info("unpinned session", "host", h.key, "device", h.device, "closes_after_idle", closes)
 	}
 }
 
@@ -715,12 +804,15 @@ type Status struct {
 	Protocol int    `json:"protocol"`
 	// Background: a command started it, and one of another build
 	// restarts it.
-	Background bool            `json:"background"`
-	PID        int             `json:"pid"`
-	Started    time.Time       `json:"started"`
-	Socket     string          `json:"socket,omitempty"`
-	Log        string          `json:"log,omitempty"`
-	Sessions   []SessionStatus `json:"sessions"`
+	Background bool `json:"background"`
+	// PinIdleS is how long a pinned session may go unused before it
+	// closes, in seconds; 0, never (as an engine from before #7).
+	PinIdleS int             `json:"pin_idle_s,omitempty"`
+	PID      int             `json:"pid"`
+	Started  time.Time       `json:"started"`
+	Socket   string          `json:"socket,omitempty"`
+	Log      string          `json:"log,omitempty"`
+	Sessions []SessionStatus `json:"sessions"`
 }
 
 // SessionStatus is one device's session.
@@ -732,22 +824,32 @@ type SessionStatus struct {
 	Pinned    bool       `json:"pinned"`
 	Busy      int        `json:"busy"`
 	Since     *time.Time `json:"since,omitempty"`
-	// IdleCloseS is the seconds until an idle, unpinned session closes.
-	IdleCloseS int    `json:"idle_close_s,omitempty"`
-	Product    string `json:"product,omitempty"`
-	VideoMode  string `json:"video_mode,omitempty"`
-	Error      string `json:"error,omitempty"`
+	// AgeS is how long the session has been open, in seconds, by the
+	// engine's clock (Since by another machine's may be off).
+	AgeS int `json:"age_s,omitempty"`
+	// IdleS is how long it has gone without a request, in seconds; 0
+	// while one uses it (Busy), a watch or a subscription included.
+	IdleS int `json:"idle_s"`
+	// IdleCloseS is the seconds until an idle session closes, pinned
+	// or not; 0 while in use, or when it never closes.
+	IdleCloseS int `json:"idle_close_s,omitempty"`
+	// Stale: it has gone unused past its idle timeout, and closes now.
+	Stale     bool   `json:"stale,omitempty"`
+	Product   string `json:"product,omitempty"`
+	VideoMode string `json:"video_mode,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 func (e *Engine) status() Status {
-	st := Status{Version: e.cfg.Version, Commit: e.cfg.Commit, Build: e.cfg.BuildID, Protocol: Version, Background: e.cfg.Background, PID: os.Getpid(), Started: e.started,
-		Socket: e.cfg.Socket, Log: e.cfg.LogPath, Sessions: []SessionStatus{}}
+	st := Status{Version: e.cfg.Version, Commit: e.cfg.Commit, Build: e.cfg.BuildID, Protocol: Version, Background: e.cfg.Background,
+		PinIdleS: int(e.pinIdle.Seconds()), PID: os.Getpid(), Started: e.started, Socket: e.cfg.Socket, Log: e.cfg.LogPath, Sessions: []SessionStatus{}}
 	e.mu.Lock()
 	type snap struct {
 		ss   SessionStatus
 		sess devSession
 	}
 	var snaps []snap
+	now := e.clock.Now()
 	for _, h := range e.hosts {
 		ss := SessionStatus{Host: h.key, Device: h.device, Pinned: h.pinned, Busy: h.busy}
 		if h.dialErr != nil && h.sess == nil {
@@ -755,10 +857,14 @@ func (e *Engine) status() Status {
 		}
 		if h.sess != nil {
 			t := h.opened
-			ss.Since = &t
+			ss.Since, ss.AgeS = &t, int(now.Sub(h.opened).Seconds())
 		}
-		if h.busy == 0 && !h.pinned && !h.used.IsZero() {
-			ss.IdleCloseS = max(0, int((e.idle - time.Since(h.used)).Seconds()))
+		if h.busy == 0 && !h.used.IsZero() {
+			idle := now.Sub(h.used)
+			ss.IdleS = int(idle.Seconds())
+			if d := e.closesAfter(h.pinned); d > 0 {
+				ss.IdleCloseS, ss.Stale = max(0, int((d-idle).Seconds())), idle >= d
+			}
 		}
 		snaps = append(snaps, snap{ss, h.sess})
 	}
@@ -796,10 +902,7 @@ func (e *Engine) switcherNote(h *host, st atem.State, idle time.Duration) *Switc
 	pinned := h.pinned
 	e.mu.Unlock()
 	sw := &Switcher{Host: h.key, Name: SwitcherName(st), Product: st.ProductName(""), VideoMode: videoModeLabel(st),
-		Ready: true, Pinned: pinned, IdleS: int(idle.Seconds())}
-	if !pinned {
-		sw.DropS = int(e.idle.Seconds())
-	}
+		Ready: true, Pinned: pinned, IdleS: int(idle.Seconds()), DropS: int(e.closesAfter(pinned).Seconds())}
 	for id := range st.Inputs {
 		sw.NameWidth = max(sw.NameWidth, utf8.RuneCountInString(sourceName(st, int(id))))
 	}
@@ -821,15 +924,16 @@ func (e *Engine) switchers() []Switcher {
 	}
 	var snaps []snap
 	e.mu.Lock()
+	now := e.clock.Now()
 	for _, h := range e.hosts {
 		sw := Switcher{Host: h.key, Device: h.device, Pinned: h.pinned}
 		if h.dialErr != nil && h.sess == nil {
 			sw.Error = h.dialErr.Error()
 		}
 		if h.busy == 0 && !h.used.IsZero() {
-			sw.IdleS = int(time.Since(h.used).Seconds())
-			if !h.pinned {
-				sw.DropS = max(0, int((e.idle - time.Since(h.used)).Seconds()))
+			sw.IdleS = int(now.Sub(h.used).Seconds())
+			if d := e.closesAfter(h.pinned); d > 0 {
+				sw.DropS = max(0, int((d - now.Sub(h.used)).Seconds()))
 			}
 		}
 		snaps = append(snaps, snap{sw, h.sess})

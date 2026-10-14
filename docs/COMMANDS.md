@@ -79,6 +79,7 @@ bmdctl [HOST] [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [
 ### Environment
 
 - `BMDCTL_HOST`: The host a command goes to when --host doesn't name one.
+- `BMDCTL_PIN_IDLE`: How long a session `connect` pinned may go without a command before the engine closes it: a duration (90m, 2h) or seconds, 0 for never; an hour unless set. Read when the engine starts.
 - `BMDCTL_SOCKET`: The engine's socket (a pipe name on Windows), instead of $XDG_RUNTIME_DIR/bmdctl.sock.
 - `XDG_CONFIG_HOME, XDG_STATE_HOME, XDG_RUNTIME_DIR`: Where hosts.yml, the engine's log and last host, and the socket live.
 - `NO_COLOR`: Set to anything: no colour, even on a terminal, as --no-color.
@@ -497,7 +498,7 @@ bmdctl connect --pin off
 | argument | value | | |
 |---|---|---|---|
 | `[address]` | string | optional | an address (asked what answers there, then saved to hosts.yml by the name it gives itself, as the default) or a host's name; else the default |
-| `--pin` | bool | default true | keep the session open until disconnect; false lets it close after 10 idle minutes |
+| `--pin` | bool | default true | keep the session open until disconnect or an hour without a command ($BMDCTL_PIN_IDLE); false lets it close after 10 idle minutes |
 | `--type` | string | optional | what the device is, without asking it: atem, hyperdeck, videohub or ultimatte |
 
 ### `bmdctl atem cut`
@@ -1984,7 +1985,7 @@ bmdctl connect --pin false
 | argument | value | | |
 |---|---|---|---|
 | `[address]` | string | optional | an address (saved to hosts.yml by the name the deck gives itself, as the default) or a host's name; else the default |
-| `--pin` | bool | default true | keep the session open until disconnect; false lets it close after 10 idle minutes |
+| `--pin` | bool | default true | keep the session open until disconnect or an hour without a command ($BMDCTL_PIN_IDLE); false lets it close after 10 idle minutes |
 | `--type` | string | optional | what the device is, without asking it: atem, hyperdeck, videohub or ultimatte |
 
 ### `bmdctl hyperdeck disconnect`

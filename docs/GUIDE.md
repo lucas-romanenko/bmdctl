@@ -136,7 +136,8 @@ You don't have to connect: the first command to a switcher opens a
 session, through the background engine ([The engine](#the-engine)), and
 later commands reuse it. A session closes after 10 minutes without a
 command. `connect ADDRESS` does what `hosts add` does, makes the switcher
-the default, and pins the session open until `disconnect`:
+the default, and pins the session open until `disconnect`, or until an
+hour passes without a command:
 
 ```
 $ bmdctl connect 192.168.1.20
@@ -154,7 +155,7 @@ off` opens it without pinning.
 ```
 $ bmdctl connect
 STUDIO A  PGM CAM2 · PVW CAM1
-  connect     pinned until disconnect
+  connect     pinned until disconnect or 1h idle
 $ bmdctl disconnect
 STUDIO A  disconnected
 ```
@@ -681,7 +682,11 @@ state at hand to read names and rates against.
   `$XDG_RUNTIME_DIR/bmdctl.sock` (else `bmdctl-<uid>/bmdctl.sock` in
   `$TMPDIR` or `/tmp`; `BMDCTL_SOCKET` overrides it), readable by your
   user alone. On Windows it is the named pipe `\\.\pipe\bmdctl-<user>`.
-- **Sessions close after 10 minutes idle**, unless pinned by `connect`.
+- **Sessions close after 10 minutes idle**, or an hour if pinned by
+  `connect`. `BMDCTL_PIN_IDLE` sets the hour (`90m`, `2h`, or `0` for
+  never), read when the engine starts: `bmdctl engine stop` after
+  changing it. A `watch` or an MCP subscription counts as a command for
+  as long as it runs.
 - **It restarts after an upgrade.** Every request carries the build of
   the bmdctl that sent it. An engine a command started, asked by another
   build, stops, and the command starts one of its own build and sends
