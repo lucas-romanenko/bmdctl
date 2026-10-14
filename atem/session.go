@@ -49,9 +49,21 @@ var (
 	ErrDisconnected = errors.New("atem: switcher disconnected")
 	// ErrIncompleteDump is returned by Dial when the switcher's state dump
 	// ends without its video mode, which a lost first dump packet causes
-	// (bmdwire#13). The error says which sequence number came first.
+	// (bmdwire#13), and the fresh dumps of incompleteDumpRetries
+	// re-handshakes did too. The error says which sequence number came
+	// first.
 	ErrIncompleteDump = errors.New("atem: the state dump ended without a video mode")
+
+	// errIncomplete stops a packet's commands at an InCm that ended a dump
+	// without a video mode: the session re-handshakes for a fresh one.
+	errIncomplete = errors.New("atem: the state dump ended without a video mode")
 )
+
+// incompleteDumpRetries is how many times in a row a dump that ends
+// without a video mode is answered by a re-handshake for a fresh one, as
+// atemwire's INCOMPLETE_DUMP_RETRIES (bmdwire#13, bmdwire#27): a switcher
+// whose VidM never parses costs a few handshakes, not a loop.
+const incompleteDumpRetries = 3
 
 // ChangeKind says what a Change reports.
 type ChangeKind uint8
@@ -171,7 +183,10 @@ type Session struct {
 	subs           map[*subscription]struct{}
 	fatal          error
 	dumpErr        error // the first parse error since the dump began
-	lane           lane  // the transfer engine (transfer.go)
+	// incompleteDumps counts the dumps in a row that ended without a
+	// video mode, each answered by a re-handshake (bmdwire#13).
+	incompleteDumps int
+	lane            lane // the transfer engine (transfer.go)
 
 	// Shared.
 	reqs      chan func()   // closures the run goroutine executes
@@ -533,17 +548,31 @@ func (s *Session) onData(data []byte) {
 		}
 		s.publish(*c)
 		if code == "InCm" {
+			if !s.state.hasVideoMode() && s.incompleteDumps < incompleteDumpRetries {
+				// Its first packet was lost for good (the first reliable
+				// packet set the receive baseline): ask for a fresh dump
+				// at once, as atemwire raises IncompleteStateDump.
+				s.incompleteDumps++
+				s.log.Error("atem: the state dump ended without a video mode, so its first packet was probably lost; re-handshaking",
+					"first_sequence", s.t.firstRX, "attempt", s.incompleteDumps, "of", incompleteDumpRetries)
+				return errIncomplete
+			}
 			// The end of the state dump: the next packet reports ready.
 			s.t.markNextConnected = true
-			if !s.state.hasVideoMode() {
+			if s.state.hasVideoMode() {
+				s.incompleteDumps = 0
+			} else {
+				s.incompleteDumps = 0
 				s.incompleteDump()
 			}
 		}
 		return nil
 	})
 	switch {
+	case errors.Is(err, errIncomplete):
+		s.resync("atem: forcing a clean session reconnect for a fresh state dump")
 	case errors.Is(err, errCorrupt):
-		s.resync()
+		s.resync("atem: protocol corruption, forcing a clean session reconnect")
 	case err != nil:
 		// An exception escaping atemwire's loop(): the rest of this
 		// packet is lost, the session carries on.
@@ -551,13 +580,13 @@ func (s *Session) onData(data []byte) {
 	}
 }
 
-// incompleteDump: the state dump ended (InCm) without a video mode. In
-// bmdwire v1.3.0 Dial (wait_ready) then waits out its whole timeout; here
-// it fails at once, saying which sequence number arrived first, since a
-// packet the switcher sent before that one is lost for good: the first
-// reliable packet sets the receive baseline (bmdwire#13, docs/PORTING.md).
-// After Dial the session carries on without a video mode, as atemwire's
-// does, and logs why.
+// incompleteDump: the state dump ended (InCm) without a video mode, and
+// so did the fresh dumps of incompleteDumpRetries re-handshakes. atemwire
+// then carries on as it did before bmdwire#13, which for Dial means
+// waiting out wait_ready's timeout; here Dial fails at once, saying which
+// sequence number arrived first, since a packet the switcher sent before
+// that one is lost for good (docs/PORTING.md). After Dial the session
+// carries on without a video mode, as atemwire's does, and logs why.
 func (s *Session) incompleteDump() {
 	err := fmt.Errorf("%w: the first dump packet to arrive was sequence %d, and any the switcher sent before it was lost", ErrIncompleteDump, s.t.firstRX)
 	if s.dumpErr != nil {
@@ -570,10 +599,11 @@ func (s *Session) incompleteDump() {
 	s.log.Error("atem: incomplete state dump", "err", err)
 }
 
-// resync is atemwire's answer to a zero-length command header: report a
-// disconnect, say goodbye and handshake again for a fresh state dump.
-func (s *Session) resync() {
-	s.log.Error("atem: protocol corruption, forcing a clean session reconnect")
+// resync is atemwire's answer to a zero-length command header and to a
+// dump without a video mode: report a disconnect, say goodbye and
+// handshake again for a fresh state dump.
+func (s *Session) resync(why string) {
+	s.log.Error(why)
 	s.disconnected()
 	s.protoConnected = false
 	s.t.closeSession()
