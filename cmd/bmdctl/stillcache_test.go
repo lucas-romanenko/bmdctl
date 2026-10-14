@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
@@ -179,4 +181,58 @@ func abs(n int) int {
 		return -n
 	}
 	return n
+}
+
+// When the session goes in the middle of a save's stills, the capture
+// stops and returns the slots done so far rather than trying each of the
+// rest (bmdwire#31): here the first still waits on a lock another client
+// holds, the switcher falls silent, the session times out, and the save
+// reports that one still and not the two after it.
+func TestProfileSaveStopsWhenTheSessionGoes(t *testing.T) {
+	dump := bytes.Clone(fixtures.Bytes(t, "dump/initial-dump.bin"))
+	dump[bytes.Index(dump, []byte("VidM"))+4] = 0 // NTSC: small stills
+	b := newBenchDump(t, dump)
+	t.Chdir(t.TempDir())
+	os.WriteFile("a.png", solidPNG(t, color.NRGBA{200, 20, 20, 255}), 0o644)
+	os.WriteFile("b.png", solidPNG(t, color.NRGBA{20, 200, 20, 255}), 0o644)
+	os.WriteFile("c.png", solidPNG(t, color.NRGBA{20, 20, 200, 255}), 0o644)
+	b.must(with("media", "clear", "1", "--yes")...)
+	for i, f := range []string{"a.png", "b.png", "c.png"} {
+		b.must(with("media", "upload", fmt.Sprint(i+2), f)...)
+	}
+	sw := b.switchers()[0]
+	sw.HoldLock(0)
+	locks := len(b.sent("PLCK"))
+	type ran struct {
+		code int
+		out  string
+	}
+	done := make(chan ran, 1)
+	go func() {
+		code, out, _ := b.run(with("profile", "save", "show.xml", "--json")...)
+		done <- ran{code, out}
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for len(b.sent("PLCK")) == locks {
+		if time.Now().After(deadline) {
+			t.Fatal("the save never asked for the store lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	sw.Silence(true)
+	var r ran
+	select {
+	case r = <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the save didn't return")
+	}
+	var res struct {
+		Result engine.ProfileResult `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(r.out), &res); err != nil {
+		t.Fatalf("exit %d: %v\n%s", r.code, err, r.out)
+	}
+	if n := len(res.Result.Images); n != 1 || res.Result.Images[0].Error == "" {
+		t.Errorf("images: %+v, want the first, failed, alone", res.Result.Images)
+	}
 }
