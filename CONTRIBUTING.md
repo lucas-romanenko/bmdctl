@@ -38,6 +38,8 @@ root:
 | Run the CLI from source | `go run ./cmd/bmdctl <command>` |
 | Regenerate docs/COMMANDS.md and docs/commands/ after a table change | `go generate ./cmd/bmdctl` |
 | Rewrite the terminal goldens after an output change | `go test ./cmd/bmdctl -run TestTerminal -update`, then read the diff |
+| Read the documentation site while writing | `pip install -r docsite/requirements.txt`, then `mkdocs serve` (http://127.0.0.1:8000/bmdctl/) |
+| Check the site as CI does | `mkdocs build --strict` and `python3 docsite/test_terminal.py` |
 | Regenerate the oracles | the scripts in `internal/fixtures/oracle/` and `hyperdeck/testdata/oracle/` (their READMEs) |
 | Release dry run | `goreleaser release --snapshot --clean` (builds into `dist/`, publishes nothing) |
 
@@ -123,7 +125,9 @@ request, with its SURFACE.md entry, and is ported from there
    in docs/commands/.
 
 A command whose first word is new needs a group in `atem/groups.go`
-(`Groups`, `GroupOf`): that is its MCP tool.
+(`Groups`, `GroupOf`): that is its MCP tool. A new group also gets a
+page in docs/commands/; list it in `mkdocs.yml`'s nav (`TestCommandsDoc`
+says so if you don't).
 
 **An operation** (reads state first, sends several commands, or moves a
 file) is an entry with a function in the `internal/engine/ops_*.go` file

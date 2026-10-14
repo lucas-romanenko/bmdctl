@@ -10,3 +10,5 @@
 /*.xml
 /ATEM Media Pool/
 /build/
+/site/
+__pycache__/

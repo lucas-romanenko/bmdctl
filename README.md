@@ -5,6 +5,7 @@
 [![CI](https://github.com/lucas-romanenko/bmdctl/actions/workflows/ci.yml/badge.svg)](https://github.com/lucas-romanenko/bmdctl/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/lucas-romanenko/bmdctl)](https://github.com/lucas-romanenko/bmdctl/releases/latest)
 
+<!-- --8<-- [start:intro] -->
 bmdctl is one binary that controls Blackmagic Design production equipment
 over the network. It runs ATEM switchers and HyperDeck recorders now;
 Videohub routers and Ultimatte keyers are next. It talks each device's own
@@ -14,7 +15,9 @@ a session open to each device, and every command is also served over HTTP
 and to AI agents over MCP.
 
 ATEM verified on hardware; HyperDeck ported, not yet run on a deck.
+<!-- --8<-- [end:intro] -->
 
+<!-- --8<-- [start:sample] -->
 ```
 $ bmdctl connect 192.168.1.20
 STUDIO A  PGM CAM2 · PVW CAM1 · 1080p25 · connected 328 ms
@@ -31,6 +34,7 @@ STUDIO A  1080p25 · session 14s, idle 3s, pinned
   ME 1        PGM  CAM3           PVW  CAM2
               mix 1:00 · next background · FTB off
 ```
+<!-- --8<-- [end:sample] -->
 
 ## Install
 
@@ -87,6 +91,9 @@ Also:
 - A Raspberry Pi (64-bit OS) beside the switcher can run the engine and the HTTP API (`bmdctl engine --serve`).
 
 ## Documentation
+
+The documentation is also a site, https://lucas-romanenko.github.io/bmdctl/
+(built from `docs/` by `mkdocs.yml`).
 
 - [docs/GUIDE.md](docs/GUIDE.md): a walkthrough, task by task, with
   what each command prints.

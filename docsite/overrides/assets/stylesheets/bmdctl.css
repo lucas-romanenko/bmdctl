@@ -1,0 +1,257 @@
+/* SPDX-License-Identifier: MIT
+ *
+ * The documentation site in bmdctl's colours (docs/BRAND.md, "Colour"):
+ * the two tally colours and the neutrals, nothing else. Dark is the
+ * default; the header stays dark in both schemes, where the lockup is.
+ * Terminal samples (.term) are drawn as docs/terminal-mock.html draws a
+ * terminal; docsite/hooks/terminal.py writes their spans.
+ */
+
+/* The title's weight 600 (Material loads Plex Mono's 400 and 700). */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap");
+
+:root {
+  --bmd-pgm: #D62718;
+  --bmd-pvw: #2FD07A;
+  --bmd-cursor: #EDEDEA;
+  --bmd-tile: #0A0B0C;
+  --bmd-tile-border: #34383C;
+  --bmd-ink: #0E0F10;
+  --bmd-surface: #141618;
+  --bmd-text: #EDEDEA;
+  --bmd-muted: #9A9E9F;
+  --bmd-faint: #7E8386;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: var(--bmd-ink);
+  --md-default-bg-color--light: rgba(14, 15, 16, .54);
+  --md-default-bg-color--lighter: rgba(14, 15, 16, .26);
+  --md-default-bg-color--lightest: rgba(14, 15, 16, .07);
+  --md-default-fg-color: var(--bmd-text);
+  --md-default-fg-color--light: var(--bmd-muted);
+  --md-default-fg-color--lighter: var(--bmd-faint);
+  --md-default-fg-color--lightest: var(--bmd-tile-border);
+  --md-typeset-color: var(--bmd-text);
+  --md-typeset-a-color: var(--bmd-pvw);
+  --md-accent-fg-color: var(--bmd-pvw);
+  --md-accent-fg-color--transparent: rgba(47, 208, 122, .1);
+  --md-accent-bg-color: var(--bmd-tile);  /* ink on green */
+  --md-code-bg-color: var(--bmd-surface);
+  --md-code-fg-color: var(--bmd-text);
+  --md-code-hl-color: rgba(47, 208, 122, .15);
+  --md-code-hl-color--light: rgba(47, 208, 122, .08);
+  --md-code-hl-keyword-color: var(--bmd-pvw);
+  --md-code-hl-constant-color: var(--bmd-pvw);
+  --md-code-hl-special-color: var(--bmd-pvw);
+  --md-code-hl-string-color: var(--bmd-text);
+  --md-code-hl-number-color: var(--bmd-text);
+  --md-code-hl-function-color: var(--bmd-text);
+  --md-code-hl-name-color: var(--bmd-text);
+  --md-code-hl-variable-color: var(--bmd-text);
+  --md-code-hl-operator-color: var(--bmd-muted);
+  --md-code-hl-punctuation-color: var(--bmd-muted);
+  --md-code-hl-generic-color: var(--bmd-muted);
+  --md-code-hl-comment-color: var(--bmd-faint);
+  --md-typeset-mark-color: rgba(47, 208, 122, .3);
+  --md-typeset-table-color: var(--bmd-tile-border);
+  --md-typeset-table-color--light: rgba(52, 56, 60, .35);
+  --md-footer-fg-color: var(--bmd-text);
+  --md-footer-fg-color--light: var(--bmd-muted);
+  --md-footer-fg-color--lighter: var(--bmd-faint);
+  --md-footer-bg-color: var(--bmd-tile);
+  --md-footer-bg-color--dark: var(--bmd-tile);
+}
+
+/* Light: BRAND.md's light values; where it gives none (a surface, a
+ * caption colour), the text colour, faded. */
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: #F2F1EE;
+  --md-default-fg-color: #111312;
+  --md-default-fg-color--light: #6E706C;
+  --md-default-fg-color--lighter: rgba(17, 19, 18, .45);
+  --md-default-fg-color--lightest: #CFCEC9;
+  --md-typeset-color: #111312;
+  --md-typeset-a-color: #1E9E57;
+  --md-accent-fg-color: #1E9E57;
+  --md-accent-fg-color--transparent: rgba(30, 158, 87, .1);
+  --md-accent-bg-color: #111312;  /* ink on green */
+  --md-code-bg-color: rgba(17, 19, 18, .05);
+  --md-code-fg-color: #111312;
+  --md-code-hl-color: rgba(30, 158, 87, .15);
+  --md-code-hl-color--light: rgba(30, 158, 87, .08);
+  --md-code-hl-keyword-color: #1E9E57;
+  --md-code-hl-constant-color: #1E9E57;
+  --md-code-hl-special-color: #1E9E57;
+  --md-code-hl-string-color: #111312;
+  --md-code-hl-number-color: #111312;
+  --md-code-hl-function-color: #111312;
+  --md-code-hl-name-color: #111312;
+  --md-code-hl-variable-color: #111312;
+  --md-code-hl-operator-color: #6E706C;
+  --md-code-hl-punctuation-color: #6E706C;
+  --md-code-hl-generic-color: #6E706C;
+  --md-code-hl-comment-color: #6E706C;
+  --md-typeset-mark-color: rgba(30, 158, 87, .25);
+  --md-footer-fg-color: var(--bmd-text);
+  --md-footer-fg-color--light: var(--bmd-muted);
+  --md-footer-fg-color--lighter: var(--bmd-faint);
+  --md-footer-bg-color: var(--bmd-tile);
+  --md-footer-bg-color--dark: var(--bmd-tile);
+}
+
+/* The header and the tabs: the mark's field, in both schemes. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: var(--bmd-tile);
+  --md-primary-fg-color--light: var(--bmd-surface);
+  --md-primary-fg-color--dark: var(--bmd-tile);
+  --md-primary-bg-color: var(--bmd-text);
+  --md-primary-bg-color--light: var(--bmd-muted);
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--bmd-pvw);
+}
+
+.md-header,
+.md-tabs {
+  border-bottom: 1px solid var(--bmd-tile-border);
+}
+
+.md-header {
+  box-shadow: none;
+}
+
+/* The lockup is the header's name: 32px, the mark's size there. */
+.md-header__button.md-logo img,
+.md-nav__button.md-logo img {
+  height: 1.6rem;
+}
+
+@media screen and (min-width: 76.25em) {
+  .md-header__title .md-header__topic:first-child {
+    visibility: hidden;
+  }
+}
+
+/* Buttons: green outlines, and on green, dark ink, never white. */
+.md-typeset .md-button {
+  font-family: var(--md-code-font-family);
+  font-weight: 400;
+  color: var(--md-typeset-a-color);
+  border-color: currentcolor;
+}
+
+.md-typeset .md-button--primary {
+  background-color: var(--md-typeset-a-color);
+  border-color: var(--md-typeset-a-color);
+  color: var(--md-accent-bg-color);
+}
+
+.md-typeset .md-button:focus,
+.md-typeset .md-button:hover {
+  background-color: var(--md-accent-fg-color);
+  border-color: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color);
+}
+
+/* The home page's title: `$ bmdctl` and the cursor (BRAND.md,
+ * "Wordmarks"). */
+.hero {
+  margin: 1.2rem 0 1.6rem;
+}
+
+.md-typeset .hero .title {
+  margin: 0;
+  font-family: "IBM Plex Mono", var(--md-code-font-family);
+  font-size: 2.8rem;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--bmd-text);
+}
+
+.hero .dollar {
+  font-weight: 600;
+  color: var(--bmd-pvw);
+}
+
+.hero .bmd,
+.hero .ctl {
+  letter-spacing: -.04em;
+}
+
+.hero .bmd {
+  color: var(--bmd-muted);
+}
+
+.hero .ctl {
+  font-weight: 600;
+  color: var(--bmd-text);
+}
+
+.hero .cursor {
+  display: inline-block;
+  width: .53em;
+  height: .83em;
+  margin-left: .15em;
+  background: var(--bmd-cursor);
+  animation: bmd-blink 1.1s steps(1) infinite;
+}
+
+@keyframes bmd-blink {
+  50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero .cursor { animation: none; }
+}
+
+.md-typeset .hero .tagline {
+  margin: .9rem 0 0;
+  font-family: "IBM Plex Mono", var(--md-code-font-family);
+  font-size: .85rem;
+  color: var(--bmd-faint);
+}
+
+[data-md-color-scheme="default"] .hero .dollar { color: #1E9E57; }
+[data-md-color-scheme="default"] .hero .bmd { color: #6E706C; }
+[data-md-color-scheme="default"] .md-typeset .hero .title,
+[data-md-color-scheme="default"] .hero .ctl { color: #111312; }
+[data-md-color-scheme="default"] .hero .cursor { background: #111312; }
+[data-md-color-scheme="default"] .md-typeset .hero .tagline { color: #6E706C; }
+
+/* Terminal samples: a dark panel in both schemes, as a terminal is. */
+.md-typeset .term {
+  margin: 1em 0;
+}
+
+.md-typeset .term pre {
+  /* 72 columns, as bmdctl prints, and two to spare: the code's font is
+   * .85em of the pre's, and a column .6 of it. */
+  max-width: calc(.85em * (74 * .6 + 2.3) + 2px);
+  margin: 0;
+  background: var(--bmd-surface);
+  border: 1px solid var(--bmd-tile-border);
+  border-radius: 10px;
+}
+
+.md-typeset .term pre > code {
+  padding: .9em 1.15em;
+  background: transparent;
+  color: var(--bmd-text);
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.md-typeset .term .md-code__nav {
+  display: none;  /* a sample is read, not pasted */
+}
+
+.term .prompt { color: var(--bmd-muted); }
+.term .cmd { color: var(--bmd-text); }
+.term .b { font-weight: 700; }
+.term .dim { color: var(--bmd-faint); }
+.term .pgm,
+.term .err { color: var(--bmd-pgm); font-weight: 700; }
+.term .pvw { color: var(--bmd-pvw); font-weight: 700; }
