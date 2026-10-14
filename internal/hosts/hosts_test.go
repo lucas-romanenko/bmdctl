@@ -96,7 +96,7 @@ func TestParseErrors(t *testing.T) {
 		"  - name: a\n":                                      "unexpected indented line",
 		"hosts:\n    address: x\n":                           `expected "- name: ..."`,
 		"default\n":                                          "expected",
-		"version: 3\n":                                       "reads versions 1 to 2",
+		"version: 4\n":                                       "reads versions 1 to 3",
 		"hosts:\n  - name: a\n    as: b\n    as: c\n":        "as given twice",
 	} {
 		_, err := Parse([]byte(in))
@@ -215,5 +215,115 @@ func TestVersion1(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(f.Marshal())[strings.Index(string(f.Marshal()), "version"):], "version: 2\nhosts:\n  - name: bench\n") {
 		t.Errorf("%s", f.Marshal())
+	}
+}
+
+// An alias is a short name a host goes by as well as its own: --host
+// takes it, or any unambiguous start of it, in any case. Two hosts can't
+// go by one, as an alias or a name, and an alias is one word a command
+// line can carry. A file with one is written as version 3.
+func TestAlias(t *testing.T) {
+	f := &File{Default: "Block C - TEST", Hosts: []Host{
+		{Name: "Block C - TEST", Address: "192.168.81.84", Device: "atem"},
+		{Name: "Studio B", Address: "192.168.81.86", Device: "atem"},
+		{Name: "deck", Address: "10.0.0.9", Device: "hyperdeck"},
+	}}
+	bc, sb := &f.Hosts[0], &f.Hosts[1]
+	if err := f.SetAlias(bc, "bc"); err != nil || bc.Alias != "bc" {
+		t.Fatalf("%v %+v", err, bc)
+	}
+	for spec, want := range map[string]*Host{"bc": bc, "BC": bc, "BC 1": bc, "studio": sb, "stu": sb} {
+		if h, err := f.Match(spec); err != nil || h != want {
+			t.Errorf("match %q: %v %v", spec, h, err)
+		}
+		if h, addr, err := f.Resolve(spec); err != nil || h != want || addr != want.Address {
+			t.Errorf("resolve %q: %v %q %v", spec, h, addr, err)
+		}
+	}
+	// A start of one host's alias and another's name is ambiguous.
+	if err := f.SetAlias(sb, "sb"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetAlias(&f.Hosts[2], "b2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Match("b"); err == nil || err.Error() != `"b" could be "Block C - TEST" or "deck": give more of the name` {
+		t.Errorf("b: %v", err)
+	}
+	// Match names no address: a word that isn't a host is nothing.
+	for _, spec := range []string{"progam", "studio.local", "10.0.0.99"} {
+		if h, err := f.Match(spec); h != nil || err != nil {
+			t.Errorf("match %q: %v %v", spec, h, err)
+		}
+	}
+	if h, err := f.Match("10.0.0.9:9993"); h != &f.Hosts[2] || err != nil {
+		t.Errorf("a host's address: %v %v", h, err)
+	}
+	for alias, want := range map[string]string{
+		"sb":           `"sb" is Studio B's alias already`,
+		"SB":           `"sb" is Studio B's alias already`,
+		"studio b":     `alias "studio b": one word, no spaces`,
+		"deck":         `another host goes by "deck" (10.0.0.9)`,
+		"-x":           `alias "-x": it can't start with a dash`,
+		"10.0.0.1":     `alias "10.0.0.1": that is an address`,
+		"bc\x00":       `alias "bc\x00": no control characters`,
+		"block c":       `alias "block c": one word, no spaces`,
+		"Block C-TEST": `alias "Block C-TEST": one word, no spaces`,
+	} {
+		if err := f.SetAlias(bc, alias); err == nil || err.Error() != want {
+			t.Errorf("alias %q: %v, want %s", alias, err, want)
+		}
+	}
+	if bc.Alias != "bc" {
+		t.Errorf("a refused alias changed it: %+v", bc)
+	}
+	// A new host, or a renamed one, can't take a name another goes by as
+	// its alias.
+	if err := f.Add(Host{Name: "SB", Address: "10.0.0.20", Device: "atem"}); err == nil ||
+		err.Error() != `another host goes by "sb" (192.168.81.86): give this one its own name with --as NAME` {
+		t.Errorf("add: %v", err)
+	}
+	if err := f.Rename(&f.Hosts[2], "bc"); err == nil || err.Error() != `another host goes by "bc" (192.168.81.84)` {
+		t.Errorf("rename: %v", err)
+	}
+	// A rename keeps the alias.
+	if err := f.Rename(bc, "Block D"); err != nil || bc.Alias != "bc" || f.Find("bc") != bc {
+		t.Errorf("rename: %v %+v", err, bc)
+	}
+	if errs := f.Check(); len(errs) != 0 {
+		t.Error(errs)
+	}
+	path := filepath.Join(t.TempDir(), "hosts.yml")
+	if err := f.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(path)
+	if !strings.Contains(string(b), "version: 3\n") || !strings.Contains(string(b), "  - name: Block D\n    alias: bc\n    was: Block C - TEST\n") {
+		t.Errorf("%s", b)
+	}
+	g, err := Load(path)
+	if err != nil || !reflect.DeepEqual(f, g) {
+		t.Errorf("%+v %v", g, err)
+	}
+	// Taking the aliases away writes version 2 again, which bmdctl
+	// before aliases reads.
+	for i := range f.Hosts {
+		f.SetAlias(&f.Hosts[i], "")
+	}
+	if !strings.Contains(string(f.Marshal()), "version: 2\n") {
+		t.Errorf("%s", f.Marshal())
+	}
+	// An alias twice in a hand-edited file is caught.
+	dup := &File{Hosts: []Host{{Name: "a", Alias: "x", Address: "10.0.0.1", Device: "atem"}, {Name: "b", Alias: "X", Address: "10.0.0.2", Device: "atem"},
+		{Name: "c", Alias: "a", Address: "10.0.0.3", Device: "atem"}, {Name: "d", Alias: "two words", Address: "10.0.0.4", Device: "atem"}}}
+	var all []string
+	for _, e := range dup.Check() {
+		all = append(all, e.Error())
+	}
+	if got := strings.Join(all, "\n"); got != "X is named twice\na is named twice\nd: alias \"two words\": one word, no spaces" {
+		t.Errorf("%s", got)
+	}
+	if _, err := Parse([]byte("version: 4\n")); err == nil || !strings.Contains(err.Error(), "versions 1 to 3") {
+		t.Errorf("version 4: %v", err)
 	}
 }

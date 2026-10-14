@@ -1705,6 +1705,20 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   spaces around it, no control characters, at most 100 characters. They
   match without regard to case, and go by (`Label`) `as`, else `name`;
   two hosts can't go by one name.
+- **Aliases** (#3). A device's own name is often awkward to type (`BC
+  1.2 - TEST`), so a host can have one `alias`, a short name it goes
+  by as well as its name: wherever a name is taken (`--host`, the first
+  word, `use`, `hosts rm`, MCP's and serve's host), exactly or by any
+  unambiguous start, an alias is too. An alias is one word a command
+  line carries as it is: no spaces or control characters, no leading
+  dash, not an IP address, at most 100 characters. Names and aliases
+  share one namespace, without regard to case: an alias another host goes
+  by (as its name or its alias) is refused, and so is a new or renamed
+  host's name that is another host's alias. A rename keeps the alias.
+  A file with an alias is written as `version: 3`; without one, still
+  version 2, so bmdctl v0.1.x, which refuses a key it doesn't know, reads
+  every file it could before and says "a newer one wrote it?" of one it
+  can't.
 - **Which host.** `--host`, else `$BMDCTL_HOST`, else the host the last
   `--host` named, else the default. Each is resolved (`File.Resolve`): a
   host's name in any case; else the name one went by (`was`); else an IP
