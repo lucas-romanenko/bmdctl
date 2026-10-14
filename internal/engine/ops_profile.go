@@ -301,7 +301,8 @@ func pointStillsAt(p *profile.Profile, files map[int]string) {
 // the transfers run back to back. A slot that fails is skipped and
 // reported, as atemwire logs and skips it; another slot with the same
 // picture reports the same failure rather than waiting out the same
-// transfer again.
+// transfer again. When the session goes, a still that needs a download
+// ends the capture, which returns the slots done so far (bmdwire#31).
 func (c *call) downloadImages(param, prefix string) ([]ImageResult, error) {
 	st := c.state
 	m := st.VideoMode.Mode
@@ -407,6 +408,18 @@ func (c *call) downloadImages(param, prefix string) ([]ImageResult, error) {
 				return nil, err
 			}
 			continue
+		}
+		// A download needs a ready session: when it has gone (a
+		// re-handshake), stop and return the slots done so far, as atemwire
+		// does since bmdwire#31.
+		select {
+		case <-c.sess.Ready():
+		default:
+			if err := collect(); err != nil {
+				return nil, err
+			}
+			c.e.log.Warn("media pool capture stopped: the session is not ready", "done", i, "of", len(stills))
+			return out[:i], nil
 		}
 		fetched++
 		n := len(toFetch)
