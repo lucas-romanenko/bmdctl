@@ -154,14 +154,37 @@ func TestStalePacketsDuringARehandshake(t *testing.T) {
 	}
 }
 
-// bmdwire#13: if the dump's first packet is lost, the second becomes the
-// sequence baseline and the first can't be recovered; here it carried the
-// video mode. atemwire's wait_ready waits out its whole timeout for a video
-// mode that will never come. Dial fails at once instead, and says which
-// sequence number arrived first.
-func TestLosingTheFirstDumpPacketFailsDialFast(t *testing.T) {
+// bmdwire#13 (bmdwire#27): a state dump that ends without its video mode
+// lost its first packet for good, so the session handshakes again for a
+// fresh dump at once, and Dial returns a session that has one.
+func TestLosingTheFirstDumpPacketRehandshakes(t *testing.T) {
 	sw := newFake(t)
 	sw.DropSequences(1)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := time.Now()
+	s, err := (&atem.Dialer{Conn: sw}).Dial(ctx, fakeatem.Address)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer s.Close()
+	if s.State().VideoMode.Mode == nil {
+		t.Error("no video mode")
+	}
+	if n := sw.Handshakes(); n != 2 {
+		t.Errorf("%d handshakes, want 2", n)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("Dial took %v", d)
+	}
+}
+
+// After incompleteDumpRetries fresh dumps that lost their first packet
+// too, Dial fails, saying which sequence number came first, rather than
+// handshaking for ever (atemwire then carries on without a video mode).
+func TestAFirstDumpPacketAlwaysLostFailsDial(t *testing.T) {
+	sw := newFake(t)
+	sw.DropSequencesAlways(1)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	start := time.Now()
@@ -169,8 +192,11 @@ func TestLosingTheFirstDumpPacketFailsDialFast(t *testing.T) {
 	if !errors.Is(err, atem.ErrIncompleteDump) || !strings.Contains(err.Error(), "sequence 2") {
 		t.Fatalf("Dial: %v", err)
 	}
-	if d := time.Since(start); d > 2*time.Second {
-		t.Fatalf("Dial took %v to fail", d)
+	if n := sw.Handshakes(); n != 4 {
+		t.Errorf("%d handshakes, want 4 (the first and three more)", n)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("Dial took %v to fail", d)
 	}
 }
 

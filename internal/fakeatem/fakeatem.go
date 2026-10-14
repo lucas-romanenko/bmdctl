@@ -84,6 +84,7 @@ type Switcher struct {
 
 	dropToClient   int
 	dropSeqs       map[uint16]bool
+	dropAlways     map[uint16]bool
 	dropFromClient int
 	ackDelay       time.Duration
 	silent         bool
@@ -134,6 +135,7 @@ func New(dump []byte) *Switcher {
 
 		unanswered: map[string]bool{},
 		dropSeqs:   map[uint16]bool{},
+		dropAlways: map[uint16]bool{},
 		locks:      map[uint16]holder{},
 
 		lockQueued: map[uint16]bool{},
@@ -194,6 +196,17 @@ func (sw *Switcher) DropSequences(seqs ...uint16) {
 	defer sw.mu.Unlock()
 	for _, s := range seqs {
 		sw.dropSeqs[s] = true
+	}
+}
+
+// DropSequencesAlways is DropSequences for every session: each new
+// session numbers its packets from 1 again, so DropSequencesAlways(1)
+// loses the first packet of every state dump.
+func (sw *Switcher) DropSequencesAlways(seqs ...uint16) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	for _, s := range seqs {
+		sw.dropAlways[s] = true
 	}
 }
 
@@ -483,6 +496,7 @@ func (sw *Switcher) sendReliable(cmds [][]byte) {
 		switch {
 		case sw.dropSeqs[sw.seq]:
 			delete(sw.dropSeqs, sw.seq)
+		case sw.dropAlways[sw.seq]:
 		case sw.dropToClient > 0:
 			sw.dropToClient--
 		default:
