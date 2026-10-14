@@ -174,6 +174,8 @@ in.
   every commit, and CI is green on the pull request.
 - A decision the code makes that bmdwire doesn't goes in
   docs/PORTING.md in the same commit, with the reason.
-- docs/GUIDE.md's samples are written by hand. If you change what a
-  command prints, check the guide's sample of it.
+- The guide's samples (docs/guide/) are written by hand. If you change
+  what a command prints, check the guide's sample of it; the quick
+  start's (docs/quickstart.md) is checked against its terminal golden,
+  `quickstart.golden`, and fails until you copy the new lines in.
 - Releases are made by the maintainer, by pushing a `v*` tag.

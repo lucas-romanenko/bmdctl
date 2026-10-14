@@ -8,7 +8,7 @@
 - [ ] Commit messages are conventional (`feat(atem): ...`, `fix(cli): ...`, `docs: ...`)
 - [ ] A new decision, or a difference from bmdwire v1.3.0, is in docs/PORTING.md
 - [ ] After a command table change: `go generate ./cmd/bmdctl`
-- [ ] After an output change: `go test ./cmd/bmdctl -run TestTerminal -update`, diff read, docs/GUIDE.md checked
+- [ ] After an output change: `go test ./cmd/bmdctl -run TestTerminal -update`, diff read, docs/guide/ checked
 - [ ] New files carry the licence header for their directory (`atem/`: LGPL-3.0-only, elsewhere MIT)
 - [ ] No test contacts a real device unless built with `-tags hardware`
 

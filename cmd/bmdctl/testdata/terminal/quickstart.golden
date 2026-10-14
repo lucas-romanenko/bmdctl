@@ -1,0 +1,46 @@
+$ bmdctl connect 192.168.1.20
+<b>STUDIO A</>  <dim>PGM CAM2 · PVW CAM1 · 1080p25 · connected # ms</>
+  <b>saved as "STUDIO A", now the default</>
+  <dim>tab completes input names</>
+
+$ bmdctl status
+<b>STUDIO A</>  <dim>1080p25 · session 0s, idle #s, pinned</>
+
+  ME 1        <red>PGM  CAM2</>           <green>PVW  CAM1</>
+              dip 1:05 · next background+key1 · FTB off
+  keys        1  luma  CAM4 / CAM5                                <red>on air</>
+              2  luma  BLK / BLK                                     <dim>off</>
+              3  luma  BLK / BLK                                     <dim>off</>
+              4  luma  BLK / BLK                                     <dim>off</>
+  dsk 1       CAM6 / CAM7                                         <red>on air</>
+  dsk 2       BLK / BLK                                              <dim>off</>
+  aux 1       MP1
+  aux 2       PGM
+  aux 3       BLK
+  macro       <dim>idle</>
+
+$ bmdctl inputs
+<b>STUDIO A</>  <dim>PGM CAM2 · PVW CAM1</>
+
+  <dim>   </>  BLK   Black
+  <dim>  1</>  CAM1  Camera 1                                              <green>○ PVW</>
+  <dim>  2</>  CAM2  Camera 2                                              <red>● PGM</>
+  <dim>  3</>  CAM3  Camera 3
+  <dim>  4</>  CAM4  Camera 4
+  <dim>  5</>  CAM5  Camera 5
+  <dim>  6</>  CAM6  Camera 6
+  <dim>  7</>  CAM7  Camera 7
+  <dim>   </>  Bars  Color Bars
+  <dim>   </>  COL1  Color 1
+  <dim>   </>  MP1   Media Player 1
+
+  <dim>bmdctl inputs --all adds outputs, masks and keys</>
+
+$ bmdctl preview cam3
+<b>STUDIO A</>  <dim>PGM CAM2 · PVW CAM1</>
+  preview     CAM1 → <green>CAM3</>                                           <dim># ms</>
+
+$ bmdctl cut
+<b>STUDIO A</>  <dim>PGM CAM2 · PVW CAM3</>
+  cut         <red>CAM3</> on program · <green>CAM2</> on preview                     <dim># ms</>
+
