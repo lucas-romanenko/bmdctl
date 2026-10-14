@@ -91,12 +91,16 @@ var refFiles = []refItem{
 	{"$XDG_RUNTIME_DIR/bmdctl.sock", "The engine's socket; a lock file beside it."},
 }
 
-// commandsDoc is docs/COMMANDS.md: the CLI's reference, then the table.
-func commandsDoc(r *table.Registry) string {
+// commandsDocs are docs/COMMANDS.md, the CLI's reference and an index of
+// the commands by group, and a page per group in docs/commands, which the
+// documentation site shows: the path under docs/, then the page.
+// TestCommandsDoc checks the copies in git; go generate writes them.
+//
+//go:generate go test -run TestCommandsDoc -update .
+func commandsDocs(r *table.Registry) map[string]string {
+	docs := map[string]string{}
 	var b strings.Builder
-	md := r.Markdown()
-	head, body, _ := strings.Cut(md, "\n## ")
-	b.WriteString(head)
+	b.WriteString(r.MarkdownHead())
 	b.WriteString("\n## The command line\n\n```\nbmdctl [HOST] [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag value ...]\n```\n")
 	section := func(title string, items []refItem, code bool) {
 		fmt.Fprintf(&b, "\n### %s\n\n", title)
@@ -114,7 +118,54 @@ func commandsDoc(r *table.Registry) string {
 	section("Exit status", refExit, false)
 	section("Environment", refEnv, true)
 	section("Files", refFiles, true)
-	b.WriteString("\n## " + body)
+	for _, d := range r.Devices() {
+		fmt.Fprintf(&b, "\n## %s\n", d)
+		for _, g := range r.Groups(d) {
+			page := "commands/" + d + "-" + g.Name + ".md"
+			fmt.Fprintf(&b, "\n### [%s](%s)\n\n", g.Name, page)
+			if g.Summary != "" {
+				fmt.Fprintf(&b, "%s\n\n", g.Summary)
+			}
+			var links []string
+			for _, e := range r.GroupEntries(d, g.Name) {
+				links = append(links, fmt.Sprintf("[`%s`](%s#%s)", e.Path, page, anchor("bmdctl "+d+" "+e.Usage())))
+			}
+			b.WriteString(strings.Join(links, " · ") + "\n")
+			docs[page] = groupDoc(r, d, g)
+		}
+	}
+	docs["COMMANDS.md"] = b.String()
+	return docs
+}
+
+// groupDoc is a group's page: its title and summary, then its entries.
+func groupDoc(r *table.Registry, device string, g table.Group) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s: %s\n\n", device, g.Name)
+	b.WriteString("Generated from the command table (`internal/table`); do not edit. After\n")
+	b.WriteString("changing a table, run `go generate ./cmd/bmdctl`.\n\n")
+	if g.Summary != "" {
+		fmt.Fprintf(&b, "%s\n\n", g.Summary)
+	}
+	b.WriteString("[COMMANDS.md](../COMMANDS.md) says how to read an entry, and lists the\n")
+	b.WriteString("flags every command takes and the built-in commands.\n")
+	b.WriteString(r.GroupMarkdown(device, g.Name))
+	return b.String()
+}
+
+// anchor is the fragment a heading gets, on GitHub and on the site alike
+// for the characters a usage has: lower case, punctuation dropped, a
+// space a hyphen.
+func anchor(heading string) string {
+	var b strings.Builder
+	for _, c := range strings.ToLower(heading) {
+		switch {
+		case c == ' ':
+			b.WriteRune('-')
+		case c == '-' || c == '_' || ('a' <= c && c <= 'z') || ('0' <= c && c <= '9'):
+			b.WriteRune(c)
+		}
+	}
 	return b.String()
 }
 
