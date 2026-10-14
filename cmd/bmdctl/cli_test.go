@@ -31,20 +31,42 @@ func TestCommandsDoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := commandsDoc(reg)
-	path := "../../docs/COMMANDS.md"
+	docs := commandsDocs(reg)
+	pages, _ := filepath.Glob("../../docs/commands/*.md")
 	if *update {
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-			t.Fatal(err)
+		for _, p := range pages {
+			if _, ok := docs["commands/"+filepath.Base(p)]; !ok {
+				os.Remove(p)
+			}
+		}
+		os.MkdirAll("../../docs/commands", 0o755)
+		for p, s := range docs {
+			if err := os.WriteFile(filepath.Join("../../docs", p), []byte(s), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		pages, _ = filepath.Glob("../../docs/commands/*.md")
+	}
+	for p, s := range docs {
+		want, err := os.ReadFile(filepath.Join("../../docs", p))
+		if err != nil || string(want) != s {
+			t.Errorf("docs/%s is stale: run go generate ./cmd/bmdctl", p)
 		}
 	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
+	for _, p := range pages {
+		if _, ok := docs["commands/"+filepath.Base(p)]; !ok {
+			t.Errorf("docs/commands/%s is no group's page: run go generate ./cmd/bmdctl", filepath.Base(p))
+		}
 	}
-	if string(want) != got {
-		t.Fatal("docs/COMMANDS.md is stale: run go test ./cmd/bmdctl -run TestCommandsDoc -update")
+}
+
+// commandsText is every page of the reference, for a test to search.
+func commandsText(r *table.Registry) string {
+	var b strings.Builder
+	for _, s := range commandsDocs(r) {
+		b.WriteString(s)
 	}
+	return b.String()
 }
 
 func TestVersion(t *testing.T) {

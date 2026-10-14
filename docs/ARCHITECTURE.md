@@ -93,7 +93,8 @@ The devices fill the registry explicitly, with no `init()`:
 
 So a new command is a table entry, and the parser, help, completion,
 the reference, the man page, the HTTP route and the MCP tool all come
-from it. `TestCommandsDoc` fails when docs/COMMANDS.md is stale;
+from it. `TestCommandsDoc` fails when docs/COMMANDS.md or a group's page in
+docs/commands/ is stale;
 `TestEveryCommandRuns` sends every entry to the fake switcher;
 `TestExamples` runs every example through the checks a typed line gets.
 

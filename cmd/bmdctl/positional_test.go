@@ -101,9 +101,9 @@ func TestOldFlagForm(t *testing.T) {
 		t.Errorf("help:\n%s", help)
 	}
 	reg, _ := engine.NewRegistry()
-	md := commandsDoc(reg)
-	for _, want := range []string{"### `bmdctl atem program <source>`", "### `bmdctl atem usk <keyer> fill <source>`",
-		"### `bmdctl atem media download <slot> [file]`", "| `<source>` | source, 0-65535 | required |", "| `[file]` |"} {
+	md := commandsText(reg)
+	for _, want := range []string{"## `bmdctl atem program <source>`", "## `bmdctl atem usk <keyer> fill <source>`",
+		"## `bmdctl atem media download <slot> [file]`", "| `<source>` | source, 0-65535 | required |", "| `[file]` |"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("COMMANDS.md lacks %q", want)
 		}
@@ -154,7 +154,7 @@ func TestFairlightAlias(t *testing.T) {
 	// Nothing lists the alias.
 	_, top, _ := runCLI("atem", "--help")
 	reg, _ := engine.NewRegistry()
-	for what, text := range map[string]string{"atem --help": top, "COMMANDS.md": commandsDoc(reg)} {
+	for what, text := range map[string]string{"atem --help": top, "COMMANDS.md": commandsText(reg)} {
 		if strings.Contains(text, "fairlight strip") || strings.Contains(text, "fairlight ...") || strings.Contains(text, "  fairlight") {
 			t.Errorf("%s shows the alias", what)
 		}

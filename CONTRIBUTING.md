@@ -36,7 +36,7 @@ root:
 |---|---|
 | Build, vet, test (what CI runs) | `go build ./... && go vet ./... && go test -race ./...` |
 | Run the CLI from source | `go run ./cmd/bmdctl <command>` |
-| Regenerate docs/COMMANDS.md after a table change | `go test ./cmd/bmdctl -run TestCommandsDoc -update` |
+| Regenerate docs/COMMANDS.md and docs/commands/ after a table change | `go generate ./cmd/bmdctl` |
 | Rewrite the terminal goldens after an output change | `go test ./cmd/bmdctl -run TestTerminal -update`, then read the diff |
 | Regenerate the oracles | the scripts in `internal/fixtures/oracle/` and `hyperdeck/testdata/oracle/` (their READMEs) |
 | Release dry run | `goreleaser release --snapshot --clean` (builds into `dist/`, publishes nothing) |
@@ -119,8 +119,8 @@ request, with its SURFACE.md entry, and is ported from there
    already holds sends nothing.
 5. Cases in `internal/fixtures/oracle/gen_send.py`, then regenerate
    `send.json`.
-6. `go test ./cmd/bmdctl -run TestCommandsDoc -update` for
-   docs/COMMANDS.md.
+6. `go generate ./cmd/bmdctl` for docs/COMMANDS.md and the group's page
+   in docs/commands/.
 
 A command whose first word is new needs a group in `atem/groups.go`
 (`Groups`, `GroupOf`): that is its MCP tool.

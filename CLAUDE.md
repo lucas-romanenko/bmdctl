@@ -30,9 +30,10 @@ code matters: the pipeline's status is the last command's, so a failing
 `go test` reads as passing. Send it to a file and read the status, or
 check `${PIPESTATUS[0]}`.
 
-`docs/COMMANDS.md` is generated from the command table; after changing a
-table entry, regenerate it with
-`go test ./cmd/bmdctl -run TestCommandsDoc -update`. What a terminal
+`docs/COMMANDS.md` and a page per command group in `docs/commands/` are
+generated from the command table; after changing a table entry,
+regenerate them with `go generate ./cmd/bmdctl` (it runs
+`go test ./cmd/bmdctl -run TestCommandsDoc -update`). What a terminal
 shows (colour, the prompt, the spinner) is snapshot-tested in
 `cmd/bmdctl/testdata/terminal/`; after changing it, rewrite them with
 `go test ./cmd/bmdctl -run TestTerminal -update` and read the diff. The oracles in
