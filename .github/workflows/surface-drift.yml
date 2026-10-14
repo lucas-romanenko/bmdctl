@@ -1,0 +1,81 @@
+# Nightly: compare docs/SURFACE-atem.md and docs/SURFACE-hyperdeck.md
+# with the SURFACE.md each has on bmdwire main, and keep one issue, "SURFACE
+# drift from bmdwire", saying how they differ: opened when they first
+# differ, rewritten every night they still do, closed once they match.
+# The comparison is .github/scripts/surface-drift.sh; the issue body
+# names the bmdwire version the port tracks (docs/PORTING.md, the
+# "Tracks:" line). bmdwire is public, so the job's own token reads it.
+# Nothing here talks to a switcher.
+name: SURFACE drift
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+# Two runs at once could each find no issue and open one apiece.
+concurrency:
+  group: surface-drift
+
+jobs:
+  drift:
+    name: SURFACE.md against bmdwire main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        # -eo pipefail, so a failing script isn't hidden behind tee.
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TITLE: SURFACE drift from bmdwire
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: lucas-romanenko/bmdwire
+          ref: main
+          path: bmdwire
+          sparse-checkout: |
+            atemwire/docs
+            hyperdeckwire/docs
+      - name: Compare
+        id: compare
+        run: |
+          .github/scripts/surface-drift.sh bmdwire drift | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -f drift/body.md ]; then
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            { echo; cat drift/body.md; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: steps.compare.outputs.drift == 'true'
+        with:
+          name: surface-drift
+          path: drift/
+      - name: Open, rewrite or close the issue
+        env:
+          DRIFT: ${{ steps.compare.outputs.drift }}
+        run: |
+          number=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
+            --jq '.[] | select(.pull_request == null and .title == env.TITLE) | .number' | sed -n 1p)
+          if [ "$DRIFT" = true ] && [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file drift/body.md
+            echo "Rewrote #$number." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$DRIFT" = true ]; then
+            url=$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file drift/body.md)
+            echo "Opened $url." >> "$GITHUB_STEP_SUMMARY"
+          elif [ -n "$number" ]; then
+            main=$(git -C bmdwire rev-parse --short HEAD)
+            gh issue close "$number" --repo "$GITHUB_REPOSITORY" \
+              --comment "bmdctl's SURFACE copies match bmdwire main (\`$main\`) as of [this run]($RUN_URL)."
+            echo "Closed #$number." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No drift, no issue." >> "$GITHUB_STEP_SUMMARY"
+          fi
