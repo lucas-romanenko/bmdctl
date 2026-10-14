@@ -100,7 +100,10 @@ Commands come from the table in `internal/table`, and everything else is
 generated from it: the parser, `--help`, completion,
 docs/COMMANDS.md, the man page, the HTTP route and the MCP tool.
 
-**An ATEM wire command** (one command packet):
+**An ATEM wire command** (one command packet). bmdwire must have it
+first: a command or packet bmdwire doesn't have starts as a bmdwire pull
+request, with its SURFACE.md entry, and is ported from there
+(`CLAUDE.md`, "bmdwire first").
 
 1. The command type, in the `atem/cmd_*.go` file for its SURFACE-atem.md
    table, mirroring atemwire's Send class: field names, masks, clamps and
@@ -114,8 +117,8 @@ docs/COMMANDS.md, the man page, the HTTP route and the MCP tool.
 4. A reader in `internal/engine/notes.go` (`readers`), if the state holds
    the value, so the result shows before → after and a write the switcher
    already holds sends nothing.
-5. Cases in `internal/fixtures/oracle/gen_send.py` if atemwire has the
-   command, then regenerate `send.json`.
+5. Cases in `internal/fixtures/oracle/gen_send.py`, then regenerate
+   `send.json`.
 6. `go test ./cmd/bmdctl -run TestCommandsDoc -update` for
    docs/COMMANDS.md.
 
@@ -128,8 +131,9 @@ for its group, listed in `operations()` (`internal/engine/call.go`),
 with examples in `internal/engine/examples.go`. Its terminal view goes
 in `cmd/bmdctl/screen*.go`, with a golden.
 
-**A HyperDeck command** is the same in `hyperdeck/table.go` (one line)
-or `internal/engine/hyperdeck.go` (reads the deck first).
+**A HyperDeck command** is the same, hyperdeckwire first, in
+`hyperdeck/table.go` (one line) or `internal/engine/hyperdeck.go` (reads
+the deck first).
 
 `TestEveryCommandRuns` sends every entry to the fake switcher, so a new
 one has to work there too; teach the fake (`internal/fakeatem/echoes.go`
