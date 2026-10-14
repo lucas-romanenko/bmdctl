@@ -31,8 +31,8 @@ const (
 	// time taken is.
 	statusWidth = 8
 	verbWidth   = 10 // the verb column
-	indent    = "  "
-	hintPad   = "       " // under an error's message: len("error  ")
+	indent      = "  "
+	hintPad     = "       " // under an error's message: len("error  ")
 )
 
 // screenState is what an invocation has printed at a terminal, shared by

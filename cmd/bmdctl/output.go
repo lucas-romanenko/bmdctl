@@ -33,7 +33,7 @@ type printer struct {
 	written    []string // files written, in order
 	stdoutUsed bool     // a file went to stdout: print nothing else there
 	watch      *watchView
-	deckWatch  *deckWatch // a HyperDeck's watch (deck.go)
+	deckWatch  *deckWatch       // a HyperDeck's watch (deck.go)
 	sw         *engine.Switcher // the switcher, from the engine's note
 	vals       []engine.Value   // what the command set, from its note
 	connected  bool             // this request opened the session

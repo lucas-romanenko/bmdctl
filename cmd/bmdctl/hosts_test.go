@@ -501,7 +501,7 @@ func TestHostWord(t *testing.T) {
 		{[]string{"192.0.2.10", "cut"}, "192.0.2.10:9910"},
 		{[]string{"192.0.2.12", "cut"}, "192.0.2.12:9910"}, // an address no host has
 		{[]string{"STUD", "cut"}, "192.0.2.11:9910"},
-		{[]string{"atem", "bc", "cut"}, "192.0.2.10:9910"},        // after a device's word
+		{[]string{"atem", "bc", "cut"}, "192.0.2.10:9910"},            // after a device's word
 		{[]string{"--host", "stage", "bc", "cut"}, "192.0.2.13:9910"}, // --host wins
 		{[]string{"cut"}, "192.0.2.13:9910"},                          // and is the last used, as ever
 	} {
