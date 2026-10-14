@@ -4,7 +4,7 @@
 
     python3 -I gen_send.py /path/to/bmdwire send.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.3.0; its C
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.4.0; its C
 extension is stubbed. Each case calls one atemwire operation (or, for the
 fields no operation sets, the Send class itself) on a fake connection and
 records what went out: the command's bytes, an error (atemwire raised, in
@@ -640,7 +640,7 @@ for tid, slot in ((43, 0), (65535, 65535)):
     record('TransferAck', {'Transfer': tid, 'Slot': slot}, f'TransferAckCommand({tid}, {slot})', lambda c, t=tid, s=slot: c.send(FT.TransferAckCommand(t, s)))
 
 with open(OUT, 'w') as f:
-    json.dump({'bmdwire': 'v1.3.0', 'generator': 'internal/fixtures/oracle/gen_send.py', 'cases': cases},
+    json.dump({'bmdwire': 'v1.4.0', 'generator': 'internal/fixtures/oracle/gen_send.py', 'cases': cases},
               f, indent=0, sort_keys=True, ensure_ascii=False)
     f.write('\n')
 counts = {}

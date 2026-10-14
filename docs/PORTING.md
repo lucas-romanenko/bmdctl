@@ -6,12 +6,14 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.3.0-9-g785aac7
+Tracks: bmdwire v1.4.0
 
-- The port follows **bmdwire v1.3.0** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.3.0`, commit `cea58c2`). Cite that tag wherever the port refers
-  to bmdwire, in comments and docs alike, so a reader knows which version a
-  claim was checked against.
+- The port follows **bmdwire v1.4.0** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.4.0`, commit `e04920b`). It was written against **v1.3.0** (tag
+  `v1.3.0`, commit `cea58c2`), and the code and these notes cite that tag
+  wherever they were checked against it; v1.4.0 changed only what
+  "bmdwire 1.4.0" below lists, so those citations hold for it. Cite the
+  tag a claim was checked against, in comments and docs alike.
 - **Fixes merged after v1.3.0** that the port takes too, each a bmdwire
   PR settled by a capture from ATEM Software Control: bmdwire#22
   (`b89fcb7`, merged as `6ef831f`), the fly-key locations ("Commands");
@@ -23,17 +25,26 @@ Tracks: bmdwire v1.3.0-9-g785aac7
   (`internal/fixtures/README.md` says which file is at which commit; the
   rest come out byte for byte the same there). Code that follows one of
   them cites it by PR and commit; v1.3.0 everywhere else means v1.3.0
-  with these merged.
+  with these merged. All three are in v1.4.0.
+- **bmdwire 1.4.0** (bmdwire#25 to #32) fixed the bugs this port had
+  filed while porting v1.3.0, most of which the port had fixed already
+  ("Deliberate differences" says, for each, what bmdwire now does and what
+  difference remains). What the port took from it: a dump without a video
+  mode re-handshakes for a fresh one (bmdwire#27, "Deliberate differences",
+  bmdwire#13), and a save's image capture stops when the session goes,
+  returning the slots done so far (bmdwire#31, "Operations", group g). The
+  oracles it changes are regenerated at v1.4.0; the HyperDeck client's
+  stays at v1.3.0 ("HyperDeck", Verification).
 - The `Tracks:` line above says the same on one line, for workflows to
-  read: `git describe` of the bmdwire commit the port follows, here
-  `785aac7`, the merge of bmdwire#24. Keep it a line of its own, exactly
+  read: `git describe` of the bmdwire commit the port follows, here the
+  tag `v1.4.0`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at the last of those merges, whose
-  §5.4 marks each fix. It is the specification for `atem/`. Its body says
-  it describes 1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in
-  what the port follows, so it describes that apart from those marks.
+  header naming the version: bmdwire's at v1.4.0, whose §5.4 marks each
+  fix. It is the specification for `atem/`. Its body says it describes
+  1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
+  follows, so it describes that apart from those marks.
 - `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
   bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md.
 - **Drift is reported, not merged.** `.github/workflows/surface-drift.yml`
@@ -736,8 +747,9 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   90 s still upload (WebATEM's `UPLOAD_TIMEOUT`).
 - **Not ready means refused.** A transfer asked for between a disconnect and
   the end of the next state dump fails with `ErrNotReady` before anything
-  is sent; atemwire checks only `is_connected` and queues into a session
-  that is re-handshaking.
+  is sent; atemwire v1.3.0 checks only `is_connected` and queues into a
+  session that is re-handshaking. bmdwire 1.4.0 checks `is_ready` too
+  (bmdwire#31).
 - **The bulk queue** is the transport's `bulk` (`send_queue`). Upload chunks
   wait there. Each packet from the switcher once ACKs flow, and a control
   frame a second time, sends up to five (`batch_size`), as `receive_packet`
@@ -2724,7 +2736,10 @@ comes back. Indexes in results count from 1, as the flags do
     the step says what was fetched ("20 stills, 8 downloaded"). Each
     download's PNG is encoded while the next one transfers, so the
     transfers run back to back; a picture whose download failed is
-    reported for its other slots rather than tried again.
+    reported for its other slots rather than tried again. When the
+    session goes, the first still that needs a download ends the capture,
+    which returns the slots done so far, as `download_media_pool_images`
+    does since bmdwire#31 (`TestProfileSaveStopsWhenTheSessionGoes`).
   - **File names** (`mediaPoolFiles`). atemwire's XML names
     `ATEM Media Pool/<raw name>.png` and gives an unnamed slot no path,
     while the file needs a safe name (`fileName`), so the two could
@@ -2928,8 +2943,9 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   timecode: HH:MM:SS:FF`, checked for that form), `Notify` and `Play`'s
   false loop and single clip. The CLI marks these unverified.
 - **Deliberate differences**, each a trap of SURFACE-hyperdeck.md §5.4
-  fixed rather than copied, with a test; the first four are filed
-  against bmdwire (label follow-up):
+  fixed rather than copied, with a test; the first four were filed
+  against bmdwire, and hyperdeckwire 1.4.0 fixed them the same way
+  (bmdwire#32), so they are differences from v1.3.0 only:
   - **A timeout ends the session** (§5.4 item 1): an answer later than
     its deadline would be read as the next command's. The owner checks
     the oldest waiter's deadline every 100 ms. `TestATimeoutEndsTheSession`;
@@ -2952,8 +2968,16 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
     into a socket it found closed and reads its end again; the session has
     ended and returns `ErrClosed`. The oracle test expects that for calls
     after a `ConnectionError`.
-- **Verification.** `hyperdeck/testdata/oracle/client.json`
-  (`gen_client.py`) records hyperdeckwire v1.3.0's real client in 747
+- **Verification.** `hyperdeck/testdata/oracle/client.json` stays at
+  v1.3.0. hyperdeckwire 1.4.0 drops an answer already buffered when it
+  sends a request (bmdwire#19, #32), and `gen_client.py`'s fake socket
+  hands the client the whole session on its first read, so at 1.4.0 it
+  records that drop in 724 of the 747 sessions instead of the client's
+  work. Regenerating needs the socket to release each answer only after
+  its request, as `TestClientMatchesHyperdeckwire`'s gated connection
+  already does; until then the 1.4.0 behaviours are pinned by bmdctl's
+  own tests (the differences above). The file (`gen_client.py`) records
+  hyperdeckwire v1.3.0's real client in 747
   scripted sessions, 872 calls: the bytes sent, how far into the stream it
   had read, and the result or exception. `TestClientMatchesHyperdeckwire`
   replays each through a `Bare` Session on a connection that gives it, call
@@ -3115,9 +3139,10 @@ deliberate fix later, recorded here as such when it is made.
 
 Bugs in bmdwire v1.3.0 the port fixes instead of copying. Each is filed
 against bmdwire (`github.com/lucas-romanenko/bmdwire/issues/<n>`), and each
-has a test that fails on bmdwire's behaviour: against the fake switcher
-(`atem/fake_test.go`), or for the macro codec in
-`atem/macro/differences_test.go`.
+has a test that fails on bmdwire v1.3.0's behaviour: against the fake
+switcher (`atem/fake_test.go`), or for the macro codec in
+`atem/macro/differences_test.go`. bmdwire 1.4.0 fixed them all; each
+says what it does now and what difference, if any, remains.
 
 - **bmdwire#11: the silence timeout counts accepted inbound packets
   only.** atemwire's UDP thread times out when `select()` has slept 5 s,
@@ -3129,7 +3154,8 @@ has a test that fails on bmdwire's behaviour: against the fake switcher
   (bmdwire#12), and on each SYN, so every handshake gets a full window.
   Our own sends, resends and goodbyes never count.
   `TestSilenceIgnoresOwnSendsAndForeignDatagrams`; at the transport level
-  `TestSilenceTimeoutReconnects`.
+  `TestSilenceTimeoutReconnects`. bmdwire 1.4.0 does the same
+  (bmdwire#25): no longer a difference.
 - **bmdwire#12: stale packets during a re-handshake are dropped.** After a
   silence the switcher goes on resending the old session for a while.
   atemwire checks the session id only in `_handshake`, so those packets
@@ -3147,26 +3173,29 @@ has a test that fails on bmdwire's behaviour: against the fake switcher
   stall, not a hang. `TestStalePacketsDuringARehandshake` (the fake sends
   old-session packets before its SYN reply and again before the new dump);
   `TestTransportDropsStaleSessionPackets` follows the issue's script.
-- **bmdwire#13: a dump without a video mode fails Dial at once.** The
-  issue offers two fixes. (A) expects a new session's first reliable
-  sequence number, so a lost first packet stalls the ACK and is resent
-  like any other. (B) fails fast. A needs that number to be fixed, and
-  nothing in bmdwire v1.3.0 proves it: no test or fixture holds a captured
-  handshake; the ACK-gap tests use 10 as the first reliable sequence, the
-  handshake test 1 after an unreliable 5; the one "first dump packet"
-  with sequence 1 (`test_lock_delivery.py`, `_data_packet(seq=1)`) is a
-  hand-built literal; and the fake switcher's dump starts at 1 only
-  because this port wrote it so. Other clients assume 1, but an assumption
-  that is wrong would make every connect stall on a gap that doesn't
-  exist. So the port takes B: when `InCm` is stored and the state has no
-  video mode, Dial fails at once with `ErrIncompleteDump`, naming the
+  bmdwire 1.4.0 does the same (bmdwire#26): no longer a difference.
+- **bmdwire#13: a dump without a video mode re-handshakes, then fails
+  Dial.** A lost first dump packet is lost for good (the first reliable
+  packet sets the receive baseline), and when it carried the video mode
+  atemwire v1.3.0's `wait_ready` waited out its 15 s. The issue offered
+  two fixes: (A) expect a new session's first reliable sequence number,
+  which nothing in bmdwire proved fixed, or (B) fail fast. bmdwire 1.4.0
+  took B its way (bmdwire#27): at an `InCm` with no video mode stored,
+  `save_field_data` raises `IncompleteStateDump` and `loop()` says goodbye
+  and re-handshakes for a fresh dump, at most `INCOMPLETE_DUMP_RETRIES`
+  (3) times in a row, the count starting again after a complete dump; then
+  it carries on without a video mode. The port does that in the session
+  (`Session.onData`, `incompleteDumpRetries`; the state still stores InCm,
+  which `TestParsersMatchAtemwire` allows for). What remains different is
+  the end: where atemwire carries on and `wait_ready` waits out its
+  timeout, Dial fails at once with `ErrIncompleteDump`, naming the
   sequence number that arrived first (`transport.firstRX`) and any parse
   error during the dump (an unknown `VidM` mode, §5.4 item 3, ends here
-  too). atemwire waits out `wait_ready`'s 15 s. After Dial a dump without
-  a video mode is logged as an error and the session carries on, as
-  atemwire's does; a forced re-handshake could loop against a switcher
-  whose `VidM` never parses. The silent loss of whatever else was in a
-  lost first packet remains (see "Traps"). `TestLosingTheFirstDumpPacketFailsDialFast`.
+  too). After Dial, the last dump without a video mode is logged and the
+  session carries on, as atemwire's does. The silent loss of whatever
+  else was in a lost first packet remains (see "Traps").
+  `TestLosingTheFirstDumpPacketRehandshakes`,
+  `TestAFirstDumpPacketAlwaysLostFailsDial`.
 - **bmdwire#14: `*XFC` is dropped.** It is the OpenSwitcher TCP proxy's
   transfer-complete event; no switcher sends it over UDP. atemwire's
   handler indexes the store's transfer queue: with none it raises
@@ -3174,6 +3203,7 @@ has a test that fails on bmdwire's behaviour: against the fake switcher
   transfer and may raise `upload-done`. Here the parser entry drops it
   unparsed whatever its length, so it can never raise and never touch the
   transfer lane. `TestXFCDoesNotLoseTheRestOfThePacket`, `TestXFCIsDropped`.
+  bmdwire 1.4.0 drops it too on UDP (bmdwire#28): no longer a difference.
 - **bmdwire#15: `LKST` is stored taken and released, per store.** atemwire
   drops a lock-taken `LKST` and stores releases bare, so stores 0 and
   0xFFFF overwrite each other and nobody can see that ASC or another
@@ -3182,7 +3212,9 @@ has a test that fails on bmdwire's behaviour: against the fake switcher
   `LKST:<store>`). The packet doesn't name the holder: a lock taken while
   this session holds none is another client's. atemwire's reactions to a
   release (forget our lock, re-request for queued work) stay release-only.
-  `TestAnotherClientsLockIsVisible`, `TestLockState`.
+  `TestAnotherClientsLockIsVisible`, `TestLockState`. bmdwire 1.4.0 stores
+  a lock taken too and raises it (bmdwire#29), still under one bare key,
+  the latest whatever its store: the per-store keys remain the difference.
 - **bmdwire#16: a Fairlight strip op with no `sourceId` encodes the
   stereo one.** For a missing or empty `sourceId`,
   `_resolve_source_id` (`atemwire/macrotransfer/fairlight.py:455-457`)
@@ -3192,8 +3224,9 @@ has a test that fails on bmdwire's behaviour: against the fake switcher
   ops in the macro downloaded on the fourth hardware run. Here the
   default is 0xFFFFFFFFFFFF0100. The decode is unchanged (unsigned, see
   "Macro codec"). `TestMissingSourceIDIsStereo`,
-  `TestStereoSourceIDRoundTrips`. `TestEncodeMatchesAtemwire` rewrites
-  bmdwire's bytes for the 42 oracle cases this changes.
+  `TestStereoSourceIDRoundTrips`. bmdwire 1.4.0 does the same
+  (bmdwire#30): the oracle, regenerated at v1.4.0, holds bmdctl's bytes
+  for the 42 cases `TestEncodeMatchesAtemwire` used to rewrite.
 
 ## SURFACE.md and the code
 

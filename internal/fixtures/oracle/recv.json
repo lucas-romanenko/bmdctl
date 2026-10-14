@@ -1,71 +1,60 @@
 {
-"bmdwire": "v1.3.0",
+"bmdwire": "v1.4.0",
 "cases": [
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "bb54aac4b8",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "9dc868ba37",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "d9cc21b2ce",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "ce9f09b43c",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "eb7e57a0ea",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "8766221624",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "d01b08646435",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "9164e7a006aadd75179d6d5c",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "error",
 "payload": "5e19fde9",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "ffffffffff",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "*XFC",
-"error": "KeyError",
 "payload": "0000000000",
-"result": "error"
+"result": "consumed"
 },
 {
 "code": "AEBP",
@@ -5660,63 +5649,63 @@ true
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "21",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "8ff2c6a33f96da",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InPr",
@@ -7892,8 +7881,15 @@ true
 },
 {
 "code": "LKST",
+"key": "LKST",
+"name": "lock-state",
 "payload": "00000100",
-"result": "consumed"
+"result": "stored",
+"value": {
+"state": true,
+"store": 0,
+"u1": 0
+}
 },
 {
 "code": "LKST",
@@ -7909,13 +7905,27 @@ true
 },
 {
 "code": "LKST",
+"key": "LKST",
+"name": "lock-state",
 "payload": "00010100",
-"result": "consumed"
+"result": "stored",
+"value": {
+"state": true,
+"store": 1,
+"u1": 0
+}
 },
 {
 "code": "LKST",
+"key": "LKST",
+"name": "lock-state",
 "payload": "00000207",
-"result": "consumed"
+"result": "stored",
+"value": {
+"state": true,
+"store": 0,
+"u1": 7
+}
 },
 {
 "code": "LKST",
@@ -15513,21 +15523,21 @@ true
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "0e0fe609",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "InCm",
-"key": "InCm",
+"error": "IncompleteStateDump",
 "payload": "adfdb7c096686aaddced94896aea803e1a",
-"result": "raw"
+"result": "error"
 },
 {
 "code": "RCPS",

@@ -136,7 +136,7 @@ func loadOracle(t *testing.T) *profileOracle {
 	data := fixtures.Bytes(t, "oracle/profile.json")
 	oracleOnce.Do(func() {
 		oracleErr = json.Unmarshal(data, &oracleData)
-		if oracleErr == nil && oracleData.Bmdwire != "v1.3.0-9-g785aac7" {
+		if oracleErr == nil && oracleData.Bmdwire != "v1.4.0" {
 			oracleErr = fmt.Errorf("oracle generated from bmdwire %s", oracleData.Bmdwire)
 		}
 	})
