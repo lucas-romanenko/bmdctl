@@ -15,7 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucas-romanenko/bmdctl/internal/engine"
+	"github.com/lucas-romanenko/bmdctl/internal/fakeclock"
 	"github.com/lucas-romanenko/bmdctl/internal/fakehyperdeck"
+	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
 
 // mcpClient talks to bmdctl mcp over pipes, as an agent's host does.
@@ -377,5 +380,42 @@ func TestMCPHostForms(t *testing.T) {
 	}
 	if _, isErr, text := m.tool("atem_switching", map[string]any{"subcommand": "cut", "host": "no such host!"}); !isErr || !strings.Contains(text, `"no such host!" is neither a host in hosts.yml nor an address`) {
 		t.Errorf("no host: %v %s", isErr, text)
+	}
+}
+
+// An MCP subscription is a watch: the session it uses isn't idle while
+// it lasts, so a pinned one outlives the hour (#7), and closes an hour
+// after the subscription ends.
+func TestMCPSubscriptionKeepsSession(t *testing.T) {
+	clock := fakeclock.New(time.Date(2026, 10, 11, 16, 55, 0, 0, time.UTC))
+	b := newBenchConfig(t, fixtures.Bytes(t, "dump/initial-dump.bin"), engine.Config{Clock: clock})
+	b.must("hosts", "add", "192.0.2.10", "--as", "studio")
+	b.must("studio", "connect")
+	session := func() *engine.SessionStatus {
+		var st struct{ Result engine.Status }
+		json.Unmarshal([]byte(b.must("engine", "status", "--json")), &st)
+		if len(st.Result.Sessions) == 0 {
+			return nil
+		}
+		return &st.Result.Sessions[0]
+	}
+	m := b.mcp(t)
+	m.request("initialize", map[string]any{"protocolVersion": "2025-11-25"}, false)
+	uri := "bmdctl://hosts/studio/state"
+	m.request("resources/subscribe", map[string]any{"uri": uri}, false)
+	eventually(t, "the subscription's watch", func() bool { s := session(); return s != nil && s.Busy == 1 })
+	clock.Advance(3 * time.Hour)
+	if s := session(); s == nil || s.Busy != 1 || !s.Pinned || s.Stale {
+		t.Fatalf("subscribed three hours: %+v", s)
+	}
+	m.request("resources/unsubscribe", map[string]any{"uri": uri}, false)
+	eventually(t, "the watch to end", func() bool { s := session(); return s != nil && s.Busy == 0 })
+	clock.Advance(59 * time.Minute)
+	if s := session(); s == nil || s.IdleS != 59*60 {
+		t.Fatalf("59 minutes after: %+v", s)
+	}
+	clock.Advance(time.Minute)
+	if s := session(); s != nil {
+		t.Fatalf("an hour after: %+v", s)
 	}
 }

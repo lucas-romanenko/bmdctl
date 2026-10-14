@@ -60,6 +60,13 @@ func newBench(t *testing.T) *bench {
 
 func newBenchDump(t *testing.T, dump []byte) *bench {
 	t.Helper()
+	return newBenchConfig(t, dump, engine.Config{})
+}
+
+// newBenchConfig is a bench whose engine starts with cfg: a fake clock,
+// say.
+func newBenchConfig(t *testing.T, dump []byte, cfg engine.Config) *bench {
+	t.Helper()
 	// A short directory: Unix socket paths are limited to about 100 bytes.
 	dir, err := os.MkdirTemp("", "bmdctl")
 	if err != nil {
@@ -73,7 +80,7 @@ func newBenchDump(t *testing.T, dump []byte) *bench {
 		"BMDCTL_SOCKET":   filepath.Join(dir, "s.sock"),
 	}}
 	b.net.EveryATEM()
-	if err := b.startEngine(engine.Config{}); err != nil {
+	if err := b.startEngine(cfg); err != nil {
 		t.Fatal(err)
 	}
 	return b

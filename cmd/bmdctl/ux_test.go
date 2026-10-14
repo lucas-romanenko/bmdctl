@@ -199,10 +199,10 @@ func TestOverview(t *testing.T) {
 	code, out, errOut := b.run()
 	collapse := func(s string) string { return regexp.MustCompile(` {2,}`).ReplaceAllString(s, "  ") }
 	want := "engine  running, pid \\d+, up \\ds, 2 sessions\n" +
-		"studio \\(192.0.2.10\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds\n" +
+		"studio \\(192.0.2.10\\)  ATEM 1 M/E Constellation HD  1080p50  ready, session \\ds, idle \\ds\n" +
 		"deck \\(192.0.2.20\\)  no session\n" +
 		"spare \\(192.0.2.11\\)  no session\n" +
-		"ATEM 1 M/E Constellation HD \\(192.0.2.50\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds  \\(default\\)\n"
+		"ATEM 1 M/E Constellation HD \\(192.0.2.50\\)  ATEM 1 M/E Constellation HD  1080p50  ready, session \\ds, idle \\ds  \\(default\\)\n"
 	if code != 0 || errOut != "" || !regexp.MustCompile("^"+want+"$").MatchString(collapse(out)) {
 		t.Errorf("overview: %d %q\n%s", code, errOut, out)
 	}

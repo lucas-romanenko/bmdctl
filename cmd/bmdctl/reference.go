@@ -32,13 +32,13 @@ var refGlobalFlags = []refItem{
 }
 
 var refBuiltins = []refItem{
-	{"bmdctl", "Show the engine (running or not, its sessions, the git commit it runs) and a line per host: its alias, its model, video mode, how long its session has been idle, and which is the default, where a command that names no host goes now. At a terminal: bmdctl's version, then a line per switcher, the default's marked *. Never starts the engine."},
+	{"bmdctl", "Show the engine (running or not, its sessions, the git commit it runs) and a line per host: its alias, its model, video mode, how long its session has been open and idle (or that a watch or a subscription is using it), whether it is pinned or stale (idle past its timeout, not yet closed), and which is the default, where a command that names no host goes now. At a terminal: bmdctl's version, then a line per switcher, the default's marked *. Never starts the engine."},
 	{"bmdctl help", "Print the help."},
 	{"bmdctl version", "Print bmdctl's version; at a terminal also the commit it was built from, the hosts file and the engine."},
 	{"bmdctl engine [--log-level L]", "Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running, and restarts one it started from another build of bmdctl; one run with bmdctl engine answers every build."},
 	{"bmdctl engine --serve [--listen ADDRESS]", "Run the engine in the foreground and serve every command over HTTP/JSON from its process, as bmdctl serve does (127.0.0.1:8880 unless --listen says otherwise): a container's command."},
 	{"bmdctl engine stop", "Stop the running engine; its sessions say goodbye to their switchers."},
-	{"bmdctl engine status", "Show the engine's version, build, pid, socket, log and sessions."},
+	{"bmdctl engine status", "Show the engine's version, build, pid, socket, log, how long a pinned session may go idle, and its sessions: each one's age, idle time, whether pinned, and when it closes, or stale."},
 	{"bmdctl hosts [list]", "List the hosts."},
 	{"bmdctl hosts add ADDRESS [--as NAME] [--device D]", "Add the device at ADDRESS by the name it gives itself, as the device that answers there (an ATEM, HyperDeck, Videohub or Ultimatte; --device says it instead): an ATEM's name as set in ATEM Setup, else its model; the others' as they report it. --as gives it another, for two devices with one name. An address added again is asked again."},
 	{"bmdctl hosts discover [--for D]", "Add every switcher that announces itself on the network (Bonjour, _switcher_ctrl._udp) within D (2s), by its own name."},

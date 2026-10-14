@@ -160,14 +160,17 @@ $ bmdctl disconnect
 STUDIO A  disconnected
 ```
 
-`bmdctl` alone lists the hosts and their sessions, and never starts the
-engine. `bmdctl status` is the switcher at a glance:
+`bmdctl` alone lists the hosts and their sessions (how long each has
+been open and idle, and whether it is pinned), and never starts the
+engine. A session past its idle timeout that hasn't closed yet (the
+machine slept through it) says `stale` until it goes. `bmdctl status`
+is the switcher at a glance:
 
 ```
 $ bmdctl
 bmdctl v0.1.0
 
-* STUDIO A  192.168.1.20  ATEM 1 M/E Constellation HD  1080p25      ● 4m
+* STUDIO A  192.168.1.20  1080p25               ● 4m · idle 12s · pinned
 
   * default · bmdctl use HOST · bmdctl help
 $ bmdctl status
@@ -701,7 +704,8 @@ version   bmdctl v0.1.0 (e8eb8b9, 2026-10-11T19:11:25Z), protocol 1
 build     MpUkle-BHtFbJgq0fFJH/soENu7Y-5cXGVrzdwhuM/KadqYJdIUmOfOSQQGaxu/1k1eVHazaCA2yhy1OyrP
 socket    /run/user/1000/bmdctl.sock
 log       /home/you/.local/state/bmdctl/engine.log
-session   192.168.1.20:9910  ready, pinned  ATEM 1 M/E Constellation HD 1080p25
+pins      close after 1h idle
+session   192.168.1.20:9910  ready, session 2h04m, idle 12s, pinned, closes in 59m48s if idle  ATEM 1 M/E Constellation HD 1080p25
 $ bmdctl engine stop
 engine stopped
 ```

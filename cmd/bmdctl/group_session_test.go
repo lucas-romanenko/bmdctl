@@ -95,7 +95,7 @@ func TestSessionCommands(t *testing.T) {
 	if out := b.must(with("status")...); !regexp.MustCompile(`\nsession     ready, idle 0s, pinned, drops at \d\d:\d\d if unused\n`).MatchString(out) {
 		t.Errorf("status when pinned:\n%s", out)
 	}
-	if out := b.must("engine", "status"); !strings.Contains(out, "ready, pinned") {
+	if out := b.must("engine", "status"); !regexp.MustCompile(`ready, session \ds, idle \ds, pinned, closes in (1h|59m\d+s) if idle`).MatchString(out) {
 		t.Errorf("engine status after connect:\n%s", out)
 	}
 	if out := b.must(with("disconnect")...); out != "ATEM 1 M/E Constellation HD (192.0.2.10)  disconnected\n" {

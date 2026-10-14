@@ -77,7 +77,7 @@ func screenStatus(p *printer, _ engine.Response, raw json.RawMessage) view {
 	if p.connectedIn == 0 {
 		var s []string
 		if r.Session.Since != nil {
-			s = append(s, "session "+ago(time.Since(*r.Session.Since)))
+			s = append(s, "session "+ago(sessionAge(r.Session)))
 		}
 		if p.sw != nil {
 			s = append(s, "idle "+ago(time.Duration(p.sw.IdleS)*time.Second))
