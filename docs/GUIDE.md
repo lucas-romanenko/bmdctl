@@ -87,6 +87,21 @@ Deck 1    192.168.1.50  hyperdeck
   name or an alias in any case, any unambiguous start of one (`--host
   "studio b"`, `--host deck`), the name a host had before a rename, or an
   address.
+- **The host as the first word:** `bmdctl bc cut` is `bmdctl --host bc
+  cut`, for that command alone: the next command without a host goes
+  where it went before. The first word takes what `--host` does, except
+  a DNS name no host has (a mistyped command would be dialled): an IP
+  address works. A word that is a command is always the command, so a
+  host called `info` needs `--host info`; `--host`, given too, wins. A
+  first word that is neither says so and lists the hosts:
+
+  ```
+  $ bmdctl progam 2
+  error  no command or host named "progam"
+         hosts: bc · studio · deck · bmdctl --help lists the commands
+  ```
+
+  In an `exec` file, a line's first word names its host the same way.
 - **`hosts discover`** adds every ATEM that announces itself over
   Bonjour within 2 seconds (`--for 5s` waits longer). Bonjour doesn't
   cross VLANs or VPNs; there, add switchers by address.

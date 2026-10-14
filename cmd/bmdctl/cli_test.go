@@ -219,7 +219,7 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 		{[]string{"--dry-run", "usk", "0", "on-air", "on"}, 1, "keyer \"0\": counted from 1: 1-256"},
 		{[]string{"--dry-run", "dsk", "on-air", "on", "--dsk", "0"}, 1, "counted from 1"},
 		{[]string{"--dry-run", "transition", "stinger", "--clip", "7000"}, 1, "does not fit"},
-		{[]string{"--dry-run", "nonsense"}, 1, "unknown command"},
+		{[]string{"--dry-run", "nonsense"}, 1, `no command or host named "nonsense"`},
 		{[]string{"atem", "--dry-run", "nonsense"}, 1, "unknown command"},
 		{[]string{"--dry-run", "transition"}, 1, "missing a subcommand"},
 		{[]string{"--fps", "0", "cut"}, 1, "--fps"},

@@ -54,6 +54,7 @@ var refBuiltins = []refItem{
 }
 
 var refNotes = []refItem{
+	{"Host", "A first word that isn't a command names the host, for that command alone: `bmdctl bc cut` is `bmdctl --host bc cut`, except that it doesn't become the host commands go to after (`bmdctl use HOST` does that). It is a host's name or alias in any case, the start of either, the name it had before a rename, its address, or any IP address; a word that is a command (a built-in, a device's word, any device's command) is always the command, and --host, given too, wins. A first word that is neither is refused, listing the hosts. After a device's word (`bmdctl atem bc cut`, `hdctl deck play`) the next word is taken the same way."},
 	{"Arguments", "A command's required arguments follow its words in the order they're said: `program 5`, `usk 1 fill cam3`, `media upload 10 logo.png`. Optional ones are --name flags, which may be shortened to any unambiguous prefix (--sat for --saturation); `[file]` in a syntax may be left out."},
 	{"Devices", "A command without a device word goes to the device type of its host, an ATEM for an address no host has; a command that device doesn't have says what the host is (`DECK 1 is a HyperDeck; bmdctl hyperdeck --help`). `bmdctl atem ...` and `bmdctl hyperdeck ...` name the device. `connect ADDRESS` asks what answers there, an ATEM (UDP 9910), a HyperDeck (TCP 9993), a Videohub (TCP 9990) or an Ultimatte (TCP 9998), all at once for 2 s, and saves it by its own name; --type says it instead. `bmdctl help` lists the device groups hosts.yml has a host of."},
 	{"Aliases", "Run as atemctl, hdctl, vhctl or ultctl, bmdctl is that device's command: `hdctl play` is `bmdctl hyperdeck play`, `atemctl cut` is `bmdctl atem cut`, and help lists that device's commands alone. Built-ins (version, hosts, exec, doctor, ...) are bmdctl's. Releases ship them as symlinks to bmdctl (copies on Windows), and install.sh links them."},
@@ -94,7 +95,7 @@ func commandsDoc(r *table.Registry) string {
 	md := r.Markdown()
 	head, body, _ := strings.Cut(md, "\n## ")
 	b.WriteString(head)
-	b.WriteString("\n## The command line\n\n```\nbmdctl [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag value ...]\n```\n")
+	b.WriteString("\n## The command line\n\n```\nbmdctl [HOST] [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [--flag value ...]\n```\n")
 	section := func(title string, items []refItem, code bool) {
 		fmt.Fprintf(&b, "\n### %s\n\n", title)
 		for _, it := range items {
@@ -182,7 +183,7 @@ func manPage(r *table.Registry) string {
 	v := strings.TrimPrefix(versionString(), "bmdctl ")
 	fmt.Fprintf(&b, ".TH BMDCTL 1 \"\" \"bmdctl %s\" \"User Commands\"\n", roff(v))
 	b.WriteString(".SH NAME\nbmdctl \\- control Blackmagic Design ATEM switchers\n")
-	b.WriteString(".SH SYNOPSIS\n.B bmdctl\n[\\fB\\-\\-host\\fR \\fIH\\fR] [\\fB\\-\\-json\\fR|\\fB\\-\\-quiet\\fR] [\\fB\\-\\-yes\\fR] [\\fBatem\\fR] \\fIcommand\\fR [\\fIarguments\\fR] [\\fB\\-\\-flag\\fR \\fIvalue\\fR ...]\n")
+	b.WriteString(".SH SYNOPSIS\n.B bmdctl\n[\\fIHOST\\fR] [\\fB\\-\\-host\\fR \\fIH\\fR] [\\fB\\-\\-json\\fR|\\fB\\-\\-quiet\\fR] [\\fB\\-\\-yes\\fR] [\\fBatem\\fR] \\fIcommand\\fR [\\fIarguments\\fR] [\\fB\\-\\-flag\\fR \\fIvalue\\fR ...]\n")
 	b.WriteString(".SH DESCRIPTION\nbmdctl sends commands to ATEM switchers over their UDP protocol and reads back their state. " +
 		"Commands run through a background engine that keeps a session open to each switcher; the first command starts it. " +
 		"A command that the switcher reports back is confirmed; one without such an echo is sent and left.\n")

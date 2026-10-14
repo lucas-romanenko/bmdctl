@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -79,6 +80,9 @@ type cli struct {
 	// noRemember: --host doesn't become the last host used (exec's
 	// lines).
 	noRemember bool
+	// execHost is the host exec resolved for its lines: where a line
+	// goes unless it names its own, by --host or its first word.
+	execHost string
 	// noticed: the old --name form's notice has been printed; it is
 	// printed once per invocation, however many lines use the form.
 	noticed bool
@@ -168,13 +172,15 @@ func (c *cli) presentDevices() []string {
 }
 
 func (c *cli) usage(w io.Writer) {
-	fmt.Fprint(w, `usage: bmdctl [--host H] [--json|--quiet] [--yes] [device] <command> [arguments] [--flag value ...]
+	fmt.Fprint(w, `usage: bmdctl [HOST] [--host H] [--json|--quiet] [--yes] [device] <command> [arguments] [--flag value ...]
 
 Commands run through a background engine that keeps a session open to
-each device; the first command starts it. A command without a device
-word goes to the device --host names, as its type in hosts.yml says (an
-ATEM for an address no host has). 'bmdctl' alone shows the engine and
-each device.
+each device; the first command starts it. A first word that isn't a
+command names the host for that command alone, as --host does: a host's
+name or alias, the start of either, or an address ('bmdctl bc cut').
+A command without a device word goes to its host's device, as its type
+in hosts.yml says (an ATEM for an address no host has). 'bmdctl' alone
+shows the engine and each device.
 
 Commands:
 `)
@@ -247,6 +253,10 @@ func (c *cli) run(args []string) int {
 	if err != nil {
 		return c.fail(exitUsage, "bmdctl: %v", err)
 	}
+	words, hosted, err := c.hostWord(&g, words)
+	if err != nil {
+		return c.fail(exitUsage, "bmdctl: %v (bmdctl hosts lists them)", err)
+	}
 	if len(words) == 0 {
 		if g.help {
 			c.usage(c.stdout)
@@ -315,14 +325,81 @@ func (c *cli) run(args []string) int {
 		return c.fail(exitUsage, "bmdctl: no %s commands yet", device)
 	}
 	if !named && len(words) > 0 && !c.isCommandWord(device, words[0]) {
-		if c.deviceWith(words[0]) != "" && byHost {
+		other := c.deviceWith(words[0])
+		switch {
+		case other != "" && byHost:
 			// Another device's command: say what this host is.
 			return c.fail(exitUsage, "bmdctl: %s is %s %s; bmdctl %s --help",
 				t.label(), engine.DeviceArticle(device), engine.DeviceNames[device], device)
+		case other == "" && !hosted:
+			return c.noCommandOrHost(first)
 		}
 		return c.fail(exitUsage, "bmdctl: unknown command %q (bmdctl --help lists them)", first)
 	}
 	return c.runDevice(g, device, words, tokens)
+}
+
+// hostWord takes a host off the front of a line: bmdctl HOST COMMAND ...
+// is bmdctl --host HOST COMMAND ..., but for this command alone (the
+// host doesn't become the last one used; bmdctl use HOST changes where
+// commands go). A first word that is a command is a command; otherwise
+// one that names a host (its name or alias in any case, the start of
+// either, the name it had, its address) or is an IP address is the host.
+// A DNS name no host has is not: a mistyped command would be dialled.
+// After a device's word, as an alias binary's line starts, the next word
+// is taken the same way, a command being that device's. --host, given
+// too, wins. It reports whether it took a host; a word that could be
+// several is an error.
+func (c *cli) hostWord(g *globals, words []string) ([]string, bool, error) {
+	i := 0
+	if len(words) > 0 && slices.Contains(hosts.Devices, words[0]) {
+		i = 1
+	}
+	if i >= len(words) || i == 0 && c.isCommand(words[0]) || i == 1 && c.isCommandWord(words[0], words[1]) {
+		return words, false, nil
+	}
+	w := words[i]
+	f, _, err := c.loadHosts()
+	if err != nil {
+		return words, false, nil // resolving the target says what is wrong
+	}
+	h, err := f.Match(w)
+	if err != nil {
+		return nil, false, err
+	}
+	if h == nil && (net.ParseIP(hosts.HostPart(w)) == nil || hosts.CheckAddress(w) != nil) {
+		return words, false, nil
+	}
+	if !g.hostSet {
+		g.host, g.hostSet, g.hostWord = w, true, true
+	}
+	return slices.Delete(slices.Clone(words), i, i+1), true, nil
+}
+
+// noCommandOrHost refuses a line whose first word is neither a command
+// nor a host, listing the hosts it could have named: each by its alias,
+// else its name, quoted for a shell where it needs it.
+func (c *cli) noCommandOrHost(word string) int {
+	msg := fmt.Sprintf("no command or host named %q", word)
+	var names []string
+	if f, _, err := c.loadHosts(); err == nil {
+		for _, h := range f.Hosts {
+			names = append(names, shellQuote(cmp.Or(h.Alias, h.Label())))
+		}
+	}
+	if c.terminal() {
+		tail := "bmdctl --help lists the commands"
+		if len(names) > 0 {
+			tail = " · " + tail
+			tail = fit("hosts: "+strings.Join(names, " · "), lineWidth-len(hintPad)-width(tail)) + tail
+		}
+		c.screenError(msg, tail)
+		return exitUsage
+	}
+	if len(names) > 0 {
+		msg += "; hosts: " + strings.Join(names, ", ")
+	}
+	return c.fail(exitUsage, "bmdctl: %s (bmdctl --help lists the commands)", msg)
 }
 
 // isCommand reports whether a line's first word is a command: a

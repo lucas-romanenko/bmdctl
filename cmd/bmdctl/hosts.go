@@ -96,10 +96,11 @@ func (c *cli) setLastHost(spec string) error {
 var errNoHost = errors.New("no switcher named: give --host NAME|ADDRESS, set " + HostEnv +
 	", or make one the default with 'bmdctl hosts default NAME'")
 
-// resolveTarget finds the device a command goes to: --host, else
-// BMDCTL_HOST, else the host the last --host named, else hosts.yml's
-// default. Each is a host's name in any case, any unambiguous start of
-// one, the name it went by before, or an address (hosts.File.Resolve).
+// resolveTarget finds the device a command goes to: --host (or the
+// line's first word), else exec's host for its lines, else BMDCTL_HOST,
+// else the host the last --host named, else hosts.yml's default. Each is
+// a host's name or alias in any case, any unambiguous start of one, the
+// name it went by before, or an address (hosts.File.Resolve).
 func (c *cli) resolveTarget(g globals) (target, error) {
 	f, _, err := c.loadHosts()
 	if err != nil {
@@ -107,8 +108,12 @@ func (c *cli) resolveTarget(g globals) (target, error) {
 	}
 	var spec, from string
 	switch {
+	case g.hostWord:
+		spec, from = g.host, "host"
 	case g.hostSet:
 		spec, from = g.host, "--host"
+	case c.execHost != "":
+		spec, from = c.execHost, "--host"
 	case c.env(HostEnv) != "":
 		spec, from = c.env(HostEnv), HostEnv
 	case c.lastHost() != "":
