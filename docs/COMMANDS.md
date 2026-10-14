@@ -34,7 +34,7 @@ bmdctl [HOST] [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [
 
 ### Built-in commands
 
-- `bmdctl`: Show the engine (running or not, its sessions, the git commit it runs) and a line per host: its model, video mode, how long its session has been idle, and which is the default. At a terminal: bmdctl's version, then a line per switcher. Never starts the engine.
+- `bmdctl`: Show the engine (running or not, its sessions, the git commit it runs) and a line per host: its alias, its model, video mode, how long its session has been idle, and which is the default, where a command that names no host goes now. At a terminal: bmdctl's version, then a line per switcher, the default's marked *. Never starts the engine.
 - `bmdctl help`: Print the help.
 - `bmdctl version`: Print bmdctl's version; at a terminal also the commit it was built from, the hosts file and the engine.
 - `bmdctl engine [--log-level L]`: Run the background engine in the foreground, for systemd or Docker, logging to stderr and its log file. Any command starts one in the background when none is running, and restarts one it started from another build of bmdctl; one run with bmdctl engine answers every build.
@@ -47,6 +47,7 @@ bmdctl [HOST] [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [
 - `bmdctl hosts rm NAME`: Forget a host.
 - `bmdctl hosts alias NAME SHORT`: Give a host a short name it goes by as well as its own, wherever a name is taken: one word, not a command's, not another host's name or alias. Another alias replaces it; --rm instead of SHORT takes it away.
 - `bmdctl hosts default [NAME]`: Show the default host, or make NAME the default and the host commands go to now.
+- `bmdctl use HOST`: Make HOST the default, the host commands that name none go to from now on, without opening a session (`connect HOST` pins one too): `hosts default HOST` in two words. HOST is a host's name or alias in any case, the start of either, or its address. $BMDCTL_HOST, when set, still wins, and it says so.
 - `bmdctl exec FILE|- [--continue]`: Run one command per line, in order, to one host. Every line is checked before the first is sent; it stops at the first failure unless --continue.
 - `bmdctl completion bash|zsh|fish`: Print a shell completion script: commands, flags, host names and, while the engine runs, the switcher's input names and the indexes it has, counted from 1.
 - `bmdctl man [--dir DIR]`: Print the bmdctl(1) manual page, or write it to DIR/bmdctl.1.

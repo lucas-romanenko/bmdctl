@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -392,6 +393,79 @@ func (c *cli) hostsAlias(g globals, f *hosts.File, path string, h *hosts.Host, a
 		msg += ", was " + before
 	}
 	return c.emitLocal(g, *h, msg)
+}
+
+const useUsage = `usage: bmdctl use HOST
+
+Makes HOST the default: commands that name no host (with --host, or as
+their first word) go to it from now on. It opens no session ('bmdctl
+connect HOST' also pins one); 'bmdctl hosts default HOST' does the same.
+HOST is a host's name or alias in any case, the start of either, or its
+address. $BMDCTL_HOST, when set, still wins, and use says so. 'bmdctl'
+marks the default.
+`
+
+// useCommand makes a host the default, as hosts default does, and the
+// host commands go to now. At a terminal it names the host as a header
+// and the change as a result: the default before → it, by alias where
+// there is one.
+func (c *cli) useCommand(g globals, words, tokens []string) int {
+	if g.help {
+		fmt.Fprint(c.stdout, useUsage)
+		return exitOK
+	}
+	if len(tokens) > 0 {
+		return c.fail(exitUsage, "bmdctl use: unexpected %q", tokens[0])
+	}
+	if len(words) != 1 {
+		return c.fail(exitUsage, "bmdctl use: takes HOST\n\n%s", useUsage)
+	}
+	f, path, err := c.loadHosts()
+	if err != nil {
+		return c.fail(exitUsage, "bmdctl use: %v", err)
+	}
+	h, err := f.Match(words[0])
+	switch {
+	case err != nil:
+		return c.fail(exitUsage, "bmdctl use: %v (bmdctl hosts lists them)", err)
+	case h == nil && hosts.CheckAddress(words[0]) == nil && strings.ContainsAny(words[0], ".:"):
+		return c.fail(exitUsage, "bmdctl use: no host at %s (bmdctl hosts add %s saves it)", words[0], words[0])
+	case h == nil:
+		return c.fail(exitUsage, "bmdctl use: no host named %s (bmdctl hosts lists them)", words[0])
+	}
+	before := ""
+	if t, err := c.resolveTarget(globals{}); err == nil {
+		before = shortAddress(t.Address)
+		if t.Host != nil {
+			before = cmp.Or(t.Host.Alias, t.Host.Label())
+		}
+	}
+	already := strings.EqualFold(f.Default, h.Label()) && strings.EqualFold(c.lastHost(), h.Label())
+	if !strings.EqualFold(f.Default, h.Label()) {
+		f.Default = h.Label()
+		if err := f.Save(path); err != nil {
+			return c.fail(exitUsage, "bmdctl use: %v", err)
+		}
+	}
+	c.setLastHost(h.Label())
+	if env := c.env(HostEnv); env != "" {
+		c.notice("$%s=%s still wins over the default", HostEnv, env)
+	}
+	if !c.terminal() {
+		return c.emitLocal(g, map[string]string{"default": h.Label()}, "default host: "+h.Label())
+	}
+	after, change, status := cmp.Or(h.Alias, h.Label()), "", ""
+	switch {
+	case already:
+		change, status = after, "already"
+	case before == "" || strings.EqualFold(before, after):
+		change = after
+	default:
+		change = before + " → " + after
+	}
+	c.hostHeader(*h)
+	fmt.Fprintln(c.stdout, c.resultLine("default", change, status))
+	return exitOK
 }
 
 // hostHeader names a host at a terminal for a command that opens no

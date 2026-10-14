@@ -194,6 +194,11 @@ func (c *cli) complete(args []string) []string {
 			return match(cur, []string{"stop", "status"})
 		}
 		return nil
+	case "use":
+		if len(words) == 1 {
+			return match(cur, c.hostNames())
+		}
+		return nil
 	case "completion":
 		if len(words) == 1 {
 			return match(cur, []string{"bash", "zsh", "fish"})

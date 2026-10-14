@@ -581,3 +581,70 @@ func TestHostWord(t *testing.T) {
 		t.Errorf("exec checks a line's first word: %d %q", code, errOut)
 	}
 }
+
+// use HOST makes a host the default, where commands that name none go,
+// opening no session; bmdctl marks it. BMDCTL_HOST still wins, and it
+// says so.
+func TestUse(t *testing.T) {
+	b := newBench(t)
+	b.must("hosts", "add", "192.0.2.10", "--as", "Block C - TEST")
+	b.must("hosts", "add", "192.0.2.11", "--as", "studio")
+	b.must("hosts", "add", "192.0.2.13", "--as", "stage")
+	b.must("hosts", "alias", "Block C - TEST", "bc")
+	b.must("disconnect", "--host", "bc")
+	b.must("disconnect", "--host", "studio")
+	b.must("disconnect", "--host", "stage")
+	if out := b.must("use", "bc"); out != "default host: Block C - TEST\n" {
+		t.Errorf("use: %q", out)
+	}
+	if f := b.hostsFile(t); f.Default != "Block C - TEST" {
+		t.Errorf("hosts.yml: %+v", f)
+	}
+	if got := b.cliLastHost(); got != "Block C - TEST" {
+		t.Errorf("last host %q", got)
+	}
+	if n := len(b.dialled()); n != 3 {
+		t.Errorf("use opened a session: %d dials", n)
+	}
+	if got := b.wentTo(t, "DCut", "cut"); got != "192.0.2.10:9910" {
+		t.Errorf("cut went to %s", got)
+	}
+	// After a --host elsewhere, use moves it back.
+	b.must("--host", "stage", "cut")
+	if out := b.must(); !regexp.MustCompile(`(?m)^ +stage \(192\.0\.2\.13\) .*\(default\)$`).MatchString(out) {
+		t.Errorf("the default is where commands go:\n%s", out)
+	}
+	if out := b.must("use", "STUD", "--json"); out != `{"ok":true,"confirmed":false,"result":{"default":"studio"},"took_ms":0}`+"\n" {
+		t.Errorf("--json: %s", out)
+	}
+	if got := b.wentTo(t, "DCut", "cut"); got != "192.0.2.11:9910" {
+		t.Errorf("cut went to %s", got)
+	}
+	if out := b.must("--json"); !strings.Contains(out, `"name":"studio","address":"192.0.2.11","device":"atem","default":true`) {
+		t.Errorf("overview --json: %s", out)
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"use"}, "bmdctl use: takes HOST"},
+		{[]string{"use", "a", "b"}, "bmdctl use: takes HOST"},
+		{[]string{"use", "st"}, `bmdctl use: "st" could be "studio" or "stage": give more of the name (bmdctl hosts lists them)`},
+		{[]string{"use", "nobody"}, "bmdctl use: no host named nobody (bmdctl hosts lists them)"},
+		{[]string{"use", "192.0.2.99"}, "bmdctl use: no host at 192.0.2.99 (bmdctl hosts add 192.0.2.99 saves it)"},
+		{[]string{"use", "bc", "--pin"}, `bmdctl use: unexpected "--pin"`},
+	} {
+		if code, _, errOut := b.run(c.args...); code != exitUsage || !strings.HasPrefix(errOut, c.want) {
+			t.Errorf("%q: %d %q", c.args, code, errOut)
+		}
+	}
+	b.env[HostEnv] = "stage"
+	if code, out, errOut := b.run("use", "bc"); code != 0 || out != "default host: Block C - TEST\n" ||
+		errOut != "bmdctl: $BMDCTL_HOST=stage still wins over the default\n" {
+		t.Errorf("BMDCTL_HOST: %d %q %q", code, out, errOut)
+	}
+	delete(b.env, HostEnv)
+	if out := b.must("use", "--help"); !strings.HasPrefix(out, "usage: bmdctl use HOST\n") {
+		t.Errorf("help: %q", out)
+	}
+}

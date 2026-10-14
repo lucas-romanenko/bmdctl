@@ -185,7 +185,9 @@ func TestOverviewHasCommands(t *testing.T) {
 }
 
 // bmdctl alone: the engine, then a line per host with its model, video
-// mode, how its session stands and which is the default.
+// mode, how its session stands and which is the default: where a command
+// that names no host goes now, here the address the last --host named,
+// not hosts.yml's default.
 func TestOverview(t *testing.T) {
 	b := newBench(t)
 	b.must("hosts", "add", "192.0.2.10", "--as", "studio")
@@ -197,10 +199,10 @@ func TestOverview(t *testing.T) {
 	code, out, errOut := b.run()
 	collapse := func(s string) string { return regexp.MustCompile(` {2,}`).ReplaceAllString(s, "  ") }
 	want := "engine  running, pid \\d+, up \\ds, 2 sessions\n" +
-		"studio \\(192.0.2.10\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds  \\(default\\)\n" +
+		"studio \\(192.0.2.10\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds\n" +
 		"deck \\(192.0.2.20\\)  no session\n" +
 		"spare \\(192.0.2.11\\)  no session\n" +
-		"ATEM 1 M/E Constellation HD \\(192.0.2.50\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds\n"
+		"ATEM 1 M/E Constellation HD \\(192.0.2.50\\)  ATEM 1 M/E Constellation HD  1080p50  ready, idle \\ds  \\(default\\)\n"
 	if code != 0 || errOut != "" || !regexp.MustCompile("^"+want+"$").MatchString(collapse(out)) {
 		t.Errorf("overview: %d %q\n%s", code, errOut, out)
 	}
@@ -212,7 +214,7 @@ func TestOverview(t *testing.T) {
 		} `json:"result"`
 	}
 	if err := json.Unmarshal([]byte(b.must("--json")), &r); err != nil || !r.OK || r.Result.Engine == nil || len(r.Result.Hosts) != 4 ||
-		!r.Result.Hosts[0].Default || r.Result.Hosts[0].Session == nil || r.Result.Hosts[0].Session.VideoMode != "1080p50" ||
+		r.Result.Hosts[0].Default || !r.Result.Hosts[3].Default || r.Result.Hosts[0].Session == nil || r.Result.Hosts[0].Session.VideoMode != "1080p50" ||
 		r.Result.Hosts[2].Session != nil {
 		t.Errorf("--json: %+v %v", r, err)
 	}

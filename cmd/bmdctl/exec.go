@@ -171,7 +171,7 @@ func (c *cli) checkLine(args []string) error {
 	switch words[0] {
 	case "exec", "engine", "completion", "man", "doctor", "help", "__complete":
 		return fmt.Errorf("%s can't run inside exec", words[0])
-	case "version", "hosts":
+	case "version", "hosts", "use":
 		return nil
 	}
 	device := "atem"

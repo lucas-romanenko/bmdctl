@@ -26,6 +26,8 @@ type overviewHost struct {
 	Alias   string           `json:"alias,omitempty"`
 	Address string           `json:"address"`
 	Device  string           `json:"device"`
+	// Default: the host a command that names none goes to now
+	// ($BMDCTL_HOST, else the last --host, else hosts.yml's default).
 	Default bool             `json:"default,omitempty"`
 	Session *engine.Switcher `json:"session,omitempty"`
 }
@@ -48,10 +50,20 @@ func (c *cli) overview(g globals) int {
 	} else if !errors.Is(err, errNoEngine) {
 		return c.fail(codeFor(err), "bmdctl: %v", err)
 	}
+	// The default: where a command that names no host goes now, a host
+	// or an address no host has.
+	current, currentAddr := "", ""
+	if t, err := c.resolveTarget(globals{}); err == nil {
+		if t.Host != nil {
+			current = t.Host.Label()
+		} else {
+			currentAddr = t.Address
+		}
+	}
 	var list []overviewHost
 	used := map[int]bool{}
 	for _, h := range f.Hosts {
-		oh := overviewHost{Name: h.Label(), Alias: h.Alias, Address: h.Address, Device: h.Device, Default: strings.EqualFold(h.Label(), f.Default)}
+		oh := overviewHost{Name: h.Label(), Alias: h.Alias, Address: h.Address, Device: h.Device, Default: strings.EqualFold(h.Label(), current)}
 		if ov != nil {
 			for i, sw := range ov.Switchers {
 				if !used[i] && hosts.SameAddress(sw.Host, h.Address) {
@@ -65,7 +77,8 @@ func (c *cli) overview(g globals) int {
 	if ov != nil {
 		for i, sw := range ov.Switchers {
 			if !used[i] {
-				list = append(list, overviewHost{Name: sw.Name, Address: sw.Host, Device: cmp.Or(sw.Device, "atem"), Session: &ov.Switchers[i]})
+				list = append(list, overviewHost{Name: sw.Name, Address: sw.Host, Device: cmp.Or(sw.Device, "atem"), Session: &ov.Switchers[i],
+					Default: currentAddr != "" && hosts.SameAddress(sw.Host, currentAddr)})
 			}
 		}
 	}
@@ -95,7 +108,9 @@ func (c *cli) overview(g globals) int {
 // overviewScreen is the overview at a terminal: a row per switcher, its
 // alias if any host has one, its name bold, its address, model and video
 // mode, and at the end of the line its session: how long it has been
-// open, or not connected, dim. The engine is bmdctl version's.
+// open, or not connected, dim. The default's row starts with *, in the
+// indent, and the last line says what * is. The engine is bmdctl
+// version's.
 func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string {
 	out := []string{""}
 	if len(list) == 0 {
@@ -139,11 +154,18 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 		cells = append(cells, row[:len(row)-1])
 		sessions = append(sessions, row[len(row)-1])
 	}
+	marked := false
 	for i, r := range rows(cells) {
+		if list[i].Default {
+			r, marked = "*"+r[1:], true
+		}
 		out = append(out, trailing(r, sessions[i]))
 	}
 	if mine := c.build(); ov != nil && ov.Engine.Build != "" && mine != "" && mine != ov.Engine.Build {
 		out = append(out, "", indent+c.colour(dim, "the engine runs another build of bmdctl · bmdctl engine stop"))
+	}
+	if marked {
+		return append(out, "", indent+c.colour(dim, "* default · bmdctl use HOST · bmdctl help"))
 	}
 	return append(out, "", indent+c.colour(dim, "bmdctl help"))
 }
