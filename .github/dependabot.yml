@@ -1,5 +1,6 @@
-# The module has no dependencies, so only the workflows' actions are
-# watched. Updates come weekly, as one pull request.
+# The module has no dependencies, so the workflows' actions are watched,
+# and the documentation site's Python packages (docsite/requirements.txt).
+# Updates come weekly, one pull request for each.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -9,6 +10,20 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: pip
+    directory: /docsite
+    schedule:
+      interval: weekly
+    groups:
+      docs:
+        patterns: ["*"]
+    ignore:
+      # MkDocs 2.0 drops plugins and theme overrides, which the site uses.
+      - dependency-name: mkdocs
+        versions: [">=2"]
     commit-message:
       prefix: chore
       include: scope

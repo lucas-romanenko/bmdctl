@@ -27,3 +27,26 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test -race ./...
+
+  docs:
+    name: docs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: docsite/requirements.txt
+      - name: The reference is the command table's
+        run: go generate ./cmd/bmdctl && git diff --exit-code docs/
+      - name: Install MkDocs
+        run: pip install -r docsite/requirements.txt
+      - name: Terminal colours match the CLI's goldens
+        run: python docsite/test_terminal.py
+      - name: Build
+        run: mkdocs build --strict

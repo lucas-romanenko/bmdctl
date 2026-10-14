@@ -1,0 +1,61 @@
+# Build the documentation site (mkdocs.yml, docs/) and publish it to
+# GitHub Pages, https://lucas-romanenko.github.io/bmdctl/, on a push to
+# main. The reference is generated from the command table first, so the
+# site's is the table's even if a commit forgot to regenerate it.
+#
+# A private repository has no Pages site: there the build runs and the
+# deploy is skipped. Once the repository is public, set Settings > Pages >
+# Source to "GitHub Actions" once, and the next push publishes.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: docsite/requirements.txt
+      - name: The reference, from the command table
+        run: go generate ./cmd/bmdctl
+      - name: Install MkDocs
+        run: pip install -r docsite/requirements.txt
+      - name: Build
+        run: mkdocs build --strict
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: deploy
+    needs: build
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
