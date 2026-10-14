@@ -35,7 +35,12 @@ the result or the exception; 132 cases of the three line parsers and 16 of
 `Response.params`. `TestClientMatchesHyperdeckwire` and
 `TestParsersMatchHyperdeckwire` replay them all. Regenerate against a
 bmdwire checkout at `v1.3.0` (the seed is fixed, so the file changes only
-when bmdwire or the script does):
+when bmdwire or the script does). It stays at v1.3.0 while the port
+follows v1.4.0: hyperdeckwire 1.4.0 drops an answer already buffered when
+it sends a request (bmdwire#19, #32), and this script's socket hands the
+client the whole session on its first read, so at 1.4.0 it would record
+that drop instead of the client's work (`docs/PORTING.md`, "HyperDeck",
+Verification):
 
 ```
 cd hyperdeck/testdata/oracle

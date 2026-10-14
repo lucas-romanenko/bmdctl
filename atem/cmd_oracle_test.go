@@ -69,7 +69,7 @@ func TestCommandsMatchAtemwire(t *testing.T) {
 	if err := dec.Decode(&oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.Bmdwire != "v1.3.0" {
+	if oracle.Bmdwire != "v1.4.0" {
 		t.Fatalf("oracle generated from bmdwire %s", oracle.Bmdwire)
 	}
 	types := map[string]int{}

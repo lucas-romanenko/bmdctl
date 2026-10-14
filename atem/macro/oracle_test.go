@@ -63,7 +63,7 @@ func loadOracle(t *testing.T) oracle {
 	if err := json.Unmarshal(fixtures.Bytes(t, "oracle/macro.json"), &o); err != nil {
 		t.Fatal(err)
 	}
-	if o.Bmdwire != "v1.3.0-9-g785aac7" {
+	if o.Bmdwire != "v1.4.0" {
 		t.Fatalf("oracle generated from bmdwire %s", o.Bmdwire)
 	}
 	return o
@@ -213,26 +213,16 @@ func TestDecodeMatchesAtemwire(t *testing.T) {
 	t.Logf("%d decode cases %v, recorded with Python %s", len(o.Decode), counts, o.Python)
 }
 
-// stereoDefault is where bmdctl's encoder differs from bmdwire v1.3.0's
-// on purpose (PORTING.md, "Deliberate differences"): a Fairlight strip op
-// with no sourceId, or an empty one, gets the stereo sourceId
-// 0xFFFFFFFFFFFF0100 where bmdwire writes 0xFFFFFFFFFFFF0000. It rewrites
-// bmdwire's bytes for such a case to bmdctl's, and reports whether it did.
-func stereoDefault(t *testing.T, op Op, want oracleResult) (oracleResult, bool) {
-	t.Helper()
-	if want.Bytes == nil || !strings.HasPrefix(op.ID, "FairlightAudioMixerInputSource") {
-		return want, false
+// noSourceID: op is a Fairlight strip op with no sourceId, or an empty
+// one, which encodes the stereo strip's 0xFFFFFFFFFFFF0100. bmdctl did so
+// first; bmdwire v1.4.0 does too (bmdwire#16, bmdwire#30), so the oracle
+// holds those bytes as they are.
+func noSourceID(op Op) bool {
+	if !strings.HasPrefix(op.ID, "FairlightAudioMixerInputSource") {
+		return false
 	}
-	if v, ok := op.Get("sourceId"); ok && v != "" {
-		return want, false
-	}
-	b := *want.Bytes
-	if len(b) < 32 || b[16:32] != "0000ffffffffffff" {
-		t.Fatalf("%s %q: bmdwire's bytes %s don't carry its default sourceId", op.ID, op.Params, b)
-	}
-	b = b[:16] + "0001ffffffffffff" + b[32:]
-	want.Bytes = &b
-	return want, true
+	v, ok := op.Get("sourceId")
+	return !ok || v == ""
 }
 
 // Every op dict encodes as atemwire's encode_single_op encodes it, or
@@ -248,11 +238,10 @@ func TestEncodeMatchesAtemwire(t *testing.T) {
 			where = where[:300] + "..."
 		}
 		b, err := EncodeOp(op)
-		want, rewritten := stereoDefault(t, op, c.oracleResult)
-		if rewritten {
+		if c.Error == "" && noSourceID(op) {
 			ndefault++
 		}
-		checkResult(t, where, b, err, want)
+		checkResult(t, where, b, err, c.oracleResult)
 		if c.Error != "" {
 			raised[c.ID] = true
 			nerr++
@@ -271,7 +260,7 @@ func TestEncodeMatchesAtemwire(t *testing.T) {
 	if ndefault == 0 {
 		t.Error("no oracle case encodes a Fairlight strip op without a sourceId")
 	}
-	t.Logf("%d encode cases, %d raising, %d with bmdctl's default sourceId", len(o.Encode), nerr, ndefault)
+	t.Logf("%d encode cases, %d raising, %d with the default sourceId", len(o.Encode), nerr, ndefault)
 }
 
 // The table has atemwire's 146 op codes, each id once.

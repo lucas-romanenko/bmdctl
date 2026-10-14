@@ -4,11 +4,11 @@
 
     python3 -I gen_readers.py /path/to/bmdwire readers.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.3.0. The C
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.4.0. The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 The readers are the functions in atemwire.messages.* whose first parameter
-is the mixerstate (``mx``): 88 of them at v1.3.0, found by introspection so
+is the mixerstate (``mx``): 88 of them at v1.4.0, found by introspection so
 none is missed. Each scenario starts from a fresh AtemProtocol and feeds it
 well-formed state packets through save_field_data, the function atemwire's
 loop() calls, then calls readers with every relevant index argument
@@ -684,7 +684,7 @@ if missing:
     raise SystemExit(f'no cases for {sorted(missing)}')
 
 with open(OUT, 'w') as f:
-    f.write('{"bmdwire":"v1.3.0","generator":"internal/fixtures/oracle/gen_readers.py",\n')
+    f.write('{"bmdwire":"v1.4.0","generator":"internal/fixtures/oracle/gen_readers.py",\n')
     f.write('"readers":' + json.dumps(sorted(READERS)) + ',\n')
     f.write('"helpers":' + json.dumps(sorted(HELPERS)) + ',\n')
     f.write('"scenarios":[\n')

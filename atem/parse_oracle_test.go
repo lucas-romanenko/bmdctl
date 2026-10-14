@@ -23,6 +23,7 @@ type oracleCase struct {
 	Code    string         `json:"code"`
 	Payload string         `json:"payload"`
 	Result  string         `json:"result"` // error, consumed, raw, stored
+	Error   string         `json:"error"`  // the exception's class, for an error
 	Name    string         `json:"name"`   // mixerstate key
 	Key     string         `json:"key"`
 	Value   map[string]any `json:"value"`
@@ -39,7 +40,7 @@ func TestParsersMatchAtemwire(t *testing.T) {
 	if err := json.Unmarshal(fixtures.Bytes(t, "oracle/recv.json"), &oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.Bmdwire != "v1.3.0" {
+	if oracle.Bmdwire != "v1.4.0" {
 		t.Fatalf("oracle generated from bmdwire %s", oracle.Bmdwire)
 	}
 	codes := map[string]bool{}
@@ -102,24 +103,26 @@ func TestParsersMatchAtemwire(t *testing.T) {
 }
 
 // deliberate rewrites an oracle case to what Go must do where bmdctl
-// differs from bmdwire v1.3.0 on purpose (docs/PORTING.md, "Deliberate
+// differs from bmdwire v1.4.0 on purpose (docs/PORTING.md, "Deliberate
 // differences").
 func deliberate(c oracleCase, payload []byte) oracleCase {
 	switch c.Code {
-	case "*XFC":
-		// bmdwire#14: dropped unparsed, never an error.
-		c.Result = "consumed"
 	case "LKST":
-		// bmdwire#15: a lock taken is stored as well as a release, keyed
-		// by store.
-		if c.Result == "error" {
-			break
+		// bmdwire#15: atemwire stores a lock taken and a release under one
+		// bare key, the latest whatever its store; here each store keeps
+		// its own.
+		if c.Result == "stored" {
+			store := uint16(payload[0])<<8 | uint16(payload[1])
+			c.Key = fmt.Sprintf("LKST:%d", store)
 		}
-		store := uint16(payload[0])<<8 | uint16(payload[1])
-		if c.Result == "consumed" {
-			c.Value = map[string]any{"store": float64(store), "state": payload[2] != 0, "u1": float64(payload[3])}
+	case "InCm":
+		// bmdwire#13: atemwire's save_field_data raises
+		// IncompleteStateDump at an InCm with no video mode stored, for its
+		// loop() to re-handshake. Here the session makes that check
+		// (Session.onData) and the state stores InCm as it always does.
+		if c.Error == "IncompleteStateDump" {
+			c.Result, c.Error, c.Key = "raw", "", "InCm"
 		}
-		c.Result, c.Name, c.Key = "stored", "lock-state", fmt.Sprintf("LKST:%d", store)
 	}
 	return c
 }
