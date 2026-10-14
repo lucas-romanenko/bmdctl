@@ -13,6 +13,8 @@ SDK, driver or ATEM Software Control is involved. A background engine keeps
 a session open to each device, and every command is also served over HTTP
 and to AI agents over MCP.
 
+ATEM verified on hardware; HyperDeck ported, not yet run on a deck.
+
 ```
 $ bmdctl connect 192.168.1.20
 STUDIO A  PGM CAM2 · PVW CAM1 · 1080p25 · connected 328 ms
