@@ -36,6 +36,16 @@ Tracks: bmdwire v1.3.0-9-g785aac7
   what the port follows, so it describes that apart from those marks.
 - `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
   bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md.
+- **Drift is reported, not merged.** `.github/workflows/surface-drift.yml`
+  compares both files every night, less their header comment, with the
+  SURFACE.md bmdwire main has beside each package, and keeps one issue,
+  "SURFACE drift from bmdwire", open while they differ: rewritten each
+  night, closed once they match. It never edits a SURFACE file; catching
+  up is a port. Until hyperdeckwire has `docs/SURFACE.md`, the hyperdeck
+  half has nothing to compare and the issue says so; once it has, make
+  that comparison required in `.github/scripts/surface-drift.sh`, as the
+  atemwire one is. Separately, bmdwire's publish workflow opens "Port
+  bmdwire v<version>" here, labelled `port`, once a release is on PyPI.
 - Where SURFACE.md and the Python code disagree, the code at v1.3.0 wins,
   as SURFACE.md itself says. Each disagreement found during the port is
   listed under "SURFACE.md and the code" at the end of this file.
