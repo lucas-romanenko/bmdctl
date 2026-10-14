@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher model so far, in eleven sessions. Its firmware was first
+One switcher model so far, in twelve sessions. Its firmware was first
 recorded in the tenth, 9.2.1; before that the rows give the protocol
 version the switcher's `_ver` packet reported, 2.30.
 
@@ -30,6 +30,7 @@ version the switcher's `_ver` packet reported, 2.30.
 | ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | The v0.1.1 release binary (darwin_arm64) on macOS, from a second machine over VPN; `bmdctl mcp` from Claude Code: its 15 tools, a state read, `program` confirmed; `watch --filter PrgI -t` | 2026-10-12 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | A `profile save` opened in ATEM Software Control 9.3.2's Restore dialog, every section listed; `profile restore --macros-only` of a name-only macro, which the switcher keeps | 2026-10-13 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile restore` of the Fairlight mixer alone (`--macros-only --macros off --audio`): a dual-mono input's halves each to their own strip, the XLR to ASC's address for it; `profile save` of a dual-mono input as `DualMono` | 2026-10-13 |
+| ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile save` of a full media pool (20 stills, 8 different): 46 s, each still 1.8 s on the wire, as long as ATEM Software Control's own downloads take (a capture) | 2026-10-14 |
 
 ## Unverified
 
@@ -487,3 +488,57 @@ fakes and, for the protocol, against bmdwire's own code.
   `--macros-only` and the Fairlight mixer; `usk keyframe-run
   --direction` by location name; macro floats in a `profile save` since
   bmdwire#24; otherwise as after the tenth run.
+
+## 2026-10-14: twelfth run, a full media pool, and ASC's save captured
+
+- **Commit:** `10e1944`, the installed binary (`v0.1.3-0.20261014141245-10e19441589c`);
+  the profile and transfer code is the same at `683d5a5`, the head of
+  main.
+- **Switcher:** TEST ATEM 2, an ATEM 1 M/E Constellation HD (model 18),
+  protocol 2.30, firmware 9.2.1 as recorded in the tenth run, 1080p25.
+- **Why:** the owner's ATEM Software Control saves a profile with a
+  full media pool in about a second; bmdctl and WebATEM take tens of
+  seconds.
+- **Run:** the owner filled all 20 still slots with 8 different 1080p
+  images (one in six slots, one in four, one in three, two in two,
+  three once). From the development server, through the engine:
+  - `media list --all`: 20 used slots, 8 different MD5 hashes.
+  - `profile save t2.xml`, timed.
+  - `watch --json --all --filter LKST` beside `media download 1`, to see
+    a lock taken and released in the watch.
+
+  Then the owner quit ATEM Software Control, opened it, let it connect,
+  saved a profile, and captured its traffic with Wireshark from the
+  connect to the save (62 s, on the ASC machine, 192.168.81.54).
+- **Result:**
+  - bmdctl's save took 46.2 s: the six macros 0.5 s, then each still
+    1.80 to 1.83 s from FTSU to the lock's release, and 0.38 to 0.59 s
+    between stills (RLE decode, the PNG, the lock's release and the
+    next request). It downloaded all 20 stills and wrote 8 PNGs (27 MB):
+    the repeats share names, and each overwrote the last.
+  - The watch showed the download's lock taken and released 1.8 s apart.
+  - ASC saved the XML and 8 images in about a second, by the owner's
+    stopwatch. The capture shows why. From 0.75 s after its hello to
+    37.3 s, ASC downloaded every used still in full, one at a time: 20
+    transfers of 8.32 MB, about 5,940 chunks of about 1,400 bytes each,
+    1.78 to 1.82 s apiece, every chunk acknowledged with FTUA, up to 153
+    chunks in flight, 17 to 39 ms (median 24) between stills. It
+    downloaded the repeats too. At the save, 61.3 s in, it downloaded
+    only the six used macro slots (three of them name-only, with no
+    ops), in 0.5 s, and no still: the images it saved are the ones it downloaded on
+    connecting.
+  - On the wire ASC differs from bmdctl in ways that cost nothing here:
+    a whole-store LOCK taken and released around each still, where
+    atemwire asks for a PLCK; FTSU's last four bytes `00 ef 67 70` for a
+    still (atemwire sends `00 d0 9b 8c`); FTUA's second field nonzero,
+    where atemwire sends 0.
+- **Changed because of it:** nothing in the code yet. A still takes as
+  long on the wire for bmdctl as for ASC, about 1.8 s on this switcher.
+  ASC's save is quick because it downloads the stills when it connects
+  and saves those; bmdctl downloads them at the save, every slot,
+  repeats included (atemwire's `download_media_pool_images` takes a
+  cache by hash, `cache_get` and `cache_put`, which the port left out),
+  and spends about 0.47 s of its own between stills. The capture's
+  protocol details go to bmdwire first (CLAUDE.md, "bmdwire first").
+  The capture, `saveall.pcapng` (956 MB), stays out of git.
+- **Not yet verified on hardware:** as after the eleventh run.
