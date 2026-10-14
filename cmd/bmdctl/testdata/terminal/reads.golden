@@ -27,8 +27,8 @@ $ bmdctl status
 $ bmdctl inputs
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
 
-  <dim>  1</>  CAM1  Camera 1                                              <green>○ PVW</>
-  <dim>  2</>  CAM2  Camera 2                                              <red>● PGM</>
+  <dim>  1</>  CAM1  Camera 1   <dim>· · · · · · · · · · · · · · · · · · · · ·</>  <green>○ PVW</>
+  <dim>  2</>  CAM2  Camera 2   <dim>· · · · · · · · · · · · · · · · · · · · ·</>  <red>● PGM</>
   <dim>   </>  Bars  Color Bars
   <dim>   </>  COL1  Color 1
   <dim>   </>  MP1   Media Player 1
@@ -38,8 +38,8 @@ $ bmdctl inputs
 $ bmdctl inputs --all
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
 
-  <dim>  1</>  CAM1  Camera 1                                              <green>○ PVW</>
-  <dim>  2</>  CAM2  Camera 2                                              <red>● PGM</>
+  <dim>  1</>  CAM1  Camera 1   <dim>· · · · · · · · · · · · · · · · · · · · ·</>  <green>○ PVW</>
+  <dim>  2</>  CAM2  Camera 2   <dim>· · · · · · · · · · · · · · · · · · · · ·</>  <red>● PGM</>
   <dim>   </>  Bars  Color Bars
   <dim>   </>  COL1  Color 1
   <dim>   </>  MP1   Media Player 1

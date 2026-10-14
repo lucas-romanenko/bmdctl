@@ -23,8 +23,8 @@ $ bmdctl inputs
 <b>STUDIO A</>  <dim>PGM CAM2 · PVW CAM1</>
 
   <dim>   </>  BLK   Black
-  <dim>  1</>  CAM1  Camera 1                                              <green>○ PVW</>
-  <dim>  2</>  CAM2  Camera 2                                              <red>● PGM</>
+  <dim>  1</>  CAM1  Camera 1   <dim>· · · · · · · · · · · · · · · · · · · · ·</>  <green>○ PVW</>
+  <dim>  2</>  CAM2  Camera 2   <dim>· · · · · · · · · · · · · · · · · · · · ·</>  <red>● PGM</>
   <dim>  3</>  CAM3  Camera 3
   <dim>  4</>  CAM4  Camera 4
   <dim>  5</>  CAM5  Camera 5

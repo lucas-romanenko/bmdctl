@@ -41,3 +41,16 @@ $ bmdctl media clear 3 --yes
 <b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
   clear       slot 3  <dim>was "Logo"</>                                    <dim># ms</>
 
+$ bmdctl media upload 3 logo.png
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  upload      slot 3  logo  720×480                                 <dim># ms</>
+
+$ bmdctl media download 3 exports/2026/october/sponsor-cards/the-long-sponsor-card.png
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  download    slot 3  logo → …e-long-sponsor-card.png  720×480      <dim># ms</>
+
+$ bmdctl profile save studios/toronto/saturday-night-show/profiles/before-the-show.xml --media-pool-images false
+<b>ATEM 1 M/E Constellation HD</>  <dim>PGM CAM2 · PVW CAM1</>
+  ✓ setup     3 macros                                              <dim># ms</>
+  profile     …/profiles/before-the-show.xml  23 KB · 3 macros      <dim># ms</>
+

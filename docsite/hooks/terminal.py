@@ -228,10 +228,13 @@ def status_row(line):
 
 
 def inputs_row(line):
+    """An input: its number dim, and on the one on program or preview a dim
+    leader to its mark."""
     m = re.match(r"^  (   |\s*\d+)  (.*)$", line)
     if not m:
         return line
-    rest = re.sub(r"● PGM$", tag("red", "● PGM"), m.group(2))
+    rest = re.sub(r"(·(?: ·)*)(\s+)(● PGM|○ PVW)$", lambda m: tag("dim", m.group(1)) + m.group(2) + m.group(3), m.group(2))
+    rest = re.sub(r"● PGM$", tag("red", "● PGM"), rest)
     rest = re.sub(r"○ PVW$", tag("green", "○ PVW"), rest)
     return f"  {tag('dim', m.group(1))}  {rest}"
 
@@ -279,6 +282,9 @@ def overview(line):
     name = re.split(r" {2,}", head[2:].strip())[-1]
     at = head.rindex(name)
     line = line[:at] + tag("b", name) + line[at + len(name):]
+    # The device's type, where its model had no room: dim.
+    line = re.sub(r"(\d+\.\d+\.\d+\.\d+(?::\d+)?  )(ATEM|HD|VH|ULT)(?=  |$)",
+                  lambda m: m.group(1) + tag("dim", m.group(2)), line)
     line = re.sub(r"(\s)(not connected)$", lambda m: m.group(1) + tag("dim", m.group(2)), line)
 
     def session(m):

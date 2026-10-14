@@ -240,6 +240,11 @@ func TestTerminalTransfers(t *testing.T) {
 	tr.run("profile", "images", "--dir", "stills")
 	tr.run("profile", "restore", "show.xml", "--yes", "--video-mode", "false")
 	tr.run("media", "clear", "3", "--yes")
+	// A long path is shortened from the left, so its name and the size
+	// after it stay (issue #6).
+	tr.run("media", "upload", "3", "logo.png")
+	tr.run("media", "download", "3", "exports/2026/october/sponsor-cards/the-long-sponsor-card.png")
+	tr.run("profile", "save", "studios/toronto/saturday-night-show/profiles/before-the-show.xml", "--media-pool-images", "false")
 	golden(t, "transfers.golden", tr.out.String())
 }
 

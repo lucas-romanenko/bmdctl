@@ -78,8 +78,8 @@ shows it in brackets:
 $ bmdctl inputs
 STUDIO A  PGM CAM2 · PVW CAM1
 
-    1  CAM1  Camera 1                                              ○ PVW
-    2  CAM2  Camera 2                                              ● PGM
+    1  CAM1  Camera 1   · · · · · · · · · · · · · · · · · · · · ·  ○ PVW
+    2  CAM2  Camera 2   · · · · · · · · · · · · · · · · · · · · ·  ● PGM
     3  CAM3  Camera 3
     4  CAM4  Camera 4
        Bars  Color Bars

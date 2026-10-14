@@ -140,6 +140,71 @@ func trailing(row, status string) string {
 	return row + strings.Repeat(" ", lineWidth-width(row)-width(status)) + status
 }
 
+// leadered is trailing with the gap between a row and its status filled
+// with a dim leader (· · ·), so the eye follows a row to a mark forty
+// columns away (inputs: ● PGM, ○ PVW). The dots sit on even columns, so
+// the rows' leaders line up; two blank columns stay at each end.
+func (c *cli) leadered(row, status string) string {
+	row = strings.TrimRight(row, " ")
+	line := trailing(row, status)
+	rw, sw := width(row), width(status)
+	if status == "" || rw+2+sw > lineWidth || lineWidth-rw-sw < 7 {
+		return line // no room, or the row was cut
+	}
+	// The first and last dot: even columns, two clear of the row and of
+	// the status.
+	first, last := rw+2, lineWidth-sw-3
+	first += first % 2
+	last -= last % 2
+	if first > last {
+		return line
+	}
+	var dots strings.Builder
+	for col := first; col <= last; col++ {
+		if col%2 == 0 {
+			dots.WriteString("·")
+		} else {
+			dots.WriteString(" ")
+		}
+	}
+	return row + strings.Repeat(" ", first-rw) + c.colour(dim, dots.String()) +
+		strings.Repeat(" ", lineWidth-sw-last-1) + status
+}
+
+// fitPath shortens a file path to n columns from the left, keeping its
+// last components (…/Desktop/4-bench.xml): what a cut from the right
+// would lose is the name and what follows it on the line. A name too long
+// alone keeps its end, the extension with it.
+func fitPath(path string, n int) string {
+	if width(path) <= n {
+		return path
+	}
+	if n < 2 {
+		return "…"
+	}
+	rs := []rune(path)
+	for i := 1; i < len(rs); i++ {
+		if rs[i] == '/' || rs[i] == '\\' {
+			if tail := "…" + string(rs[i:]); width(tail) <= n {
+				return tail
+			}
+		}
+	}
+	return "…" + string(rs[len(rs)-(n-1):])
+}
+
+// resultLinePath is resultLine for a change that names a file: before,
+// the path, after. Where the line would be too wide the path is shortened
+// from the left (fitPath), so the rest of the change and the status stay.
+func (c *cli) resultLinePath(verb, before, path, after, status string) string {
+	left := indent + c.lineNo + c.stamped() + verbCell(verb) + before
+	room := lineWidth - width(left) - width(after)
+	if status != "" {
+		room -= 2 + max(width(status), statusWidth)
+	}
+	return c.resultLine(verb, before+fitPath(path, max(room, 1))+after, status)
+}
+
 // stamped is the time of day a result starts with under -t, dim: "13:43:28  ".
 func (c *cli) stamped() string {
 	if !c.stamp {
