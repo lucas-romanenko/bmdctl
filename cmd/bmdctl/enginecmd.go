@@ -18,6 +18,7 @@ import (
 
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/paths"
+	"github.com/lucas-romanenko/bmdctl/internal/stillcache"
 )
 
 // spawnWait is how long a command waits for an engine it started.
@@ -49,6 +50,41 @@ func pinIdle(v string) (time.Duration, error) {
 		return 0, fmt.Errorf("$%s %q: %v, or 0 for never", PinIdleEnv, v, err)
 	}
 	return d, nil
+}
+
+// StillCacheEnv names the variable that sizes the engine's still cache, in
+// megabytes, read when the engine starts.
+const StillCacheEnv = "BMDCTL_STILL_CACHE_MB"
+
+// Still cache defaults: room for about 300 1080p stills, and a still no
+// save has used for 30 days goes. Only a save uses the cache (nothing
+// watches the switcher), so its age limit is longer than WebATEM's week:
+// a monthly or weekly save still finds last time's stills.
+const (
+	stillCacheMB  = 1024
+	stillCacheAge = 30 * 24 * time.Hour
+)
+
+// stillCache is the engine's cache of the media pool's stills, in the
+// cache directory's stills folder: $BMDCTL_STILL_CACHE_MB megabytes
+// (1024 unless set), or none at 0.
+func (c *cli) stillCache() (*stillcache.Cache, error) {
+	mb := int64(stillCacheMB)
+	if v := strings.TrimSpace(c.env(StillCacheEnv)); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("$%s %q: megabytes, or 0 for none", StillCacheEnv, v)
+		}
+		mb = n
+	}
+	if mb == 0 {
+		return nil, nil
+	}
+	dir, err := paths.Cache(c.env)
+	if err != nil {
+		return nil, err
+	}
+	return stillcache.New(filepath.Join(dir, "stills"), mb<<20, stillCacheAge), nil
 }
 
 // connectEngine connects to the engine, starting one in the background
@@ -208,6 +244,12 @@ func (c *cli) serveEngine(g engineFlags) int {
 	if pinErr != nil && !g.bg {
 		return c.fail(exitUsage, "bmdctl engine: %v", pinErr)
 	}
+	// So does a bad BMDCTL_STILL_CACHE_MB; one a command starts keeps
+	// the default cache.
+	stills, stillsErr := c.stillCache()
+	if stillsErr != nil && !g.bg {
+		return c.fail(exitUsage, "bmdctl engine: %v", stillsErr)
+	}
 	sock := paths.Socket(c.env)
 	l, err := engine.Listen(sock)
 	// An engine stopping (for a client of another build) holds its lock
@@ -248,8 +290,15 @@ func (c *cli) serveEngine(g engineFlags) int {
 	if pinErr != nil {
 		logger.Warn("ignoring "+PinIdleEnv, "err", pinErr, "pin_idle", engine.PinIdleTimeout)
 	}
+	if stillsErr != nil {
+		logger.Warn("ignoring "+StillCacheEnv, "err", stillsErr, "megabytes", stillCacheMB)
+		if dir, err := paths.Cache(c.env); err == nil {
+			stills = stillcache.New(filepath.Join(dir, "stills"), stillCacheMB<<20, stillCacheAge)
+		}
+	}
 	e := engine.New(c.engineConfig(engine.Config{Registry: c.reg, Logger: logger, Version: versionString(),
-		Commit: commitString(), BuildID: c.build(), Background: g.bg, Socket: sock, LogPath: logPath, PinIdle: pin}))
+		Commit: commitString(), BuildID: c.build(), Background: g.bg, Socket: sock, LogPath: logPath, PinIdle: pin,
+		Stills: stills}))
 	stop := context.AfterFunc(c.ctx, e.Stop)
 	defer stop()
 	if g.serve != "" {

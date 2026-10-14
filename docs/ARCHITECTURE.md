@@ -47,8 +47,9 @@ print, encode or serve the same response.
 | `internal/table` | MIT | The command table every device fills |
 | `internal/engine` | MIT | The background engine, its socket protocol and the operations |
 | `internal/hosts` | MIT | hosts.yml: reading, writing, resolving a name |
-| `internal/paths` | MIT | Where the config, state and socket live, per platform |
+| `internal/paths` | MIT | Where the config, state, cache and socket live, per platform |
 | `internal/mdns` | MIT | The Bonjour browse behind `hosts discover` |
+| `internal/stillcache` | MIT | The media pool's stills on disk by hash, so a profile save writes a still it has seen without downloading it again |
 | `internal/serve` | MIT | The HTTP API and its OpenAPI document |
 | `internal/mcp` | MIT | The MCP server |
 | `internal/fakeatem` | MIT | A fake switcher at the `net.PacketConn` level |
