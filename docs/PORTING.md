@@ -1628,8 +1628,13 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   conventions, exit status, environment, files), in plain ASCII roff
   (anything else as groff's `\[uXXXX]`), checked with `groff -ww` where
   groff is installed.
-- **`docs/COMMANDS.md`** starts with that same CLI reference, then the
-  table.
+- **`docs/COMMANDS.md`** starts with that same CLI reference, then an
+  index of the commands by group (the MCP tools' groups, `Groups` in
+  `atem/groups.go` and `hyperdeck/groups.go`); each group's entries are a
+  page of their own, `docs/commands/<device>-<group>.md`, for the
+  documentation site. `go generate ./cmd/bmdctl` writes them all
+  (`TestCommandsDoc -update`); the test fails on a stale page, a page no
+  group has, or one `mkdocs.yml`'s nav leaves out.
 - **Examples** (the terminal pass): every entry carries one to three
   real command lines (`Entry.Examples`, as typed after `bmdctl`
   without the device word, the plainest first): the wire commands' in
@@ -2158,6 +2163,64 @@ under 200 characters, claude.ai's limit for an uploaded skill.
 `TestSkillCommands` runs every line of its code blocks through the checks
 a typed line gets, so a renamed flag fails the build rather than misleads
 an agent. docs/AGENTS.md says how to install it.
+
+## Documentation site (`mkdocs.yml`, `docsite/`, `docs/`)
+
+- **MkDocs Material, built from `docs/` as it is.** The docs stay plain
+  Markdown that reads on GitHub; no file moved or was renamed. The hooks
+  in `docsite/hooks/site.py` make the files a site: a top-level page
+  named in capitals is served in lower case (`INSTALL.md` at `/install/`,
+  `GUIDE.md` at `/guide/` with the guide's pages under it); a
+  `--8<-- "FILE:section"` line includes a root file's text (the README's
+  introduction and sample on the home page, all of `CONTRIBUTING.md`)
+  with its relative links rewritten for the page; a link to a file the
+  site doesn't build (Go source, the licences, and the records it leaves
+  out: PORTING.md, the SURFACE copies, BRAND.md) goes to GitHub.
+- **The guide is a page per section** (`docs/guide/`), `GUIDE.md` its
+  index, so each task has its own URL. Its MCP section joined
+  `docs/AGENTS.md`, which had its own copy of the Claude Code and Desktop
+  setup; the full path for Claude Desktop is the guide's advice.
+- **Terminal samples are coloured when the site is built**
+  (`docsite/hooks/terminal.py`): a code block that opens with `$ ` is a
+  sample, plain in the Markdown (GitHub can't colour it), and the hook
+  puts back the CLI's colours by the CLI's rules ("Terminal").
+  `docsite/test_terminal.py` takes the tags out of every terminal golden
+  and requires the hook to put them back as they were, so the site can't
+  colour a line as bmdctl doesn't. Panels are drawn as
+  `docs/terminal-mock.html` draws a terminal, 72 columns wide.
+- **Colours are BRAND.md's.** Program is `--pgm` `#D62718`, not
+  terminal-mock.html's `#FF4A3A`; on the `#141618` panel that is 3.6:1,
+  under WCAG AA's 4.5:1 for text of this size (the mock's is 5.4:1).
+  The brand was kept; changing it is the owner's call. Text is IBM Plex
+  Sans (BRAND.md names no text face; it is Plex Mono's family), code
+  Plex Mono. The header is the lockup, `docs/brand/bmdctl-lockup-dark.svg`,
+  dark in both schemes; the light scheme is BRAND.md's light column,
+  and where it has none (a surface, captions) its text colour faded.
+- **The quick start's output is the CLI's.** `TestTerminalQuickstart`
+  runs its five commands against a fake switcher named STUDIO A (the
+  fixture with a `WhoI`, black and inputs 3 to 7 named, at 1080p25) and
+  checks `docs/quickstart.md`'s samples against `quickstart.golden`,
+  times aside. The guide's samples stay hand-written.
+- **Every command line in the site's pages passes bmdctl's checks**
+  (`TestDocsCommands`, sharing `TestSkillCommands`' checker): prompted
+  lines in samples, shell blocks' commands, and `bmdctl ...` spans in
+  the text that aren't syntax. HARDWARE.md is left out: a log, in the
+  syntax of its day, never rewritten.
+- **Lists nest two spaces deep**, as GitHub reads them
+  (`mdx_truly_sane_lists`; Python-Markdown wants four), so HARDWARE.md
+  keeps its shape without being touched. An item holding more than one
+  block is set off from the next by a blank line: without one,
+  Python-Markdown runs its last paragraph into the next item.
+- **Pinned** (`docsite/requirements.txt`): mkdocs 1.6.1 (2.0 drops the
+  plugins and theme overrides the site uses, as Material's own notice
+  says), mkdocs-material 9.7.7, pymdown-extensions 12.2,
+  mdx_truly_sane_lists 1.3. Dependabot updates them, mkdocs held below 2.
+- **Publishing**: `.github/workflows/pages.yml` regenerates the reference,
+  builds with `--strict` and deploys with `actions/deploy-pages` on a
+  push to main. The deploy is skipped while the repository is private
+  (no Pages site to deploy to); once it is public, Settings > Pages >
+  Source: GitHub Actions, once. CI's `docs site` job builds with
+  `--strict` on every push.
 
 ## Release (`.goreleaser.yml`, `install.sh`, `scoop/bmdctl.json`, `Dockerfile`)
 

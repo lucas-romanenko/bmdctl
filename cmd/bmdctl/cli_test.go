@@ -58,6 +58,17 @@ func TestCommandsDoc(t *testing.T) {
 			t.Errorf("docs/commands/%s is no group's page: run go generate ./cmd/bmdctl", filepath.Base(p))
 		}
 	}
+	// The site lists every group's page (mkdocs build --strict fails on a
+	// page its nav leaves out).
+	site, err := os.ReadFile("../../mkdocs.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for p := range docs {
+		if strings.HasPrefix(p, "commands/") && !strings.Contains(string(site), ": "+p+"\n") {
+			t.Errorf("mkdocs.yml's nav doesn't list %s", p)
+		}
+	}
 }
 
 // commandsText is every page of the reference, for a test to search.

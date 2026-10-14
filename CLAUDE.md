@@ -42,6 +42,14 @@ regenerated with the scripts beside them (see the README there) against
 `../bmdwire` at the version each file records (`v1.3.0`, or for
 `macro.json` and `profile.json` `v1.3.0-9-g785aac7`).
 
+The documentation site (`mkdocs.yml`) is built from `docs/` as it is:
+`pip install -r docsite/requirements.txt`, then `mkdocs serve` to read
+it and `mkdocs build --strict` (CI's `docs site` job) to check it;
+`python3 docsite/test_terminal.py` checks its terminal colours against
+the goldens. `.github/workflows/pages.yml` publishes it on a push to
+main (skipped while the repository is private). docs/PORTING.md,
+"Documentation site", records how it is put together.
+
 Releases are GoReleaser's: the owner pushes the `v*` tag; never tag.
 `goreleaser release --snapshot --clean` is the dry run (docs/PORTING.md,
 "Release", says what was checked); `install.sh`, `scoop/bmdctl.json` and
@@ -153,6 +161,11 @@ bmdctl follows bmdwire; it never leads it.
   flag or a path changes, check the guide's sample of it.
   `TestDocsCommands` checks every command line in them; the quick
   start's output is checked against `quickstart.golden`.
+- `mkdocs.yml`, `docsite/`: the documentation site (its hooks, theme
+  CSS, requirements and the colours' test). `docs/index.md` and
+  `docs/contributing.md` are its shells for the README's and
+  CONTRIBUTING's text; `docs/guide/` the guide's pages,
+  `docs/commands/` the generated reference's.
 - `.github/banner.gif` (`banner.png` is its still), `.github/mark/`: the
   README banner and the mark. `docs/brand/social-preview.png` is the
   repository's social preview (uploaded in Settings by hand).
@@ -196,3 +209,6 @@ say why there.
   impact in a `confirm` note so a terminal can ask `[y/N]`.
 - Every table entry has one to three `Examples` (`TestExamples`).
 - Every new view gets a golden in `cmd/bmdctl/testdata/terminal/`.
+  The site colours samples by the same rules, and
+  `docsite/test_terminal.py` fails until `docsite/hooks/terminal.py`
+  colours the new golden as the CLI does.

@@ -149,6 +149,7 @@ it beside the MCP server:
   or, for one project, to its `.claude/skills/` (commit it, and everyone
   who clones the project has it). Claude loads it when a request matches
   its description.
+
 - **Claude Desktop and claude.ai**: zip the directory with `bmdctl/` at
   the zip's top (`cd skills && zip -r bmdctl.zip bmdctl`), then in
   Customize > Skills choose +, Create skill, Upload a skill, pick the zip

@@ -1,5 +1,8 @@
 # Switching
 
+Preview a source, then cut or auto it to program; set the transition,
+put a source straight on program, fade to black.
+
 ```
 $ bmdctl preview cam3
 STUDIO A  PGM CAM2 · PVW CAM1

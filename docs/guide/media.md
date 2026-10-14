@@ -1,5 +1,9 @@
 # Media pool
 
+The media pool holds the stills the media players show. `media list`
+says what each slot holds and which player shows it; the others move
+stills between files and slots.
+
 ```
 $ bmdctl media list
 STUDIO A  PGM CAM2 · PVW CAM3 · 20 stills

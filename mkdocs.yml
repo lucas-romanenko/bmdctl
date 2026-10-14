@@ -1,0 +1,140 @@
+# The documentation site, built from docs/ as it is on GitHub:
+#
+#   pip install -r docsite/requirements.txt
+#   go generate ./cmd/bmdctl    # the reference, from the command table
+#   mkdocs serve                # http://127.0.0.1:8000/bmdctl/
+#   mkdocs build --strict       # what CI runs
+#
+# docsite/hooks/ make the files a site (lower-case URLs, the README's and
+# CONTRIBUTING's text, links to GitHub, coloured terminal samples), and
+# docsite/overrides/ hold the theme's CSS. .github/workflows/pages.yml
+# publishes it on a push to main.
+
+site_name: bmdctl
+site_url: https://lucas-romanenko.github.io/bmdctl/
+site_description: >-
+  One binary that controls Blackmagic Design ATEM switchers and HyperDeck
+  recorders over the network, from a terminal, scripts and AI agents.
+site_author: Lucas Romanenko
+repo_url: https://github.com/lucas-romanenko/bmdctl
+repo_name: lucas-romanenko/bmdctl
+edit_uri: ""
+copyright: >-
+  Not affiliated with or endorsed by Blackmagic Design Pty Ltd. ATEM,
+  HyperDeck, Videohub and Ultimatte are trademarks of Blackmagic Design.
+
+theme:
+  name: material
+  custom_dir: docsite/overrides
+  logo: brand/bmdctl-lockup-dark.svg
+  favicon: brand/bmdctl-mark-32-dark.png
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Light
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Dark
+  features:
+    - navigation.tabs
+    - navigation.indexes
+    - navigation.top
+    - navigation.expand
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+extra_css:
+  - assets/stylesheets/bmdctl.css
+
+hooks:
+  - docsite/hooks/site.py
+  - docsite/hooks/terminal.py
+
+plugins:
+  - search
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - tables
+  - attr_list
+  - md_in_html
+  - pymdownx.highlight
+  - pymdownx.superfences
+  # Lists nested two spaces deep, as GitHub reads them (Python-Markdown
+  # wants four), so HARDWARE.md's sessions keep their shape.
+  - mdx_truly_sane_lists:
+      nested_indent: 2
+      truly_sane: false
+
+# Records for the people working on bmdctl, which the site links to on
+# GitHub (docsite/hooks/site.py), and the brand's sources.
+exclude_docs: |
+  /PORTING.md
+  /SURFACE-*.md
+  /BRAND.md
+  /brand/*.py
+  /brand/social-preview.*
+
+# Every page is in the nav (a group added to the command table needs its
+# page here), and every link and anchor resolves.
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+nav:
+  - Home: index.md
+  - Install: INSTALL.md
+  - Quick start: quickstart.md
+  - Guide:
+      - GUIDE.md
+      - Hosts: guide/hosts.md
+      - Switching: guide/switching.md
+      - Keys and DSKs: guide/keys.md
+      - Media pool: guide/media.md
+      - Macros: guide/macros.md
+      - Profiles: guide/profiles.md
+      - watch: guide/watch.md
+      - exec: guide/exec.md
+      - undo: guide/undo.md
+      - HyperDeck: guide/hyperdeck.md
+      - Scripting: guide/scripting.md
+      - The engine: guide/engine.md
+  - Commands:
+      - COMMANDS.md
+      - ATEM:
+          - switching: commands/atem-switching.md
+          - transition: commands/atem-transition.md
+          - usk: commands/atem-usk.md
+          - dsk: commands/atem-dsk.md
+          - audio: commands/atem-audio.md
+          - media: commands/atem-media.md
+          - macro: commands/atem-macro.md
+          - profile: commands/atem-profile.md
+          - sources: commands/atem-sources.md
+          - outputs: commands/atem-outputs.md
+          - system: commands/atem-system.md
+          - session: commands/atem-session.md
+      - HyperDeck:
+          - transport: commands/hyperdeck-transport.md
+          - session: commands/hyperdeck-session.md
+  - Agents: AGENTS.md
+  - Hardware: HARDWARE.md
+  - Architecture: ARCHITECTURE.md
+  - Contributing: contributing.md

@@ -1,5 +1,8 @@
 # Macros
 
+Macros run on the switcher by number or by name, and move between the
+switcher and files as ATEM Software Control's XML.
+
 ```
 $ bmdctl macro list
 STUDIO A  PGM CAM2 · PVW CAM3 · 100 slots

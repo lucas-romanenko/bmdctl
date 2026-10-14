@@ -47,14 +47,17 @@ Deck 1    192.168.1.50  hyperdeck
   An alias is one word, and can't be a command's (`cut`, `hosts`) or
   another host's name or alias. Another alias replaces it; `hosts alias
   bc --rm` takes it away.
+
 - **Renamed in ATEM Setup:** the next command to that switcher renames
   its host in hosts.yml and says so once. `--host` still takes the old
   name, so scripts keep working.
+
 - **Which host a command goes to:** `--host`, else `$BMDCTL_HOST`, else
   the host the last `--host` named, else the default. `--host` takes a
   name or an alias in any case, any unambiguous start of one (`--host
   "studio b"`, `--host deck`), the name a host had before a rename, or an
   address.
+
 - **The host as the first word:** `bmdctl bc cut` is `bmdctl --host bc
   cut`, for that command alone: the next command without a host goes
   where it went before. The first word takes what `--host` does, except
@@ -70,6 +73,7 @@ Deck 1    192.168.1.50  hyperdeck
   ```
 
   In an `exec` file, a line's first word names its host the same way.
+
 - **Changing the default:** `bmdctl use HOST` makes a host the one
   commands without a host go to, without connecting (`connect HOST` also
   pins a session). `bmdctl` marks it `*`. `$BMDCTL_HOST`, when set,
@@ -80,9 +84,11 @@ Deck 1    192.168.1.50  hyperdeck
   BC 1.2 - TESTTt  192.168.1.22
     default     STUDIO A → bc
   ```
+
 - **`hosts discover`** adds every ATEM that announces itself over
   Bonjour within 2 seconds (`--for 5s` waits longer). Bonjour doesn't
   cross VLANs or VPNs; there, add switchers by address.
+
 - **`hosts rm NAME`** forgets one.
 
 The file is plain YAML and safe to edit or keep in git:
