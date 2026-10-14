@@ -6,6 +6,8 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
+Tracks: bmdwire v1.3.0-9-g785aac7
+
 - The port follows **bmdwire v1.3.0** (`github.com/lucas-romanenko/bmdwire`,
   tag `v1.3.0`, commit `cea58c2`). Cite that tag wherever the port refers
   to bmdwire, in comments and docs alike, so a reader knows which version a
@@ -22,6 +24,11 @@ it. When you make a new decision, add it here in the same commit.
   rest come out byte for byte the same there). Code that follows one of
   them cites it by PR and commit; v1.3.0 everywhere else means v1.3.0
   with these merged.
+- The `Tracks:` line above says the same on one line, for workflows to
+  read: `git describe` of the bmdwire commit the port follows, here
+  `785aac7`, the merge of bmdwire#24. Keep it a line of its own, exactly
+  `Tracks: bmdwire <describe>`, and move it in the commit that finishes
+  porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
   header naming the version: bmdwire's at the last of those merges, whose
   §5.4 marks each fix. It is the specification for `atem/`. Its body says
