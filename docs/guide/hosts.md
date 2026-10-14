@@ -145,7 +145,7 @@ is the switcher at a glance:
 $ bmdctl
 bmdctl v0.1.0
 
-* STUDIO A  192.168.1.20  1080p25               ● 4m · idle 12s · pinned
+* STUDIO A  192.168.1.20  ATEM  1080p25         ● 4m · idle 12s · pinned
 
   * default · bmdctl use HOST · bmdctl help
 $ bmdctl status

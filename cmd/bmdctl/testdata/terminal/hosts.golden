@@ -29,8 +29,8 @@ $ bmdctl hosts alias studio cut
 $ bmdctl 
 <dim>bmdctl VERSION</>
 
-  bc  <b>BC 1.2 - TESTTt</>  192.0.2.10  1080p50                ● 0s<dim> · idle #s</>
-      <b>studio</>           192.0.2.11  1080p50                ● 0s<dim> · idle #s</>
+  bc  <b>BC 1.2 - TESTTt</>  192.0.2.10  <dim>ATEM</>  1080p50          ● 0s<dim> · idle #s</>
+      <b>studio</>           192.0.2.11  <dim>ATEM</>  1080p50          ● 0s<dim> · idle #s</>
 
   <dim>bmdctl help</>
 
@@ -72,9 +72,9 @@ $ bmdctl use stage
 $ bmdctl 
 <dim>bmdctl VERSION</>
 
-  bc  <b>BC 1.2 - TESTTt</>  192.0.2.10  1080p50                ● 0s<dim> · idle #s</>
-      <b>studio</>           192.0.2.11  1080p50                ● 0s<dim> · idle #s</>
-*     <b>stage</>            192.0.2.13  1080p50                ● 0s<dim> · idle #s</>
+  bc  <b>BC 1.2 - TESTTt</>  192.0.2.10  <dim>ATEM</>  1080p50          ● 0s<dim> · idle #s</>
+      <b>studio</>           192.0.2.11  <dim>ATEM</>  1080p50          ● 0s<dim> · idle #s</>
+*     <b>stage</>            192.0.2.13  <dim>ATEM</>  1080p50          ● 0s<dim> · idle #s</>
 
   <dim>* default · bmdctl use HOST · bmdctl help</>
 

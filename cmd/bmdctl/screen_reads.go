@@ -322,7 +322,7 @@ func screenInputs(p *printer, _ engine.Response, raw json.RawMessage) view {
 	}
 	out := rows(cells)
 	for i := range out {
-		out[i] = trailing(out[i], marks[i])
+		out[i] = c.leadered(out[i], marks[i])
 	}
 	if hidden > 0 {
 		out = append(out, "", indent+c.colour(dim, "bmdctl inputs --all adds outputs, masks and keys"))
@@ -505,11 +505,22 @@ func screenTransfer(p *printer, r engine.Response, raw json.RawMessage) view {
 			parts = append(parts, c.colour(dim, fmt.Sprintf("was %q", t.Replaced)))
 		}
 	case "download":
-		what := t.Name
 		if len(p.written) > 0 {
-			what = strings.TrimSpace(what + " → " + strings.Join(p.written, ", "))
+			// The file written, shortened from the left where the line
+			// is too wide, so the size after it stays.
+			before := strings.Join(append(parts, nonEmpty(t.Name)...), "  ")
+			if t.Name != "" {
+				before += " → "
+			} else {
+				before += "  → "
+			}
+			after := ""
+			if t.Width > 0 {
+				after = fmt.Sprintf("  %d×%d", t.Width, t.Height)
+			}
+			return view{rows: []string{c.resultLinePath(verb, before, strings.Join(p.written, ", "), after, took(r.TookMS))}}
 		}
-		parts = append(parts, nonEmpty(what)...)
+		parts = append(parts, nonEmpty(t.Name)...)
 		if t.Width > 0 {
 			parts = append(parts, fmt.Sprintf("%d×%d", t.Width, t.Height))
 		}
@@ -577,7 +588,14 @@ func screenProfile(p *printer, r engine.Response, raw json.RawMessage) view {
 	if p.failed != nil {
 		p.stepFailed(p.failed.Error, "")
 	}
-	out := []string{c.resultLine(verb, strings.TrimSpace(what+"  "+strings.Join(about, " · ")), took(r.TookMS))}
+	rest := ""
+	if len(about) > 0 {
+		rest = "  " + strings.Join(about, " · ")
+	}
+	if what == "" {
+		what, rest = strings.TrimSpace(rest), ""
+	}
+	out := []string{c.resultLinePath(verb, "", what, rest, took(r.TookMS))}
 	for _, e := range pr.Errors {
 		out = append(out, labelled(c.colour(red, "error"), e))
 	}

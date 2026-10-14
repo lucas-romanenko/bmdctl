@@ -384,10 +384,69 @@ func (c *cli) engineStatus(g globals) int {
 	}
 	var st engine.Status
 	json.Unmarshal(resp.Result.(json.RawMessage), &st)
-	for _, l := range engineStatusLines(st, c.build()) {
+	lines := engineStatusLines(st, c.build())
+	if c.terminal() {
+		lines = engineStatusScreen(st, lines)
+	}
+	for _, l := range lines {
 		fmt.Fprintln(c.stdout, l)
 	}
 	return exitOK
+}
+
+// engineStatusScreen is engine status at a terminal, within 72 columns:
+// each session as its address (the port left out when it is ATEM's),
+// how it stands in the overview's words (ready · 24m · idle 12s · pinned
+// · closes in 36m), and the model and video mode only where they fit;
+// any other line too long (the build) cut with "…".
+func engineStatusScreen(st engine.Status, lines []string) []string {
+	var out []string
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "session ") {
+			out = append(out, fit(l, lineWidth))
+		}
+	}
+	var cells [][]string
+	var descs []string
+	for _, s := range st.Sessions {
+		parts := []string{"ready"}
+		switch {
+		case s.Error != "":
+			parts = []string{"failed: " + s.Error}
+		case !s.Ready && s.Connected:
+			parts = []string{"reconnecting"}
+		case !s.Ready:
+			parts = []string{"connecting"}
+		}
+		if s.Error == "" && (s.Ready || s.Connected) {
+			parts = append(parts, ago(sessionAge(s)))
+			if s.Busy > 0 {
+				parts = append(parts, "in use")
+			} else {
+				parts = append(parts, "idle "+ago(time.Duration(s.IdleS)*time.Second))
+			}
+			switch {
+			case s.Stale:
+				parts = append(parts, "stale")
+			case s.Pinned:
+				parts = append(parts, "pinned")
+			}
+		} else if s.Pinned {
+			parts = append(parts, "pinned")
+		}
+		if s.IdleCloseS > 0 && s.Error == "" && !s.Stale {
+			parts = append(parts, "closes in "+ago(time.Duration(s.IdleCloseS)*time.Second))
+		}
+		cells = append(cells, []string{"session", shortAddress(s.Host), strings.Join(parts, " · ")})
+		descs = append(descs, strings.TrimSpace(s.Product+" "+s.VideoMode))
+	}
+	for i, l := range (&printer{}).table(cells) {
+		if d := descs[i]; d != "" && width(l)+2+width(d) <= lineWidth {
+			l += "  " + d
+		}
+		out = append(out, fit(l, lineWidth))
+	}
+	return out
 }
 
 // runningEngine is a running engine's status, within a second, or nil;

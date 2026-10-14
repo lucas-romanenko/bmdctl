@@ -1416,7 +1416,11 @@ response doesn't carry comes in note frames (Engine, "Notes":
   moved (`upload  slot 10  sponsor  1920×1080`, `clear  slot 10  was
   "sponsor"`); undo is a write with the verb `undo`, and an undone cut
   or auto says both buses as a cut does: `undo  cut  CAM2 on program ·
-  CAM1 on preview`.
+  CAM1 on preview`. A change that names a file (a download's, a profile
+  save's) shortens the path from the left to what fits, keeping its last
+  components (`…/profiles/before-the-show.xml`), not cut from the
+  right, which lost the file's name, its size and the status (#6;
+  `resultLinePath`, `fitPath`).
 - **Sources** in a result show by short name, else long name, else id;
   where what was typed differs (and isn't a number), it follows dim in
   brackets: `lkkk (cam1)`. An alias that shadowed an input's name is
@@ -1433,6 +1437,12 @@ response doesn't carry comes in note frames (Engine, "Notes":
   set dim after it and on air still last, so the same keyer has the
   same columns in both. `inputs`' `● PGM` and `○ PVW`, `macro list`'s
   running or recording, and `bmdctl`'s sessions end at column 72 too.
+  `inputs`' marks sit forty columns from a short name, so the gap
+  between the row and its mark is a dim leader, `· · ·`, a dot on every
+  even column with two clear at each end, so the leaders line up row to
+  row (#13, `leadered`; #12 asked for the marks beside the names
+  instead, which would break the column-72 rule; the media list already
+  has its MP1 and MP2 beside each still).
   `info`, `video-modes`,
   `time`, the meters and `state` follow.
 - **Repeats collapse**: consecutive aux outputs on one source are one
@@ -1464,7 +1474,10 @@ response doesn't carry comes in note frames (Engine, "Notes":
   session's age and idle time (#7) take the room the model had: where a
   row and its session don't fit 72 columns the model column goes, for
   every row, as a header drops the model first, and every row is then
-  cut at one column, so the cuts line up. The mock's row has the model;
+  cut at one column, so the cuts line up. In the model's place goes a
+  dim tag for the kind of device (`ATEM`, `HD`, `VH`, `ULT`;
+  `deviceTag`), so a deck still reads as a deck (#11). The mock's row
+  has the model;
   `bmdctl status` and `info` still say it. The
   default's row has `*` in its indent's first column, and the last line
   says so: `* default · bmdctl use HOST · bmdctl help` (the mock has no
@@ -1478,6 +1491,13 @@ response doesn't carry comes in note frames (Engine, "Notes":
   the commit and the hosts file are `bmdctl version`'s, which at a
   terminal prints them under the version. There is no other banner, and
   no prompt before results.
+- **`engine status`** at a terminal is its pipe lines cut to 72
+  columns (the build id, which is longer, ends in `…`), with each
+  session as a row of a table: `session`, its address (the port left
+  out where it is ATEM's), then how it stands in the overview's words,
+  `ready · 2h04m · idle 12s · pinned · closes in 59m`, and its model and
+  video mode only where they fit (#11; `engineStatusScreen`). A pipe
+  keeps the old line.
 - **`connect ADDRESS`** prints the header, then `saved as "<name>", now
   the default` (bold: bmdctl's own) and, the first time ever, `tab
   completes input names` (dim); `connect` alone, `connect  pinned until

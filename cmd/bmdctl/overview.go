@@ -178,8 +178,10 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 		if aliased(list) {
 			model = 3
 		}
+		// The model goes; a short tag says what kind of device each is,
+		// so a deck still reads as one.
 		for i := range cells {
-			cells[i] = slices.Delete(cells[i], model, model+1)
+			cells[i][model] = c.colour(dim, deviceTag(list[i].Device))
 		}
 		lines = rows(cells)
 	}
@@ -262,6 +264,12 @@ func sessionState(ss *engine.SessionStatus, sw *engine.Switcher) []string {
 		parts = append(parts, "pinned")
 	}
 	return parts
+}
+
+// deviceTag is a device type in a few letters, for where its model has no
+// room: ATEM, HD, VH, ULT.
+func deviceTag(device string) string {
+	return map[string]string{"atem": "ATEM", "hyperdeck": "HD", "videohub": "VH", "ultimatte": "ULT"}[device]
 }
 
 // overviewLines are the overview for a person: the engine, then a line

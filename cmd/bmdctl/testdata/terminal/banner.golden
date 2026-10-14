@@ -1,10 +1,10 @@
 $ bmdctl 
 <dim>bmdctl VERSION</>
 
-  <b>studio</>  192.0.2.10  1080p50                             ● 0s<dim> · idle #s</>
-  <b>spare</>   192.0.2.11                                       <dim>not connected</>
-* <b>deck</>    192.0.2.20  1080p25                             ● 0s<dim> · idle #s</>
-  <b>deck2</>   192.0.2.21                                       <dim>not connected</>
+  <b>studio</>  192.0.2.10  <dim>ATEM</>  1080p50                       ● 0s<dim> · idle #s</>
+  <b>spare</>   192.0.2.11  <dim>ATEM</>                                 <dim>not connected</>
+* <b>deck</>    192.0.2.20  <dim>HD</>    1080p25                       ● 0s<dim> · idle #s</>
+  <b>deck2</>   192.0.2.21  <dim>HD</>                                   <dim>not connected</>
 
   <dim>* default · bmdctl use HOST · bmdctl help</>
 

@@ -26,11 +26,11 @@ state at hand to read names and rates against.
 $ bmdctl engine status
 engine   running, pid 48213, up 2h14m3s
 version  bmdctl v0.1.0 (e8eb8b9, 2026-10-11T19:11:25Z), protocol 1
-build    MpUkle-BHtFbJgq0fFJH/soENu7Y-5cXGVrzdwhuM/KadqYJdIUmOfOSQQGaxu/1k1eVHazaCA2yhy1OyrP
+build    MpUkle-BHtFbJgq0fFJH/soENu7Y-5cXGVrzdwhuM/KadqYJdIUmOfOSQQGaxu…
 socket   /run/user/1000/bmdctl.sock
 log      /home/you/.local/state/bmdctl/engine.log
 pins     close after 1h idle
-session  192.168.1.20:9910  ready, session 2h04m, idle 12s, pinned, closes in 59m48s if idle  ATEM 1 M/E Constellation HD 1080p25
+session  192.168.1.20  ready · 2h04m · idle 12s · pinned · closes in 59m
 $ bmdctl engine stop
 engine stopped
 ```

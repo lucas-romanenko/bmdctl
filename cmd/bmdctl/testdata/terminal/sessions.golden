@@ -1,9 +1,9 @@
 $ bmdctl 
 <dim>bmdctl VERSION</>
 
-* <b>studio</>  192.0.2.10  1080p50                  ● 24m<dim> · idle 24m · pinned</>
-  <b>spare</>   192.0.2.11  1080p50                             ● 4m<dim> · idle 4m</>
-  <b>stage</>   192.0.2.13  1080p50                              ● 4m<dim> · in use</>
+* <b>studio</>  192.0.2.10  <dim>ATEM</>  1080p50            ● 24m<dim> · idle 24m · pinned</>
+  <b>spare</>   192.0.2.11  <dim>ATEM</>  1080p50                       ● 4m<dim> · idle 4m</>
+  <b>stage</>   192.0.2.13  <dim>ATEM</>  1080p50                        ● 4m<dim> · in use</>
 
   <dim>* default · bmdctl use HOST · bmdctl help</>
 
@@ -12,16 +12,16 @@ engine   running, pid #, up #s
 version  , protocol 1
 socket   DIR/s.sock
 pins     close after 1h idle
-session  192.0.2.10:9910  ready, session 24m00s, idle 24m00s, pinned, closes in 36m if idle  ATEM 1 M/E Constellation HD 1080p50
-session  192.0.2.11:9910  ready, session 4m00s, idle 4m00s, closes in 6m if idle             ATEM 1 M/E Constellation HD 1080p50
-session  192.0.2.13:9910  ready, session 4m00s, in use                                       ATEM 1 M/E Constellation HD 1080p50
+session  192.0.2.10  ready · 24m · idle 24m · pinned · closes in 36m
+session  192.0.2.11  ready · 4m · idle 4m · closes in 6m
+session  192.0.2.13  ready · 4m · in use
 
 $ bmdctl 
 <dim>bmdctl VERSION</>
 
-* <b>studio</>  192.0.2.10  1080p50               ● 1h14m<dim> · idle 1h14m · </>stale
-  <b>spare</>   192.0.2.11  1080p50                   ● 54m<dim> · idle 54m · </>stale
-  <b>stage</>   192.0.2.13  1080p50                             ● 54m<dim> · in use</>
+* <b>studio</>  192.0.2.10  <dim>ATEM</>  1080p50         ● 1h14m<dim> · idle 1h14m · </>stale
+  <b>spare</>   192.0.2.11  <dim>ATEM</>  1080p50             ● 54m<dim> · idle 54m · </>stale
+  <b>stage</>   192.0.2.13  <dim>ATEM</>  1080p50                       ● 54m<dim> · in use</>
 
   <dim>* default · bmdctl use HOST · bmdctl help</>
 
@@ -30,16 +30,16 @@ engine   running, pid #, up #s
 version  , protocol 1
 socket   DIR/s.sock
 pins     close after 1h idle
-session  192.0.2.10:9910  ready, session 1h14m, idle 1h14m, stale    ATEM 1 M/E Constellation HD 1080p50
-session  192.0.2.11:9910  ready, session 54m00s, idle 54m00s, stale  ATEM 1 M/E Constellation HD 1080p50
-session  192.0.2.13:9910  ready, session 54m00s, in use              ATEM 1 M/E Constellation HD 1080p50
+session  192.0.2.10  ready · 1h14m · idle 1h14m · stale
+session  192.0.2.11  ready · 54m · idle 54m · stale
+session  192.0.2.13  ready · 54m · in use
 
 $ bmdctl 
 <dim>bmdctl VERSION</>
 
-* <b>studio</>  192.0.2.10                                       <dim>not connected</>
-  <b>spare</>   192.0.2.11                                       <dim>not connected</>
-  <b>stage</>   192.0.2.13  1080p50                             ● 54m<dim> · in use</>
+* <b>studio</>  192.0.2.10  <dim>ATEM</>                                 <dim>not connected</>
+  <b>spare</>   192.0.2.11  <dim>ATEM</>                                 <dim>not connected</>
+  <b>stage</>   192.0.2.13  <dim>ATEM</>  1080p50                       ● 54m<dim> · in use</>
 
   <dim>* default · bmdctl use HOST · bmdctl help</>
 
