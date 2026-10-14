@@ -17,6 +17,17 @@ The assets are in `.github/`:
   transparent outside the tile. Use `512-dark` as the GitHub avatar and
   `32` or `16` as a favicon.
 
+The documentation site's are in `docs/brand/`:
+
+- `bmdctl-mark-{dark,light}.svg`: the mark as SVG, from the coordinates
+  below; `bmdctl-lockup-{dark,light}.svg`: the lockup, the 56px mark and
+  the primary wordmark, its letters outlined from IBM Plex Mono so it
+  needs no font. The site's header shows `lockup-dark`.
+  `python3 lockup.py IBMPlexMono-Regular.ttf IBMPlexMono-SemiBold.ttf`,
+  from `docs/brand/`, writes all four (fontTools; the fonts are Google
+  Fonts' `ofl/ibmplexmono`).
+- `bmdctl-mark-32-dark.png`: a copy of the mark's, the site's favicon.
+
 Two other marks were studied and rejected: a typeset `>_`, where one glyph
 can't carry two tally colours and the strokes are too thin at 16px, and a
 bus with a cursor, which reads as a variant of bmdwire's mark. Only the
