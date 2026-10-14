@@ -15,7 +15,7 @@ together:
   ask a person before anything destructive, and the recipes for common
   jobs. It works with the MCP tools or with the `bmdctl` command itself.
 
-bmdctl must be installed (see README.md) and the devices added once
+bmdctl must be installed ([INSTALL.md](INSTALL.md)) and the devices added once
 (`bmdctl connect 192.168.1.20` saves one and makes it the default). The
 engine starts by itself the first time a tool runs.
 
@@ -31,31 +31,54 @@ claude mcp add --transport stdio bmdctl -- bmdctl mcp
 
 `--scope user` makes it available in every project; the default,
 `local`, is this project only, and `project` writes it to the project's
-`.mcp.json` for everyone who clones it. `claude mcp list` shows whether it
-connected; inside a session, `/mcp` does.
-
-### Claude Desktop
-
-In Settings > Developer > Edit Config (the file is
-`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS
-and `%APPDATA%\Claude\claude_desktop_config.json` on Windows), add:
+`.mcp.json` for everyone who clones it, as this:
 
 ```json
 {
   "mcpServers": {
-    "bmdctl": { "command": "bmdctl", "args": ["mcp"] }
+    "bmdctl": {
+      "type": "stdio",
+      "command": "bmdctl",
+      "args": ["mcp"]
+    }
   }
 }
 ```
 
-and restart Claude Desktop. A desktop app may not see the PATH your shell
-has, so if the server doesn't start, give the binary's full path instead
-of `bmdctl` (`which bmdctl` prints it: `/Users/you/.local/bin/bmdctl`, or
-on Windows `C:\\Users\\you\\scoop\\shims\\bmdctl.exe`). The server's own
-messages are in `mcp-server-bmdctl.log` under `~/Library/Logs/Claude/`
-(`%APPDATA%\Claude\logs\` on Windows).
+`claude mcp list` shows whether it connected; inside a session, `/mcp`
+does. It has been run this way against a switcher
+([HARDWARE.md](HARDWARE.md)).
+
+### Claude Desktop
+
+Settings > Developer > Edit Config opens `claude_desktop_config.json`
+(`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\`
+on Windows). Add the server and restart Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "bmdctl": {
+      "command": "/Users/you/.local/bin/bmdctl",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+A desktop app doesn't see the PATH your shell has, so give the binary's
+full path (`command -v bmdctl` prints it; on Windows with Scoop,
+`C:\\Users\\you\\scoop\\shims\\bmdctl.exe`, backslashes doubled in JSON).
+The server's own messages are in `mcp-server-bmdctl.log` under
+`~/Library/Logs/Claude/` (`%APPDATA%\Claude\logs\` on Windows). Claude
+Desktop hasn't been tried with bmdctl yet
+([HARDWARE.md](HARDWARE.md#unverified)).
 
 ### What the tools do
+
+`bmdctl program cam2` is the tool call `atem_switching {"subcommand":
+"program", "source": "cam2"}`, and its result says `confirmed`, `sent`,
+`already` or `rejected`, with each value before and after.
 
 - **A tool per group.** The ATEM's are `atem_switching` (program,
   preview, cut, auto, tbar, undo, aux, ftb), `atem_transition`,

@@ -147,9 +147,12 @@ bmdctl follows bmdwire; it never leads it.
   the MCP server. `skills/bmdctl/SKILL.md`: the Claude skill (under 150
   lines; `TestSkillCommands` checks its command lines). `docs/AGENTS.md`
   says how agents use both.
-- `docs/GUIDE.md`, `docs/INSTALL.md`, `docs/ARCHITECTURE.md` and
+- `docs/GUIDE.md` (the guide's index) and its pages in `docs/guide/`,
+  `docs/quickstart.md`, `docs/INSTALL.md`, `docs/ARCHITECTURE.md` and
   `CONTRIBUTING.md` are written by hand: when a command's output, a
   flag or a path changes, check the guide's sample of it.
+  `TestDocsCommands` checks every command line in them; the quick
+  start's output is checked against `quickstart.golden`.
 - `.github/banner.gif` (`banner.png` is its still), `.github/mark/`: the
   README banner and the mark. `docs/brand/social-preview.png` is the
   repository's social preview (uploaded in Settings by hand).
