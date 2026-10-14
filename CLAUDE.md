@@ -69,6 +69,30 @@ protocol version, video mode, what was run, what happened and what
 changed because of it. Never rewrite an earlier section. Then bring
 the "Tested on" table and the "Unverified" list at its top up to date.
 
+## bmdwire first
+
+bmdctl follows bmdwire; it never leads it.
+
+- Protocol knowledge lands in bmdwire first. A packet layout, a field, a
+  quirk or a fix, wherever it was found (on hardware, in a capture,
+  while porting), is a bmdwire PR with its tests before bmdctl has it.
+- bmdwire's SURFACE.md is the source of truth. `docs/SURFACE-atem.md` is
+  a copy of `atemwire/docs/SURFACE.md`, never edited ahead of it.
+  hyperdeckwire has none yet, so `docs/SURFACE-hyperdeck.md` was written
+  here; anything new about the HyperDeck protocol still goes to bmdwire
+  first, and into a `hyperdeckwire/docs/SURFACE.md` there.
+- bmdctl ports from it and cites the bmdwire PR (`bmdwire#N` and the
+  commit) in the code and in `docs/PORTING.md`.
+- Never add a command or packet to bmdctl that bmdwire doesn't have
+  (anything sent to a device or parsed from one; a CLI verb built from
+  what bmdwire has is fine).
+- Two issues say when bmdctl is behind. bmdwire's publish workflow opens
+  "Port bmdwire v<version>" (label `port`) for each release on PyPI, and
+  `.github/workflows/surface-drift.yml` keeps "SURFACE drift from
+  bmdwire" open while the SURFACE copies differ from bmdwire main. The
+  `Tracks:` line in `docs/PORTING.md` names the bmdwire the port
+  follows; move it in the commit that finishes a port.
+
 ## Rules
 
 - **Mirror bmdwire, don't redesign it.** `docs/SURFACE-atem.md` is the spec
