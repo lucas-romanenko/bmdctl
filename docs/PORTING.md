@@ -1307,7 +1307,10 @@ status idle countdown and an error's next step.
 - **`bmdctl` alone** (`overview.go`) prints the engine (running or not,
   pid, uptime, sessions, the git commit it was built from, and whether it
   is this bmdctl's build) and a line per host: model, video mode, `ready,
-  idle 2m10s` (or pinned, connecting, failed, no session), `(default)`;
+  session 1h04m, idle 2m10s, pinned` (`in use` for idle while a request,
+  a watch or a subscription, uses it; `stale` for pinned past its idle
+  timeout; or connecting, failed, no session), `(default)` (#7 added
+  the session's age; `idle` came straight after `ready` before);
   then the engines' sessions to addresses no host has, by the switcher's
   name. With no host configured it ends with how to add one and `bmdctl
   help lists the commands`; with hosts, the help line is noise and is
@@ -1441,8 +1444,16 @@ response doesn't carry comes in note frames (Engine, "Notes":
   `dangers`).
 - **bmdctl alone** is one dim line, `bmdctl <version>`, then a row per
   switcher (its alias, in a column only when some host has one; name
-  bold, address, model, video mode, `● 4m` for a session open four
-  minutes, else `not connected` dim), then `bmdctl help` dim. The
+  bold, address, model, video mode, then its session: `● 4m` for one
+  open four minutes, then dim `· idle 12s` (`· in use` while a request,
+  a watch or an MCP subscription, uses it) and `· pinned`, or, idle past
+  its timeout and not yet closed, `· stale`, plain to stand out from
+  the dim; else `not connected` dim), then `bmdctl help` dim. The
+  session's age and idle time (#7) take the room the model had: where a
+  row and its session don't fit 72 columns the model column goes, for
+  every row, as a header drops the model first, and every row is then
+  cut at one column, so the cuts line up. The mock's row has the model;
+  `bmdctl status` and `info` still say it. The
   default's row has `*` in its indent's first column, and the last line
   says so: `* default · bmdctl use HOST · bmdctl help` (the mock has no
   mark; the indent keeps the columns where they were, as kubectl's and

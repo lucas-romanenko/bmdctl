@@ -22,10 +22,10 @@ import (
 // overviewHost is one line of the overview: a host in hosts.yml, or a
 // switcher the engine has a session to that isn't one.
 type overviewHost struct {
-	Name    string           `json:"name,omitempty"`
-	Alias   string           `json:"alias,omitempty"`
-	Address string           `json:"address"`
-	Device  string           `json:"device"`
+	Name    string `json:"name,omitempty"`
+	Alias   string `json:"alias,omitempty"`
+	Address string `json:"address"`
+	Device  string `json:"device"`
 	// Default: the host a command that names none goes to now
 	// ($BMDCTL_HOST, else the last --host, else hosts.yml's default).
 	Default bool             `json:"default,omitempty"`
@@ -108,9 +108,10 @@ func (c *cli) overview(g globals) int {
 // overviewScreen is the overview at a terminal: a row per switcher, its
 // alias if any host has one, its name bold, its address, model and video
 // mode, and at the end of the line its session: how long it has been
-// open, or not connected, dim. The default's row starts with *, in the
-// indent, and the last line says what * is. The engine is bmdctl
-// version's.
+// open and idle, or not connected, dim. Where the rows don't fit 72
+// columns the model goes, as a header's does first, then every row is
+// cut at one column. The default's row starts with *, in the indent, and
+// the last line says what * is. The engine is bmdctl version's.
 func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string {
 	out := []string{""}
 	if len(list) == 0 {
@@ -139,12 +140,25 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 			case !s.Ready:
 				row[4] = c.colour(dim, "connecting")
 			default:
+				// How old it is, then dim how long it has been idle (or
+				// that a watch or a subscription is using it) and that
+				// it is pinned; past its idle timeout, stale, plain.
 				row[4] = "●"
-				if since := sessionSince(ov, s.Host); since != nil {
-					row[4] += " " + ago(time.Since(*since))
+				ss := sessionOf(ov, s.Host)
+				use := "idle " + ago(time.Duration(s.IdleS)*time.Second)
+				if ss != nil {
+					row[4] += " " + ago(sessionAge(*ss))
+					if ss.Busy > 0 {
+						use = "in use"
+					}
 				}
-				if s.Pinned {
-					row[4] += c.colour(dim, " pinned")
+				switch {
+				case ss != nil && ss.Stale:
+					row[4] += c.colour(dim, " · "+use+" · ") + "stale"
+				case s.Pinned:
+					row[4] += c.colour(dim, " · "+use+" · pinned")
+				default:
+					row[4] += c.colour(dim, " · "+use)
 				}
 			}
 		}
@@ -154,8 +168,24 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 		cells = append(cells, row[:len(row)-1])
 		sessions = append(sessions, row[len(row)-1])
 	}
+	room := lineWidth - 2 - statusWidth
+	for _, s := range sessions {
+		room = min(room, lineWidth-2-width(s))
+	}
+	lines := rows(cells)
+	if slices.ContainsFunc(lines, func(l string) bool { return width(l) > room }) {
+		model := 2
+		if aliased(list) {
+			model = 3
+		}
+		for i := range cells {
+			cells[i] = slices.Delete(cells[i], model, model+1)
+		}
+		lines = rows(cells)
+	}
 	marked := false
-	for i, r := range rows(cells) {
+	for i, r := range lines {
+		r = fit(r, room)
 		if list[i].Default {
 			r, marked = "*"+r[1:], true
 		}
@@ -183,17 +213,55 @@ func (c *cli) hasCommands(device string) bool {
 	return device == "" || slices.Contains(c.reg.Devices(), device)
 }
 
-// sessionSince is when the engine opened its session to host.
-func sessionSince(ov *engine.Overview, host string) *time.Time {
+// sessionOf is the engine's status of its session to host, or nil.
+func sessionOf(ov *engine.Overview, host string) *engine.SessionStatus {
 	if ov == nil {
 		return nil
 	}
-	for _, s := range ov.Engine.Sessions {
+	for i, s := range ov.Engine.Sessions {
 		if s.Host == host {
-			return s.Since
+			return &ov.Engine.Sessions[i]
 		}
 	}
 	return nil
+}
+
+// sessionAge is how long a session has been open: by the engine's clock,
+// else (an engine from before it said, or a session just opened) from
+// when it opened by this machine's.
+func sessionAge(s engine.SessionStatus) time.Duration {
+	if s.AgeS > 0 || s.Since == nil {
+		return time.Duration(s.AgeS) * time.Second
+	}
+	return max(0, time.Since(*s.Since))
+}
+
+// sessionState is how a ready session stands, for a line of a pipe's
+// overview or engine status: how old it is, how long it has been idle
+// (or that a request, a watch or a subscription, is using it), pinned,
+// and stale past its idle timeout.
+func sessionState(ss *engine.SessionStatus, sw *engine.Switcher) []string {
+	var parts []string
+	idle, busy, stale := 0, false, false
+	if sw != nil {
+		idle = sw.IdleS
+	}
+	if ss != nil {
+		parts = append(parts, "session "+since(sessionAge(*ss)))
+		idle, busy, stale = max(idle, ss.IdleS), ss.Busy > 0, ss.Stale
+	}
+	if busy {
+		parts = append(parts, "in use")
+	} else {
+		parts = append(parts, "idle "+since(time.Duration(idle)*time.Second))
+	}
+	switch {
+	case stale:
+		parts = append(parts, "stale")
+	case ss != nil && ss.Pinned || sw != nil && sw.Pinned:
+		parts = append(parts, "pinned")
+	}
+	return parts
 }
 
 // overviewLines are the overview for a person: the engine, then a line
@@ -234,10 +302,8 @@ func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost, noHosts bo
 				row[3] = c.colour(red, "failed: "+s.Error)
 			case !s.Ready:
 				row[3] = "connecting"
-			case s.Pinned:
-				row[3] = fmt.Sprintf("ready, idle %s, pinned", since(time.Duration(s.IdleS)*time.Second))
 			default:
-				row[3] = fmt.Sprintf("ready, idle %s", since(time.Duration(s.IdleS)*time.Second))
+				row[3] = strings.Join(append([]string{"ready"}, sessionState(sessionOf(ov, s.Host), s)...), ", ")
 			}
 		}
 		if h.Default {

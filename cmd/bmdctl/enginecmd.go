@@ -399,6 +399,13 @@ func engineStatusLines(st engine.Status, mine string) []string {
 	if st.Log != "" {
 		rows = append(rows, []string{"log", st.Log})
 	}
+	// An engine from before pins closed reports none: it never closes
+	// them.
+	pins := "never close (" + PinIdleEnv + "=0)"
+	if st.PinIdleS > 0 {
+		pins = "close after " + span(time.Duration(st.PinIdleS)*time.Second) + " idle"
+	}
+	rows = append(rows, []string{"pins", pins})
 	if len(st.Sessions) == 0 {
 		rows = append(rows, []string{"sessions", "none"})
 	}
@@ -412,10 +419,13 @@ func engineStatusLines(st engine.Status, mine string) []string {
 		case s.Connected:
 			state = "reconnecting"
 		}
-		if s.Pinned {
+		if s.Error == "" && (s.Ready || s.Connected) {
+			state += ", " + strings.Join(sessionState(&s, nil), ", ")
+		} else if s.Pinned {
 			state += ", pinned"
-		} else if s.IdleCloseS > 0 && s.Error == "" {
-			state += fmt.Sprintf(", closes in %s if idle", (time.Duration(s.IdleCloseS) * time.Second).String())
+		}
+		if s.IdleCloseS > 0 && s.Error == "" && !s.Stale {
+			state += fmt.Sprintf(", closes in %s if idle", span(time.Duration(s.IdleCloseS)*time.Second))
 		}
 		desc := s.Product
 		if s.VideoMode != "" {

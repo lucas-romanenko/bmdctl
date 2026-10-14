@@ -23,6 +23,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
+	"github.com/lucas-romanenko/bmdctl/internal/fakeclock"
 	"github.com/lucas-romanenko/bmdctl/internal/fakehyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
 )
@@ -501,7 +502,7 @@ func TestTerminalBanner(t *testing.T) {
 	tr.run()
 	// A pipe's deck lines are a switcher's too.
 	out := b.must()
-	for _, want := range []string{`(?m)^deck \(192\.0\.2\.20\) +HyperDeck Studio HD Mini +1080p25 +ready, idle`, `(?m)^deck2 \(192\.0\.2\.21\) +no session$`} {
+	for _, want := range []string{`(?m)^deck \(192\.0\.2\.20\) +HyperDeck Studio HD Mini +1080p25 +ready, session \ds, idle \ds`, `(?m)^deck2 \(192\.0\.2\.21\) +no session$`} {
 		if !regexp.MustCompile(want).MatchString(out) {
 			t.Errorf("pipe: no line matching %s in\n%s", want, out)
 		}
@@ -815,4 +816,51 @@ func TestTerminalHosts(t *testing.T) {
 	tr.run("use", "stage")
 	tr.run()
 	golden(t, "hosts.golden", strings.ReplaceAll(tr.out.String(), shortVersion(), "VERSION"))
+}
+
+// Sessions in bmdctl and engine status, by the engine's clock: how old
+// each is and how long it has been idle; one a watch is using is in use;
+// a pinned one closes after an hour idle, an unpinned one after ten
+// minutes, and one past that not closed yet (the machine slept through
+// it) is stale until it is gone.
+func TestTerminalSessions(t *testing.T) {
+	clock := fakeclock.New(time.Date(2026, 10, 11, 16, 55, 0, 0, time.UTC))
+	b := newBenchConfig(t, fixtures.Bytes(t, "dump/initial-dump.bin"), engine.Config{Clock: clock})
+	b.must("hosts", "add", "192.0.2.10", "--as", "studio")
+	b.must("hosts", "add", "192.0.2.11", "--as", "spare")
+	b.must("hosts", "add", "192.0.2.13", "--as", "stage")
+	b.must("use", "studio")
+	b.must("connect")
+	clock.Advance(20 * time.Minute) // spare's and stage's sessions close
+	b.must("spare", "program", "2")
+	ctx, cancel := context.WithCancel(context.Background())
+	watching, watched := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(watched)
+		conn, err := engine.Dial(ctx, b.env["BMDCTL_SOCKET"])
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		var once sync.Once
+		engine.Call(ctx, conn, engine.Request{Device: "atem", Host: "192.0.2.13", Path: "watch"}, func(f engine.Frame) error {
+			if f.Response != nil {
+				once.Do(func() { close(watching) })
+			}
+			return nil
+		})
+	}()
+	<-watching
+	clock.Advance(4 * time.Minute)
+	tr := &transcript{b: b, noHost: true}
+	tr.run()
+	tr.run("engine", "status")
+	clock.Skip(50 * time.Minute)
+	tr.run()
+	tr.run("engine", "status")
+	clock.Advance(0)
+	tr.run()
+	cancel()
+	<-watched
+	golden(t, "sessions.golden", strings.ReplaceAll(strings.ReplaceAll(tr.out.String(), shortVersion(), "VERSION"), b.dir, "DIR"))
 }
