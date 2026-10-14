@@ -151,6 +151,8 @@ bmdctl follows bmdwire; it never leads it.
   protocol, the operations that aren't one wire command).
 - `internal/hosts/`: hosts.yml. `internal/paths/`: where files live.
   `internal/mdns/`: the Bonjour browse behind `hosts discover`.
+  `internal/stillcache/`: the engine's media pool stills by hash, which
+  a profile save writes without downloading them again.
 - `cmd/bmdctl/`: the CLI. `internal/serve/`: the HTTP API; `internal/mcp/`:
   the MCP server. `skills/bmdctl/SKILL.md`: the Claude skill (under 150
   lines; `TestSkillCommands` checks its command lines). `docs/AGENTS.md`

@@ -298,6 +298,8 @@ bmdctl's own files are left behind for you to remove:
 |---|---|---|
 | hosts.yml | `~/.config/bmdctl/` | `%AppData%\bmdctl\` |
 | the engine's log, the last host, one-time notices | `~/.local/state/bmdctl/` | `%LocalAppData%\bmdctl\` |
+| the media pool's stills, kept for profile saves | `~/.cache/bmdctl/` | `%LocalAppData%\bmdctl\cache\` |
 | the engine's socket and lock | `$XDG_RUNTIME_DIR/bmdctl.sock*`, else `$TMPDIR/bmdctl-<uid>/` or `/tmp/bmdctl-<uid>/` | none (a named pipe) |
 
-`XDG_CONFIG_HOME` and `XDG_STATE_HOME` move the first two, where set.
+`XDG_CONFIG_HOME`, `XDG_STATE_HOME` and `XDG_CACHE_HOME` move the first
+three, where set.

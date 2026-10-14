@@ -168,6 +168,10 @@ type ImageResult struct {
 	Name  string      `json:"name"`
 	Path  string      `json:"path"`
 	Error string      `json:"error,omitempty"` // why it was skipped
+	// FromCache: saved without downloading it for this slot, from the
+	// still cache or from another slot holding the same picture (atemwire's
+	// from_cache).
+	FromCache bool `json:"from_cache,omitempty"`
 }
 
 func opProfileSave(c *call) (any, bool, error) {
@@ -200,6 +204,8 @@ func opProfileSave(c *call) (any, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	// Each still's <Still path> is the file its PNG is written to.
+	pointStillsAt(p, mediaPoolFiles(c.state))
 	xml, err := p.ToXML()
 	if err != nil {
 		return nil, false, err
@@ -229,54 +235,212 @@ func opProfileImages(c *call) (any, bool, error) {
 	return ProfileResult{Images: images}, true, nil
 }
 
-// downloadImages is download_media_pool_images: every used still in slot
-// order, as a PNG named after the slot ("Slot<n>" when it has no name),
-// sent as a file frame of param under prefix. A slot that fails is
-// skipped and reported, as atemwire logs and skips it.
-func (c *call) downloadImages(param, prefix string) ([]ImageResult, error) {
-	st := c.state
-	out := []ImageResult{}
-	m := st.VideoMode.Mode
-	if m == nil {
-		return out, nil
-	}
-	w, h := m.FrameSize()
-	n, i := usedStills(st), 0
+// mediaPoolFiles is each used still's file in the media pool folder: the
+// one name its PNG and the profile XML's <Still path> both take, so a
+// restore (bmdctl's, ATEM Software Control's) finds every slot's picture
+// where the XML says. WebATEM 2.1.1 does the same; atemwire's XML names
+// the raw slot name and leaves an unnamed slot's path empty, which a
+// written file can't always match. The name is the slot's, made safe for
+// a file system (fileName), Slot<n> for none. Slots with the same name and
+// the same picture (hash) share a file; a different picture under a name
+// already taken gets <name>_2 (_3 ...), compared ignoring case as a Mac or
+// Windows folder compares names.
+func mediaPoolFiles(st atem.State) map[int]string {
+	taken := map[string]string{} // lower-cased file → picture
+	files := map[int]string{}
 	for slot := range st.MediaplayerSlots() {
 		info := st.MediaplayerSlotInfo(slot)
 		if !info.IsUsed {
 			continue
 		}
-		i++
+		key := pictureKey(slot, info.Hash)
+		base := fileName(info.Name, fmt.Sprintf("Slot%d", slot))
+		name := base + ".png"
+		for n := 2; ; n++ {
+			if k, ok := taken[strings.ToLower(name)]; !ok || k == key {
+				break
+			}
+			name = fmt.Sprintf("%s_%d.png", base, n)
+		}
+		taken[strings.ToLower(name)] = key
+		files[slot] = name
+	}
+	return files
+}
+
+// pictureKey names a slot's picture: its hash, or the slot itself while
+// the hash is unknown (empty, or all zero before the switcher has hashed
+// it), which no other slot shares.
+func pictureKey(slot int, hash string) string {
+	if strings.Trim(hash, "0") == "" {
+		return fmt.Sprintf("slot %d", slot)
+	}
+	return strings.ToLower(hash)
+}
+
+// pointStillsAt sets each used slot's <Still path> to its file
+// (mediaPoolFiles).
+func pointStillsAt(p *profile.Profile, files map[int]string) {
+	pool := p.Root().Find("MediaPool")
+	if pool == nil {
+		return
+	}
+	for _, s := range pool.FindAll("Stills/Still") {
+		if f, ok := files[idx(s)]; ok {
+			s.Set("path", MediaPoolDir+"/"+f)
+		}
+	}
+}
+
+// downloadImages is download_media_pool_images: every used still in slot
+// order, as a PNG named by mediaPoolFiles, sent as a file frame of param
+// under prefix. Its cache_get comes first: a picture the still cache
+// keeps (engine.Config.Stills), or one already fetched for another slot,
+// is no download; each fetched still is kept for next time (cache_put).
+// The PNG of each download is encoded while the next one downloads, so
+// the transfers run back to back. A slot that fails is skipped and
+// reported, as atemwire logs and skips it; another slot with the same
+// picture reports the same failure rather than waiting out the same
+// transfer again.
+func (c *call) downloadImages(param, prefix string) ([]ImageResult, error) {
+	st := c.state
+	m := st.VideoMode.Mode
+	if m == nil {
+		return []ImageResult{}, nil
+	}
+	w, h := m.FrameSize()
+	files := mediaPoolFiles(st)
+	cache := c.e.cfg.Stills
+	type still struct {
+		slot            int
+		name, hash, key string
+	}
+	var stills []still
+	toFetch := map[string]bool{}
+	for slot := range st.MediaplayerSlots() {
+		info := st.MediaplayerSlotInfo(slot)
+		if !info.IsUsed {
+			continue
+		}
 		name := info.Name
 		if name == "" {
 			name = fmt.Sprintf("Slot%d", slot)
 		}
-		r := ImageResult{Slot: table.Index(slot), Name: name, Path: prefix + fileName(name, fmt.Sprintf("Slot%d", slot)) + ".png"}
+		s := still{slot, name, info.Hash, pictureKey(slot, info.Hash)}
+		stills = append(stills, s)
+		if !cache.Has(s.hash) {
+			toFetch[s.key] = true
+		}
+	}
+	out := make([]ImageResult, len(stills))
+	pngs := map[string][]byte{}   // this save's pictures, by key
+	failed := map[string]string{} // pictures whose download failed
+	written := map[string]bool{}  // files sent, lower-cased
+	send := func(i int, data []byte, fromCache bool) error {
+		out[i].FromCache = fromCache
+		f := files[stills[i].slot]
+		if written[strings.ToLower(f)] {
+			return nil
+		}
+		written[strings.ToLower(f)] = true
+		return c.out.file(FileFrame{Param: param, Name: prefix + f, Data: data})
+	}
+	skip := func(i int, err string) {
+		out[i].Error = err
+		c.e.log.Warn("media pool image skipped", "slot", stills[i].slot, "name", stills[i].name, "err", err)
+	}
+	// The last download's PNG, encoding while the next transfer runs, and
+	// the slots waiting for it (its own first).
+	type encoded struct {
+		png []byte
+		err error
+	}
+	var pending struct {
+		key, hash string
+		waiting   []int
+		done      chan encoded
+	}
+	collect := func() error {
+		if pending.done == nil {
+			return nil
+		}
+		r := <-pending.done
+		key, hash, waiting := pending.key, pending.hash, pending.waiting
+		pending.done, pending.waiting = nil, nil
+		if r.err != nil {
+			failed[key] = r.err.Error()
+			for _, i := range waiting {
+				skip(i, failed[key])
+			}
+			return nil
+		}
+		pngs[key] = r.png
+		if err := cache.Put(hash, r.png); err != nil {
+			c.e.log.Warn("media pool image not kept", "err", err)
+		}
+		for n, i := range waiting {
+			if err := send(i, r.png, n > 0); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	fetched := 0
+	for i, s := range stills {
+		out[i] = ImageResult{Slot: table.Index(s.slot), Name: s.name, Path: prefix + files[s.slot]}
+		switch data, ok := pngs[s.key]; {
+		case pending.done != nil && pending.key == s.key:
+			pending.waiting = append(pending.waiting, i)
+			continue
+		case ok:
+			if err := send(i, data, true); err != nil {
+				return nil, err
+			}
+			continue
+		case failed[s.key] != "":
+			skip(i, failed[s.key])
+			continue
+		}
+		if data, ok := cache.Get(s.hash); ok {
+			pngs[s.key] = data
+			if err := send(i, data, true); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		fetched++
+		n := len(toFetch)
 		ctx, cancel := c.transferCtx()
-		base, item := int64(i-1)*int64(w*h*4), fmt.Sprintf("still %d of %d", i, n)
+		base, item := int64(fetched-1)*int64(w*h*4), fmt.Sprintf("still %d of %d", fetched, n)
 		ctx = c.withProgress(ctx, func(p atem.Progress) Progress {
 			return Progress{Done: base + int64(p.Done), Total: int64(n) * int64(p.Total), Bytes: true, Item: item}
 		})
-		frame, err := c.sess.DownloadStill(ctx, slot)
+		frame, err := c.sess.DownloadStill(ctx, s.slot)
 		cancel()
-		if err == nil {
-			var img *image.NRGBA
-			if img, err = atem.FrameImage(frame, w, h); err == nil {
-				var buf bytes.Buffer
-				if err = png.Encode(&buf, img); err == nil {
-					err = c.out.file(FileFrame{Param: param, Name: r.Path, Data: buf.Bytes()})
-				}
-			}
+		if err := collect(); err != nil {
+			return nil, err
 		}
 		if err != nil {
 			if c.ctx.Err() != nil {
 				return nil, codeErr(CodeUnreachable, "%v", c.ctx.Err())
 			}
-			r.Error = err.Error()
-			c.e.log.Warn("media pool image skipped", "slot", slot, "name", name, "err", err)
+			failed[s.key] = err.Error()
+			skip(i, failed[s.key])
+			continue
 		}
-		out = append(out, r)
+		done := make(chan encoded, 1)
+		pending.key, pending.hash, pending.waiting, pending.done = s.key, s.hash, []int{i}, done
+		go func() {
+			img, err := atem.FrameImage(frame, w, h)
+			var buf bytes.Buffer
+			if err == nil {
+				err = png.Encode(&buf, img)
+			}
+			done <- encoded{buf.Bytes(), err}
+		}()
+	}
+	if err := collect(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -385,17 +549,30 @@ func usedMacros(st atem.State) int {
 }
 
 // imagesDetail says what an images step moved: "3 stills", "2 stills, 1
-// failed".
+// failed", and how many were downloaded when the cache or a shared
+// picture saved some: "20 stills, 8 downloaded", "20 stills, none
+// downloaded".
 func imagesDetail(ims []ImageResult) string {
-	ok, failed := 0, 0
+	ok, failed, kept := 0, 0, 0
 	for _, im := range ims {
-		if im.Error != "" {
+		switch {
+		case im.Error != "":
 			failed++
-		} else {
+		case im.FromCache:
+			ok++
+			kept++
+		default:
 			ok++
 		}
 	}
 	s := count(ok, "still")
+	switch {
+	case kept == 0:
+	case kept == ok:
+		s += ", none downloaded"
+	default:
+		s += fmt.Sprintf(", %d downloaded", ok-kept)
+	}
 	if failed > 0 {
 		s += fmt.Sprintf(", %d failed", failed)
 	}

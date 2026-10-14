@@ -2697,14 +2697,45 @@ comes back. Indexes in results count from 1, as the flags do
     is expected to supply those bytes and push them into the media pool
     through its own upload path after applying the rest"
     (`restore_media_pool_images`). The engine is that caller. Save writes
-    each used still as `ATEM Media Pool/<name>.png` beside the XML (the
-    path the XML's `<Still>` names; `Slot<n>` for a still without one,
-    a failing slot skipped and reported, as atemwire logs and skips it);
-    `profile images` does only that, into `--dir`. Restore's CLI reads
-    each `<Still path>` it can find beside the XML and sends it; after
-    the apply the engine uploads each to its `index` under its `name`
-    (PNGs premultiplied, as `media upload` does), reporting the ones with
-    no file.
+    each used still as a PNG in `ATEM Media Pool/` beside the XML, named
+    as below, a failing slot skipped and reported, as atemwire logs and
+    skips it; `profile images` does only that, into `--dir`. Restore's
+    CLI reads each `<Still path>` it can find beside the XML and sends
+    it; after the apply the engine uploads each to its `index` under its
+    `name` (PNGs premultiplied, as `media upload` does), reporting the
+    ones with no file.
+  - **The still cache** (`internal/stillcache`, `engine.Config.Stills`).
+    atemwire's `download_media_pool_images` takes `cache_get` and
+    `cache_put`, by the slot's MPfe hash; the port left them out until
+    the twelfth hardware run showed what they are for. A still downloads
+    at the switcher's pace, 1.8 s for 1080p, for ATEM Software Control
+    too, whose quick save writes the stills it fetched on connecting; a
+    20-still pool took bmdctl 46 s. The engine's `cache_get` is the still
+    cache, then this save's own pictures (each picture downloads once);
+    its `cache_put` keeps every PNG it fetches. On disk in
+    `~/.cache/bmdctl/stills` (`paths.Cache`; `%LocalAppData%\bmdctl\cache`
+    on Windows, `/data/cache` in the image), by hash alone, so a picture
+    on several switchers is kept once. Bounded by `BMDCTL_STILL_CACHE_MB`
+    (1024; 0 keeps none), least recently used first, and by 30 days
+    without a save: WebATEM's week assumes its watcher touching what a
+    switcher shows, and here only a save touches a still. A write is a
+    temporary file renamed into place; only the cache's own files are
+    ever removed. `ImageResult.FromCache` is atemwire's `from_cache`, and
+    the step says what was fetched ("20 stills, 8 downloaded"). Each
+    download's PNG is encoded while the next one transfers, so the
+    transfers run back to back; a picture whose download failed is
+    reported for its other slots rather than tried again.
+  - **File names** (`mediaPoolFiles`). atemwire's XML names
+    `ATEM Media Pool/<raw name>.png` and gives an unnamed slot no path,
+    while the file needs a safe name (`fileName`), so the two could
+    disagree, and two pictures under one name overwrote each other. The
+    engine names each still once and sets the XML's `<Still path>` to
+    that: the slot's name made safe, `Slot<n>` for none, `<name>_2` (`_3`
+    ...) for a second picture under a name already taken (case ignored,
+    as a Mac or Windows folder compares names), and one file for the same
+    picture under the same name. WebATEM 2.1.1 does the same. It is how
+    the app packages a profile, not the profile format, so it isn't a
+    bmdwire change.
 - **Group h, video mode, startup, time, the unverified commands**
   (`ops_system.go`). `video-modes` lists what `_VMC` says the switcher
   supports, by the names `--mode` takes; `video-mode` refuses a mode not

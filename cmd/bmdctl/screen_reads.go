@@ -528,13 +528,26 @@ func screenProfile(p *printer, r engine.Response, raw json.RawMessage) view {
 	var pr engine.ProfileResult
 	json.Unmarshal(raw, &pr)
 	c := p.c
-	stills, failed := 0, false
+	stills, kept, failed := 0, 0, false
 	for _, im := range pr.Images {
-		if im.Error == "" {
-			stills++
-		} else {
+		switch {
+		case im.Error != "":
 			failed = true
+		case im.FromCache:
+			stills++
+			kept++
+		default:
+			stills++
 		}
+	}
+	// "20 stills", "20 stills, 8 downloaded", as the engine's step says it.
+	stillsAbout := count(stills, "still")
+	switch {
+	case kept == 0:
+	case kept == stills:
+		stillsAbout += ", none downloaded"
+	default:
+		stillsAbout += fmt.Sprintf(", %d downloaded", stills-kept)
 	}
 	var verb, what string
 	var about []string
@@ -545,7 +558,7 @@ func screenProfile(p *printer, r engine.Response, raw json.RawMessage) view {
 		if p.steps != nil {
 			about = append(about, p.details...)
 		} else if len(pr.Images) > 0 {
-			about = append(about, count(stills, "still"))
+			about = append(about, stillsAbout)
 		}
 	case "profile restore":
 		verb, what = "restore", p.params["file"]
@@ -559,7 +572,7 @@ func screenProfile(p *printer, r engine.Response, raw json.RawMessage) view {
 		if what == "" {
 			what = engine.MediaPoolDir
 		}
-		about = []string{count(stills, "still")}
+		about = []string{stillsAbout}
 	}
 	if p.failed != nil {
 		p.stepFailed(p.failed.Error, "")

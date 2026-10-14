@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MIT
 
 // Package paths says where bmdctl keeps its files: the hosts file, the
-// engine's socket and log, and the CLI's small state. Every function takes
-// the environment as a function, so tests can point it anywhere.
+// engine's socket and log, the CLI's small state and the engine's cache.
+// Every function takes the environment as a function, so tests can point
+// it anywhere.
 //
 // On Unix (macOS included) the XDG base directories apply: configuration
 // under $XDG_CONFIG_HOME (~/.config), state and logs under
-// $XDG_STATE_HOME (~/.local/state), the socket in $XDG_RUNTIME_DIR. On
-// Windows configuration goes under %AppData%, state under %LocalAppData%,
-// and the engine listens on a named pipe.
+// $XDG_STATE_HOME (~/.local/state), the cache under $XDG_CACHE_HOME
+// (~/.cache), the socket in $XDG_RUNTIME_DIR. On Windows configuration
+// goes under %AppData%, state and the cache under %LocalAppData%, and the
+// engine listens on a named pipe.
 package paths
 
 import (
@@ -74,6 +76,21 @@ func State(env Env) (string, error) {
 		}
 	}
 	d, err := xdg(env, "XDG_STATE_HOME", filepath.Join(".local", "state"))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(d, "bmdctl"), nil
+}
+
+// Cache is the directory for what the engine keeps only to save work: the
+// media pool's stills (internal/stillcache), in its stills folder.
+func Cache(env Env) (string, error) {
+	if runtime.GOOS == "windows" && env("XDG_CACHE_HOME") == "" {
+		if d := env("LocalAppData"); d != "" {
+			return filepath.Join(d, "bmdctl", "cache"), nil
+		}
+	}
+	d, err := xdg(env, "XDG_CACHE_HOME", ".cache")
 	if err != nil {
 		return "", err
 	}

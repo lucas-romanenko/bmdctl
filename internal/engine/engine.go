@@ -29,6 +29,7 @@ import (
 
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/hyperdeck"
+	"github.com/lucas-romanenko/bmdctl/internal/stillcache"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
 
@@ -89,6 +90,10 @@ type Config struct {
 	Commit string
 	// BuildID is the build the engine runs, reported by status.
 	BuildID string
+	// Stills keeps the media pool's stills by hash, so a profile save
+	// writes a still it has seen without downloading it again
+	// (internal/stillcache); nil keeps none.
+	Stills *stillcache.Cache
 	// Background: a command started the engine (engine --background), so
 	// a command can start it again. It stops for a device request from
 	// another build than BuildID, answering CodeStale, for that command

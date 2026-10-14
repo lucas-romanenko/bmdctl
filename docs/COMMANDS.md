@@ -81,7 +81,8 @@ bmdctl [HOST] [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [
 - `BMDCTL_HOST`: The host a command goes to when --host doesn't name one.
 - `BMDCTL_PIN_IDLE`: How long a session `connect` pinned may go without a command before the engine closes it: a duration (90m, 2h) or seconds, 0 for never; an hour unless set. Read when the engine starts.
 - `BMDCTL_SOCKET`: The engine's socket (a pipe name on Windows), instead of $XDG_RUNTIME_DIR/bmdctl.sock.
-- `XDG_CONFIG_HOME, XDG_STATE_HOME, XDG_RUNTIME_DIR`: Where hosts.yml, the engine's log and last host, and the socket live.
+- `BMDCTL_STILL_CACHE_MB`: How much of the media pool's stills the engine keeps for profile saves, in megabytes: 1024 unless set, 0 for none. Read when the engine starts.
+- `XDG_CONFIG_HOME, XDG_STATE_HOME, XDG_CACHE_HOME, XDG_RUNTIME_DIR`: Where hosts.yml, the engine's log and last host, the still cache, and the socket live.
 - `NO_COLOR`: Set to anything: no colour, even on a terminal, as --no-color.
 - `TERM`: `dumb`: no colour and no spinner.
 
@@ -90,6 +91,7 @@ bmdctl [HOST] [--host H] [--json|--quiet] [--yes] [atem] <command> [arguments] [
 - `~/.config/bmdctl/hosts.yml`: The named hosts and the default.
 - `~/.local/state/bmdctl/engine.log`: The engine's log, rotated at 5 MiB, three old files kept.
 - `~/.local/state/bmdctl/last-host`: The host the last --host named.
+- `~/.cache/bmdctl/stills`: The media pool's stills at full size, one PNG per picture named by the switcher's MD5, which a profile save writes without downloading them again. The least recently used go past the size ($BMDCTL_STILL_CACHE_MB), and a still no save has used for 30 days. Safe to delete.
 - `$XDG_RUNTIME_DIR/bmdctl.sock`: The engine's socket; a lock file beside it.
 
 ## atem
