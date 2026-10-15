@@ -703,7 +703,11 @@ send queue of `transport.py`, and the callers that wait on it:
 
 API: `DownloadStill(ctx, slot) ([]byte, error)`, `UploadStill(ctx, slot,
 img, StillOptions)`, `UploadStillFrame(ctx, slot, frame, name,
-description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
+description)`, `EncodeStill(frame)` and `UploadEncodedStill(ctx, slot,
+EncodedStill, name, description)` (UploadStillFrame in two halves, so a
+caller can RLE-encode and hash the next still while one uploads, as
+atemwire's `upload` takes RLE data with `compressed=True`),
+`ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
 `UploadMacro(ctx, slot, name, description, bytecode)`, `LockHolder(store)`;
 `*TransferError`, `ErrLockNotGranted`.
 
@@ -2835,7 +2839,14 @@ comes back. Indexes in results count from 1, as the flags do
     CLI reads each `<Still path>` it can find beside the XML and sends
     it; after the apply the engine uploads each to its `index` under its
     `name` (PNGs premultiplied, as `media upload` does), reporting the
-    ones with no file.
+    ones with no file. Each picture is decoded, converted to a frame and
+    encoded (`EncodeStill`) once, on its own goroutine, ahead of its turn
+    while the still before it uploads, and kept until its last slot has
+    it (`uploadImages`, `UploadEncodedStill`): done between uploads it
+    cost half a second a still (the fifteenth hardware run), and a profile
+    often names one picture for several slots. With it, 20 1080p stills
+    restored in 11.2 s, 1 ms between one still's FTDC and the next FTSD
+    (the sixteenth run).
   - **The still cache** (`internal/stillcache`, `engine.Config.Stills`).
     atemwire's `download_media_pool_images` takes `cache_get` and
     `cache_put`, by the slot's MPfe hash; the port left them out until

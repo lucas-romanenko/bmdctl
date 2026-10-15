@@ -177,6 +177,24 @@ func TestUploadsWithLockChangesAnnouncedAFrameLate(t *testing.T) {
 	waitState(t, s, 2*time.Second, func(st atem.State) bool { return !sw.LockedBySession(0) })
 }
 
+// A frame encoded ahead (EncodeStill) uploads as UploadStillFrame sends it.
+func TestUploadEncodedStill(t *testing.T) {
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	frame := bytes.Repeat([]byte{1, 2, 3, 4, 5, 6, 7, 8}, 4096)
+	e, err := atem.EncodeStill(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UploadEncodedStill(ctxFor(t, 10*time.Second), 7, e, "ahead", ""); err != nil {
+		t.Fatal(err)
+	}
+	stored, name, hash, _ := sw.Still(7)
+	if got, err := atem.RLEDecode(stored); err != nil || !bytes.Equal(got, frame) || name != "ahead" || hash != md5.Sum(frame) {
+		t.Fatalf("the switcher got another frame (%v)", err)
+	}
+}
+
 func TestClearStill(t *testing.T) {
 	sw := newFake(t)
 	s := dialFake(t, sw, 0)

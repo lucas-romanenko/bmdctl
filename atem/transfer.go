@@ -329,16 +329,46 @@ func (s *Session) UploadStillFrame(ctx context.Context, slot int, frame []byte, 
 	if err := checkSlot("still", slot, 0xFFFF); err != nil {
 		return err
 	}
+	e, err := EncodeStill(frame)
+	if err != nil {
+		return err
+	}
+	return s.UploadEncodedStill(ctx, slot, e, name, description)
+}
+
+// EncodedStill is a frame ready to upload: RLE-encoded, with the frame's
+// length and MD5 (FTSD's length, FTFD's hash).
+type EncodedStill struct {
+	rle    []byte
+	length int
+	hash   MD5
+}
+
+// EncodeStill encodes a frame for UploadEncodedStill: the work
+// UploadStillFrame does before it queues the upload (an 8 MB 1080p frame
+// takes a fifth of a second), which a caller sending several stills can do
+// for the next while one uploads. atemwire's upload takes RLE data the same
+// way (compressed=True).
+func EncodeStill(frame []byte) (EncodedStill, error) {
 	rle, err := RLEEncode(frame)
 	if err != nil {
+		return EncodedStill{}, err
+	}
+	return EncodedStill{rle: rle, length: len(frame), hash: md5.Sum(frame)}, nil
+}
+
+// UploadEncodedStill uploads a frame EncodeStill encoded to still slot
+// slot, as UploadStillFrame does.
+func (s *Session) UploadEncodedStill(ctx context.Context, slot int, e EncodedStill, name, description string) error {
+	if err := checkSlot("still", slot, 0xFFFF); err != nil {
 		return err
 	}
 	t := &transferTask{
 		kind: taskUpload, store: StoreStills, slot: uint16(slot),
-		data: rle, dataLength: len(frame), hash: md5.Sum(frame),
+		data: e.rle, dataLength: e.length, hash: e.hash,
 		name: name, description: description,
 	}
-	_, err = s.runTransfer(ctx, t, StillUploadTimeout)
+	_, err := s.runTransfer(ctx, t, StillUploadTimeout)
 	return err
 }
 
