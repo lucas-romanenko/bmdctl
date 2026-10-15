@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher model so far, in thirteen sessions. Its firmware was first
+One switcher model so far, in fourteen sessions. Its firmware was first
 recorded in the tenth, 9.2.1; before that the rows give the protocol
 version the switcher's `_ver` packet reported, 2.30.
 
@@ -32,6 +32,7 @@ version the switcher's `_ver` packet reported, 2.30.
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile restore` of the Fairlight mixer alone (`--macros-only --macros off --audio`): a dual-mono input's halves each to their own strip, the XLR to ASC's address for it; `profile save` of a dual-mono input as `DualMono` | 2026-10-13 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile save` of a full media pool (20 stills, 8 different): 46 s, each still 1.8 s on the wire, as long as ATEM Software Control's own downloads take (a capture) | 2026-10-14 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile save` with the still cache: the full pool's first save 16.2 s (each of 8 pictures downloaded once), the second 0.9 s (none downloaded) | 2026-10-14 |
+| ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile save` of a different picture under a name taken (`<name>_2.png`, names compared ignoring case) and of an unnamed still (`Slot<n>.png`), the XML's paths to match; `media upload` of a photographic 1080p still with aggressive drain in 1.8 s, 23.3 s without | 2026-10-14 |
 
 ## Unverified
 
@@ -58,8 +59,11 @@ fakes and, for the protocol, against bmdwire's own code.
   run), colour, multiviewer, macro run and record. Commands the table
   marks unverified say so when sent.
 - **Transfers and profiles:** macro upload of a macro with ops (the
-  tenth session uploaded only an empty one); `profile restore` beyond
-  `--macros-only` and the Fairlight mixer; macro floats in a `profile
+  tenth session uploaded only an empty one), and any macro upload with
+  aggressive drain; `profile restore` beyond `--macros-only` and the
+  Fairlight mixer, the media pool's stills among it (a restore of
+  renamed and unnamed stills, and a whole pool at aggressive drain's
+  pace); macro floats in a `profile
   save` since bmdwire#24 (six significant digits); a still that isn't premultiplied (JPEG, GIF,
   `--premultiply off`); a fit that shrinks the image or adds bars at the
   sides; the progress bar on a slow transfer.
@@ -569,3 +573,74 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Not yet verified on hardware:** a restore of a profile with
   renamed (`<name>_2`) or unnamed stills; otherwise as after the
   eleventh run.
+
+## 2026-10-14: fourteenth run, renamed and unnamed stills, upload speed
+
+- **Commit:** `1dc23d1`, built and run as an engine of its own (its own
+  socket and config, state and cache directories), for everything up to
+  the restore; then the working tree that became `ece244b`, the same
+  code, for the last upload.
+- **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD, protocol
+  2.30, firmware 9.2.1, 1080p25; the media pool as the twelfth run left
+  it, 20 stills of 8 different pictures. Nothing from the media players
+  was on air throughout.
+- **Why:** the thirteenth run left a restore of a profile with renamed
+  (`<name>_2`) or unnamed stills unverified.
+- **Run:**
+  - `profile save` of everything, as a backup: 15.8 s into an empty
+    still cache, 20 stills in 8 PNGs.
+  - Three `media upload --yes`, from the backup's PNGs, to make the
+    cases: slot 18 a different picture as `backdrop_a`
+    (slot 14 is `Backdrop_A`), slot 19 a different picture
+    under the taken name `Backdrop_B`, slot 20 with
+    `--name ""`, which the switcher kept unnamed.
+  - `profile save` again, then a scratch picture uploaded to slots
+    18–20, so a restore that left a slot alone would show.
+  - `profile restore --macros-only --macros false --media-pool-images
+    true` of that save was not run: the session's permission check
+    refused it.
+  - Offline, each saved PNG converted back to a frame as an upload
+    converts it, its MD5 against the hash the switcher reported for the
+    slot it came from.
+  - The owner, in ATEM Software Control: a save with all 20 slots used,
+    then every slot cleared, then a restore of a profile with 20 stills,
+    timed by stopwatch. That left the pool with that profile's stills,
+    under new hashes.
+  - One `media upload` with aggressive drain: slot 19's own picture back
+    into it, under its own name.
+- **Result:**
+  - The save named the files as designed: `backdrop_a_2.png`
+    for slot 18, `Backdrop_B_2.png` for slot 19 and, for the
+    unnamed slot 20, `Slot19.png`. bmdwire's
+    `download_media_pool_images` names an unnamed still `Slot{slot}` by
+    its index from 0, and bmdctl and WebATEM follow it; the XML's
+    `index="19"` matches it, the slot number bmdctl and ASC show
+    doesn't. Every `<Still path>` named its slot's file. 6.75 s, 3
+    stills downloaded, 17 from the cache.
+  - Each upload took 23.2 to 23.3 s, 22.73 s (±10 ms) from the request
+    to the end of the data, whatever the picture: a photograph barely
+    compresses, so about 8.3 MB went as about 5,940 chunks, five for
+    each packet from the switcher. A 20-still restore would have taken
+    about 8 minutes. The third run's 1.1 s upload was three flat
+    colours, which RLE shrinks to almost nothing.
+  - A PNG converted back doesn't give the frame the switcher hashed: 0
+    of 3, for stills bmdctl itself had uploaded from known PNGs (those
+    PNGs gave the switcher's hashes exactly, 3 of 3). ASC's own save and
+    restore changed every hash too. A restore can't tell a slot already
+    holds a picture by recomputing its hash.
+  - ASC's save took about a second (its stills downloaded at connect,
+    the twelfth run); its restore into an empty pool about 2 s per
+    still. So its usual restores, under 10 s by the owner's account,
+    must upload few stills or none.
+  - With aggressive drain the upload took 1826 ms, the data 0.96 s, and
+    the switcher reported the MD5 of the frame sent.
+- **Changed because of it:** `ece244b`: the engine dials with aggressive
+  drain (bmdwire's `aggressive_drain`, which WebATEM's uploader runs
+  on), a 20-still restore about 40 s instead of 8 minutes.
+  docs/PORTING.md, "Aggressive drain". Not yet: a restore that skips a
+  slot already holding its picture, which needs another way to know it
+  than the hash (the still cache's PNG for the slot's hash, compared
+  with the profile's file).
+- **Not yet verified on hardware:** the restore of renamed and unnamed
+  stills, and a whole-pool restore at the new pace; otherwise as after
+  the eleventh run.
