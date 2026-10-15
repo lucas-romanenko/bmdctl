@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher model so far, in seventeen sessions. Its firmware was first
+One switcher model so far, in eighteen sessions. Its firmware was first
 recorded in the tenth, 9.2.1; before that the rows give the protocol
 version the switcher's `_ver` packet reported, 2.30.
 
@@ -36,6 +36,7 @@ version the switcher's `_ver` packet reported, 2.30.
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile restore` of a whole media pool (20 photographic stills, `--macros-only --macros false --media-pool-images true`) in 73 s: every slot's name and frame as the profile's files, the renamed (`<name>_2.png`) and unnamed (`Slot<n>.png`) ones among them | 2026-10-14 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads as ATEM Software Control sends them (bmdwire#36): `profile restore` of 20 photographic stills in 11.2 s (ASC 12 s), every frame exact | 2026-10-15 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Another client's turn (bmdwire#38, #40): ATEM Software Control connecting during back-to-back downloads loads all 20 thumbnails (none with bmdwire#36's handover) | 2026-10-15 |
+| ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads beside another session in the same process, as WebATEM runs them (bmdwire#42): 20 of 20, every frame exact; bmdwire 1.5.2 deadlocked after 2 | 2026-10-15 |
 
 ## Unverified
 
@@ -807,3 +808,38 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Not yet verified on hardware:** ASC connecting while bmdctl itself
   transfers (its port matches bmdwire's code, tested against the fake
   switcher's model of the same); otherwise as after the sixteenth run.
+
+## 2026-10-15: eighteenth run, the UDP thread waiting on itself
+
+- **Commits:** none of bmdctl's. bmdwire run from scripts: v1.5.2
+  (`65b9ee0`) and bmdwire#42's branch (`81955c1`).
+- **Switcher:** TEST ATEM 2, an ATEM 1 M/E Constellation HD, protocol
+  2.30, firmware 9.2.1, 1080p25; the media pool as the sixteenth run left
+  it.
+- **Why:** the owner's check of WebATEM 2.1.3 on the AV server's dev
+  stack: a profile restore of 20 stills, with ATEM Software Control
+  connecting partway. ASC loaded all 20 thumbnails and the page waited
+  37 s for its turn, but the restore hung at its fourth still and never
+  timed out. A stack dump of the dev stack's django (py-spy from a
+  sidecar container) showed the protocol thread in `drain_queue` and
+  the UDP thread putting an ACK on its own queue, both waiting in
+  `SocketQueue.put`: the socketpair under the queue holds 278 entries,
+  an upload budget is up to 768, and the UDP thread is its only reader.
+- **Run:** scripts uploading the pool's own 20 stills back. In separate
+  processes, beside one or two sessions downloading macros and one
+  downloading stills: 20 of 20 on 1.5.2 both times. In one process with
+  a session downloading stills as WebATEM's watcher does, both pumped as
+  WebATEM pumps them: 1.5.2 hung after 2 of 20, faulthandler showing the
+  same two stacks; bmdwire#42's branch, five runs, no hang; the two whose
+  results were kept uploaded 20 of 20 with every slot's hash the frame
+  sent (39.4 s and 26.1 s).
+- **Result:** bmdwire#42 fixes it (the UDP thread sends its own packets
+  at once). bmdctl has no such queue: its transport is one goroutine
+  writing to the socket. Seen along the way, in 1.5.2 as well: two
+  sessions waiting on the same release become due together, and the
+  later one's grant aborts the earlier one's upload, which goes again
+  (three runs of five); with a third session downloading macros, the
+  still and macro downloads retried in lockstep without end.
+- **Changed because of it:** bmdwire#42; the AV server's #41 waits for
+  the WebATEM release that takes it.
+- **Not yet verified on hardware:** as after the seventeenth run.
