@@ -212,12 +212,12 @@ func TestProfileSaveStopsWhenTheSessionGoes(t *testing.T) {
 		code, out, _ := b.run(with("profile", "save", "show.xml", "--json")...)
 		done <- ran{code, out}
 	}()
-	deadline := time.Now().Add(10 * time.Second)
-	for len(b.sent("PLCK")) == locks {
-		if time.Now().After(deadline) {
-			t.Fatal("the save never asked for the store lock")
-		}
-		time.Sleep(10 * time.Millisecond)
+	// Since bmdwire#38 a store another client holds isn't asked for: the
+	// save's first still waits for it, sending nothing. Give the save time
+	// to get there before the session goes.
+	time.Sleep(1500 * time.Millisecond)
+	if n := len(b.sent("PLCK")) - locks; n != 0 {
+		t.Fatalf("%d lock requests for a store another client holds", n)
 	}
 	sw.Silence(true)
 	var r ran

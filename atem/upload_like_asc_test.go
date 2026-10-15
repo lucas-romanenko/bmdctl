@@ -5,9 +5,11 @@
 package atem
 
 // Transfers as ATEM Software Control sends them (bmdwire#36, bd6ae77;
-// test_upload_like_asc.py): the release and the next lock request in one
-// packet, FTFD with the first budget, each budget whole; a release
-// announced while we hold the store changes nothing. The transport half:
+// test_upload_like_asc.py): FTFD with the first budget, each budget whole;
+// a release announced while we hold the store changes nothing; and, since
+// bmdwire#38 and #40, another client's turn: after every release the next
+// request waits until the store is announced free and lockCourtesy more,
+// never while another client holds it. The transport half:
 // a refused send is retried and keeps its sequence number, and what the
 // switcher hasn't acknowledged is resent after resendAfter.
 
@@ -19,6 +21,7 @@ import (
 	"slices"
 	"syscall"
 	"testing"
+	"time"
 )
 
 const ascChunk = 1392 // the switcher's 1396, in whole 8-byte words
@@ -147,18 +150,31 @@ func firstOfTwoDone(t *testing.T, s *Session, kind taskKind) {
 	feedDone(t, s, tid)
 }
 
-func TestTheReleaseAndTheNextRequestShareAPacket(t *testing.T) {
+// after moves the test's clock on by d and lets the lane's yields run, as
+// its timer would.
+func after(s *Session, clock *time.Time, d time.Duration) {
+	*clock = clock.Add(d)
+	s.serviceYields()
+}
+
+func TestTheStoreIsLeftFreeUntilTheReleaseIsSeen(t *testing.T) {
 	for _, kind := range []taskKind{taskUpload, taskDownload} {
 		s, c := laneSession(t)
+		clock := moveClock(s)
 		firstOfTwoDone(t, s, kind)
-		if p := lastPacket(c); !slices.Equal(p, []string{"LOCK", "PLCK"}) {
-			t.Fatalf("kind %d: handover %v, want LOCK and PLCK in one packet", kind, p)
+		if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) || commands(c, "LOCK")[len(commands(c, "LOCK"))-1][2] != 0 {
+			t.Fatalf("kind %d: %v, want the release alone", kind, p)
 		}
-		lock, plck := commands(c, "LOCK"), commands(c, "PLCK")
-		if lock[len(lock)-1][2] != 0 || binary.BigEndian.Uint16(plck[len(plck)-1][2:]) != 2 {
-			t.Fatalf("kind %d: not a release and slot 2's request", kind)
+		asked := len(packetCodes(c))
+		feedLockState(t, s, 0, false) // the release announced
+		after(s, clock, lockCourtesy/2)
+		if len(packetCodes(c)) != asked {
+			t.Fatalf("kind %d: asked before anyone could take it", kind)
 		}
-		// Granted at once, as the switcher does: no wait for an LKST.
+		after(s, clock, lockCourtesy)
+		if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
+			t.Fatalf("kind %d: %v, want slot 2's request", kind, p)
+		}
 		grant(t, s, 0)
 		if s.lane.transfer == nil || s.lane.transfer.slot != 2 || !s.lane.requested {
 			t.Fatalf("kind %d: slot 2 not started on the grant", kind)
@@ -166,30 +182,140 @@ func TestTheReleaseAndTheNextRequestShareAPacket(t *testing.T) {
 	}
 }
 
-func TestAClearNextTakesTheWholeStoreInTheSamePacket(t *testing.T) {
+func TestWithoutAnAnnouncementWeAskAfterLockQuiet(t *testing.T) {
 	s, c := laneSession(t)
-	s.enqueueTask(uploadTask(1))
-	s.enqueueTask(task(taskClear, StoreStills, 5))
-	grant(t, s, 0)
-	tid := s.lane.transfer.tid
-	feedBudget(t, s, 10)
-	feedDone(t, s, tid)
-	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK", "LOCK"}) {
-		t.Fatalf("handover %v", p)
+	clock := moveClock(s)
+	firstOfTwoDone(t, s, taskUpload)
+	asked := len(packetCodes(c))
+	after(s, clock, lockQuiet*9/10)
+	if len(packetCodes(c)) != asked {
+		t.Fatal("asked before lockQuiet")
 	}
-	locks := commands(c, "LOCK")
-	if locks[len(locks)-2][2] != 0 || locks[len(locks)-1][2] != 1 {
-		t.Fatal("not a release then a whole-store request")
+	after(s, clock, lockQuiet/5)
+	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
+		t.Fatalf("%v after lockQuiet", p)
 	}
 }
 
+// Not announced free after our release: someone waiting was handed it.
+// Their transfers ending (FTDC, another session's id) keep us waiting.
+func TestAStoreHandedToAnotherClientWaitsWhileItWorks(t *testing.T) {
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	firstOfTwoDone(t, s, taskUpload)
+	asked := len(packetCodes(c))
+	for range 3 {
+		after(s, clock, lockQuiet*6/10)
+		feedDone(t, s, 0x6c02)
+	}
+	if len(packetCodes(c)) != asked {
+		t.Fatal("asked while another client worked")
+	}
+	feedLockState(t, s, 0, false) // done: announced free
+	after(s, clock, lockCourtesy)
+	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
+		t.Fatalf("%v once free", p)
+	}
+}
+
+func TestAnotherClientsTurnLastsUntilTheyRelease(t *testing.T) {
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	firstOfTwoDone(t, s, taskUpload)
+	asked := len(packetCodes(c))
+	feedLockState(t, s, 0, true) // taken, not by us
+	after(s, clock, lockQuiet*2)
+	if len(packetCodes(c)) != asked {
+		t.Fatal("asked while another client held it")
+	}
+	feedLockState(t, s, 0, false)
+	after(s, clock, lockCourtesy)
+	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
+		t.Fatalf("%v once they let go", p)
+	}
+}
+
+func TestAStoreAnotherClientHoldsIsNotAskedFor(t *testing.T) {
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	feedLockState(t, s, 0, true) // someone else's
+	s.enqueueTask(task(taskDownload, StoreStills, 3))
+	if len(packetCodes(c)) != 0 {
+		t.Fatal("asked for another client's store")
+	}
+	feedLockState(t, s, 0, false)
+	if len(packetCodes(c)) != 0 {
+		t.Fatal("asked before they could take it again")
+	}
+	after(s, clock, lockCourtesy)
+	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
+		t.Fatalf("%v once free", p)
+	}
+}
+
+// ASC releases one still and takes the store for its next in one packet,
+// announced as a release and a lock together.
+func TestAnotherClientReleasingAndRetakingKeepsItsTurn(t *testing.T) {
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	feedLockState(t, s, 0, true)
+	s.enqueueTask(task(taskDownload, StoreStills, 3))
+	feedLockState(t, s, 0, false)
+	feedLockState(t, s, 0, true)
+	after(s, clock, lockCourtesy*2)
+	if len(packetCodes(c)) != 0 {
+		t.Fatal("asked in their turn")
+	}
+}
+
+// WebATEM's media pool watcher queues one still at a time, the next after
+// decoding the last: nothing is queued at the release (bmdwire#40).
+func TestATransferQueuedAfterTheReleaseWaitsToo(t *testing.T) {
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	s.enqueueTask(task(taskDownload, StoreStills, 1))
+	grant(t, s, 0)
+	feedDone(t, s, s.lane.transfer.tid)
+	after(s, clock, 250*time.Millisecond) // the decode
+	s.enqueueTask(task(taskDownload, StoreStills, 2))
+	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
+		t.Fatalf("%v: asked before the store was seen free", p)
+	}
+	feedLockState(t, s, 0, false)
+	after(s, clock, lockCourtesy)
+	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
+		t.Fatalf("%v once free", p)
+	}
+}
+
+func TestAClearNextTakesTheWholeStoreAfterTheYield(t *testing.T) {
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	s.enqueueTask(uploadTask(1))
+	s.enqueueTask(task(taskClear, StoreStills, 5))
+	grant(t, s, 0)
+	feedBudget(t, s, 10)
+	feedDone(t, s, s.lane.transfer.tid)
+	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
+		t.Fatalf("%v, want the release alone", p)
+	}
+	after(s, clock, lockQuiet)
+	locks := commands(c, "LOCK")
+	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) || locks[len(locks)-1][2] != 1 {
+		t.Fatalf("%v, want a whole-store request", p)
+	}
+}
+
+// The announcement can come after lockQuiet, and so after the LKOB for
+// the next request.
 func TestALateReleaseAnnouncementKeepsTheNewGrant(t *testing.T) {
 	s, c := laneSession(t)
+	clock := moveClock(s)
 	firstOfTwoDone(t, s, taskUpload)
+	after(s, clock, lockQuiet)
 	grant(t, s, 0)
 	tid := s.lane.transfer.tid
 	sent := len(c.sent())
-	// The first frame's release, announced a frame late, after the LKOB.
 	feedLockState(t, s, 0, false)
 	if !s.lane.locks[0] {
 		t.Fatal("the late announcement cost us the new grant")
@@ -197,26 +323,28 @@ func TestALateReleaseAnnouncementKeepsTheNewGrant(t *testing.T) {
 	if len(c.sent()) != sent {
 		t.Fatal("asked again as the holder")
 	}
-	feedLockState(t, s, 0, true)
 	feedBudget(t, s, 10)
 	feedDone(t, s, tid)
-	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
+	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) || s.lane.locks[0] {
 		t.Fatalf("the second frame not given back: %v", p)
-	}
-	if s.lane.locks[0] {
-		t.Fatal("still held")
 	}
 }
 
 func TestFTDE6StillLeavesTheRequestToTheReleaseBroadcast(t *testing.T) {
 	s, c := laneSession(t)
+	clock := moveClock(s)
 	s.enqueueTask(uploadTask(1))
 	grant(t, s, 0)
 	feedCmd(t, s, "FTDE", append(u16be(s.lane.transfer.tid), 6, 0))
 	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
 		t.Fatalf("after FTDE 6 %v: another session is queued, no request with the release", p)
 	}
+	after(s, clock, lockCourtesy*3)
+	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
+		t.Fatalf("%v: asked before the store was seen free", p)
+	}
 	feedLockState(t, s, 0, false)
+	after(s, clock, lockCourtesy)
 	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
 		t.Fatalf("the release broadcast didn't re-request: %v", p)
 	}

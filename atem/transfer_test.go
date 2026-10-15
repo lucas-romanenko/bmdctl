@@ -163,8 +163,12 @@ func TestFTDE6ReleasesKeepsTheTaskAndReRequestsOnRelease(t *testing.T) { // test
 	if count(c, "PLCK") != 1 {
 		t.Fatal("no blind re-request while the other session is queued")
 	}
-	// The store frees (our echo, or the other session's release): re-request.
+	// The store frees (our echo, or the other session's release): a frame
+	// for anyone to take it again (bmdwire#38), then re-request.
+	clock := moveClock(s)
 	feedCmd(t, s, "LKST", []byte{0, 0, 0, 0})
+	*clock = clock.Add(lockCourtesy)
+	s.serviceYields()
 	if count(c, "PLCK") != 2 {
 		t.Fatal("no re-request on the release")
 	}
@@ -237,10 +241,21 @@ func TestLockRequestFlagClearsOnReleaseBroadcast(t *testing.T) { // test_lock_re
 	if _, ok := s.lane.lockRequested[0]; !ok {
 		t.Fatal("request not noted")
 	}
+	clock := moveClock(s)
 	feedCmd(t, s, "LKST", []byte{0, 0, 0, 0}) // someone released
+	*clock = clock.Add(lockCourtesy)          // a frame for them first (bmdwire#38)
+	s.serviceYields()
 	if count(c, "PLCK") != 2 {
 		t.Fatal("the pounce re-requests; a queued duplicate is harmless")
 	}
+}
+
+// moveClock gives the session's transport a clock the test moves by hand,
+// for another client's turn (lockCourtesy, lockQuiet).
+func moveClock(s *Session) *time.Time {
+	c := time.Unix(1000, 0)
+	s.t.now = func() time.Time { return c }
+	return &c
 }
 
 func TestLaneResetsClearTheRequestFlag(t *testing.T) { // test_lane_resets_clear_the_request_flag

@@ -97,6 +97,16 @@ type Switcher struct {
 	// (LateLockState); lkst holds those waiting.
 	lateLKST time.Duration
 	lkst     [][]byte
+	// otherQueued holds another client's whole-store LOCK waiting for the
+	// store (QueueOther), and how long it holds the store once handed it;
+	// otherTurn the stores such a client holds. A request from the session
+	// during that turn is granted beside it, as a switcher grants a PLCK
+	// beside ATEM Software Control's LOCK, and aborts its transfer
+	// (othersAborted); turns that end of themselves count in otherTurns.
+	otherQueued   map[uint16]time.Duration
+	otherTurn     map[uint16]bool
+	othersAborted int
+	otherTurns    int
 
 	stills map[uint16]*item // the media pool's stills (transfers.go)
 	macros map[uint16]*item
@@ -138,10 +148,12 @@ func New(dump []byte) *Switcher {
 		state:   map[string][]byte{},
 		mirror:  map[string][]byte{},
 
-		unanswered: map[string]bool{},
-		dropSeqs:   map[uint16]bool{},
-		dropAlways: map[uint16]bool{},
-		locks:      map[uint16]holder{},
+		unanswered:  map[string]bool{},
+		dropSeqs:    map[uint16]bool{},
+		dropAlways:  map[uint16]bool{},
+		locks:       map[uint16]holder{},
+		otherQueued: map[uint16]time.Duration{},
+		otherTurn:   map[uint16]bool{},
 
 		lockQueued: map[uint16]bool{},
 		stills:     map[uint16]*item{},
@@ -176,6 +188,22 @@ func (sw *Switcher) DropFromClient(n int) { sw.mu.Lock(); sw.dropFromClient += n
 
 // DelayACKs makes the switcher ACK the session's packets d late.
 func (sw *Switcher) DelayACKs(d time.Duration) { sw.mu.Lock(); sw.ackDelay = d; sw.mu.Unlock() }
+
+// QueueOther has another client ask for store with a whole-store LOCK
+// while the session holds it: at the session's release the switcher hands
+// it the store without announcing anything, and it holds it for hold,
+// then releases it (announced). A request from the session meanwhile is
+// granted beside it and aborts its turn (bmdwire#38).
+func (sw *Switcher) QueueOther(store uint16, hold time.Duration) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	sw.otherQueued[store] = hold
+}
+
+// OthersAborted is how many of those turns the session's requests cut
+// short; OtherTurns how many ran to their end.
+func (sw *Switcher) OthersAborted() int { sw.mu.Lock(); defer sw.mu.Unlock(); return sw.othersAborted }
+func (sw *Switcher) OtherTurns() int    { sw.mu.Lock(); defer sw.mu.Unlock(); return sw.otherTurns }
 
 // LateLockState makes the switcher announce lock changes (LKST) d late,
 // those of the same moment together, as a Constellation announces them at

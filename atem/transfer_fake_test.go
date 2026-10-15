@@ -195,6 +195,45 @@ func TestUploadEncodedStill(t *testing.T) {
 	}
 }
 
+// Another client waiting for the store with a whole-store LOCK (ATEM
+// Software Control fetching thumbnails) is handed it at the session's
+// release, unannounced. The next upload waits until the store is announced
+// free, and the other client's turn runs to its end (bmdwire#38): asking
+// sooner would be granted beside it and abort its transfer.
+func TestAnotherClientWaitingGetsItsTurn(t *testing.T) {
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	frame := func(n int) []byte {
+		b := make([]byte, 256<<10)
+		for i := range b {
+			b[i] = byte((i*n + n) % 251)
+		}
+		return b
+	}
+	ctx := ctxFor(t, 30*time.Second)
+	release := make(chan struct{})
+	sw.HoldUpload(release)
+	errs := make(chan error, 2)
+	go func() { errs <- s.UploadStillFrame(ctx, 1, frame(1), "one", "") }()
+	waitState(t, s, 5*time.Second, func(atem.State) bool { return sw.LockedBySession(0) })
+	sw.QueueOther(0, 150*time.Millisecond) // asks while the session holds it
+	go func() { errs <- s.UploadStillFrame(ctx, 2, frame(2), "two", "") }()
+	close(release)
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if a, n := sw.OthersAborted(), sw.OtherTurns(); a != 0 || n != 1 {
+		t.Fatalf("the other client's turns: %d cut short, %d ran to their end", a, n)
+	}
+	for slot := uint16(1); slot <= 2; slot++ {
+		if stored, _, _, ok := sw.Still(slot); !ok || len(stored) == 0 {
+			t.Fatalf("slot %d not stored", slot)
+		}
+	}
+}
+
 func TestClearStill(t *testing.T) {
 	sw := newFake(t)
 	s := dialFake(t, sw, 0)

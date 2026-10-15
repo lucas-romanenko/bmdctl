@@ -440,6 +440,8 @@ func (s *Session) loop() error {
 			s.flush()
 		case <-s.bulkTimerC():
 			s.onBulkTimer()
+		case <-s.yieldTimerC():
+			s.serviceYields()
 		case <-silence.C:
 			if s.t.silent() {
 				s.onSilence()
