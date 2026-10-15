@@ -126,11 +126,17 @@ type transferTask struct {
 	tid   uint16
 
 	// Uploads.
-	data        []byte // what is still to be queued, compressed if it is
+	data        []byte // what is sent, compressed if it is
 	dataLength  int    // the uncompressed length, FTSD's length
 	hash        MD5    // MD5 of the uncompressed data, sent in FTFD
 	name        string
 	description string
+	// offset is how much of data this attempt has cut into chunks, and
+	// metadataSent whether its FTFD has gone, with the first budget; both
+	// start again with each upload request (bmdwire#36: chunks used to be
+	// cut off the front of data, so a retried upload lost its start).
+	offset       int
+	metadataSent bool
 
 	done     chan transferResult // buffered 1; written once
 	finished bool
@@ -199,9 +205,16 @@ type lane struct {
 	buffer      [][]byte      // transfer_buffer: download chunks
 	bufferBytes int
 
-	locks          map[uint16]bool      // locks: granted (true) or released by us (false)
-	releasePending map[uint16]bool      // _lock_release_pending
-	lockRequested  map[uint16]time.Time // _lock_requested
+	// locks is true from the LKOB until we send the release, whatever
+	// LKST says meanwhile: the switcher announces lock changes once a
+	// frame, so the release of the frame just given back is announced
+	// after the LKOB for the request sent with it (bmdwire#36).
+	locks         map[uint16]bool
+	lockRequested map[uint16]time.Time // _lock_requested
+	// releasing marks a store we released whose release hasn't been
+	// announced (no LKST since), so LockHolder still says this session
+	// rather than another client. It defers nothing.
+	releasing map[uint16]bool
 
 	budget *FileTransferContinueDataField // transfer_budget: nil when exhausted
 
@@ -213,11 +226,11 @@ type lane struct {
 
 func newLane() lane {
 	return lane{
-		queues:         make(map[uint16][]*transferTask),
-		nextID:         firstTransferID,
-		locks:          make(map[uint16]bool),
-		releasePending: make(map[uint16]bool),
-		lockRequested:  make(map[uint16]time.Time),
+		queues:        make(map[uint16][]*transferTask),
+		nextID:        firstTransferID,
+		locks:         make(map[uint16]bool),
+		lockRequested: make(map[uint16]time.Time),
+		releasing:     make(map[uint16]bool),
 	}
 }
 
@@ -390,7 +403,7 @@ func (s *Session) LockHolder(store uint16) LockHolder {
 }
 
 func (s *Session) lockHolder(store uint16) LockHolder {
-	if s.lane.locks[store] || s.lane.releasePending[store] {
+	if s.lane.locks[store] || s.lane.releasing[store] {
 		return LockThisSession
 	}
 	if l := s.state.Locks[store]; l != nil && l.State {
@@ -520,7 +533,7 @@ func (s *Session) cancelTask(t *transferTask, cause error) error {
 		l.transfer = nil
 		l.requested = false
 		l.buffer, l.bufferBytes = nil, 0
-		s.releaseThenContinue(t.store)
+		s.releaseThenContinue(t.store, true)
 	} else {
 		l.remove(t)
 		s.transferTrigger(t.store, false)
@@ -571,6 +584,28 @@ func (s *Session) sendCommands(cmds ...Command) {
 // asking for its store's lock first; with nothing queued, release every
 // lock held.
 func (s *Session) transferTrigger(store uint16, retry bool) {
+	s.triggerWith(store, retry, nil)
+}
+
+// triggerWith is transferTrigger with a per-frame release to send in the
+// same packet as whatever it sends next: the next lock request, the other
+// releases, or alone if nothing follows (bmdwire#36).
+func (s *Session) triggerWith(store uint16, retry bool, release Command) {
+	var pending []Command
+	if release != nil {
+		pending = []Command{release}
+	}
+	send := func(cmds ...Command) {
+		s.sendCommands(append(pending, cmds...)...)
+		pending = nil
+	}
+	s.trigger(store, retry, send)
+	if pending != nil {
+		s.sendCommands(pending...)
+	}
+}
+
+func (s *Session) trigger(store uint16, retry bool, send func(...Command)) {
 	l := &s.lane
 	var next *transferTask
 	if q := l.queues[store]; len(q) > 0 {
@@ -590,18 +625,12 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 		for _, st := range sortedStores(l.locks) {
 			if l.locks[st] {
 				s.log.Info("atem: releasing store lock", "store", st)
-				s.sendCommands(Lock{Store: st})
+				send(Lock{Store: st})
 			}
 		}
 		return
 	}
 	if next.store != StoreMacros && !l.locks[next.store] {
-		if l.releasePending[next.store] {
-			// A request sent while our own unlock is in flight is eaten by
-			// the switcher; the LKST echo triggers again.
-			s.log.Debug("atem: lock request deferred until the release echo", "store", next.store)
-			return
-		}
 		if at, ok := l.lockRequested[next.store]; ok && s.t.now().Sub(at) < lockRerequest {
 			s.log.Debug("atem: lock request already on the wire", "store", next.store)
 			return
@@ -614,7 +643,7 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 		}
 		s.log.Info("atem: requesting store lock", "store", next.store)
 		l.lockRequested[next.store] = s.t.now()
-		s.sendCommands(req)
+		send(req)
 		return
 	}
 	if l.requested {
@@ -625,9 +654,9 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 		// per-frame release, which in-order delivery puts after it.
 		l.popHead(next)
 		s.log.Info("atem: clearing still under the store lock", "slot", next.slot)
-		s.sendCommands(ClearStill{Slot: uint8(next.slot)})
+		send(ClearStill{Slot: uint8(next.slot)})
 		s.finish(next, transferResult{}) // clear-dispatched
-		s.releaseThenContinue(next.store)
+		s.releaseThenContinue(next.store, true)
 		return
 	}
 	if !retry {
@@ -653,12 +682,17 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 		s.log.Info("atem: requesting download", "store", next.store, "slot", next.slot, "transfer", next.tid)
 	}
 	l.requested = true
+	if next.kind == taskUpload {
+		// Each attempt sends its metadata and its data from the start.
+		next.offset, next.metadataSent = 0, false
+	}
 	if next.kind == taskUpload && next.dataLength == 0 {
 		// An empty upload gets no FTCD, so FTFD goes with the request,
 		// as ASC's "Restore from State" does for an empty macro.
 		out = append(out, s.fileData(next))
+		next.metadataSent = true
 	}
-	s.sendCommands(out...)
+	send(out...)
 }
 
 func (s *Session) fileData(t *transferTask) TransferFileData {
@@ -666,16 +700,24 @@ func (s *Session) fileData(t *transferTask) TransferFileData {
 }
 
 // releaseThenContinue is _release_then_continue: a transfer is over, so
-// give its store's lock back now (the LKST echo starts the next one), or,
-// for the lock-exempt macro store, start the next at once.
-func (s *Session) releaseThenContinue(store uint16) {
+// give its store's lock back now, in the same packet as the next
+// transfer's lock request, as ATEM Software Control sends them: the
+// switcher grants it at once (bmdwire#36). requestNext false sends the
+// release alone and leaves the next request to the store's release
+// broadcast (after an FTDE 6, another session is queued for the store).
+// The lock-exempt macro store starts the next at once.
+func (s *Session) releaseThenContinue(store uint16, requestNext bool) {
 	l := &s.lane
 	l.transfer = nil
 	if store != StoreMacros && l.locks[store] {
 		s.log.Info("atem: releasing store lock (per frame)", "store", store)
-		s.sendCommands(Lock{Store: store})
-		l.releasePending[store] = true
 		l.locks[store] = false
+		l.releasing[store] = true
+		if !requestNext {
+			s.sendCommands(Lock{Store: store})
+			return
+		}
+		s.triggerWith(store, false, Lock{Store: store})
 		return
 	}
 	s.transferTrigger(store, false)
@@ -695,6 +737,7 @@ func (s *Session) onTransferPacket(code string, payload []byte) error {
 		s.log.Info("atem: got store lock", "store", f.Store)
 		s.lane.locks[f.Store] = true
 		delete(s.lane.lockRequested, f.Store)
+		delete(s.lane.releasing, f.Store)
 		s.transferTrigger(f.Store, false)
 	case *FileTransferContinueDataField:
 		s.onBudget(*f)
@@ -708,17 +751,28 @@ func (s *Session) onTransferPacket(code string, payload []byte) error {
 	return nil
 }
 
-// onLockReleased is the release half of the lock-state branch: forget our
-// lock, and if work is queued for the store, ask for it again at once
-// ("the pounce").
+// onLockReleased is the release half of the lock-state branch: if work is
+// queued for the store, ask for it again at once ("the pounce"). A release
+// announced while we hold the store is our own previous one, announced a
+// frame late, after the LKOB for the request sent with it: our hold ends
+// only when we release it (bmdwire#36).
 func (s *Session) onLockReleased(store uint16) {
 	l := &s.lane
-	delete(l.locks, store)
-	delete(l.releasePending, store)
+	delete(l.releasing, store)
+	if l.locks[store] {
+		s.log.Debug("atem: release announced while we hold the store: our own, late", "store", store)
+		return
+	}
 	delete(l.lockRequested, store)
-	if len(l.queues[store]) > 0 && !l.requested && !l.locks[store] {
+	if len(l.queues[store]) > 0 && !l.requested {
 		s.transferTrigger(store, false)
 	}
+}
+
+// onLockTaken is the other half: a lock taken is announced, so a release
+// of ours before it has been announced too.
+func (s *Session) onLockTaken(store uint16) {
+	delete(s.lane.releasing, store)
 }
 
 // onBudget is the file-transfer-continue-data branch: the switcher grants
@@ -729,6 +783,12 @@ func (s *Session) onBudget(f FileTransferContinueDataField) {
 		f.Size = size
 	}
 	s.lane.budget = &f
+	if t := s.lane.transfer; t != nil && t.kind == taskUpload && !t.metadataSent {
+		// FTFD with the first budget, before the data, as ATEM Software
+		// Control sends it (bmdwire#36); it used to wait for the bulk
+		// queue to drain after the last chunk.
+		s.sendFileData(t)
+	}
 	s.queueChunks()
 }
 
@@ -784,13 +844,13 @@ func (s *Session) onTransferError(f *FileTransferErrorField) {
 		// the switcher aborted our request but we still hold the lock. Give
 		// it back, keep the task, and ask again on the next release.
 		delete(l.lockRequested, t.store)
-		s.releaseThenContinue(t.store)
+		s.releaseThenContinue(t.store, false)
 	default:
 		// Fatal for this transfer: drop it, release the lock, carry on.
 		l.popHead(t)
 		l.transfer = nil
 		l.buffer, l.bufferBytes = nil, 0
-		s.releaseThenContinue(t.store)
+		s.releaseThenContinue(t.store, true)
 		s.finish(t, transferResult{err: &TransferError{Store: t.store, Slot: t.slot, Transfer: f.Transfer, Status: f.Status}})
 	}
 }
@@ -812,7 +872,7 @@ func (s *Session) onTransferComplete(f *FileTransferDataCompleteField) {
 	raw := slices.Concat(l.buffer...)
 	l.buffer, l.bufferBytes = nil, 0
 	l.requested = false
-	s.releaseThenContinue(t.store)
+	s.releaseThenContinue(t.store, true)
 	if t.kind == taskUpload {
 		s.finish(t, transferResult{})
 		return
@@ -852,30 +912,36 @@ func (s *Session) queueChunks() {
 	}
 	size := int(l.budget.Size)
 	for range int(l.budget.Count) {
-		if len(t.data) == 0 {
+		rest := t.data[min(t.offset, len(t.data)):]
+		if len(rest) == 0 {
 			break
 		}
-		chunk := t.data[:min(size, len(t.data))]
+		chunk := rest[:min(size, len(rest))]
 		used := size
 		switch {
 		case len(chunk) >= 8 && isRLEHeader(chunk[len(chunk)-8:]):
-			chunk, used = t.data[:min(size-8, len(t.data))], size-8
+			chunk, used = rest[:min(size-8, len(rest))], size-8
 		case len(chunk) >= 16 && isRLEHeader(chunk[len(chunk)-16:len(chunk)-8]):
-			chunk, used = t.data[:min(size-16, len(t.data))], size-16
+			chunk, used = rest[:min(size-16, len(rest))], size-16
 		}
-		t.data = t.data[min(used, len(t.data)):]
+		t.offset += used
 		l.budget.Count--
 		if l.budget.Count == 0 {
 			l.budget = nil
 		}
 		s.t.queuePacket(TransferData{Transfer: t.tid, Data: chunk}.Encode())
-		t.report(t.size-len(t.data), t.size) // upload-progress
+		t.report(min(t.offset, len(t.data)), t.size) // upload-progress
 		if l.budget == nil {
 			break
 		}
 	}
-	// atemwire calls queue_trigger here and drops what it returns.
-	s.bulkTrigger(false)
+	// The whole budget at once, back to back, as ATEM Software Control
+	// sends it (bmdwire#36): the budget is the switcher's flow control,
+	// 768 chunks of a 1080p still at a time on a Constellation. Five
+	// chunks per packet from the switcher took 23 s a still.
+	if err := s.t.drainQueue(); err != nil {
+		s.fatal = err
+	}
 }
 
 func isRLEHeader(b []byte) bool {
@@ -898,12 +964,21 @@ func (s *Session) queueFlushed() {
 	if t.kind != taskUpload {
 		return
 	}
-	if len(t.data) > 0 {
+	if t.offset < len(t.data) {
 		s.queueChunks()
 		return
 	}
+	if !t.metadataSent {
+		// Not sent with the first budget; the switcher needs it to finish.
+		s.sendFileData(t)
+	}
+}
+
+// sendFileData sends an upload's FTFD: its name, description and MD5.
+func (s *Session) sendFileData(t *transferTask) {
 	s.log.Info("atem: sending file metadata", "transfer", t.tid)
 	s.sendCommands(s.fileData(t))
+	t.metadataSent = true
 }
 
 // bulkTrigger is queue_trigger, called where atemwire calls it: for every
@@ -1014,7 +1089,7 @@ func (s *Session) releaseLocksNow() {
 		}
 		l.locks[st] = false
 	}
-	clear(l.releasePending)
+	clear(l.releasing)
 	clear(l.lockRequested)
 }
 

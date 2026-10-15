@@ -48,6 +48,10 @@ type xfer struct {
 	got        []byte
 	decoded    int // uncompressed bytes in got
 	budgetLeft int
+	// meta is the upload's FTFD (name, description, MD5), which may come
+	// before the data, as ATEM Software Control sends it, or after it:
+	// the upload ends once both have arrived.
+	meta *item
 }
 
 // PutStill fills still slot slot with data, RLE-encoded as the switcher
@@ -121,7 +125,7 @@ func (sw *Switcher) LockedBySession(store uint16) bool {
 func (sw *Switcher) grant(store uint16) [][]byte {
 	sw.locks[store] = heldBySession
 	delete(sw.lockQueued, store)
-	return [][]byte{Command("LKOB", []byte{byte(store >> 8), byte(store), 0, 0}), lockState(store, true)}
+	return append([][]byte{Command("LKOB", []byte{byte(store >> 8), byte(store), 0, 0})}, sw.announce(lockState(store, true))...)
 }
 
 // transferEcho answers the session's lock, transfer and clear commands.
@@ -138,11 +142,15 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 				return nil
 			}
 			delete(sw.locks, store)
-			return [][]byte{lockState(store, false)}
+			return sw.announce(lockState(store, false))
 		}
 		switch sw.locks[store] {
-		case 0, heldBySession:
+		case 0:
 			return sw.grant(store)
+		case heldBySession:
+			// A request from the holder gets no answer
+			// (docs/MEDIA_LOCK.md in bmdwire).
+			return nil
 		}
 		// Held by another client: a PLCK waits for its release; a LOCK is
 		// dropped, as atemwire's notes say a switcher drops it.
@@ -213,6 +221,9 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 		chunk := c[4:min(len(c), 4+size)]
 		x.got = append(x.got, chunk...)
 		x.decoded += decodedLen(x.store, chunk)
+		if x.meta != nil && x.decoded >= x.length {
+			return sw.finishUpload(tid, x)
+		}
 		if x.budgetLeft--; x.budgetLeft == 0 && x.decoded < x.length {
 			if release := sw.uploadHeld; release != nil {
 				sw.uploadHeld = nil
@@ -237,19 +248,30 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 		if x == nil || !x.upload {
 			return nil
 		}
-		delete(sw.xfers, tid)
-		it := &item{data: x.got, name: cstring(c[2:66]), description: cstring(c[66:194])}
-		copy(it.hash[:], c[194:210])
-		done := Command("FTDC", []byte{byte(tid >> 8), byte(tid), 1, 2})
-		// Empty bytecode is stored too, a macro with its name and no ops:
-		// a Constellation keeps one (docs/HARDWARE.md, the tenth run).
-		sw.store(x.store)[x.slot] = it
-		if x.store == storeMacros {
-			return [][]byte{done, macroProperties(x.slot, it)}
+		x.meta = &item{name: cstring(c[2:66]), description: cstring(c[66:194])}
+		copy(x.meta.hash[:], c[194:210])
+		if x.decoded < x.length {
+			return nil // the data is still coming
 		}
-		return [][]byte{done, fileInfo(x.slot, it)}
+		return sw.finishUpload(tid, x)
 	}
 	return nil
+}
+
+// finishUpload stores an upload whose data and FTFD have both arrived,
+// and announces it: FTDC, then the slot's new state.
+func (sw *Switcher) finishUpload(tid uint16, x *xfer) [][]byte {
+	delete(sw.xfers, tid)
+	it := x.meta
+	it.data = x.got
+	done := Command("FTDC", []byte{byte(tid >> 8), byte(tid), 1, 2})
+	// Empty bytecode is stored too, a macro with its name and no ops:
+	// a Constellation keeps one (docs/HARDWARE.md, the tenth run).
+	sw.store(x.store)[x.slot] = it
+	if x.store == storeMacros {
+		return [][]byte{done, macroProperties(x.slot, it)}
+	}
+	return [][]byte{done, fileInfo(x.slot, it)}
 }
 
 // refuse checks a transfer request: a still transfer needs the session to

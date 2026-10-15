@@ -78,6 +78,22 @@ const (
 	defaultRetransmitMaxBurst = 128  // RETRANSMIT_MAX_BURST
 )
 
+// Resending what the switcher hasn't acknowledged, and sends the kernel
+// refuses for a moment (bmdwire#36, bd6ae77).
+const (
+	// resendAfter is RESEND_AFTER: our reliable packets the switcher
+	// hasn't acknowledged for this long are sent again, from the first
+	// unacknowledged one. The switcher asks for a packet it finds missing
+	// only when a later one arrives; nothing follows the last chunk of an
+	// upload budget until the next budget, which it grants only once it
+	// has that chunk. It acknowledges ours within milliseconds.
+	resendAfter = 250 * time.Millisecond
+	// sendRetries is SEND_RETRIES: a send the kernel refuses with ENOBUFS
+	// (macOS, a full buffer) or EAGAIN is tried again, 1 ms apart, this
+	// many times before the packet counts as lost on the wire.
+	sendRetries = 20
+)
+
 type transportState uint8
 
 const (
@@ -265,6 +281,13 @@ type transport struct {
 	retransmitWindow int
 	parkWindow       int
 	maxBurst         int
+
+	// ackedThrough is the switcher's acknowledgement of our reliable
+	// packets (the highest sequence it has, gap-free), -1 until its first
+	// ACK; resendDue is when what it hasn't acknowledged is resent, zero
+	// while nothing is outstanding (_acked_through, _resend_due).
+	ackedThrough int
+	resendDue    time.Time
 }
 
 func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *transport {
@@ -287,6 +310,7 @@ func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *tra
 		maxBurst:         defaultRetransmitMaxBurst,
 		batch:            bulkBatch,
 		delay:            bulkDelay,
+		ackedThrough:     -1,
 	}
 }
 
@@ -317,6 +341,7 @@ func (t *transport) connect() error {
 	t.sessionID, t.sessionKnown = helloSession, true
 	t.enableACK = false
 	clear(t.retransmitBuf)
+	t.ackedThrough, t.resendDue = -1, time.Time{}
 	t.received.clear()
 	t.hadTraffic = false
 	// markNextConnected is not reset, as in atemwire.
@@ -337,6 +362,25 @@ func (t *transport) queuePacket(data []byte) {
 		t.bulk = t.bulk[1:]
 	}
 	t.bulk = append(t.bulk, data)
+}
+
+// drainQueue is drain_queue (bmdwire#36): send every queued packet now,
+// back to back, as ATEM Software Control sends an upload budget. The
+// switcher's FTCD budget is the flow control; it grants the next once it
+// has these. queueTrigger reports the drained queue on its next call, as
+// for a queue it emptied itself.
+func (t *transport) drainQueue() error {
+	if len(t.bulk) > 0 {
+		t.bulkEnabled = true
+	}
+	for len(t.bulk) > 0 {
+		d := t.bulk[0]
+		t.bulk = t.bulk[1:]
+		if err := t.sendReliable(d); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // queueTrigger is queue_trigger without its sleep: send up to a batch
@@ -399,20 +443,32 @@ func (t *transport) sendLow(p *packet) error {
 		p.seq = uint16((t.localSeq + 1) % 0x8000)
 	}
 	raw := p.marshal()
-	if _, err := t.conn.WriteTo(raw, t.addr); err != nil {
-		if transientSendError(err) {
-			// Dropped before it consumes a sequence number, so the next
-			// reliable packet reuses this one's.
+	reliable := p.flags&(flagSYN|flagACK) == 0
+	if err := t.write(raw); err != nil {
+		if !transientSendError(err) {
+			return fmt.Errorf("atem: send: %w", err)
+		}
+		if !reliable {
+			// An ACK goes again with the next packet; a SYN is retried by
+			// the silence timeout.
 			t.log.Error("atem: transient send error (packet dropped)", "err", err)
 			return nil
 		}
-		return fmt.Errorf("atem: send: %w", err)
+		// A reliable packet the network refused keeps its sequence number
+		// and its copy below, so the switcher finds the gap (or the resend
+		// timer fires) and it goes again. Dropped with its number unused,
+		// as it was until bmdwire#36, the next packet took the number: no
+		// gap, and an upload short of a chunk without a word.
+		t.log.Error("atem: send failed, kept for retransmission", "seq", p.seq, "err", err)
 	}
-	if p.flags&(flagSYN|flagACK) == 0 {
+	if reliable {
 		t.localSeq = (t.localSeq + 1) % 0x8000
 		seq := uint16(t.localSeq)
 		t.retransmitBuf[seq] = p
 		delete(t.retransmitBuf, uint16(mod(t.localSeq-t.retransmitWindow, 0x8000)))
+		if t.resendDue.IsZero() {
+			t.resendDue = t.now().Add(resendAfter)
+		}
 	}
 	if p.handshake {
 		// Forget the temporary id: the switcher's next packet carries
@@ -420,6 +476,59 @@ func (t *transport) sendLow(p *packet) error {
 		t.sessionKnown = false
 	}
 	return nil
+}
+
+// write is _sendto: WriteTo, tried again for a moment while the kernel
+// refuses it with ENOBUFS or EAGAIN; any other error, or the last
+// refusal, is returned.
+func (t *transport) write(raw []byte) error {
+	var err error
+	for range sendRetries {
+		if _, err = t.conn.WriteTo(raw, t.addr); err == nil {
+			return nil
+		}
+		if !errors.Is(err, syscall.ENOBUFS) && !errors.Is(err, syscall.EAGAIN) {
+			return err
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return err
+}
+
+// onACK is _on_ack: the switcher has our reliable packets through n, so
+// the resend timer starts again while some remain unacknowledged.
+func (t *transport) onACK(n uint16) {
+	if t.ackedThrough == int(n) {
+		return
+	}
+	t.ackedThrough = int(n)
+	if out := (t.localSeq - int(n)) & seqMask; out == 0 || out >= t.retransmitWindow {
+		// All acknowledged (or an ACK from before a wrap or a reconnect).
+		t.resendDue = time.Time{}
+		return
+	}
+	t.resendDue = t.now().Add(resendAfter)
+}
+
+// resendUnacked is _resend_unacked: once resendDue has passed, send again
+// what the switcher hasn't acknowledged, from the first unacknowledged
+// packet (go back N, maxBurst at most), and wait resendAfter again.
+func (t *transport) resendUnacked() {
+	if t.resendDue.IsZero() || t.now().Before(t.resendDue) {
+		return
+	}
+	t.resendDue = time.Time{}
+	if t.state != stateEstablished || t.ackedThrough < 0 {
+		return
+	}
+	out := (t.localSeq - t.ackedThrough) & seqMask
+	if out == 0 || out >= t.retransmitWindow {
+		return
+	}
+	first := uint16((t.ackedThrough + 1) & seqMask)
+	t.log.Warn("atem: no ACK, resending", "from", first, "through", t.localSeq, "after", resendAfter)
+	t.retransmitFrom(first)
+	t.resendDue = t.now().Add(resendAfter)
 }
 
 // transientSendError is atemwire's TRANSIENT_SEND_ERRNOS: momentary network
@@ -456,6 +565,9 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 		return nil, nil
 	}
 	t.lastRX = t.now()
+	if p.flags&flagACK != 0 {
+		t.onACK(p.ack)
+	}
 	if p.flags&flagRequestRetransmission != 0 {
 		// The switcher missed one of ours: go back N from the sequence in
 		// header bytes 6-7.
@@ -587,7 +699,7 @@ func (t *transport) retransmitFrom(requestSeq uint16) int {
 			continue
 		}
 		p.flags |= flagRetransmission
-		if _, err := t.conn.WriteTo(p.marshal(), t.addr); err != nil {
+		if err := t.write(p.marshal()); err != nil {
 			t.log.Error("atem: retransmit failed", "seq", seq, "err", err)
 			break
 		}

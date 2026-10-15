@@ -99,11 +99,11 @@ type Dialer struct {
 	Conn net.PacketConn
 	// Logger receives the session's logs. Nil discards them.
 	Logger *slog.Logger
-	// AggressiveDrain is AtemProtocol's aggressive_drain: upload chunks
-	// go out as fast as the switcher's budgets (FTCD) allow, ten a
-	// millisecond, rather than five for each packet the switcher sends.
-	// A full 1080p still then uploads in seconds, not the 23 s ACK-paced
-	// sending took on a Constellation (docs/HARDWARE.md, fourteenth run).
+	// AggressiveDrain is AtemProtocol's aggressive_drain: ten queued
+	// packets a millisecond rather than five for each packet the switcher
+	// sends. Since bmdwire#36 an upload sends each budget whole as it is
+	// granted, as ATEM Software Control does, so it changes nothing; kept
+	// as bmdwire keeps it.
 	AggressiveDrain bool
 
 	silence time.Duration // tests shorten the 5 s silence timeout
@@ -410,6 +410,10 @@ func (s *Session) loop() error {
 		return err
 	}
 	silence := time.NewTimer(s.t.silence)
+	// resend fires when the transport's unacknowledged packets are due to
+	// be sent again (resendAfter, bmdwire#36); stopped while none are.
+	resend := time.NewTimer(time.Hour)
+	resend.Stop()
 	for {
 		select {
 		case <-s.quit:
@@ -440,11 +444,18 @@ func (s *Session) loop() error {
 			if s.t.silent() {
 				s.onSilence()
 			}
+		case <-resend.C:
+			s.t.resendUnacked()
 		}
 		if s.fatal != nil {
 			return s.fatal
 		}
 		silence.Reset(time.Until(s.t.lastRX.Add(s.t.silence)))
+		if due := s.t.resendDue; due.IsZero() {
+			resend.Stop()
+		} else {
+			resend.Reset(max(0, due.Sub(s.t.now())))
+		}
 	}
 }
 
@@ -546,6 +557,8 @@ func (s *Session) onData(data []byte) {
 			}
 			if f := v.(*LockStateField); !f.State {
 				s.onLockReleased(f.Store)
+			} else {
+				s.onLockTaken(f.Store)
 			}
 		}
 		c, err := s.state.store(code, payload)

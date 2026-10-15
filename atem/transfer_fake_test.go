@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/md5"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"math/rand/v2"
@@ -129,6 +130,51 @@ func TestUploadStillAggressiveDrain(t *testing.T) {
 	if got, err := atem.RLEDecode(stored); err != nil || !bytes.Equal(got, want) || name != "noise" || hash != md5.Sum(want) {
 		t.Fatalf("the switcher got another frame (%v)", err)
 	}
+}
+
+// With lock changes announced a frame late, as a Constellation announces
+// them, each release is announced after the grant of the request sent
+// with it, or right after it. Uploads queued together hand over in one
+// packet each, and one sent after the last has finished asks before that
+// release is announced; all of them land, and the lock is given back at
+// the end (bmdwire#36). A late announcement taken as losing the grant
+// would leave the next request coming from the holder, which the fake,
+// like the switcher, ignores.
+func TestUploadsWithLockChangesAnnouncedAFrameLate(t *testing.T) {
+	sw := newFake(t)
+	// 5 ms, so an announcement lands while the next upload's budgets are
+	// still going: a frame on a switcher is a fraction of a 1080p upload.
+	sw.LateLockState(5 * time.Millisecond)
+	s := dialFake(t, sw, 0)
+	frame := func(n int) []byte {
+		b := make([]byte, 512<<10)
+		for i := range b {
+			b[i] = byte((i*n + n) % 251)
+		}
+		return b
+	}
+	ctx := ctxFor(t, 20*time.Second)
+	errs := make(chan error, 4)
+	for slot := 1; slot <= 4; slot++ {
+		go func() { errs <- s.UploadStillFrame(ctx, slot, frame(slot), fmt.Sprint("still ", slot), "") }()
+	}
+	for range 4 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for slot := 5; slot <= 6; slot++ {
+		if err := s.UploadStillFrame(ctx, slot, frame(slot), fmt.Sprint("still ", slot), ""); err != nil {
+			t.Fatalf("slot %d after the others: %v", slot, err)
+		}
+	}
+	for slot := uint16(1); slot <= 6; slot++ {
+		stored, name, _, ok := sw.Still(slot)
+		if got, err := atem.RLEDecode(stored); !ok || err != nil || !bytes.Equal(got, frame(int(slot))) || name != fmt.Sprint("still ", slot) {
+			t.Fatalf("slot %d: %v %v %q", slot, ok, err, name)
+		}
+	}
+	waitState(t, s, 2*time.Second, func(st atem.State) bool { return !sw.LockedBySession(0) })
 }
 
 func TestClearStill(t *testing.T) {

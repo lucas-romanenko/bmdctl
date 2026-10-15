@@ -135,7 +135,7 @@ func (b *bench) dial(ctx context.Context, addr string) (*atem.Session, error) {
 		on(sw)
 	}
 	// Whatever the address, the fake switcher answers as its own.
-	return (&atem.Dialer{Conn: sw, AggressiveDrain: true}).Dial(ctx, fakeatem.Address)
+	return (&atem.Dialer{Conn: sw}).Dial(ctx, fakeatem.Address)
 }
 
 // dialled returns the addresses dialled so far.

@@ -169,9 +169,7 @@ func New(cfg Config) *Engine {
 		e.clock = realClock{}
 	}
 	if e.cfg.Dial == nil {
-		// Aggressive drain, as WebATEM's uploader runs: a 1080p still
-		// uploads in seconds, not 23 (docs/PORTING.md, "The bulk queue").
-		d := atem.Dialer{Logger: e.log, AggressiveDrain: true}
+		d := atem.Dialer{Logger: e.log}
 		e.cfg.Dial = d.Dial
 	}
 	if e.cfg.DialHyperDeck == nil {
