@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher model so far, in sixteen sessions. Its firmware was first
+One switcher model so far, in seventeen sessions. Its firmware was first
 recorded in the tenth, 9.2.1; before that the rows give the protocol
 version the switcher's `_ver` packet reported, 2.30.
 
@@ -35,6 +35,7 @@ version the switcher's `_ver` packet reported, 2.30.
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile save` of a different picture under a name taken (`<name>_2.png`, names compared ignoring case) and of an unnamed still (`Slot<n>.png`), the XML's paths to match; `media upload` of a photographic 1080p still with aggressive drain in 1.8 s, 23.3 s without | 2026-10-14 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile restore` of a whole media pool (20 photographic stills, `--macros-only --macros false --media-pool-images true`) in 73 s: every slot's name and frame as the profile's files, the renamed (`<name>_2.png`) and unnamed (`Slot<n>.png`) ones among them | 2026-10-14 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads as ATEM Software Control sends them (bmdwire#36): `profile restore` of 20 photographic stills in 11.2 s (ASC 12 s), every frame exact | 2026-10-15 |
+| ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Another client's turn (bmdwire#38, #40): ATEM Software Control connecting during back-to-back downloads loads all 20 thumbnails (none with bmdwire#36's handover) | 2026-10-15 |
 
 ## Unverified
 
@@ -64,7 +65,9 @@ fakes and, for the protocol, against bmdwire's own code.
   tenth session uploaded only an empty one), and any macro upload since
   bmdwire#36 (FTFD with the first budget, the handover in one packet);
   an upload over a slower link (a VPN), where the whole-budget bursts and
-  the resend timer would matter; `profile restore` beyond `--macros-only`, the
+  the resend timer would matter; ATEM Software Control connecting while
+  bmdctl itself transfers (the seventeenth run verified another client's
+  turn with bmdwire's code, bmdwire#38 and #40); `profile restore` beyond `--macros-only`, the
   Fairlight mixer and the media pool's stills; macro floats in a `profile
   save` since bmdwire#24 (six significant digits); a still that isn't premultiplied (JPEG, GIF,
   `--premultiply off`); a fit that shrinks the image or adds bars at the
@@ -754,3 +757,53 @@ fakes and, for the protocol, against bmdwire's own code.
   from 8 minutes (the fourteenth run) to 73 s (the fifteenth) to 11.2 s.
 - **Not yet verified on hardware:** a macro upload since bmdwire#36, and
   an upload over a slower link; otherwise as after the fifteenth run.
+
+
+## 2026-10-15: seventeenth run, ATEM Software Control's turn
+
+- **Commits:** bmdwire's code from its main, run from scripts: #36
+  (1.5.0) with a first yield, then #38 (1.5.1) and #40 (1.5.2); bmdctl's
+  port of them, built from the working tree before it was committed, for
+  one restore.
+- **Switcher:** TEST ATEM 2, an ATEM 1 M/E Constellation HD, protocol
+  2.30, firmware 9.2.1, 1080p25; the media pool as the sixteenth run left
+  it, 20 stills of 8 pictures.
+- **Why:** the owner opened ATEM Software Control while the AV server's
+  dev stack (WebATEM 2.1.2, bmdwire 1.5.0) downloaded nine stills whose
+  hashes had changed: ASC loaded no thumbnail for the first five, and
+  loaded them only after a still was cleared from WebATEM.
+- **Run:** a script downloading stills back to back for two to three
+  minutes while the owner quit and reopened ASC; the owner reported the
+  thumbnails, the script counted the times another client took the store.
+  Two of the runs captured with Wireshark on the ASC machine.
+- **Result:**
+  - The captures: ASC asks for each still with a whole-store `LOCK`,
+    queued while the other client holds the store and handed to ASC at
+    its release, with `LKOB` and no `LKST` at all. The other client's next
+    request, at once (1.5.0) or within half a second, was granted beside
+    it, a `PLCK` beside ASC's `LOCK`, and its `FTSU` aborted ASC's
+    download in progress with `FTDE 6`. ASC tries each still once: after
+    20 stills and 20 `FTDE 6` it asked for nothing more.
+  - A yield of a frame after the release announcement: 0 of 20, then 15
+    of 20 with a frame after any client's release (a release and a lock
+    announced together, ASC's next still, had let a request through), 0
+    of 20 with a 0.5 s cap (no announcement comes when the store is handed
+    over). Waiting for the store to be announced free, never asking while
+    another client holds it, and waiting while anyone is seen at work
+    (bmdwire#38): **20 of 20**, the script pausing 38 s for ASC's turn.
+  - The same with the script queueing one still at a time, 250 ms after
+    the last, as WebATEM's watcher does: 1.5.1 yields only with work
+    queued at the release; with the yield after every release (bmdwire#40),
+    **20 of 20**, a 38 s pause.
+  - 20 uploads alone: 12.7 s with 1.5.0, 14.2 s with 1.5.2.
+  - bmdctl's port, `profile restore` of the 20 stills with ASC open:
+    31.5 s, every still waiting about 2 s after the last: ASC fetching
+    each changed still again for its thumbnail. No warnings.
+- **Changed because of it:** bmdwire#38 and #40 (released as 1.5.1 and
+  1.5.2) and their port; WebATEM 2.1.3; bmdwire's MEDIA_LOCK.md,
+  "Sharing the store with ATEM Software Control". bmdwire#36's handover
+  was the cause; 1.4.0's echo wait had avoided it by accident, and was
+  behind the fifteenth run's pauses (WebATEM refreshing thumbnails).
+- **Not yet verified on hardware:** ASC connecting while bmdctl itself
+  transfers (its port matches bmdwire's code, tested against the fake
+  switcher's model of the same); otherwise as after the sixteenth run.

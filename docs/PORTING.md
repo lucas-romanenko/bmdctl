@@ -2870,7 +2870,10 @@ comes back. Indexes in results count from 1, as the flags do
     cost half a second a still (the fifteenth hardware run), and a profile
     often names one picture for several slots. With it, 20 1080p stills
     restored in 11.2 s, 1 ms between one still's FTDC and the next FTSD
-    (the sixteenth run).
+    (the sixteenth run). Since bmdwire#38 and #40 each release leaves
+    another client its turn: with ATEM Software Control open, which
+    fetches each changed still again for its thumbnail, every still waits
+    for that fetch, 31.5 s for 20 (the seventeenth run).
   - **The still cache** (`internal/stillcache`, `engine.Config.Stills`).
     atemwire's `download_media_pool_images` takes `cache_get` and
     `cache_put`, by the slot's MPfe hash; the port left them out until
