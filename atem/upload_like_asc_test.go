@@ -218,6 +218,28 @@ func TestAStoreHandedToAnotherClientWaitsWhileItWorks(t *testing.T) {
 	}
 }
 
+// The timer set for the turn fires after someone at work moved it: it is
+// set again for the new time, and nothing is asked before.
+func TestAYieldMovedBySomeoneAtWorkIsTimedAgain(t *testing.T) {
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	firstOfTwoDone(t, s, taskUpload)
+	asked := len(packetCodes(c))
+	*clock = clock.Add(lockQuiet / 2)
+	feedDone(t, s, 0x6c02)
+	after(s, clock, lockQuiet/2) // the first timer
+	if len(packetCodes(c)) != asked {
+		t.Fatal("asked while another client worked")
+	}
+	if want := clock.Add(lockQuiet / 2); !s.lane.yieldDue.Equal(want) {
+		t.Fatalf("timer at %v, want %v", s.lane.yieldDue, want)
+	}
+	after(s, clock, lockQuiet/2)
+	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
+		t.Fatalf("%v at the new time", p)
+	}
+}
+
 func TestAnotherClientsTurnLastsUntilTheyRelease(t *testing.T) {
 	s, c := laneSession(t)
 	clock := moveClock(s)

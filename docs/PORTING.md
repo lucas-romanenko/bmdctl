@@ -6,11 +6,11 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.5.2
+Tracks: bmdwire v1.5.3
 
-- The port follows **bmdwire v1.5.2** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.5.2`, commit `65b9ee0`): v1.4.0 (tag `v1.4.0`, commit
-  `e04920b`), bmdwire#36, #38 and #40. It was written against **v1.3.0** (tag
+- The port follows **bmdwire v1.5.3** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.5.3`, commit `f395e21`): v1.4.0 (tag `v1.4.0`, commit
+  `e04920b`), bmdwire#36, #38, #40 and #42. It was written against **v1.3.0** (tag
   `v1.3.0`, commit `cea58c2`), and the code and these notes cite that tag
   wherever they were checked against it; v1.4.0 changed only what
   "bmdwire 1.4.0" below lists, so those citations hold for it. Cite the
@@ -48,13 +48,23 @@ Tracks: bmdwire v1.5.2
   (two captures on the ASC machine); now every release leaves the store
   until it is announced free and a frame more ("Transfers"). Ported
   together after both releases. No oracle changes.
+- **bmdwire 1.5.3** is bmdwire#42 (`81955c1`, merged as `bfce193`). Its
+  main fix has nothing to port: atemwire's UDP thread queued its own ACKs
+  on a send queue only it drains, and an upload budget filling that queue
+  stopped both threads for good (WebATEM's restore with ATEM Software
+  Control open, the eighteenth run). bmdctl's transport is one goroutine
+  writing to the socket, with no queue between threads. Its other fix,
+  `_service_yields` running the trigger only once a turn is due and
+  otherwise waking for it again, is mirrored in `serviceYields`; the wire
+  was already the same, since only the yield timer runs it here, not a
+  caller's every Wakeup. No oracle changes.
 - The `Tracks:` line above says the same on one line, for workflows to
   read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.5.2`. Keep it a line of its own, exactly
+  tag `v1.5.3`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at v1.5.2, whose §5.4 marks each
+  header naming the version: bmdwire's at v1.5.3, whose §5.4 marks each
   fix. It is the specification for `atem/`. Its body says it describes
   1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
   follows, so it describes that apart from those marks.

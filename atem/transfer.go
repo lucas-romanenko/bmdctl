@@ -807,16 +807,25 @@ func (s *Session) yieldTimerC() <-chan time.Time {
 
 // serviceYields is _service_yields: ask for each store whose turn for
 // others is over, and forget a turn that is over with nothing waiting.
+// A turn not yet over (someone at work moved it) is only timed again, and
+// a store another client holds waits for its release (bmdwire#42,
+// 81955c1: in bmdwire a caller's every Wakeup ran the trigger; here only
+// the timer runs this, so the wire is the same either way).
 func (s *Session) serviceYields() {
 	l := &s.lane
 	l.yieldDue = time.Time{}
+	now := s.t.now()
 	for store, y := range l.yielding {
+		due := y.due()
 		switch {
 		case len(l.queues[store]) == 0:
-			if !s.t.now().Before(y.due()) {
+			if !now.Before(due) {
 				delete(l.yielding, store)
 			}
-		case !l.requested && !l.locks[store]:
+		case l.requested || l.locks[store] || l.foreignHeld[store]:
+		case now.Before(due):
+			s.armYieldTimer(due)
+		default:
 			s.transferTrigger(store, false)
 		}
 	}
