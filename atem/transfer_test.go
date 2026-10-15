@@ -622,6 +622,36 @@ func TestBulkQueueIsPaced(t *testing.T) {
 	}
 }
 
+// Under aggressive_drain a batch is ten packets, 1 ms apart, and the
+// queue drains on the timer without waiting for packets from the
+// switcher; the next packet after it reports the drain.
+func TestAggressiveDrainEmptiesTheQueue(t *testing.T) {
+	s, c := laneSession(t)
+	s.t.setAggressiveDrain()
+	now := time.Unix(1000, 0)
+	s.t.now = func() time.Time { return now }
+	for i := range 25 {
+		s.t.queuePacket(cmdBytes("FTDa", []byte{0, 43, 0, 1, byte(i)}))
+	}
+	s.bulkTrigger(true)
+	if n := count(c, "FTDa"); n != 10 || s.lane.bulkPending != 1 {
+		t.Fatalf("%d sent, %d pending", n, s.lane.bulkPending)
+	}
+	for _, want := range []int{20, 25} {
+		now = now.Add(drainDelay)
+		s.onBulkTimer()
+		if n := count(c, "FTDa"); n != want {
+			t.Fatalf("%d sent, want %d", n, want)
+		}
+	}
+	if s.lane.bulkPending != 0 {
+		t.Fatalf("%d pending with the queue empty", s.lane.bulkPending)
+	}
+	if _, flushed, _ := s.t.queueTrigger(); !flushed {
+		t.Fatal("no flush once drained")
+	}
+}
+
 // While a transfer is queued or running, the outbox doesn't space its
 // packets (atemwire's _transfer_active).
 func TestOutboxIsNotSpacedDuringATransfer(t *testing.T) {
