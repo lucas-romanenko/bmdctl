@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher model so far, in fifteen sessions. Its firmware was first
+One switcher model so far, in sixteen sessions. Its firmware was first
 recorded in the tenth, 9.2.1; before that the rows give the protocol
 version the switcher's `_ver` packet reported, 2.30.
 
@@ -34,6 +34,7 @@ version the switcher's `_ver` packet reported, 2.30.
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile save` with the still cache: the full pool's first save 16.2 s (each of 8 pictures downloaded once), the second 0.9 s (none downloaded) | 2026-10-14 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile save` of a different picture under a name taken (`<name>_2.png`, names compared ignoring case) and of an unnamed still (`Slot<n>.png`), the XML's paths to match; `media upload` of a photographic 1080p still with aggressive drain in 1.8 s, 23.3 s without | 2026-10-14 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | `profile restore` of a whole media pool (20 photographic stills, `--macros-only --macros false --media-pool-images true`) in 73 s: every slot's name and frame as the profile's files, the renamed (`<name>_2.png`) and unnamed (`Slot<n>.png`) ones among them | 2026-10-14 |
+| ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads as ATEM Software Control sends them (bmdwire#36): `profile restore` of 20 photographic stills in 11.2 s (ASC 12 s), every frame exact | 2026-10-15 |
 
 ## Unverified
 
@@ -60,8 +61,10 @@ fakes and, for the protocol, against bmdwire's own code.
   run), colour, multiviewer, macro run and record. Commands the table
   marks unverified say so when sent.
 - **Transfers and profiles:** macro upload of a macro with ops (the
-  tenth session uploaded only an empty one), and any macro upload with
-  aggressive drain; `profile restore` beyond `--macros-only`, the
+  tenth session uploaded only an empty one), and any macro upload since
+  bmdwire#36 (FTFD with the first budget, the handover in one packet);
+  an upload over a slower link (a VPN), where the whole-budget bursts and
+  the resend timer would matter; `profile restore` beyond `--macros-only`, the
   Fairlight mixer and the media pool's stills; macro floats in a `profile
   save` since bmdwire#24 (six significant digits); a still that isn't premultiplied (JPEG, GIF,
   `--premultiply off`); a fit that shrinks the image or adds bars at the
@@ -696,3 +699,58 @@ fakes and, for the protocol, against bmdwire's own code.
   store's lock across stills, as bmdwire releases it per frame).
 - **Not yet verified on hardware:** as after the fourteenth run, less
   the restore of renamed and unnamed stills and a whole pool's restore.
+
+## 2026-10-15: sixteenth run, uploads as ATEM Software Control sends them
+
+- **Commits:** `5ec2519` (bmdwire#36 ported) and `5d469ad` (the restore
+  prepares each picture ahead), built from the working tree before each
+  was committed and run as an engine of its own, as in the fourteenth
+  run. And bmdwire's branch for #36 (`e2b0ced`), run from a script.
+- **Switcher:** TEST ATEM 2, an ATEM 1 M/E Constellation HD, protocol
+  2.30, firmware 9.2.1, 1080p25; the media pool as the owner's ATEM
+  Software Control restore left it, 20 stills of 8 pictures. Nothing from
+  the media players on air.
+- **Why:** the fifteenth run's restore took 73 s, and the owner's ATEM
+  Software Control restores much faster. The owner captured an ASC
+  restore of 20 stills with Wireshark (2026-10-15). ASC uploaded all 20,
+  changed or not, in about 12 s: 0.31 s of data a still, the release and
+  the next lock request in one packet or the next and granted in under a
+  millisecond, FTFD with the first budget, each 768-chunk budget sent
+  whole in about 35 ms. bmdwire's MEDIA_LOCK.md has the capture.
+- **Run:**
+  - `profile save` of everything (read only), 1.2 s from the still cache,
+    as the backup and the profile to restore.
+  - bmdwire#36's `AtemProtocol` re-uploading those 20 stills to their
+    slots, queued at once, from a script.
+  - `profile restore --macros-only --macros false --media-pool-images
+    true --yes` of that save, at `5ec2519`, then at `5d469ad`.
+  - After each, every slot's name against the profile's and its hash
+    against the MD5 of the frame its file converts to.
+  - `profile save` with the still cache off (`BMDCTL_STILL_CACHE_MB=0`,
+    read only), so its 8 pictures download back to back under the new
+    handover.
+- **Result:**
+  - bmdwire: all 20 in 12.72 s, 0.60 to 0.64 s a still; every hash the
+    MD5 of the frame sent; no resends.
+  - bmdctl at `5ec2519`: 14.7 s from the first upload request to the
+    answer (16.7 s for the command, with the engine's start and the
+    connect). Each still's transfer 0.53 to 0.56 s, as ASC's; between
+    one still's FTDC and the next FTSD, 0.03 to 0.30 s (median 0.22),
+    the engine decoding, converting and RLE-encoding the next PNG.
+  - bmdctl at `5d469ad`: 11.2 s from the first upload request to the
+    answer (12.75 s for the command): transfers 0.56 s (median), 1 ms
+    between one FTDC and the next FTSD.
+  - The save: 16.0 s, 8 downloads at 1.84 to 1.85 s from one request to
+    the next, the switcher's own pace with nothing between (the twelfth
+    run had 0.38 to 0.59 s of bmdctl's between stills); 12 slots from the
+    save's own copies of a picture; no warnings.
+  - Every slot had its name and exactly its frame after each run; no
+    warnings, no resends. The pool's pictures were unchanged; only the
+    hashes moved to bmdctl's frames.
+- **Changed because of it:** bmdwire#36, bd6ae77 (the lock handover in
+  one packet, FTFD with the first budget, whole budgets, the resend timer,
+  refused sends kept for retransmission) and its port, `5ec2519`; the
+  restore preparing pictures ahead, `5d469ad`. A 20-still restore went
+  from 8 minutes (the fourteenth run) to 73 s (the fifteenth) to 11.2 s.
+- **Not yet verified on hardware:** a macro upload since bmdwire#36, and
+  an upload over a slower link; otherwise as after the fifteenth run.
