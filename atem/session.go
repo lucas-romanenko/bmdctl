@@ -99,6 +99,12 @@ type Dialer struct {
 	Conn net.PacketConn
 	// Logger receives the session's logs. Nil discards them.
 	Logger *slog.Logger
+	// AggressiveDrain is AtemProtocol's aggressive_drain: upload chunks
+	// go out as fast as the switcher's budgets (FTCD) allow, ten a
+	// millisecond, rather than five for each packet the switcher sends.
+	// A full 1080p still then uploads in seconds, not the 23 s ACK-paced
+	// sending took on a Constellation (docs/HARDWARE.md, fourteenth run).
+	AggressiveDrain bool
 
 	silence time.Duration // tests shorten the 5 s silence timeout
 }
@@ -134,6 +140,9 @@ func (d *Dialer) Dial(ctx context.Context, addr string) (*Session, error) {
 		conn = uc
 	}
 	s := newSession(conn, raddr, d.Logger, d.silence)
+	if d.AggressiveDrain {
+		s.t.setAggressiveDrain()
+	}
 	go s.read()
 	go s.run()
 	select {

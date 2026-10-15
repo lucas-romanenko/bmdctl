@@ -16,6 +16,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -96,6 +97,36 @@ func TestUploadStillFitsAndConverts(t *testing.T) {
 	}
 	stored, name, hash, _ := sw.Still(0)
 	if got, err := atem.RLEDecode(stored); err != nil || !bytes.Equal(got, want) || name != "card" || hash != md5.Sum(want) {
+		t.Fatalf("the switcher got another frame (%v)", err)
+	}
+}
+
+// A still that doesn't compress (noise: the RLE is as long as the frame,
+// as a photograph's nearly is) arrives whole under aggressive drain, the
+// switcher's budgets its only pacing.
+func TestUploadStillAggressiveDrain(t *testing.T) {
+	sw := newFake(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	s, err := (&atem.Dialer{Conn: sw, AggressiveDrain: true}).Dial(ctx, fakeatem.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	img := image.NewNRGBA(image.Rect(0, 0, 1920, 1080))
+	rand.NewChaCha8([32]byte{1}).Read(img.Pix)
+	for i := 3; i < len(img.Pix); i += 4 {
+		img.Pix[i] = 255
+	}
+	want, err := atem.RGBAToYCbCrA(atem.FitFrame(img, 1920, 1080), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UploadStill(ctxFor(t, 30*time.Second), 3, img, atem.StillOptions{Name: "noise"}); err != nil {
+		t.Fatal(err)
+	}
+	stored, name, hash, _ := sw.Still(3)
+	if got, err := atem.RLEDecode(stored); err != nil || !bytes.Equal(got, want) || name != "noise" || hash != md5.Sum(want) {
 		t.Fatalf("the switcher got another frame (%v)", err)
 	}
 }

@@ -65,6 +65,8 @@ const (
 const (
 	bulkBatch    = 5                    // batch_size: packets per trigger
 	bulkDelay    = 3 * time.Millisecond // batch_delay: atemwire sleeps this long after a batch
+	drainBatch   = 10                   // batch_size under aggressive_drain
+	drainDelay   = time.Millisecond     // batch_delay under aggressive_drain
 	bulkQueueMax = 1024                 // the deque's maxlen
 )
 
@@ -238,6 +240,12 @@ type transport struct {
 	// queue has had packets since it last reported draining.
 	bulk        [][]byte
 	bulkEnabled bool
+	// batch and delay are batch_size and batch_delay; drain is
+	// aggressive_drain, which empties the queue on each trigger
+	// (setAggressiveDrain).
+	batch int
+	delay time.Duration
+	drain bool
 
 	// lastRX is when a datagram was last accepted from the switcher (the
 	// right peer, well formed, not stale), or connect last ran. The
@@ -277,7 +285,17 @@ func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *tra
 		retransmitWindow: defaultRetransmitWindow,
 		parkWindow:       defaultDeliveryParkWindow,
 		maxBurst:         defaultRetransmitMaxBurst,
+		batch:            bulkBatch,
+		delay:            bulkDelay,
 	}
+}
+
+// setAggressiveDrain is UdpProtocol's aggressive_drain: ten packets a
+// batch, 1 ms apart, and every trigger drains the whole queue rather than
+// sending one batch per packet from the switcher (bmdwire v1.4.0,
+// transport.py; WebATEM's uploader runs on it).
+func (t *transport) setAggressiveDrain() {
+	t.batch, t.delay, t.drain = drainBatch, drainDelay, true
 }
 
 // connect resets the per-session state and sends the SYN. It is
@@ -321,8 +339,8 @@ func (t *transport) queuePacket(data []byte) {
 	t.bulk = append(t.bulk, data)
 }
 
-// queueTrigger is queue_trigger without its sleep: send up to bulkBatch
-// queued packets. flushed is true once, on the first call that finds the
+// queueTrigger is queue_trigger without its sleep: send up to a batch
+// (bulkBatch, or drainBatch under aggressive drain) of queued packets. flushed is true once, on the first call that finds the
 // queue empty after it had packets (atemwire's TransferQueueFlushed). The
 // session paces the calls.
 func (t *transport) queueTrigger() (sent int, flushed bool, err error) {
@@ -334,7 +352,7 @@ func (t *transport) queueTrigger() (sent int, flushed bool, err error) {
 		return 0, false, nil
 	}
 	t.bulkEnabled = true
-	for sent < bulkBatch && len(t.bulk) > 0 {
+	for sent < t.batch && len(t.bulk) > 0 {
 		d := t.bulk[0]
 		t.bulk = t.bulk[1:]
 		if err := t.sendReliable(d); err != nil {

@@ -917,11 +917,7 @@ func (s *Session) bulkTrigger(flush bool) {
 	if len(s.t.bulk) > 0 {
 		if wait := l.bulkNext.Sub(s.t.now()); wait > 0 {
 			l.bulkPending++
-			if l.bulkTimer == nil {
-				l.bulkTimer = time.NewTimer(wait)
-			} else {
-				l.bulkTimer.Reset(wait)
-			}
+			l.armBulkTimer(wait)
 			return
 		}
 	}
@@ -931,10 +927,26 @@ func (s *Session) bulkTrigger(flush bool) {
 		return
 	}
 	if sent > 0 {
-		l.bulkNext = s.t.now().Add(bulkDelay)
+		l.bulkNext = s.t.now().Add(s.t.delay)
+		// aggressive_drain empties the queue within the one trigger,
+		// sleeping between batches; here the next batch waits for the
+		// timer, not for the switcher's next packet.
+		if s.t.drain && len(s.t.bulk) > 0 && l.bulkPending == 0 {
+			l.bulkPending = 1
+			l.armBulkTimer(s.t.delay)
+		}
 	}
 	if flushed && flush {
 		s.queueFlushed()
+	}
+}
+
+// armBulkTimer sets the deferred-trigger timer to fire after wait.
+func (l *lane) armBulkTimer(wait time.Duration) {
+	if l.bulkTimer == nil {
+		l.bulkTimer = time.NewTimer(wait)
+	} else {
+		l.bulkTimer.Reset(wait)
 	}
 }
 

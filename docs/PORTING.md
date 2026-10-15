@@ -758,10 +758,29 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   `_queue_chunks` triggers too and drops the report, as atemwire does.
   atemwire sleeps 3 ms after each batch on its protocol thread; the owner
   goroutine can't sleep (it sends the ACKs), so a trigger within 3 ms of the
-  last batch is deferred to the 3 ms mark instead. `aggressive_drain` is
-  set only by `AtemProtocol`'s constructor and isn't ported. The queue's
-  1024 cap drops the oldest packet with an error, as the deque does, and
-  the queue outlives a disconnect, as atemwire's does.
+  last batch is deferred to the 3 ms mark instead. The queue's 1024 cap
+  drops the oldest packet with an error, as the deque does, and the
+  queue outlives a disconnect, as atemwire's does.
+- **Aggressive drain** (`aggressive_drain`, `AtemProtocol`'s constructor
+  flag) is `Dialer.AggressiveDrain`, off by default as in bmdwire: ten
+  packets a batch, 1 ms apart, and a trigger drains the whole queue, so
+  upload chunks go out as fast as the switcher's budgets (`FTCD`) allow
+  rather than five per packet it sends. atemwire drains in one
+  `queue_trigger`, sleeping between batches; here the batches after the
+  first wait on the deferred-trigger timer (`armBulkTimer`), as the owner
+  goroutine can't sleep. It was left out at first (only the
+  constructor sets it, and bmdwire's pool, its shared connections,
+  doesn't). The engine dials with it, as WebATEM's uploader opens its
+  connections: on TEST ATEM 2 (docs/HARDWARE.md, fourteenth run) a
+  photographic 1080p still took 23.3 s to upload ACK-paced, ASC about
+  2 s, and with aggressive drain 1.8 s (the data 0.96 s). The switcher
+  answers about fifty times a second during an upload, so five chunks
+  per answer is about 260 chunks a second; WebATEM's notes say the same,
+  ~25 s against ~3 s. bmdwire's pool keeps it off because its drain
+  sleeps the thread that reads the switcher's packets; nothing here
+  sleeps, and engine commands bypass the queue, so a command sent during
+  an upload doesn't wait behind it. The package's own tests keep the
+  default; the CLI's bench dials as the engine does.
 - **Engine commands bypass the outbox**, as `send_commands` bypasses the
   worker's queue: one reliable packet per call, straight to the transport.
 - **Teardown.** `Close` writes the release of every still-store lock held
