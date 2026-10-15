@@ -92,6 +92,11 @@ type Switcher struct {
 
 	locks      map[uint16]holder // store locks that are held
 	lockQueued map[uint16]bool   // the session's PLCK waits for another client's release
+	// lateLKST, if set, announces lock changes this late, together in one
+	// packet, as a switcher announces them at its next frame
+	// (LateLockState); lkst holds those waiting.
+	lateLKST time.Duration
+	lkst     [][]byte
 
 	stills map[uint16]*item // the media pool's stills (transfers.go)
 	macros map[uint16]*item
@@ -172,6 +177,12 @@ func (sw *Switcher) DropFromClient(n int) { sw.mu.Lock(); sw.dropFromClient += n
 // DelayACKs makes the switcher ACK the session's packets d late.
 func (sw *Switcher) DelayACKs(d time.Duration) { sw.mu.Lock(); sw.ackDelay = d; sw.mu.Unlock() }
 
+// LateLockState makes the switcher announce lock changes (LKST) d late,
+// those of the same moment together, as a Constellation announces them at
+// its next frame: a release, and the grant (LKOB) of a request sent with
+// it, both come before the release is announced (bmdwire#36).
+func (sw *Switcher) LateLockState(d time.Duration) { sw.mu.Lock(); sw.lateLKST = d; sw.mu.Unlock() }
+
 // Silence cuts the switcher off (true) or reconnects it (false): while
 // silent it neither sends nor hears anything, as if the cable were pulled.
 // Going silent also ends the switcher's side of the session, as a real
@@ -244,7 +255,7 @@ func (sw *Switcher) HoldLock(store uint16) {
 	defer sw.mu.Unlock()
 	if _, held := sw.locks[store]; !held {
 		sw.locks[store] = heldByOther
-		sw.broadcast(lockState(store, true))
+		sw.broadcast(sw.announce(lockState(store, true))...)
 	}
 }
 
@@ -255,7 +266,7 @@ func (sw *Switcher) ReleaseLock(store uint16) {
 	defer sw.mu.Unlock()
 	if sw.locks[store] == heldByOther {
 		delete(sw.locks, store)
-		sw.broadcast(lockState(store, false))
+		sw.broadcast(sw.announce(lockState(store, false))...)
 		if sw.lockQueued[store] {
 			sw.broadcast(sw.grant(store)...)
 		}
@@ -615,6 +626,28 @@ func (sw *Switcher) broadcast(cmds ...[]byte) {
 	if sw.established {
 		sw.sendReliable(cmds)
 	}
+}
+
+// announce returns an LKST to send now, or, with LateLockState, holds it
+// for the next announcement and returns nothing. sw.mu is held.
+func (sw *Switcher) announce(lkst []byte) [][]byte {
+	if sw.lateLKST == 0 {
+		return [][]byte{lkst}
+	}
+	if len(sw.lkst) == 0 {
+		session := sw.session
+		time.AfterFunc(sw.lateLKST, func() {
+			sw.mu.Lock()
+			defer sw.mu.Unlock()
+			cmds := sw.lkst
+			sw.lkst = nil
+			if sw.established && sw.session == session && !sw.silent {
+				sw.sendReliable(cmds)
+			}
+		})
+	}
+	sw.lkst = append(sw.lkst, lkst)
+	return nil
 }
 
 // lockState is the LKST the switcher broadcasts when a store's lock is

@@ -516,16 +516,18 @@ func TestSendDropsUnserializablePacket(t *testing.T) { // test_send_packet_low_d
 
 // test_udp_thread_death_leaves_disconnect_sentinel has no counterpart: the
 // Go transport has no thread. What kills atemwire's UDP thread is a
-// non-transient send error, and that is returned instead; a transient one
-// drops the packet without using up its sequence number.
+// non-transient send error, and that is returned instead. A transient one
+// leaves a reliable packet its sequence number and its copy, so the
+// switcher sees the gap and it is resent (bmdwire#36); until then it was
+// dropped with its number unused, and the next packet took it.
 func TestSendErrors(t *testing.T) {
 	tr, c := retransmitTransport(t)
 	c.writeErr = &net.OpError{Op: "write", Net: "udp", Err: os.NewSyscallError("sendto", syscall.ENETUNREACH)}
 	if err := tr.sendReliable([]byte("\x00\x08TEST")); err != nil {
 		t.Fatalf("transient error returned: %v", err)
 	}
-	if tr.localSeq != 0 || len(tr.retransmitBuf) != 0 {
-		t.Fatalf("dropped packet consumed seq: localSeq %d", tr.localSeq)
+	if tr.localSeq != 1 || tr.retransmitBuf[1] == nil {
+		t.Fatalf("refused packet: localSeq %d, buffered %v", tr.localSeq, tr.retransmitBuf[1] != nil)
 	}
 	c.writeErr = &net.OpError{Op: "write", Net: "udp", Err: net.ErrClosed}
 	if err := tr.sendReliable([]byte("\x00\x08TEST")); !errors.Is(err, net.ErrClosed) {

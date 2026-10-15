@@ -17,7 +17,11 @@ type fakeConn struct {
 	mu       sync.Mutex
 	writes   []fakeWrite
 	writeErr error
-	wrote    chan struct{} // signalled after every write
+	// refuse is how many writes, from now, fail with refuseErr before
+	// writes work again (a kernel refusing for a moment).
+	refuse    int
+	refuseErr error
+	wrote     chan struct{} // signalled after every write
 
 	in        chan fakeDatagram
 	done      chan struct{}
@@ -62,6 +66,10 @@ func (c *fakeConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 	defer c.mu.Unlock()
 	if c.writeErr != nil {
 		return 0, c.writeErr
+	}
+	if c.refuse > 0 {
+		c.refuse--
+		return 0, c.refuseErr
 	}
 	c.writes = append(c.writes, fakeWrite{append([]byte(nil), p...), addr, time.Now()})
 	select {

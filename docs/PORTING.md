@@ -136,7 +136,9 @@ flagged retransmissions; in-order delivery with up to 512 packets parked
 ahead of a gap; go-back-N resends only when the switcher asks (from header
 bytes 6-7, at most 128, window 4096); the goodbye (SYN, hello `0x04`, only
 when established); 15-bit sequence arithmetic throughout. No client
-keepalive and no client retransmit timer, as in atemwire.
+keepalive, as in atemwire. Since bmdwire#36 (`bd6ae77`) there is a client
+retransmit timer: what the switcher hasn't acknowledged in 250 ms is
+resent (below).
 
 - **No thread.** atemwire splits the transport between a UDP thread
   (`_receive_packet_low`, `_send_packet_low`) and the protocol worker
@@ -158,14 +160,31 @@ keepalive and no client retransmit timer, as in atemwire.
   stash fix). `handle` reports `ready` and the packet's data together; the
   session acts on `ready` first, so the order is the same. As in atemwire,
   `connect` does not clear the mark.
-- **Send errors.** `TRANSIENT_SEND_ERRNOS` (ENETUNREACH, EHOSTUNREACH,
-  ECONNREFUSED, ENOBUFS, EAGAIN, EPERM, EINTR) drop the packet and the
-  session carries on; as in atemwire the dropped packet uses up no sequence
-  number. Any other write error is returned and ends the session: it is
-  what kills atemwire's UDP thread. On Windows Go's `syscall` errnos are
+- **Send errors.** ENOBUFS and EAGAIN are tried again, 1 ms apart, up to
+  20 times (`write`, atemwire's `_sendto`; the owner goroutine sleeps
+  only while the kernel refuses). Then `TRANSIENT_SEND_ERRNOS`
+  (ENETUNREACH, EHOSTUNREACH, ECONNREFUSED, ENOBUFS, EAGAIN, EPERM, EINTR)
+  don't end the session: an ACK or a SYN is dropped, and a reliable packet
+  keeps its sequence number and its copy for retransmission (bmdwire#36).
+  Until then it was dropped with its number unused, as in atemwire: the
+  next packet took the number, the switcher saw no gap, and an upload lost
+  a chunk without a word. Any other write error is returned and ends the
+  session: it is what kills atemwire's UDP thread. On Windows Go's `syscall` errnos are
   invented values, so a Winsock error may be treated as fatal there; the
   caller dials again. A packet sent while the session id is unknown is
   dropped, which is what atemwire's `to_bytes` failure does.
+- **The resend timer** (bmdwire#36, `RESEND_AFTER`). The switcher's ACK
+  number, which is cumulative (the last of our packets it has: ASC's
+  restore capture never shows it ahead of the latest sent), is read from
+  every packet carrying it (`onACK`). A reliable packet sent with none
+  outstanding arms `resendDue`; an ACK that leaves some outstanding moves
+  it on, one that leaves none clears it. When it passes, `resendUnacked`
+  goes back N from the first unacknowledged packet (at most 128) and
+  waits 250 ms again. atemwire checks after each `select()` of its UDP
+  thread; here the session's run loop has a timer for it beside the
+  silence timer. The switcher asks for a packet it finds missing only when
+  a later one arrives, and nothing follows the last chunk of an upload
+  budget: its loss stalled the upload until the caller's timeout.
 - **Foreign-peer guard** compares IP addresses. atemwire compares the
   sender's address string with the `ip` it was given; the session resolves
   a host name once when dialling, so a name works here.
@@ -673,7 +692,7 @@ does.
 
 The transfer engine (SURFACE.md §3.0), from bmdwire v1.3.0: the lane of
 `protocol.py` (`transfer_queue`, `transfer`, `transfer_requested`,
-`locks`, `_lock_release_pending`, `_lock_requested`, `transfer_budget`,
+`locks`, `_lock_requested`, `transfer_budget`,
 `_transfer_trigger`, `_release_then_continue`, `_queue_chunks`,
 `_queue_flushed`, and the LKOB, lock-state, FTCD, FTDa, FTDE and FTDC
 branches of `save_field_data`), `_transfer.py` (`TransferTask`), the bulk
@@ -698,12 +717,21 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
     order); one transfer in flight; transfer ids from 43 (42, incremented
     before use), carried across reconnects;
   - PLCK for a transfer, a whole-store LOCK for a clear; a lock request not
-    repeated within a second (`LOCK_REREQUEST_SECONDS`) and deferred while
-    our own unlock's echo is pending; on any release with work queued, an
-    immediate re-request (the pounce);
-  - the lock released after every frame, the LKST echo starting the next
-    task; the lock-exempt macro store going on at once; with nothing
-    queued, every held lock released (left marked held until the echo);
+    repeated within a second (`LOCK_REREQUEST_SECONDS`); on a release with
+    work queued and the store not ours, an immediate re-request (the
+    pounce);
+  - the lock released after every frame, in the same packet as the next
+    task's request (`triggerWith`), as ATEM Software Control sends them
+    (bmdwire#36); after an FTDE 6 the release goes alone and the pounce
+    asks again. Our hold runs from the LKOB to our release: a release
+    announced while we hold the store is our own, a frame late, and
+    changes nothing (`onLockReleased`). Until bmdwire#36 the next request
+    waited for that announcement (`_lock_release_pending`), up to 6.6 s
+    in the fifteenth hardware run, because the handler took the late
+    announcement as losing the new grant; `releasing` keeps only what
+    that set told `LockHolder`, a release of ours not yet announced. The
+    lock-exempt macro store goes on at once; with nothing queued, every
+    held lock is released;
   - FTDE 1 retries with the same transfer id, 5 asks for the lock again, 6
     gives the lock back and keeps the task; any other status drops the task
     and releases the lock; FTDa, FTDE and FTDC with no transfer in flight or
@@ -713,7 +741,13 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   - FTCD's size is rounded down to whole words and its transfer id isn't
     checked; a chunk never ends on an RLE header or a header and its count;
     an empty upload sends FTFD with FTSD (no budget comes); FTSD's mode is 1
-    (write RLE) for stills and 0x0300 (write, pre-erase) for macros.
+    (write RLE) for stills and 0x0300 (write, pre-erase) for macros;
+  - since bmdwire#36, FTFD goes with the first budget of each attempt,
+    before the data (`metadataSent`), each budget is sent whole as it is
+    granted (`drainQueue`), and chunks are cut at an offset reset on each
+    attempt, so a retried upload starts from the beginning. ASC's restore
+    of 20 1080p stills took 12 s; bmdwire's code after the change, 12.7 s
+    on the same switcher.
 - **Results go to the task, not to events.** atemwire raises
   `download-done`, `upload-done`, `clear-dispatched` and
   `file-transfer-error`; its callers filter by store and slot, attribute any
@@ -751,7 +785,9 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   session that is re-handshaking. bmdwire 1.4.0 checks `is_ready` too
   (bmdwire#31).
 - **The bulk queue** is the transport's `bulk` (`send_queue`). Upload chunks
-  wait there. Each packet from the switcher once ACKs flow, and a control
+  wait there, but since bmdwire#36 only until `queueChunks` drains the
+  budget (`drainQueue`), so the triggers below only report the drain.
+  Each packet from the switcher once ACKs flow, and a control
   frame a second time, sends up to five (`batch_size`), as `receive_packet`
   calls `queue_trigger`; a drained queue is reported once and handled
   before that packet's data, as the `TransferQueueFlushed` sentinel is;
@@ -779,8 +815,11 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   ~25 s against ~3 s. bmdwire's pool keeps it off because its drain
   sleeps the thread that reads the switcher's packets; nothing here
   sleeps, and engine commands bypass the queue, so a command sent during
-  an upload doesn't wait behind it. The package's own tests keep the
-  default; the CLI's bench dials as the engine does.
+  an upload doesn't wait behind it. Since bmdwire#36 every budget is
+  drained whole as it is queued, faster still (a still's data in about a
+  third of a second, as ASC sends it), so the flag changes nothing: the
+  engine and the CLI's bench no longer set it, and it stays as bmdwire
+  keeps its own.
 - **Engine commands bypass the outbox**, as `send_commands` bypasses the
   worker's queue: one reliable packet per call, straight to the transport.
 - **Teardown.** `Close` writes the release of every still-store lock held
@@ -819,8 +858,13 @@ description)`, `ClearStill(ctx, slot)`, `DownloadMacro(ctx, slot)`,
   (`test_returns_frame_and_unregisters_handlers`,
   `test_other_slots_event_does_not_satisfy` and its clear twin,
   `test_raise_*`) and of `abort_transfers` have no counterpart: there are no
-  handlers, and cancellation is per task. `transfer_fake_test.go` runs
-  transfers end to end against the fake switcher: still and macro round
+  handlers, and cancellation is per task. `upload_like_asc_test.go` ports
+  `test_upload_like_asc.py` (bmdwire#36): the handover packet for uploads,
+  downloads and a clear, a late release announcement, FTFD with the first
+  budget, a retried upload, refused sends and the resend timer.
+  `transfer_fake_test.go` runs transfers end to end against the fake
+  switcher (among them uploads with lock changes announced a frame late,
+  which stall with the old lock-state handler): still and macro round
   trips over several budgets, `UploadStill`'s fit and conversion, a locked
   clear, FTDE 1, 5 and 6 recovered and 2 fatal, a lock held by another
   client (a timeout that names it, a withdrawn clear that never runs, a
@@ -2878,17 +2922,24 @@ comes back. Indexes in results count from 1, as the flags do
   commands, malformed ones included; `Inject(from, b)` delivers a datagram
   from any address, silence or not; `HoldLock(store)` and
   `ReleaseLock(store)` play another client taking and releasing a store
-  lock, broadcast as `LKST`. `Commands()` and `Handshakes()` let tests look
-  inside.
+  lock, broadcast as `LKST`; `LateLockState(d)` announces lock changes d
+  late, those of a moment together, as a Constellation announces them at
+  its next frame, after the LKOB for a request sent with a release
+  (bmdwire#36). `Commands()` and `Handshakes()` let tests look inside.
 - **Transfers** (`transfers.go`). The fake keeps a media pool and a macro
   pool. The session's PLCK or LOCK is granted (LKOB, and LKST to all) unless
   another client holds the lock; then a PLCK waits for its release and a
-  LOCK is dropped. CSTL works only under the lock. FTSU is served in
+  LOCK is dropped. One from the session already holding it gets no
+  answer, as MEDIA_LOCK.md says a switcher gives none; until bmdwire#36
+  the fake granted it again, which hid the lock-state bug that change
+  fixed. CSTL works only under the lock. FTSU is served in
   1296-byte chunks, 16 in flight, each freed by its FTUA, then FTDC; an
   empty slot is an FTDC alone. FTSD (lock held for stills, mode 1 for
   stills and 0x0300 for macros, else FTDE 2) gets 16-chunk budgets until
-  the announced uncompressed length is in (it counts RLE runs); FTFD stores
-  the slot and broadcasts its MPfe or MPrp. `FailTransfers(statuses...)`
+  the announced uncompressed length is in (it counts RLE runs); once the
+  data and FTFD are both in, in either order (ASC sends FTFD first), it
+  stores the slot and sends FTDC and the MPfe or MPrp. Until bmdwire#36
+  it finished on FTFD, the order atemwire sent it in. `FailTransfers(statuses...)`
   answers the next requests with FTDE (5 also takes the lock away, 6 leaves
   it held); `PutStill`, `Still`, `PutMacro`, `Macro` and `LockedBySession`
   fill and inspect it. An empty macro upload (FTSD of length 0, then FTFD)
@@ -3203,10 +3254,10 @@ deliberate fix later, recorded here as such when it is made.
   arrive. The port keeps this, but when it costs the video mode Dial now
   fails at once instead of timing out (bmdwire#13, "Deliberate
   differences"); anything else in that packet is still silently missing.
-- **A lost command is recovered only by a later one.** With no client
-  retransmit timer (by design, SURFACE.md §4.2), a reliable packet the
-  switcher never sees is resent only when a later packet shows the switcher
-  the gap. `SendAndWait` on that command times out.
+- **A lost command was recovered only by a later one.** With no client
+  retransmit timer (SURFACE.md §4.2), a reliable packet the switcher never
+  saw was resent only when a later packet showed the switcher the gap.
+  Since bmdwire#36 the resend timer sends it again after 250 ms.
 - **Parse errors lose the rest of the packet** (session section), including
   a 23-byte `MPfe`, a `KeFS` under two bytes, and a `_VMC` bitfield naming
   mode 30 or 31.

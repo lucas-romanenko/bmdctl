@@ -371,8 +371,8 @@ func TestQueueClearDispatchesCSTLUnderLockThenReleases(t *testing.T) { // test_q
 	if r := result(t, tk); r.err != nil {
 		t.Fatal(r.err)
 	}
-	if s.lane.locks[0] || !s.lane.releasePending[0] {
-		t.Fatal("lock belief not reset, or the re-request isn't gated on the echo")
+	if s.lane.locks[0] || !s.lane.releasing[0] {
+		t.Fatal("lock belief not reset, or the release not ours until announced")
 	}
 }
 
@@ -547,8 +547,8 @@ func TestFlushKeepsThePacket(t *testing.T) {
 	}
 	// The flush found data left and no budget; then the FTCD queued and
 	// sent one 32-byte chunk.
-	if d := commands(c, "FTDa"); len(d) != 1 || len(d[0]) != 36 || len(tk.data) != 32 {
-		t.Fatalf("FTDa %d, left %d", len(d), len(tk.data))
+	if d := commands(c, "FTDa"); len(d) != 1 || len(d[0]) != 36 || tk.offset != 32 {
+		t.Fatalf("FTDa %d, cut %d", len(d), tk.offset)
 	}
 }
 
