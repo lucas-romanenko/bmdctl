@@ -12,6 +12,7 @@ package fakeatem
 import (
 	"bytes"
 	"encoding/binary"
+	"time"
 )
 
 // The stores.
@@ -142,7 +143,33 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 				return nil
 			}
 			delete(sw.locks, store)
+			if hold, ok := sw.otherQueued[store]; ok {
+				// Handed to the client waiting, and nothing announced.
+				delete(sw.otherQueued, store)
+				sw.locks[store] = heldByOther
+				sw.otherTurn[store] = true
+				session := sw.session
+				time.AfterFunc(hold, func() {
+					sw.mu.Lock()
+					defer sw.mu.Unlock()
+					if !sw.otherTurn[store] || sw.session != session {
+						return // cut short, or another session
+					}
+					delete(sw.otherTurn, store)
+					delete(sw.locks, store)
+					sw.otherTurns++
+					sw.broadcast(sw.announce(lockState(store, false))...)
+				})
+				return nil
+			}
 			return sw.announce(lockState(store, false))
+		}
+		if sw.otherTurn[store] {
+			// Granted beside the other client's LOCK, whose transfer the
+			// session's next one aborts.
+			delete(sw.otherTurn, store)
+			sw.othersAborted++
+			return sw.grant(store)
 		}
 		switch sw.locks[store] {
 		case 0:

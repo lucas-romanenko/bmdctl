@@ -6,11 +6,11 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.5.0
+Tracks: bmdwire v1.5.2
 
-- The port follows **bmdwire v1.5.0** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.5.0`, commit `f615eb8`): v1.4.0 (tag `v1.4.0`, commit
-  `e04920b`) and bmdwire#36. It was written against **v1.3.0** (tag
+- The port follows **bmdwire v1.5.2** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.5.2`, commit `65b9ee0`): v1.4.0 (tag `v1.4.0`, commit
+  `e04920b`), bmdwire#36, #38 and #40. It was written against **v1.3.0** (tag
   `v1.3.0`, commit `cea58c2`), and the code and these notes cite that tag
   wherever they were checked against it; v1.4.0 changed only what
   "bmdwire 1.4.0" below lists, so those citations hold for it. Cite the
@@ -41,13 +41,20 @@ Tracks: bmdwire v1.5.0
   a capture of its restore, and the transport's resend timer and kept
   sequence numbers ("Transport", "Transfers"), ported in `5ec2519` before
   the release. It changes no oracle; the oracles stay at v1.4.0.
+- **bmdwire 1.5.1 and 1.5.2** are bmdwire#38 (`5827626`, merged as
+  `f73356a`) and #40 (`1b30449`, merged as `4cac9ce`): another client's
+  turn. 1.5.0's handover, the release and the next request in one packet,
+  cut ATEM Software Control's turn short and left it without thumbnails
+  (two captures on the ASC machine); now every release leaves the store
+  until it is announced free and a frame more ("Transfers"). Ported
+  together after both releases. No oracle changes.
 - The `Tracks:` line above says the same on one line, for workflows to
   read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.5.0`. Keep it a line of its own, exactly
+  tag `v1.5.2`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at v1.5.0, whose §5.4 marks each
+  header naming the version: bmdwire's at v1.5.2, whose §5.4 marks each
   fix. It is the specification for `atem/`. Its body says it describes
   1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
   follows, so it describes that apart from those marks.
@@ -730,16 +737,27 @@ atemwire's `upload` takes RLE data with `compressed=True`),
     repeated within a second (`LOCK_REREQUEST_SECONDS`); on a release with
     work queued and the store not ours, an immediate re-request (the
     pounce);
-  - the lock released after every frame, in the same packet as the next
-    task's request (`triggerWith`), as ATEM Software Control sends them
-    (bmdwire#36); after an FTDE 6 the release goes alone and the pounce
-    asks again. Our hold runs from the LKOB to our release: a release
-    announced while we hold the store is our own, a frame late, and
-    changes nothing (`onLockReleased`). Until bmdwire#36 the next request
-    waited for that announcement (`_lock_release_pending`), up to 6.6 s
-    in the fifteenth hardware run, because the handler took the late
-    announcement as losing the new grant; `releasing` keeps only what
-    that set told `LockHolder`, a release of ours not yet announced. The
+  - the lock released after every frame, alone, and another client's turn
+    after it (bmdwire#38, #40; `yielding`, `foreignHeld`, the lane's
+    `yieldTimer`): the next request, queued then or later, waits until the
+    store is announced free (LKST) and `lockCourtesy` (60 ms) more; a
+    store another client is seen holding isn't asked for until announced
+    free; with no announcement (the store handed to a client that was
+    waiting, which the switcher doesn't announce) it waits while anyone is
+    seen at work, another session's FTDC or any LKST, and asks after
+    `lockQuiet` (10 s) of quiet. Any client's announced release starts the
+    same frame's wait, so a release and a lock announced together (ASC
+    taking the store again for its next still) cancel the request.
+    bmdwire#36 sent the release and the next request in one packet, as
+    ASC does: the switcher granted that request beside a waiting client's
+    and aborted its transfer with FTDE 6. Our hold runs from the LKOB to
+    our release: a release announced while we hold the store is our own,
+    late, and changes nothing (`onLockReleased`). Until bmdwire#36 the
+    next request waited for its release's echo (`_lock_release_pending`),
+    which also waited out a client handed the store: the fifteenth
+    hardware run's pauses of 2 to 6.6 s were WebATEM on the dev stack
+    refreshing each new still's thumbnail. `releasing` keeps what that
+    set told `LockHolder`, a release of ours not yet announced. The
     lock-exempt macro store goes on at once; with nothing queued, every
     held lock is released;
   - FTDE 1 retries with the same transfer id, 5 asks for the lock again, 6
@@ -2949,7 +2967,13 @@ comes back. Indexes in results count from 1, as the flags do
   LOCK is dropped. One from the session already holding it gets no
   answer, as MEDIA_LOCK.md says a switcher gives none; until bmdwire#36
   the fake granted it again, which hid the lock-state bug that change
-  fixed. CSTL works only under the lock. FTSU is served in
+  fixed. `QueueOther(store, hold)` plays ATEM Software Control waiting
+  with a whole-store LOCK: handed the store at the session's release
+  without an announcement, holding it for `hold`, then releasing it
+  (announced); a request from the session meanwhile is granted beside it
+  and aborts its turn (`OthersAborted`), as the switcher did in the
+  captures behind bmdwire#38; `TestAnotherClientWaitingGetsItsTurn`
+  fails with bmdwire#36's handover. CSTL works only under the lock. FTSU is served in
   1296-byte chunks, 16 in flight, each freed by its FTUA, then FTDC; an
   empty slot is an FTDC alone. FTSD (lock held for stills, mode 1 for
   stills and 0x0300 for macros, else FTDE 2) gets 16-chunk budgets until

@@ -215,6 +215,14 @@ type lane struct {
 	// announced (no LKST since), so LockHolder still says this session
 	// rather than another client. It defers nothing.
 	releasing map[uint16]bool
+	// yielding holds the stores whose next request waits another client's
+	// turn (_yielding), foreignHeld those another client is seen holding,
+	// from its LKST until a release's (_foreign_held); see lockCourtesy.
+	// yieldTimer wakes the lane at yieldDue, the earliest yield's end.
+	yielding    map[uint16]*yieldState
+	foreignHeld map[uint16]bool
+	yieldTimer  *time.Timer
+	yieldDue    time.Time
 
 	budget *FileTransferContinueDataField // transfer_budget: nil when exhausted
 
@@ -224,6 +232,33 @@ type lane struct {
 	bulkTimer   *time.Timer
 }
 
+// Another client's turn (bmdwire#38 and #40, v1.5.2). Another client's
+// request waiting for the store is handed it at our release, and nothing
+// is announced; a request of ours soon after is granted beside it (a PLCK
+// beside ATEM Software Control's LOCK) and aborts its transfer with FTDE
+// 6, and ASC, which tries each still once when it connects, keeps no
+// thumbnail. So after every per-frame release, and any client's announced
+// release, a request waits for the store to be announced free (LKST) and
+// lockCourtesy more; never while another client is seen holding it; and
+// with no announcement, while anyone is seen at work (another session's
+// FTDC, any LKST), asking after lockQuiet of quiet.
+const (
+	lockCourtesy = 60 * time.Millisecond // LOCK_COURTESY
+	lockQuiet    = 10 * time.Second      // LOCK_QUIET
+)
+
+// yieldState is a store's turn for other clients: since, when we released
+// it or last saw anyone at work; announced, when it was announced free
+// (zero until then).
+type yieldState struct{ since, announced time.Time }
+
+func (y *yieldState) due() time.Time {
+	if !y.announced.IsZero() {
+		return y.announced.Add(lockCourtesy)
+	}
+	return y.since.Add(lockQuiet)
+}
+
 func newLane() lane {
 	return lane{
 		queues:        make(map[uint16][]*transferTask),
@@ -231,6 +266,8 @@ func newLane() lane {
 		locks:         make(map[uint16]bool),
 		lockRequested: make(map[uint16]time.Time),
 		releasing:     make(map[uint16]bool),
+		yielding:      make(map[uint16]*yieldState),
+		foreignHeld:   make(map[uint16]bool),
 	}
 }
 
@@ -614,28 +651,6 @@ func (s *Session) sendCommands(cmds ...Command) {
 // asking for its store's lock first; with nothing queued, release every
 // lock held.
 func (s *Session) transferTrigger(store uint16, retry bool) {
-	s.triggerWith(store, retry, nil)
-}
-
-// triggerWith is transferTrigger with a per-frame release to send in the
-// same packet as whatever it sends next: the next lock request, the other
-// releases, or alone if nothing follows (bmdwire#36).
-func (s *Session) triggerWith(store uint16, retry bool, release Command) {
-	var pending []Command
-	if release != nil {
-		pending = []Command{release}
-	}
-	send := func(cmds ...Command) {
-		s.sendCommands(append(pending, cmds...)...)
-		pending = nil
-	}
-	s.trigger(store, retry, send)
-	if pending != nil {
-		s.sendCommands(pending...)
-	}
-}
-
-func (s *Session) trigger(store uint16, retry bool, send func(...Command)) {
 	l := &s.lane
 	var next *transferTask
 	if q := l.queues[store]; len(q) > 0 {
@@ -655,12 +670,25 @@ func (s *Session) trigger(store uint16, retry bool, send func(...Command)) {
 		for _, st := range sortedStores(l.locks) {
 			if l.locks[st] {
 				s.log.Info("atem: releasing store lock", "store", st)
-				send(Lock{Store: st})
+				s.sendCommands(Lock{Store: st})
 			}
 		}
 		return
 	}
 	if next.store != StoreMacros && !l.locks[next.store] {
+		if l.foreignHeld[next.store] {
+			// Another client's turn: its release's LKST asks for us.
+			s.log.Debug("atem: store held by another client; asking once released", "store", next.store)
+			return
+		}
+		if y := l.yielding[next.store]; y != nil {
+			if due := y.due(); s.t.now().Before(due) {
+				s.log.Debug("atem: leaving the store free a moment for other clients", "store", next.store)
+				s.armYieldTimer(due)
+				return
+			}
+			delete(l.yielding, next.store)
+		}
 		if at, ok := l.lockRequested[next.store]; ok && s.t.now().Sub(at) < lockRerequest {
 			s.log.Debug("atem: lock request already on the wire", "store", next.store)
 			return
@@ -673,7 +701,7 @@ func (s *Session) trigger(store uint16, retry bool, send func(...Command)) {
 		}
 		s.log.Info("atem: requesting store lock", "store", next.store)
 		l.lockRequested[next.store] = s.t.now()
-		send(req)
+		s.sendCommands(req)
 		return
 	}
 	if l.requested {
@@ -684,7 +712,7 @@ func (s *Session) trigger(store uint16, retry bool, send func(...Command)) {
 		// per-frame release, which in-order delivery puts after it.
 		l.popHead(next)
 		s.log.Info("atem: clearing still under the store lock", "slot", next.slot)
-		send(ClearStill{Slot: uint8(next.slot)})
+		s.sendCommands(ClearStill{Slot: uint8(next.slot)})
 		s.finish(next, transferResult{}) // clear-dispatched
 		s.releaseThenContinue(next.store, true)
 		return
@@ -722,7 +750,7 @@ func (s *Session) trigger(store uint16, retry bool, send func(...Command)) {
 		out = append(out, s.fileData(next))
 		next.metadataSent = true
 	}
-	send(out...)
+	s.sendCommands(out...)
 }
 
 func (s *Session) fileData(t *transferTask) TransferFileData {
@@ -730,12 +758,14 @@ func (s *Session) fileData(t *transferTask) TransferFileData {
 }
 
 // releaseThenContinue is _release_then_continue: a transfer is over, so
-// give its store's lock back now, in the same packet as the next
-// transfer's lock request, as ATEM Software Control sends them: the
-// switcher grants it at once (bmdwire#36). requestNext false sends the
-// release alone and leaves the next request to the store's release
-// broadcast (after an FTDE 6, another session is queued for the store).
-// The lock-exempt macro store starts the next at once.
+// give its store's lock back now, and leave another client its turn: the
+// next request, now or queued later (a caller that queues one transfer at
+// a time has nothing queued here), waits until the store is announced
+// free and lockCourtesy more (bmdwire#38, #40). bmdwire#36 sent the
+// release and the next request in one packet, as ASC does; that cut
+// ASC's turn short. requestNext false leaves the next request to the
+// store's release broadcast (after an FTDE 6, another session is queued
+// for the store). The lock-exempt macro store starts the next at once.
 func (s *Session) releaseThenContinue(store uint16, requestNext bool) {
 	l := &s.lane
 	l.transfer = nil
@@ -743,14 +773,64 @@ func (s *Session) releaseThenContinue(store uint16, requestNext bool) {
 		s.log.Info("atem: releasing store lock (per frame)", "store", store)
 		l.locks[store] = false
 		l.releasing[store] = true
+		s.sendCommands(Lock{Store: store})
+		l.yielding[store] = &yieldState{since: s.t.now()}
 		if !requestNext {
-			s.sendCommands(Lock{Store: store})
 			return
 		}
-		s.triggerWith(store, false, Lock{Store: store})
-		return
 	}
 	s.transferTrigger(store, false)
+}
+
+// armYieldTimer has the lane woken at at, unless it is woken sooner.
+func (s *Session) armYieldTimer(at time.Time) {
+	l := &s.lane
+	if !l.yieldDue.IsZero() && !at.Before(l.yieldDue) {
+		return
+	}
+	l.yieldDue = at
+	d := max(0, at.Sub(s.t.now()))
+	if l.yieldTimer == nil {
+		l.yieldTimer = time.NewTimer(d)
+	} else {
+		l.yieldTimer.Reset(d)
+	}
+}
+
+// yieldTimerC is the yield timer's channel, nil when unarmed.
+func (s *Session) yieldTimerC() <-chan time.Time {
+	if s.lane.yieldTimer == nil || s.lane.yieldDue.IsZero() {
+		return nil
+	}
+	return s.lane.yieldTimer.C
+}
+
+// serviceYields is _service_yields: ask for each store whose turn for
+// others is over, and forget a turn that is over with nothing waiting.
+func (s *Session) serviceYields() {
+	l := &s.lane
+	l.yieldDue = time.Time{}
+	for store, y := range l.yielding {
+		switch {
+		case len(l.queues[store]) == 0:
+			if !s.t.now().Before(y.due()) {
+				delete(l.yielding, store)
+			}
+		case !l.requested && !l.locks[store]:
+			s.transferTrigger(store, false)
+		}
+	}
+}
+
+// someoneAtWork is _someone_at_work: another session's transfer ended, so
+// a store we wait for, not yet announced free, is busy: lockQuiet starts
+// again.
+func (s *Session) someoneAtWork() {
+	for _, y := range s.lane.yielding {
+		if y.announced.IsZero() {
+			y.since = s.t.now()
+		}
+	}
 }
 
 // onTransferPacket handles the packets the engine consumes: LKOB, FTCD,
@@ -781,17 +861,26 @@ func (s *Session) onTransferPacket(code string, payload []byte) error {
 	return nil
 }
 
-// onLockReleased is the release half of the lock-state branch: if work is
-// queued for the store, ask for it again at once ("the pounce"). A release
+// onLockReleased is the release half of the lock-state branch. A release
 // announced while we hold the store is our own previous one, announced a
-// frame late, after the LKOB for the request sent with it: our hold ends
-// only when we release it (bmdwire#36).
+// frame late: our hold ends only when we release it (bmdwire#36).
+// Otherwise the store is seen free: a request waits lockCourtesy more, in
+// case the client that released takes it again for its next transfer
+// (ATEM Software Control does, announced as a release and a lock together;
+// bmdwire#38), then goes ("the pounce").
 func (s *Session) onLockReleased(store uint16) {
 	l := &s.lane
 	delete(l.releasing, store)
 	if l.locks[store] {
 		s.log.Debug("atem: release announced while we hold the store: our own, late", "store", store)
 		return
+	}
+	delete(l.foreignHeld, store)
+	now := s.t.now()
+	if y := l.yielding[store]; y == nil {
+		l.yielding[store] = &yieldState{since: now, announced: now}
+	} else if y.announced.IsZero() {
+		y.announced = now
 	}
 	delete(l.lockRequested, store)
 	if len(l.queues[store]) > 0 && !l.requested {
@@ -800,9 +889,19 @@ func (s *Session) onLockReleased(store uint16) {
 }
 
 // onLockTaken is the other half: a lock taken is announced, so a release
-// of ours before it has been announced too.
+// of ours before it has been announced too; taken by another client, the
+// store is theirs until announced free, and a wait for it starts again
+// (bmdwire#38).
 func (s *Session) onLockTaken(store uint16) {
-	delete(s.lane.releasing, store)
+	l := &s.lane
+	delete(l.releasing, store)
+	if l.locks[store] {
+		return
+	}
+	l.foreignHeld[store] = true
+	if y := l.yielding[store]; y != nil {
+		*y = yieldState{since: s.t.now()}
+	}
 }
 
 // onBudget is the file-transfer-continue-data branch: the switcher grants
@@ -892,9 +991,11 @@ func (s *Session) onTransferComplete(f *FileTransferDataCompleteField) {
 	if l.transfer == nil {
 		// The switcher announces every session's completions.
 		s.log.Debug("atem: FTDC for another session's transfer")
+		s.someoneAtWork()
 		return
 	}
 	if f.Transfer != l.transfer.tid {
+		s.someoneAtWork()
 		return
 	}
 	t := l.transfer
@@ -1096,12 +1197,16 @@ func (s *Session) resetLane(err error) {
 		s.finish(l.transfer, transferResult{err: err})
 	}
 	id := l.nextID
-	timer := l.bulkTimer
+	timer, ytimer := l.bulkTimer, l.yieldTimer
 	*l = newLane()
 	l.nextID = id
 	if timer != nil {
 		timer.Stop()
 		l.bulkTimer = timer
+	}
+	if ytimer != nil {
+		ytimer.Stop()
+		l.yieldTimer = ytimer
 	}
 }
 
@@ -1121,6 +1226,7 @@ func (s *Session) releaseLocksNow() {
 	}
 	clear(l.releasing)
 	clear(l.lockRequested)
+	clear(l.yielding)
 }
 
 func sortedStores(m map[uint16]bool) []uint16 {
