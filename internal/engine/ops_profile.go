@@ -611,9 +611,13 @@ func stillsToUpload(p *profile.Profile) []*profile.Element {
 
 // uploadImages pushes each <Still index name path> whose image the CLI
 // sent into its slot, after the rest of the profile, as atemwire's
-// caller is expected to.
+// caller is expected to. Each picture is decoded, converted to the
+// switcher's frame and encoded once, ahead of its turn, while the still
+// before it uploads, and kept only until its last slot has it: done
+// between uploads it cost half a second a still (docs/HARDWARE.md, the
+// fifteenth run), and a profile often names one picture for several
+// slots.
 func (c *call) uploadImages(p *profile.Profile) []ImageResult {
-	n, i := len(stillsToUpload(p)), 0
 	out := []ImageResult{}
 	pool := p.Root().Find("MediaPool")
 	if pool == nil {
@@ -621,38 +625,104 @@ func (c *call) uploadImages(p *profile.Profile) []ImageResult {
 	}
 	stills := pool.FindAll("Stills/Still")
 	slices.SortStableFunc(stills, func(a, b *profile.Element) int { return idx(a) - idx(b) })
+	type job struct {
+		r    ImageResult
+		slot int
+		data []byte
+		err  error // known before any conversion
+	}
+	var jobs []job
+	uses := map[string]int{} // jobs left per picture, by its path
 	for _, s := range stills {
 		slot := idx(s) // the XML's index counts from 0, as ASC writes it
-		r := ImageResult{Slot: table.Index(slot), Name: s.GetDefault("name", ""), Path: s.GetDefault("path", "")}
-		if r.Path == "" {
+		j := job{r: ImageResult{Slot: table.Index(slot), Name: s.GetDefault("name", ""), Path: s.GetDefault("path", "")}, slot: slot}
+		if j.r.Path == "" {
 			continue
 		}
 		data, ok := c.req.Files[ImageParam(slot)]
-		i++
-		var err error
 		switch {
 		case slot < 0:
-			err = fmt.Errorf("index %q is not a slot", s.GetDefault("index", ""))
+			j.err = fmt.Errorf("index %q is not a slot", s.GetDefault("index", ""))
 		case !ok:
-			err = fmt.Errorf("no file at %s", r.Path)
+			j.err = fmt.Errorf("no file at %s", j.r.Path)
 		default:
-			var img image.Image
-			var format string
-			if img, format, err = image.Decode(bytes.NewReader(data)); err == nil {
+			j.data = data
+			uses[j.r.Path]++
+		}
+		jobs = append(jobs, j)
+	}
+	// A picture's frame, converted on its own goroutine; done closes once
+	// frame or err is set.
+	type picture struct {
+		done  chan struct{}
+		still atem.EncodedStill
+		err   error
+	}
+	pictures := map[string]*picture{}
+	mode := c.state.VideoMode.Mode
+	prepare := func(j job) {
+		pic := &picture{done: make(chan struct{})}
+		pictures[j.r.Path] = pic
+		go func() {
+			defer close(pic.done)
+			if mode == nil {
+				pic.err = fmt.Errorf("%w: the switcher hasn't reported its video mode", atem.ErrNotReady)
+				return
+			}
+			img, format, err := image.Decode(bytes.NewReader(j.data))
+			if err != nil {
+				pic.err = err
+				return
+			}
+			w, h := mode.FrameSize()
+			frame, err := atem.RGBAToYCbCrA(atem.FitFrame(img, w, h), format == "png")
+			if err != nil {
+				pic.err = err
+				return
+			}
+			pic.still, pic.err = atem.EncodeStill(frame)
+		}()
+	}
+	// ahead starts the conversion of the first picture from job k on that
+	// isn't converted or converting.
+	ahead := func(k int) {
+		for ; k < len(jobs); k++ {
+			if j := jobs[k]; j.err == nil && pictures[j.r.Path] == nil {
+				prepare(j)
+				return
+			}
+		}
+	}
+	ahead(0)
+	n := len(jobs)
+	for i, j := range jobs {
+		ahead(i + 1)
+		err := j.err
+		if err == nil {
+			pic := pictures[j.r.Path]
+			if pic == nil { // its conversion ahead of time was for a job before
+				prepare(j)
+				pic = pictures[j.r.Path]
+			}
+			<-pic.done
+			if err = pic.err; err == nil {
 				ctx, cancel := c.transferCtx()
-				base, item := int64(i-1)*1000, fmt.Sprintf("still %d of %d", i, n)
+				base, item := int64(i)*1000, fmt.Sprintf("still %d of %d", i+1, n)
 				ctx = c.withProgress(ctx, func(p atem.Progress) Progress {
 					return Progress{Done: base + int64(p.Done)*1000/int64(p.Total), Total: int64(n) * 1000, Item: item}
 				})
-				err = c.sess.UploadStill(ctx, slot, img, atem.StillOptions{Name: r.Name, Premultiply: format == "png"})
+				err = c.sess.UploadEncodedStill(ctx, j.slot, pic.still, j.r.Name, "")
 				cancel()
+			}
+			if uses[j.r.Path]--; uses[j.r.Path] == 0 {
+				delete(pictures, j.r.Path)
 			}
 		}
 		if err != nil {
-			r.Error = err.Error()
-			c.e.log.Warn("media pool image not restored", "slot", slot, "path", r.Path, "err", err)
+			j.r.Error = err.Error()
+			c.e.log.Warn("media pool image not restored", "slot", j.slot, "path", j.r.Path, "err", err)
 		}
-		out = append(out, r)
+		out = append(out, j.r)
 	}
 	return out
 }
