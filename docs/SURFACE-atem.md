@@ -1,6 +1,6 @@
 <!--
-Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at main 32833b7
-(v1.4.0 and bmdwire#36). It is the specification for bmdctl's atem package.
+Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at v1.5.0 (commit
+f615eb8). It is the specification for bmdctl's atem package.
 
 Its own header says which bmdwire it describes, and §5.4 marks the fixes
 made since; all of them are in what the port follows (docs/PORTING.md,
