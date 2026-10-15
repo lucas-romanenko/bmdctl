@@ -6,7 +6,7 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.4.0
+Tracks: bmdwire v1.4.0-7-g32833b7
 
 - The port follows **bmdwire v1.4.0** (`github.com/lucas-romanenko/bmdwire`,
   tag `v1.4.0`, commit `e04920b`). It was written against **v1.3.0** (tag
@@ -35,14 +35,19 @@ Tracks: bmdwire v1.4.0
   returning the slots done so far (bmdwire#31, "Operations", group g). The
   oracles it changes are regenerated at v1.4.0; the HyperDeck client's
   stays at v1.3.0 ("HyperDeck", Verification).
+- **Merged after v1.4.0:** bmdwire#36 (`bd6ae77`, merged as `32833b7`),
+  uploads and the lock handover as ATEM Software Control does them, from
+  a capture of its restore, and the transport's resend timer and kept
+  sequence numbers ("Transport", "Transfers"). It changes no oracle.
+  The port follows bmdwire main at `32833b7`.
 - The `Tracks:` line above says the same on one line, for workflows to
-  read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.4.0`. Keep it a line of its own, exactly
+  read: `git describe` of the bmdwire commit the port follows, here
+  `v1.4.0-7-g32833b7`, main after bmdwire#36. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at v1.4.0, whose §5.4 marks each
-  fix. It is the specification for `atem/`. Its body says it describes
+  header naming the version: bmdwire's at main `32833b7`, whose §5.4
+  marks each fix. It is the specification for `atem/`. Its body says it describes
   1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
   follows, so it describes that apart from those marks.
 - `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
