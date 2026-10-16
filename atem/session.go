@@ -136,7 +136,14 @@ func (d *Dialer) Dial(ctx context.Context, addr string) (*Session, error) {
 		if err != nil {
 			return nil, fmt.Errorf("atem: dial %s: %w", addr, err)
 		}
-		_ = uc.SetReadBuffer(16 << 20) // atemwire asks for 16 MiB too
+		// 16 MiB as atemwire asks, stepping down: macOS refuses more than
+		// kern.ipc.maxsockbuf with errno 55 (ENOBUFS) instead of capping
+		// (bmdwire#46, c08f830). None taken leaves the system's default.
+		for _, mib := range []int{16, 8, 4, 1} {
+			if uc.SetReadBuffer(mib<<20) == nil {
+				break
+			}
+		}
 		conn = uc
 	}
 	s := newSession(conn, raddr, d.Logger, d.silence)
