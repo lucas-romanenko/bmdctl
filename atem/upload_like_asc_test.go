@@ -15,6 +15,7 @@ package atem
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"net"
 	"os"
@@ -302,6 +303,60 @@ func TestATransferQueuedAfterTheReleaseWaitsToo(t *testing.T) {
 	s.enqueueTask(task(taskDownload, StoreStills, 2))
 	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
 		t.Fatalf("%v: asked before the store was seen free", p)
+	}
+	feedLockState(t, s, 0, false)
+	after(s, clock, lockCourtesy)
+	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
+		t.Fatalf("%v once free", p)
+	}
+}
+
+// A caller gives up on a download (WebATEM's media pool, after 15 s) and
+// asks again. The switcher handed the store to ASC at our release,
+// unannounced: the retry waits for ASC, not asking beside it. bmdwire#47
+// keeps the turn across abort_transfers; cancelTask never touched it.
+func TestACallerThatGivesUpStillWaitsItsTurn(t *testing.T) {
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	firstOfTwoDone(t, s, taskDownload)
+	asked := len(packetCodes(c))
+	*clock = clock.Add(15 * time.Second)
+	feedDone(t, s, 0x6c02) // ASC at work
+	slot2 := s.lane.queues[StoreStills][0]
+	if err := s.cancelTask(slot2, context.DeadlineExceeded); err == nil {
+		t.Fatal("no error for the abandoned download")
+	}
+	s.enqueueTask(task(taskDownload, StoreStills, 2)) // and its retry
+	after(s, clock, 0)
+	if len(packetCodes(c)) != asked {
+		t.Fatal("asked in the middle of their turn")
+	}
+	feedLockState(t, s, 0, false) // they let go
+	after(s, clock, lockCourtesy)
+	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
+		t.Fatalf("%v once free", p)
+	}
+}
+
+// A transfer stalls holding the lock; its caller gives up, and the cancel
+// releases the lock. Whoever waited for the store is handed it, as at any
+// release, and the retry waits its turn (bmdwire#47).
+func TestGivingUpHoldingTheLockLeavesTheStoreItsTurn(t *testing.T) {
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	tk := task(taskDownload, StoreStills, 1)
+	s.enqueueTask(tk)
+	grant(t, s, 0)
+	if err := s.cancelTask(tk, context.DeadlineExceeded); err == nil {
+		t.Fatal("no error for the abandoned download")
+	}
+	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
+		t.Fatalf("%v, want the release", p)
+	}
+	asked := len(packetCodes(c))
+	s.enqueueTask(task(taskDownload, StoreStills, 1))
+	if len(packetCodes(c)) != asked {
+		t.Fatal("asked before anyone could take it")
 	}
 	feedLockState(t, s, 0, false)
 	after(s, clock, lockCourtesy)

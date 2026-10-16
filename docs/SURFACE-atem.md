@@ -1,6 +1,6 @@
 <!--
-Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at v1.5.4 (commit
-1bf98f0). It is the specification for bmdctl's atem package.
+Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at v1.5.5 (commit
+dbbe4f3). It is the specification for bmdctl's atem package.
 
 Its own header says which bmdwire it describes, and §5.4 marks the fixes
 made since; all of them are in what the port follows (docs/PORTING.md,
@@ -1124,6 +1124,12 @@ it; item 27 was fixed after 1.5.1.
     (`ENOBUFS`): the constructor raised, and no switcher could be connected from that system.
     *Fixed in `c08f830`:* the request steps down 16, 8, 4, 1 MB and keeps the first size taken,
     or the system's default if it takes none.
+31. **A caller's timeout hands the store back early** (1.5.1). `abort_transfers()` cleared the wait
+    for another client's turn with the queue. A caller that times out and retries (WebATEM's media
+    pool: 15 s, then again) asked at once, though the switcher may have handed the store over
+    unannounced at our last release, and was granted beside the other client's lock, aborting its
+    transfer. *Fixed in `1feedbd`:* the wait outlives the abort, and a lock the abort releases starts
+    one.
 
 ## Counts
 

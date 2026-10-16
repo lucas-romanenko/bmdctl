@@ -6,10 +6,10 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.5.4
+Tracks: bmdwire v1.5.5
 
-- The port follows **bmdwire v1.5.4** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.5.4`, commit `1bf98f0`): v1.4.0 (tag `v1.4.0`, commit
+- The port follows **bmdwire v1.5.5** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.5.5`, commit `dbbe4f3`): v1.4.0 (tag `v1.4.0`, commit
   `e04920b`), bmdwire#36, #38, #40, #42 and #46. It was written against **v1.3.0** (tag
   `v1.3.0`, commit `cea58c2`), and the code and these notes cite that tag
   wherever they were checked against it; v1.4.0 changed only what
@@ -64,13 +64,21 @@ Tracks: bmdwire v1.5.4
   failed every connect there. Here the error was already discarded, so
   Dial went on with the system's default buffer; it now steps down 16,
   8, 4, 1 MiB as atemwire does ("Session", Dial). No oracle changes.
+- **bmdwire 1.5.5** is bmdwire#47 (`1feedbd`, merged as `6bb1c84`):
+  `abort_transfers()` cleared the wait for another client's turn, so a
+  caller that timed out and retried (WebATEM's media pool, after 15 s)
+  could ask in the middle of ATEM Software Control's turn and abort its
+  download. Nothing to port: a caller giving up here goes through
+  `cancelTask`, which withdraws that one task and leaves the turn alone,
+  and a lock it gives back goes through `releaseThenContinue`, which
+  starts one. Two tests mirror bmdwire's new ones. No oracle changes.
 - The `Tracks:` line above says the same on one line, for workflows to
   read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.5.4`. Keep it a line of its own, exactly
+  tag `v1.5.5`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at v1.5.4, whose §5.4 marks each
+  header naming the version: bmdwire's at v1.5.5, whose §5.4 marks each
   fix. It is the specification for `atem/`. Its body says it describes
   1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
   follows, so it describes that apart from those marks.
