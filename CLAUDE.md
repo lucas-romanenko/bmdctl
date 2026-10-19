@@ -1,8 +1,8 @@
 # bmdctl: notes for future sessions
 
 bmdctl is a Go port of bmdwire (`../bmdwire`), written against v1.3.0
-(tag `v1.3.0`, commit `cea58c2`) and following v1.5.5 (tag `v1.5.5`,
-commit `dbbe4f3`), as `docs/PORTING.md` ("Source of truth") says, plus
+(tag `v1.3.0`, commit `cea58c2`) and following v1.6.0 (tag `v1.6.0`,
+commit `0eb73e5`), as `docs/PORTING.md` ("Source of truth") says, plus
 one CLI binary. Read `docs/PORTING.md`
 before changing anything in `atem/`: it records every decision already
 made, so you follow it instead of re-deriving it. Add to it whenever you
@@ -41,8 +41,9 @@ shows (colour, the prompt, the spinner) is snapshot-tested in
 `go test ./cmd/bmdctl -run TestTerminal -update` and read the diff. The oracles in
 `internal/fixtures/oracle/` and `hyperdeck/testdata/oracle/` are
 regenerated with the scripts beside them (see the README there) against
-`../bmdwire` at the version each file records (`v1.4.0`; `imaging.json`
-and the HyperDeck `client.json` at `v1.3.0`, the READMEs say why).
+`../bmdwire` at the version each file records (`recv.json` and
+`readers.json` at `v1.6.0`, the rest at `v1.4.0`; `imaging.json` and the
+HyperDeck `client.json` at `v1.3.0`, the READMEs say why).
 
 The documentation site (`mkdocs.yml`) is built from `docs/` as it is:
 `pip install -r docsite/requirements.txt`, then `mkdocs serve` to read

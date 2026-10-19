@@ -12,10 +12,14 @@ package atem
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"math"
 	"net"
 	"reflect"
+	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
@@ -1039,5 +1043,259 @@ func TestPyRound(t *testing.T) {
 	}
 	if !math.IsNaN(pyRound(math.NaN(), 2)) || !math.IsInf(pyRound(math.Inf(-1), 2), -1) {
 		t.Error("pyRound non-finite")
+	}
+}
+
+func TestReadAudioLegacy(t *testing.T) {
+	f := func(x float64) *float64 { return &x }
+	eq := func(a, b *float64) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
+
+	// test_audio_legacy.py::test_volume_to_db_anchors: silence is nil, then
+	// unity and the top of the fader (+6.00003 dB).
+	for wire, db := range map[int]*float64{0: nil, 32768: f(0.0), 65381: f(6.0)} {
+		if got := LegacyVolumeToDB(wire); !eq(got, db) {
+			t.Errorf("legacy_volume_to_db(%d) = %v", wire, got)
+		}
+	}
+
+	// test_audio_legacy.py::test_db_to_volume: floor(10^0.3 × 32768) is
+	// 65380.78, one under the top; anything louder clamps to it, and
+	// -100 dB (0.33) floors to silence.
+	for _, c := range []struct {
+		db   *float64
+		wire uint16
+	}{
+		{nil, 0}, {f(math.Inf(-1)), 0}, {f(math.NaN()), 0}, {f(0.0), 32768},
+		{f(6.0), 65380}, {f(6.01), 65381}, {f(10.0), 65381}, {f(math.Inf(1)), 65381}, {f(-100.0), 0},
+	} {
+		if got := LegacyDBToVolume(c.db); got != c.wire {
+			t.Errorf("legacy_db_to_volume(%v) = %d, want %d", c.db, got, c.wire)
+		}
+	}
+
+	// test_audio_legacy.py::test_volume_round_trips_through_db_within_a_step:
+	// two places of dB is about 0.12 % of the value.
+	for _, wire := range []int{1, 100, 4096, 16384, 32767, 32768, 50000, 65381} {
+		back := int(LegacyDBToVolume(LegacyVolumeToDB(wire)))
+		if math.Abs(float64(back-wire)) > max(1, float64(wire)*0.0013) {
+			t.Errorf("round trip of %d gives %d", wire, back)
+		}
+	}
+
+	// test_audio_legacy.py::test_pan_to_balance; NaN and the infinities are
+	// an error, where Python's round() raises.
+	for pan, balance := range map[float64]int16{0: 0, 100: 10000, -100: -10000, 12.34: 1234, 250: 10000, -250: -10000} {
+		if got, err := LegacyPanToBalance(pan); err != nil || got != balance {
+			t.Errorf("legacy_pan_to_balance(%v) = %d, %v", pan, got, err)
+		}
+	}
+	for _, pan := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if _, err := LegacyPanToBalance(pan); err == nil {
+			t.Errorf("legacy_pan_to_balance(%v): no error", pan)
+		}
+	}
+
+	// test_audio_legacy.py::test_audio_mixer_type: AMMO decides for the
+	// legacy mixer, and FAMP beats it.
+	for _, c := range []struct {
+		famp, ammo, others bool
+		want               string
+	}{
+		{false, false, false, "unknown"}, {false, true, false, "legacy"}, {true, false, false, "fairlight"},
+		{true, true, false, "fairlight"}, {false, false, true, "unknown"},
+	} {
+		s := newState()
+		if c.famp {
+			s.Fairlight.Master = &FairlightMasterPropertiesField{}
+		}
+		if c.ammo {
+			s.Audio.Master = &AudioMixerMasterPropertiesField{}
+		}
+		if c.others {
+			s.Audio.Inputs["1.0"] = &AudioInputField{Index: 1, StripID: "1.0"}
+			s.Audio.Monitor = &AudioMixerMonitorPropertiesField{}
+		}
+		if got := s.AudioMixerType(); got != c.want {
+			t.Errorf("%+v: audio_mixer_type %q", c, got)
+		}
+	}
+
+	// test_audio_legacy.py::_legacy_mx: a Production Studio 4K-shaped
+	// mixer, two cameras (one renamed), a media player, the XLR input; an
+	// AFV master and the monitor soloing camera 2. 2001's InPr is the
+	// video side's, not MP1's name.
+	legacyMX := func() State {
+		s := newState()
+		s.Inputs[1] = &InputPropertiesField{Name: "Camera 1\x00", ShortName: "CAM1\x00"}
+		s.Inputs[2] = &InputPropertiesField{Name: "Pulpit\x00", ShortName: "PULP\x00"}
+		s.Inputs[2001] = &InputPropertiesField{Name: "Color 1\x00", ShortName: "COL1\x00"}
+		s.Audio.Master = &AudioMixerMasterPropertiesField{Volume: 32768, AFV: true}
+		s.Audio.Monitor = &AudioMixerMonitorPropertiesField{Enabled: true, Volume: 16384, Mute: true, Solo: true, SoloSource: 2, Dim: true, DimVolume: 5000}
+		for _, in := range []AudioInputField{
+			{Index: 1001, Type: 2, Plug: 32, State: 1, Volume: 65381},
+			{Index: 2001, Type: 1, Plug: 0, State: 0, Volume: 0},
+			{Index: 2, Type: 0, Plug: 2, State: 2, Volume: 23197, Balance: 5000},
+			{Index: 1, Type: 0, Plug: 1, State: 1, Volume: 32768, Balance: -10000},
+		} {
+			in.StripID = strconv.Itoa(int(in.Index)) + ".0"
+			s.Audio.Inputs[in.StripID] = &in
+		}
+		return s
+	}
+
+	// test_audio_legacy.py::test_legacy_build_full_state_shape, the readers
+	// build_full_state's legacy section is made of (it adds each strip's
+	// soloed; build_full_state is not ported, docs/PORTING.md "Readers").
+	s := legacyMX()
+	if got := s.AudioMixerType(); got != "legacy" {
+		t.Errorf("audio_mixer_type %q", got)
+	}
+	if m := s.LegacyAudioMaster(); !m.Present || !eq(m.VolumeDB, f(0.0)) || !m.AFV {
+		t.Errorf("legacy_audio_master %+v", m)
+	}
+	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, LegacyAudioHeadphonesView{Present: true, VolumeDB: f(-6.02),
+		Unmuted: false, Enabled: true, Dim: true, DimLevel: 50.0, Solo: true, SoloSource: new(2)}) {
+		t.Errorf("legacy_audio_headphones %+v", h)
+	}
+	if so := s.LegacyAudioSolo(); !so.AnySoloed || so.StripID == nil || *so.StripID != "2.0" {
+		t.Errorf("legacy_audio_solo %+v", so)
+	}
+	strips := s.LegacyAudioStrips()
+	var ids []string
+	for _, st := range strips {
+		ids = append(ids, st.StripID)
+	}
+	if !slices.Equal(ids, []string{"1.0", "2.0", "2001.0", "1001.0"}) {
+		t.Fatalf("legacy_audio_strips order %v", ids)
+	}
+	cam1, cam2, mp1, xlr := strips[0], strips[1], strips[2], strips[3]
+	if !reflect.DeepEqual(cam1, LegacyAudioStripView{Source: 1, Channel: -1, Subchannel: 0, Split: false, StripID: "1.0",
+		Name: "Camera 1", ShortName: "CAM1", MixType: "On", MixState: 1, VolumeDB: f(0.0), Pan: -100.0, InputType: 0, Plug: "SDI"}) {
+		t.Errorf("cam1 %+v", cam1)
+	}
+	if cam2.Name != "Pulpit" || cam2.ShortName != "PULP" || cam2.MixType != "AudioFollowVideo" || cam2.MixState != 2 ||
+		!eq(cam2.VolumeDB, f(-3.0)) || cam2.Pan != 50.0 || cam2.Plug != "HDMI" {
+		t.Errorf("cam2 %+v", cam2)
+	}
+	if mp1.Name != "Media Player 1" || mp1.ShortName != "MP1" || mp1.MixType != "Off" || mp1.VolumeDB != nil || mp1.InputType != 1 {
+		t.Errorf("mp1 %+v", mp1)
+	}
+	if xlr.Name != "XLR" || xlr.ShortName != "XLR" || !eq(xlr.VolumeDB, f(6.0)) || xlr.Plug != "XLR" || xlr.InputType != 2 {
+		t.Errorf("xlr %+v", xlr)
+	}
+
+	// test_audio_legacy.py::test_legacy_strips_leave_out_what_the_mixer_lacks:
+	// absent, not zero.
+	absent := []string{"input_gain_db", "delay_frames", "eq_enable", "eq_gain_db", "eq_bands", "dynamics_makeup_db",
+		"compressor", "limiter", "expander", "analog_level"}
+	for what, v := range map[string]any{"strip": cam1, "master": s.LegacyAudioMaster()} {
+		var keys map[string]any
+		b, _ := json.Marshal(v)
+		json.Unmarshal(b, &keys)
+		for _, k := range absent {
+			if _, ok := keys[k]; ok {
+				t.Errorf("%s has %s", what, k)
+			}
+		}
+	}
+
+	// test_audio_legacy.py::test_legacy_not_present_until_an_input_arrives:
+	// no strips (build_full_state's present needs one).
+	s = legacyMX()
+	clear(s.Audio.Inputs)
+	if got := s.LegacyAudioStrips(); got == nil || len(got) != 0 || s.AudioMixerType() != "legacy" {
+		t.Errorf("no AMIP: %#v, %s", got, s.AudioMixerType())
+	}
+
+	// test_audio_legacy.py::test_legacy_monitor_absent_and_nothing_soloed
+	s = legacyMX()
+	s.Audio.Monitor = nil
+	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, LegacyAudioHeadphonesView{VolumeDB: f(0.0), Unmuted: true}) {
+		t.Errorf("legacy_audio_headphones without AMmO %+v", h)
+	}
+	if so := s.LegacyAudioSolo(); so.AnySoloed || so.StripID != nil {
+		t.Errorf("legacy_audio_solo without AMmO %+v", so)
+	}
+
+	// test_audio_legacy.py::test_unknown_mixer_is_the_fairlight_section_not_present
+	s = legacyMX()
+	s.Audio.Master, s.Audio.Monitor = nil, nil
+	clear(s.Audio.Inputs)
+	if s.AudioMixerType() != "unknown" || s.FairlightMaster().Present {
+		t.Errorf("unknown mixer: %s %+v", s.AudioMixerType(), s.FairlightMaster())
+	}
+
+	// test_audio_legacy.py::test_legacy_audio_from_the_wire: the same
+	// through the parsers, AMIP keyed by strip id at either length.
+	s = newState()
+	for _, p := range []struct {
+		code    string
+		payload []byte
+	}{
+		{"AMMO", []byte{0xff, 0x65, 0, 0, 0, 0, 0, 0}},
+		{"AMmO", []byte{1, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+		{"AMIP", amip(1, 0, 1, 1, 32768, 2500, 0)},
+		{"AMIP", amip(1301, 2, 32, 0, 0, 0, 4)},
+	} {
+		if _, err := s.store(p.code, p.payload); err != nil {
+			t.Fatalf("%s: %v", p.code, err)
+		}
+	}
+	if len(s.Audio.Inputs) != 2 || s.Audio.Inputs["1.0"] == nil || s.Audio.Inputs["1301.0"] == nil {
+		t.Errorf("audio-input keys %v", slices.Sorted(maps.Keys(s.Audio.Inputs)))
+	}
+	if m := s.LegacyAudioMaster(); s.AudioMixerType() != "legacy" || !m.Present || !eq(m.VolumeDB, f(6.0)) || m.AFV {
+		t.Errorf("master %s %+v", s.AudioMixerType(), m)
+	}
+	if h := s.LegacyAudioHeadphones(); !eq(h.VolumeDB, f(0.0)) || !h.Unmuted {
+		t.Errorf("headphones %+v", h)
+	}
+	if so := s.LegacyAudioSolo(); so.AnySoloed || so.StripID != nil {
+		t.Errorf("solo %+v", so)
+	}
+	if st := s.LegacyAudioStrips(); len(st) != 2 ||
+		st[0].StripID != "1.0" || st[0].MixType != "On" || !eq(st[0].VolumeDB, f(0.0)) || st[0].Pan != 25.0 ||
+		st[1].StripID != "1301.0" || st[1].ShortName != "Mic1" || st[1].MixType != "Off" || st[1].VolumeDB != nil {
+		t.Errorf("strips %+v", st)
+	}
+}
+
+// legacy_audio_diagnostic's lines for nine packets, as bmdwire v1.6.0
+// printed them: AMIP at both lengths and with a plug the table doesn't
+// name, silence (volume_db None), and AMLv with an odd count, levels at
+// silence (meters.py's int -60) and its inputs in the packet's order.
+func TestLegacyAudioDiagnostic(t *testing.T) {
+	for _, c := range []struct{ code, payload, line string }{
+		{"AMMO", "8000000001000000",
+			"AMMO, 8 bytes: 8000000001000000 -> volume=32768 afv=True volume_db=0.0"},
+		{"AMMO", "0000000000000000",
+			"AMMO, 8 bytes: 0000000000000000 -> volume=0 afv=False volume_db=None"},
+		{"AMIP", "000100000000000102004000ec780000",
+			"AMIP source 1, 16 bytes: 000100000000000102004000ec780000 -> index=1 type=0 number=0 plug=1 state=2 volume=16384 balance=-5000 volume_db=-6.02 plug_name=SDI"},
+		{"AMIP", "051502000003004d0000ff652710000000000000",
+			"AMIP source 1301, 20 bytes: 051502000003004d0000ff652710000000000000 -> index=1301 type=2 number=3 plug=77 state=0 volume=65381 balance=10000 volume_db=6.0 plug_name=Analog"},
+		{"AMmO", "000000000000000000000000",
+			"AMmO, 12 bytes: 000000000000000000000000 -> enabled=False volume=0 mute=False solo=False solo_source=0 dim=False dim_volume=0 volume_db=None"},
+		{"AMmO", "01005a9d0101000201001388",
+			"AMmO, 12 bytes: 01005a9d0101000201001388 -> enabled=True volume=23197 mute=True solo=True solo_source=2 dim=True dim_volume=5000 volume_db=-3.0"},
+		{"AMLv", "0001000000800000008000000080000000800000000000000000000000000000000000000001000000800000008000000080000000800000",
+			"AMLv, 56 bytes: 0001000000800000008000000080000000800000000000000000000000000000000000000001000000800000008000000080000000800000 -> count=1 master=(0.0, 0.0, 0.0, 0.0) monitor=(-60, -60, -60, -60) input={1: (0.0, 0.0, 0.0, 0.0)}"},
+		{"AMLv", "00030000008000000040000000000000010000000000303900000001000000000000000003e9000200030000004000000000000000800000000000030000000000000000000000000000000000800000008000000080000000800000",
+			"AMLv, 92 bytes: 00030000008000000040000000000000010000000000303900000001000000000000000003e9000200030000004000000000000000800000000000030000000000000000000000000000000000800000008000000080000000800000 -> count=3 master=(0.0, -6.0, -60, 6.0) monitor=(-56.6, -138.5, -60, -60) input={1001: (-6.0, -60, 0.0, -128.9), 2: (-60, -60, -60, -60), 3: (0.0, 0.0, 0.0, 0.0)}"},
+		{"AMLv", "000000000000000000000000000000000000000000000000000000000000000000000000",
+			"AMLv, 36 bytes: 000000000000000000000000000000000000000000000000000000000000000000000000 -> count=0 master=(-60, -60, -60, -60) monitor=(-60, -60, -60, -60) input={}"},
+	} {
+		payload, err := hex.DecodeString(c.payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := newState()
+		ch, err := s.store(c.code, payload)
+		if err != nil {
+			t.Fatalf("%s: %v", c.code, err)
+		}
+		if got := legacyAudioDiagnostic(c.code, payload, ch.Value); got != c.line {
+			t.Errorf("%s:\n got %s\nwant %s", c.code, got, c.line)
+		}
 	}
 }

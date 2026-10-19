@@ -308,9 +308,14 @@ func parseFDLv(b []byte) (*FairlightMasterLevelsField, error) {
 	}, nil
 }
 
-// parseAMIP: struct.unpack('>HB 2x B x BB x Hh 2x'), 16 bytes.
+// parseAMIP: struct.unpack_from('>HB 2x B x BB x Hh 2x'), the first 16
+// bytes. AMIP is 16 bytes from ATEM 8.0 firmware on and 20 before it, the
+// first 14 the same in both (LibAtem's AudioMixerInputGetCommand and its
+// V8 twin), so either parses. Until bmdwire v1.6.0 atemwire wanted
+// exactly 16, so an older switcher's AMIP ended its connection there, and
+// lost the rest of its packet here (bmdwire#49, 626c785).
 func parseAMIP(b []byte) (*AudioInputField, error) {
-	if err := exactly("AMIP", b, 16); err != nil {
+	if err := atLeast("AMIP", b, 16); err != nil {
 		return nil, err
 	}
 	f := &AudioInputField{

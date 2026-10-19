@@ -75,7 +75,11 @@ fakes and, for the protocol, against bmdwire's own code.
   sides; the progress bar on a slow transfer.
 - **Classic audio:** every `classic-audio` command, `classic-audio
   meters`, and the dB scale `audio master` and `audio levels` put the
-  classic mixer's volume on.
+  classic mixer's volume on. bmdwire v1.6.0's legacy mixer (bmdwire#49)
+  hasn't met a legacy switcher either: its readers behind `show audio`
+  (names, pan, the monitor as headphones), an `AMIP` from before ATEM 8.0
+  firmware (20 bytes), and the `legacy-audio:` lines in the engine's log,
+  which are there for a session with one to check the layouts against.
 - **Terminal layout** since the seventh session's changes: the header
   and the column-72 statuses.
 - **Platforms:** the Windows engine and its named pipe (the executables

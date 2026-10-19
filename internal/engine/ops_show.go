@@ -8,7 +8,6 @@ package engine
 
 import (
 	"fmt"
-	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -220,16 +219,24 @@ func audioView(st atem.State) *AudioView {
 			v.Strips = append(v.Strips, StripView{Name: name, Source: s.Source, VolumeDB: s.VolumeDB, Mix: mixName(s.MixType)})
 		}
 	case "classic":
+		// The legacy mixer's readers (bmdwire v1.6.0), which name a media
+		// player MP<n> and an external input by its source, where InPr
+		// names the video source of the same id (2001 is Color 1).
 		v.Mixer = "classic"
-		var ids []string
-		for id := range st.Audio.Inputs {
-			ids = append(ids, id)
+		if m := st.LegacyAudioMaster(); m.Present {
+			v.Master = &StripView{Name: "master", VolumeDB: m.VolumeDB}
+			if m.AFV {
+				v.Master.Mix = "afv"
+			}
 		}
-		slices.SortFunc(ids, func(a, b string) int { return int(st.Audio.Inputs[a].Index) - int(st.Audio.Inputs[b].Index) })
-		for _, id := range ids {
-			in := st.Audio.Inputs[id]
-			v.Strips = append(v.Strips, StripView{Name: sourceName(st, int(in.Index)), Source: int(in.Index),
-				VolumeDB: classicDB(int(in.Volume)), Mix: nameOr([]string{"off", "on", "afv"}, int(in.State))})
+		strips := st.LegacyAudioStrips()
+		slices.SortStableFunc(strips, func(a, b atem.LegacyAudioStripView) int { return a.Source - b.Source })
+		for _, s := range strips {
+			name := strings.TrimSpace(s.ShortName)
+			if name == "" {
+				name = sourceName(st, s.Source)
+			}
+			v.Strips = append(v.Strips, StripView{Name: name, Source: s.Source, VolumeDB: s.VolumeDB, Mix: mixName(s.MixType)})
 		}
 	}
 	return v
@@ -242,16 +249,6 @@ func mixName(t string) string {
 		return "afv"
 	}
 	return strings.ToLower(t)
-}
-
-// classicDB is the classic mixer's raw volume in dB (32768 is 0 dB), nil
-// for silence.
-func classicDB(v int) *float64 {
-	if v <= 0 {
-		return nil
-	}
-	db := math.Round(20*math.Log10(float64(v)/32768)*10) / 10
-	return &db
 }
 
 // enumName is an enum's value by the name a parameter of path takes for

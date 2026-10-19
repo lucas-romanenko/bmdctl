@@ -257,3 +257,86 @@ func TestDecodeReplaceMatchesPython(t *testing.T) {
 		}
 	}
 }
+
+// amip is an AMIP payload in atemwire's layout, '>HB 2x B x BB x Hh 2x'
+// (16 bytes, ATEM 8.0 firmware on), with pad bytes after it: 4 makes the
+// 20 bytes of older firmware. test_audio_legacy.py::_amip.
+func amip(index uint16, typ, plug, state uint8, volume uint16, balance int16, pad int) []byte {
+	b := binary.BigEndian.AppendUint16(nil, index)
+	b = append(b, typ, 0, 0, 0, 0, plug, state, 0)
+	b = binary.BigEndian.AppendUint16(b, volume)
+	b = binary.BigEndian.AppendUint16(b, uint16(balance))
+	return append(b, make([]byte, 2+pad)...)
+}
+
+// test_audio_legacy.py::test_amip_parses_either_length: before 8.0
+// firmware AMIP is 20 bytes, which ended the connection (bmdwire#49,
+// 626c785). Under 16 is still an error, as struct.unpack_from's is.
+func TestAMIPEitherLength(t *testing.T) {
+	for _, pad := range []int{0, 4} {
+		s, c := storeOne(t, "AMIP", amip(3, 0, 2, 2, 65381, -10000, pad))
+		f := s.Audio.Inputs["3.0"]
+		if c.Key != "AMIP:3.0" || f == nil || f.Index != 3 || f.Type != 0 || f.Plug != 2 || f.State != 2 ||
+			f.Volume != 65381 || f.Balance != -10000 || f.PlugName() != "HDMI" {
+			t.Errorf("%d bytes: %s %+v", 16+pad, c.Key, f)
+		}
+	}
+	st := newState()
+	if _, err := st.store("AMIP", amip(3, 0, 2, 2, 65381, -10000, 0)[:15]); err == nil {
+		t.Error("15 bytes parsed")
+	}
+}
+
+// classicUnity is 2^23, 0 dB on the classic mixer's meter scale.
+const classicUnity = 128 * 65536
+
+// amlv is an AMLv payload: the count, master and monitor, the sources'
+// u16s padded to 4 bytes, then their four u32s each.
+// test_audio_legacy.py::_amlv.
+func amlv(master, monitor [4]uint32, sources []uint16, levels [][4]uint32) []byte {
+	b := binary.BigEndian.AppendUint16(nil, uint16(len(sources)))
+	b = append(b, 0, 0)
+	for _, v := range append(master[:], monitor[:]...) {
+		b = binary.BigEndian.AppendUint32(b, v)
+	}
+	for _, s := range sources {
+		b = binary.BigEndian.AppendUint16(b, s)
+	}
+	b = append(b, make([]byte, -len(b)&3)...)
+	for _, l := range levels {
+		for _, v := range l {
+			b = binary.BigEndian.AppendUint32(b, v)
+		}
+	}
+	return b
+}
+
+// test_audio_legacy.py::test_amlv_decodes_master_monitor_and_inputs: one
+// bare packet carries every input, keyed by source, with an odd count
+// padded.
+func TestAMLv(t *testing.T) {
+	const half = classicUnity / 2 // -6.02 dB
+	round2 := func(l [4]float64) [4]float64 {
+		for i := range l {
+			l[i] = pyRound(l[i], 2)
+		}
+		return l
+	}
+	for _, sources := range [][]uint16{{1, 2}, {1, 2, 1001}} {
+		levels := make([][4]uint32, len(sources))
+		for i := range levels {
+			levels[i] = [4]uint32{classicUnity, half, 0, classicUnity * 2}
+		}
+		s, c := storeOne(t, "AMLv", amlv([4]uint32{classicUnity, classicUnity, classicUnity, classicUnity}, [4]uint32{half, half, 0, 0}, sources, levels))
+		lv := s.Audio.Levels
+		if c.Key != "AMLv" || lv == nil || int(lv.Count) != len(sources) || lv.Master != [4]float64{} ||
+			round2(lv.Monitor) != [4]float64{-6.02, -6.02, -60, -60} || len(lv.Input) != len(sources) {
+			t.Fatalf("%v: %s %+v", sources, c.Key, lv)
+		}
+		for _, src := range sources {
+			if got := round2(lv.Input[src]); got != [4]float64{0, -6.02, -60, 6.02} {
+				t.Errorf("%v: input %d %v", sources, src, got)
+			}
+		}
+	}
+}

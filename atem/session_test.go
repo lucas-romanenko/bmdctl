@@ -8,9 +8,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
+	"log/slog"
 	"net"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -611,5 +615,144 @@ func TestFatalSendErrorEndsTheSession(t *testing.T) {
 	err := s.Send(testCmd{op: "CTst"})
 	if !errors.Is(err, ErrClosed) || !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("Send: %v", err)
+	}
+}
+
+// logRecords is a slog.Handler keeping each record's level and message.
+type logRecords struct {
+	mu   sync.Mutex
+	recs []logRecord
+}
+
+type logRecord struct {
+	level slog.Level
+	msg   string
+}
+
+func (l *logRecords) Enabled(context.Context, slog.Level) bool { return true }
+func (l *logRecords) WithAttrs([]slog.Attr) slog.Handler       { return l }
+func (l *logRecords) WithGroup(string) slog.Handler            { return l }
+func (l *logRecords) Handle(_ context.Context, r slog.Record) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.recs = append(l.recs, logRecord{r.Level, r.Message})
+	return nil
+}
+
+// matching is the records whose message contains sub.
+func (l *logRecords) matching(sub string) []logRecord {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var out []logRecord
+	for _, r := range l.recs {
+		if strings.Contains(r.msg, sub) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// dialedLogging is dialed with a logger, and a state dump of cmds (with a
+// video mode and InCm).
+func dialedLogging(t *testing.T, cmds ...[]byte) (*Session, *switcher, *logRecords) {
+	t.Helper()
+	logs := &logRecords{}
+	c := newFakeConn()
+	res := make(chan dialResult, 1)
+	go func() {
+		d := &Dialer{Conn: c, Logger: slog.New(logs)}
+		s, err := d.Dial(context.Background(), "127.0.0.1")
+		res <- dialResult{s, err}
+	}()
+	sw := newSwitcher(t, c)
+	sw.handshake()
+	sw.reliable(append(append([][]byte{cmdBytes("_ver", []byte{0, 2, 0, 30}), cmdBytes("VidM", []byte{12, 0, 0, 0})}, cmds...),
+		cmdBytes("InCm", []byte{1, 0, 0, 0}))...)
+	sw.ping()
+	r := <-res
+	if r.err != nil {
+		t.Fatal(r.err)
+	}
+	t.Cleanup(func() { r.s.Close() })
+	return r.s, sw, logs
+}
+
+// test_audio_legacy.py::test_first_of_each_legacy_packet_is_logged_raw_and_decoded:
+// the first AMIP per source and the first AMMO, AMmO and AMLv, at Info
+// (bmdwire#49, 03fa389).
+func TestFirstOfEachLegacyPacketIsLogged(t *testing.T) {
+	s, sw, logs := dialedLogging(t)
+	ammo := []byte{0x80, 0, 0, 0, 1, 0, 0, 0}
+	amip1 := amip(1, 0, 1, 2, 16384, -5000, 0)
+	sw.reliable(
+		cmdBytes("AMMO", ammo),
+		cmdBytes("AMMO", make([]byte, 8)),
+		cmdBytes("AMIP", amip1),
+		cmdBytes("AMIP", amip(1, 0, 1, 1, 0, 0, 0)),     // the same source
+		cmdBytes("AMIP", amip(2, 0, 1, 1, 32768, 0, 4)), // a new one
+		cmdBytes("AMmO", make([]byte, 12)),
+		cmdBytes("AMLv", amlv([4]uint32{classicUnity, classicUnity, classicUnity, classicUnity}, [4]uint32{}, []uint16{1},
+			[][4]uint32{{classicUnity, classicUnity, classicUnity, classicUnity}})),
+		cmdBytes("AMLv", amlv([4]uint32{}, [4]uint32{}, nil, nil)),
+	)
+	waitState(t, s, func(st State) bool { return st.Audio.Levels != nil && st.Audio.Levels.Count == 0 })
+	var lines []string
+	for _, r := range logs.matching("legacy-audio:") {
+		if r.level != slog.LevelInfo {
+			t.Errorf("%s at %s", r.msg, r.level)
+		}
+		if !strings.Contains(r.msg, "mixer at connect") {
+			lines = append(lines, r.msg)
+		}
+	}
+	var heads []string
+	for _, l := range lines {
+		heads = append(heads, strings.Split(l, ",")[0])
+	}
+	if want := []string{"atem: legacy-audio: AMMO", "atem: legacy-audio: AMIP source 1", "atem: legacy-audio: AMIP source 2",
+		"atem: legacy-audio: AMmO", "atem: legacy-audio: AMLv"}; !slices.Equal(heads, want) {
+		t.Fatalf("logged %q", lines)
+	}
+	if want := "atem: legacy-audio: AMMO, 8 bytes: " + hex.EncodeToString(ammo) + " -> volume=32768 afv=True volume_db=0.0"; lines[0] != want {
+		t.Errorf("AMMO:\n got %s\nwant %s", lines[0], want)
+	}
+	if want := "atem: legacy-audio: AMIP source 1, 16 bytes: " + hex.EncodeToString(amip1) +
+		" -> index=1 type=0 number=0 plug=1 state=2 volume=16384 balance=-5000 volume_db=-6.02 plug_name=SDI"; lines[1] != want {
+		t.Errorf("AMIP:\n got %s\nwant %s", lines[1], want)
+	}
+	if !strings.HasPrefix(lines[2], "atem: legacy-audio: AMIP source 2, 20 bytes: ") {
+		t.Errorf("AMIP before 8.0: %s", lines[2])
+	}
+	if !strings.Contains(lines[4], "master=(0.0, 0.0, 0.0, 0.0)") || !strings.Contains(lines[4], "input={1: (0.0, 0.0, 0.0, 0.0)}") {
+		t.Errorf("AMLv: %s", lines[4])
+	}
+}
+
+// test_audio_legacy.py::test_the_mixer_is_logged_at_connect: Info for a
+// legacy mixer or none, Debug for Fairlight, which logs nothing at Info.
+// (test_a_failing_description_never_costs_the_packet has no counterpart:
+// formatting the line here can't fail.)
+func TestTheMixerIsLoggedAtConnect(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		dump  [][]byte
+		level slog.Level
+		line  string
+	}{
+		{"legacy", [][]byte{cmdBytes("AMMO", []byte{0x80, 0, 0, 0, 0, 0, 0, 0})}, slog.LevelInfo, "atem: legacy-audio: mixer at connect: legacy"},
+		{"none", nil, slog.LevelInfo, "atem: legacy-audio: mixer at connect: unknown (the state dump had neither FAMP nor AMMO)"},
+		{"fairlight", [][]byte{cmdBytes("FAMP", make([]byte, 20))}, slog.LevelDebug, "atem: audio mixer at connect: fairlight"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, logs := dialedLogging(t, c.dump...)
+			if got := logs.matching("mixer at connect"); !slices.Equal(got, []logRecord{{c.level, c.line}}) {
+				t.Errorf("logged %+v", got)
+			}
+			if c.level == slog.LevelDebug {
+				if got := logs.matching("legacy-audio:"); len(got) != 0 {
+					t.Errorf("a Fairlight switcher logged %+v", got)
+				}
+			}
+		})
 	}
 }

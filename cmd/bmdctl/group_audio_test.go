@@ -5,6 +5,9 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -139,14 +142,15 @@ func TestAudioFollowsMixer(t *testing.T) {
 				b.mustSend(t, "SFLN", with("audio", "levels", "on")...)
 				return
 			}
-			// The classic master, with -6 dB on its scale (32768 is 0 dB),
+			// The classic master, with -6 dB on its scale (32768 is 0 dB,
+			// floor(10^(-6/20) × 32768) = 16422, atem.LegacyDBToVolume),
 			// shown as what was sent, with the unverified command's notice.
 			n := len(b.sent("CAMM"))
 			code, out, errOut := b.run(with("audio", "master", "--volume", "-6", "--afv")...)
-			if code != 0 || len(b.sent("CAMM")) != n+1 || b.lastSent(t, "CAMM") != "0500402700000100" {
+			if code != 0 || len(b.sent("CAMM")) != n+1 || b.lastSent(t, "CAMM") != "0500402600000100" {
 				t.Fatalf("audio master: %d %q %q", code, out, errOut)
 			}
-			if !strings.Contains(out, "  classic-audio master  ") || !strings.Contains(out, "volume 16423, afv on") ||
+			if !strings.Contains(out, "  classic-audio master  ") || !strings.Contains(out, "volume 16422, afv on") ||
 				!strings.Contains(errOut, "classic-audio master is unverified") {
 				t.Errorf("audio master: %q %q", out, errOut)
 			}
@@ -172,5 +176,40 @@ func TestAudioFollowsMixer(t *testing.T) {
 	json.Unmarshal([]byte(b.must(with("classic-audio", "meters", "--for", "0.1", "--json")...)), &meters)
 	if meters.Result.Mixer != "classic" || len(b.sent("SALN")) != 2 {
 		t.Errorf("classic-audio meters: %+v, SALN %x", meters.Result, b.sent("SALN"))
+	}
+}
+
+// show audio on the classic mixer, through the legacy mixer's readers
+// (bmdwire v1.6.0): its master, and a strip per input by source, a media
+// player as MP<n> where InPr names the video source 2001 COL1, an
+// external input by its source.
+func TestShowAudioClassic(t *testing.T) {
+	in := func(source uint16, typ, state uint8, volume uint16) []byte {
+		p := binary.BigEndian.AppendUint16(nil, source)
+		p = append(p, typ, 0, 0, 0, 0, 1, state, 0)
+		p = binary.BigEndian.AppendUint16(p, volume)
+		return fakeatem.Command("AMIP", append(p, 0, 0, 0, 0))
+	}
+	b := newBenchDump(t, audioDump(t,
+		fakeatem.Command("AMMO", []byte{0x80, 0, 0, 0, 1, 0, 0, 0}),
+		in(2001, 1, 0, 0), in(1301, 2, 2, 65381), in(2, 0, 1, 16384), in(1, 0, 1, 32768)))
+	var r struct {
+		Result engine.ShowResult `json:"result"`
+	}
+	json.Unmarshal([]byte(b.must(with("show", "audio", "--json")...)), &r)
+	a := r.Result.Audio
+	if a == nil || a.Mixer != "classic" || a.Master == nil || a.Master.Mix != "afv" || a.Master.VolumeDB == nil || *a.Master.VolumeDB != 0 {
+		t.Fatalf("show audio: %+v", a)
+	}
+	var got []string
+	for _, s := range a.Strips {
+		db := "-inf"
+		if s.VolumeDB != nil {
+			db = strconv.FormatFloat(*s.VolumeDB, 'f', -1, 64)
+		}
+		got = append(got, fmt.Sprintf("%d %s %s %s", s.Source, s.Name, db, s.Mix))
+	}
+	if want := []string{"1 CAM1 0 on", "2 CAM2 -6.02 on", "1301 Mic1 6 afv", "2001 MP1 -inf off"}; !slices.Equal(got, want) {
+		t.Errorf("strips %q, want %q", got, want)
 	}
 }

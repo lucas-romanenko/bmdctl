@@ -4,7 +4,7 @@
 
     python3 -I gen_recv.py /path/to/bmdwire recv.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.4.0. The C
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.6.0. The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 For every opcode atemwire registers a Recv class for, plus a few it stores
@@ -223,7 +223,7 @@ for code in ('InCm', 'RCPS', 'MPCS', '_MAC', 'Zzzz'):
         cases.append(c)
 
 with open(OUT, 'w') as f:
-    json.dump({'bmdwire': 'v1.4.0', 'generator': 'internal/fixtures/oracle/gen_recv.py',
+    json.dump({'bmdwire': 'v1.6.0', 'generator': 'internal/fixtures/oracle/gen_recv.py',
                'cases': cases}, f, indent=0, sort_keys=True)
     f.write('\n')
 counts = {}
