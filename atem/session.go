@@ -203,6 +203,9 @@ type Session struct {
 	// video mode, each answered by a re-handshake (bmdwire#13).
 	incompleteDumps int
 	lane            lane // the transfer engine (transfer.go)
+	// legacyAudioLogged holds the keys of the legacy-audio packets
+	// already logged (logLegacyAudio), for the session's life.
+	legacyAudioLogged map[string]bool
 
 	// Shared.
 	reqs      chan func()   // closures the run goroutine executes
@@ -240,18 +243,19 @@ func newSession(conn net.PacketConn, raddr *net.UDPAddr, log *slog.Logger, silen
 		log = slog.New(slog.DiscardHandler)
 	}
 	s := &Session{
-		conn:      conn,
-		log:       log,
-		t:         newTransport(conn, raddr, log),
-		state:     newState(),
-		waiters:   make(map[string][]*waiter),
-		subs:      make(map[*subscription]struct{}),
-		lane:      newLane(),
-		reqs:      make(chan func()),
-		datagrams: make(chan datagram, 256),
-		quit:      make(chan struct{}),
-		done:      make(chan struct{}),
-		dialReady: make(chan struct{}),
+		conn:              conn,
+		log:               log,
+		t:                 newTransport(conn, raddr, log),
+		state:             newState(),
+		waiters:           make(map[string][]*waiter),
+		subs:              make(map[*subscription]struct{}),
+		lane:              newLane(),
+		reqs:              make(chan func()),
+		legacyAudioLogged: make(map[string]bool),
+		datagrams:         make(chan datagram, 256),
+		quit:              make(chan struct{}),
+		done:              make(chan struct{}),
+		dialReady:         make(chan struct{}),
 	}
 	if silence > 0 {
 		s.t.silence = silence
@@ -540,6 +544,7 @@ func (s *Session) onReady() {
 		s.fatal = err
 		return
 	}
+	s.logAudioMixer()
 	if !s.readyClosed {
 		s.readyClosed = true
 		close(*s.ready.Load())
@@ -578,6 +583,9 @@ func (s *Session) onData(data []byte) {
 			return err
 		}
 		s.publish(*c)
+		if legacyAudioDiagnosticKeys[code] {
+			s.logLegacyAudio(code, payload, c)
+		}
 		if code == "InCm" {
 			if !s.state.hasVideoMode() && s.incompleteDumps < incompleteDumpRetries {
 				// Its first packet was lost for good (the first reliable
@@ -608,6 +616,33 @@ func (s *Session) onData(data []byte) {
 		// An exception escaping atemwire's loop(): the rest of this
 		// packet is lost, the session carries on.
 		s.log.Error("atem: packet dropped part way", "err", err)
+	}
+}
+
+// logLegacyAudio logs the first legacy-audio packet of each key (AMIP per
+// source, AMMO, AMmO, AMLv) at Info, raw and decoded, as atemwire's
+// _log_legacy_audio does (bmdwire#49, 03fa389): no legacy switcher has
+// been on the wire here, and a log from one can then confirm the layouts
+// or correct them. Only legacy switchers send these four packets.
+func (s *Session) logLegacyAudio(code string, payload []byte, c *Change) {
+	if s.legacyAudioLogged[c.Key] {
+		return
+	}
+	s.legacyAudioLogged[c.Key] = true
+	s.log.Info("atem: legacy-audio: " + legacyAudioDiagnostic(code, payload, c.Value))
+}
+
+// logAudioMixer says, at each connect, which audio mixer the state dump
+// showed (AudioMixerType), as atemwire's _log_audio_mixer does: Info for a
+// legacy one or none, Debug for Fairlight.
+func (s *Session) logAudioMixer() {
+	switch s.state.AudioMixerType() {
+	case "fairlight":
+		s.log.Debug("atem: audio mixer at connect: fairlight")
+	case "legacy":
+		s.log.Info("atem: legacy-audio: mixer at connect: legacy")
+	default:
+		s.log.Info("atem: legacy-audio: mixer at connect: unknown (the state dump had neither FAMP nor AMMO)")
 	}
 }
 

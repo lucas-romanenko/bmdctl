@@ -7,6 +7,8 @@ package atem
 import (
 	"bytes"
 	"cmp"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,13 +23,16 @@ import (
 )
 
 // readersOracle is internal/fixtures/oracle/readers.json: scenarios of
-// packets fed to bmdwire v1.3.0's AtemProtocol.save_field_data, with the
+// packets fed to bmdwire v1.6.0's AtemProtocol.save_field_data, with the
 // readers called in between and what they returned.
 type readersOracle struct {
-	Bmdwire   string   `json:"bmdwire"`
-	Readers   []string `json:"readers"`
-	Helpers   []string `json:"helpers"`
-	Scenarios []struct {
+	Bmdwire string `json:"bmdwire"`
+	// VolumeDigest is the SHA-256 of legacy_volume_to_db over every u16
+	// (TestLegacyVolumeToDBEveryU16).
+	VolumeDigest string   `json:"legacy_volume_to_db_every_u16"`
+	Readers      []string `json:"readers"`
+	Helpers      []string `json:"helpers"`
+	Scenarios    []struct {
 		Name  string       `json:"name"`
 		Steps []readerStep `json:"steps"`
 	} `json:"scenarios"`
@@ -54,6 +59,23 @@ type readerArgs struct {
 func (a readerArgs) num(i int) int { return jsonInt(a.pos[i]) }
 
 func (a readerArgs) text(i int) string { return a.pos[i].(string) }
+
+// float is a float argument: a JSON number, or the string ("inf", "-inf",
+// "nan") Python's float() made the value from, since JSON has none.
+func (a readerArgs) float(i int) float64 {
+	var s string
+	switch v := a.pos[i].(type) {
+	case json.Number:
+		s = v.String()
+	case string:
+		s = v
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		panic(err)
+	}
+	return f
+}
 
 func (a readerArgs) hex(i int) []byte {
 	b, err := hex.DecodeString(a.text(i))
@@ -202,6 +224,27 @@ var readerCalls = map[string]func(State, readerArgs) any{
 	"product_name": func(s State, a readerArgs) any { return s.ProductName(a.textKw("default", "")) },
 	"device_name":  func(s State, a readerArgs) any { return s.DeviceName(a.textKw("default", "")) },
 	"sdi_3g_level": func(s State, a readerArgs) any { return s.SDI3GLevel(a.textKw("default", "LevelB")) },
+	// messages/audio_legacy.py
+	"audio_mixer_type":        func(s State, a readerArgs) any { return s.AudioMixerType() },
+	"legacy_audio_master":     func(s State, a readerArgs) any { return s.LegacyAudioMaster() },
+	"legacy_audio_strips":     func(s State, a readerArgs) any { return s.LegacyAudioStrips() },
+	"legacy_audio_headphones": func(s State, a readerArgs) any { return s.LegacyAudioHeadphones() },
+	"legacy_audio_solo":       func(s State, a readerArgs) any { return s.LegacyAudioSolo() },
+	"legacy_volume_to_db":     func(s State, a readerArgs) any { return LegacyVolumeToDB(a.num(0)) },
+	"legacy_db_to_volume": func(s State, a readerArgs) any {
+		if a.pos[0] == nil {
+			return LegacyDBToVolume(nil)
+		}
+		db := a.float(0)
+		return LegacyDBToVolume(&db)
+	},
+	"legacy_pan_to_balance": func(s State, a readerArgs) any {
+		b, err := LegacyPanToBalance(a.float(0))
+		if err != nil {
+			return raised{err}
+		}
+		return b
+	},
 	// state.py helpers
 	"me_count":       func(s State, a readerArgs) any { return s.MECount() },
 	"me_keyer_count": func(s State, a readerArgs) any { return s.MEKeyerCount(a.num(0)) },
@@ -221,11 +264,11 @@ func TestReadersMatchAtemwire(t *testing.T) {
 	if err := dec.Decode(&oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.Bmdwire != "v1.4.0" {
+	if oracle.Bmdwire != "v1.6.0" {
 		t.Fatalf("oracle generated from bmdwire %s", oracle.Bmdwire)
 	}
-	if len(oracle.Readers) != 88 {
-		t.Errorf("oracle lists %d readers, atemwire v1.3.0 has 88", len(oracle.Readers))
+	if len(oracle.Readers) != 93 {
+		t.Errorf("oracle lists %d readers, atemwire v1.6.0 has 93", len(oracle.Readers))
 	}
 	names := append(slices.Clone(oracle.Readers), oracle.Helpers...)
 	for _, n := range names {
@@ -262,7 +305,12 @@ func TestReadersMatchAtemwire(t *testing.T) {
 				where += fmt.Sprint(step.Kwargs)
 			}
 			if step.Error != "" {
-				t.Errorf("%s: atemwire raises %s, which no Go reader does", where, step.Error)
+				// Only a helper returning an error may stand for an exception.
+				if got, err := callReader(st, step); err != nil {
+					t.Errorf("%s: %v", where, err)
+				} else if _, ok := got.(raised); !ok {
+					t.Errorf("%s: atemwire raises %s, Go gives %v", where, step.Error, got)
+				}
 				continue
 			}
 			want := decodeResult(t, step.Result)
@@ -294,6 +342,27 @@ func TestReadersMatchAtemwire(t *testing.T) {
 	t.Logf("%d calls over %d readers and helpers in %d scenarios", total, len(cases), len(oracle.Scenarios))
 }
 
+// LegacyVolumeToDB goes through math.Log10 where atemwire's goes through
+// CPython's log10, which can differ in the last place; over every u16,
+// rounded to two places, the results are the same bit for bit.
+func TestLegacyVolumeToDBEveryU16(t *testing.T) {
+	var oracle readersOracle
+	if err := json.Unmarshal(fixtures.Bytes(t, "oracle/readers.json"), &oracle); err != nil {
+		t.Fatal(err)
+	}
+	h := sha256.New()
+	for v := range 65536 {
+		bits := uint64(math.MaxUint64) // None
+		if db := LegacyVolumeToDB(v); db != nil {
+			bits = math.Float64bits(*db)
+		}
+		h.Write(binary.BigEndian.AppendUint64(nil, bits))
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != oracle.VolumeDigest {
+		t.Errorf("legacy_volume_to_db over every u16: SHA-256 %s, atemwire's %s", got, oracle.VolumeDigest)
+	}
+}
+
 func decodeResult(t *testing.T, raw json.RawMessage) any {
 	t.Helper()
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -317,8 +386,15 @@ func callReader(s State, step readerStep) (got any, err error) {
 	if fn == nil {
 		return nil, fmt.Errorf("no Go counterpart")
 	}
-	return readerValue(reflect.ValueOf(fn(s, readerArgs{pos: step.Args, kw: step.Kwargs}))), nil
+	v := fn(s, readerArgs{pos: step.Args, kw: step.Kwargs})
+	if r, ok := v.(raised); ok {
+		return r, nil
+	}
+	return readerValue(reflect.ValueOf(v)), nil
 }
+
+// raised is a Go helper's error where atemwire's raises.
+type raised struct{ err error }
 
 // pyInt and pyFloat keep Python's int/float distinction through
 // normalization: the oracle writes 1 for an int and 1.0 for a float.
@@ -377,8 +453,9 @@ func readerValue(v reflect.Value) any {
 
 // readerDiff compares a normalized Go result with the oracle's, reporting
 // the first difference. Floats must match bit for bit, sign of zero
-// included: no reader goes through a libm function, only +, -, *, / and
-// round().
+// included: the readers use only +, -, *, / and round(), and
+// legacy_volume_to_db's log10, which TestLegacyVolumeToDBEveryU16 checks
+// over every value it can take.
 func readerDiff(got, want any, path string) string {
 	switch w := want.(type) {
 	case nil:

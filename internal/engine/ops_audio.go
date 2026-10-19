@@ -13,7 +13,6 @@ package engine
 // sends the one the switcher has and classic-audio forces the classic one.
 
 import (
-	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -68,8 +67,9 @@ var classicFor = map[string]string{
 
 // forMixer turns an audio command the classic mixer has too into the
 // classic one's, on a switcher with that mixer: the same arguments, with
-// --volume converted from dB to the classic mixer's scale, and a
-// Fairlight-only one refused.
+// --volume converted from dB to the classic mixer's scale
+// (atem.LegacyDBToVolume, bmdwire v1.6.0), and a Fairlight-only one
+// refused.
 func (c *call) forMixer(r *table.Registry) error {
 	path, ok := classicFor[c.entry.Path]
 	if !ok || Mixer(c.state) != "classic" {
@@ -84,7 +84,8 @@ func (c *call) forMixer(r *table.Registry) error {
 		raw[name] = v
 	}
 	if c.args.Has("volume") {
-		raw["volume"] = strconv.Itoa(int(classicVolume(c.args.Value("volume").(float64))))
+		db := c.args.Value("volume").(float64)
+		raw["volume"] = strconv.Itoa(int(atem.LegacyDBToVolume(&db)))
 	}
 	args, err := classic.Parse(raw, c.res)
 	if err != nil {
@@ -92,20 +93,6 @@ func (c *call) forMixer(r *table.Registry) error {
 	}
 	c.entry, c.args = classic, args
 	return nil
-}
-
-// classicVolume is a level in dB on the classic mixer's scale, where
-// 32768 is 0 dB and its top, 65381, +6 dB; -inf, and anything below
-// what the scale holds, is 0.
-func classicVolume(db float64) uint16 {
-	v := math.Round(32768 * math.Pow(10, db/20))
-	switch {
-	case math.IsNaN(v) || v < 0:
-		return 0
-	case v > 65381:
-		return 65381
-	}
-	return uint16(v)
 }
 
 // Meter is one strip's (or the master's) levels, in dB.

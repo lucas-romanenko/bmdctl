@@ -1,5 +1,5 @@
 {
-"bmdwire": "v1.4.0",
+"bmdwire": "v1.6.0",
 "cases": [
 {
 "code": "*XFC",
@@ -1018,15 +1018,37 @@
 },
 {
 "code": "AMIP",
-"error": "error",
+"key": "AMIP:9622.0",
+"name": "audio-input",
 "payload": "25962774a62a89e1218c945fc9a8a8b4db",
-"result": "error"
+"result": "stored",
+"value": {
+"balance": -13912,
+"index": 9622,
+"number": 42,
+"plug": 225,
+"state": 33,
+"strip_id": "9622.0",
+"type": 39,
+"volume": 37983
+}
 },
 {
 "code": "AMIP",
-"error": "error",
+"key": "AMIP:1841.0",
+"name": "audio-input",
 "payload": "0731bda3f9f6a9f8543dc34df124b0ca7839e99c32c396",
-"result": "error"
+"result": "stored",
+"value": {
+"balance": -3804,
+"index": 1841,
+"number": 246,
+"plug": 248,
+"state": 84,
+"strip_id": "1841.0",
+"type": 189,
+"volume": 49997
+}
 },
 {
 "code": "AMIP",

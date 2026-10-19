@@ -4,11 +4,11 @@
 
     python3 -I gen_readers.py /path/to/bmdwire readers.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.4.0. The C
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.6.0. The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 The readers are the functions in atemwire.messages.* whose first parameter
-is the mixerstate (``mx``): 88 of them at v1.4.0, found by introspection so
+is the mixerstate (``mx``): 93 of them at v1.6.0, found by introspection so
 none is missed. Each scenario starts from a fresh AtemProtocol and feeds it
 well-formed state packets through save_field_data, the function atemwire's
 loop() calls, then calls readers with every relevant index argument
@@ -17,15 +17,21 @@ packet overwriting an earlier one is covered too. Scenarios cover the empty
 state, all-zero and all-0xFF payloads, random states of 1 to 4 M/Es with
 partial packet sets (so the defaults for missing packets meet present
 ones), Fairlight strips split and not, string decoding, HyperDeck slot
-planning, every video mode and rounding-sensitive chroma sample values.
-The state.py helpers the readers rely on (me_count, me_keyer_count,
-_dsk_count, display_fps, decode_name, md5_hex) are recorded as well.
+planning, every video mode, rounding-sensitive chroma sample values and
+the legacy audio mixer. The state.py helpers the readers rely on
+(me_count, me_keyer_count, _dsk_count, display_fps, decode_name, md5_hex)
+and the legacy mixer's unit helpers (legacy_volume_to_db,
+legacy_db_to_volume, legacy_pan_to_balance) are recorded as well.
+
+The legacy scenarios come after all the others, so the fixed seed gives
+the others the packets it gave them at v1.4.0.
 
 Each step records the packet fed (code and payload hex) or the call (name,
 args, kwargs) and its result as JSON (tuples become lists, dict keys
 strings), or the exception's name. The Go test in atem/ replays every
 scenario through State.store and the matching State method.
 """
+import hashlib
 import importlib
 import inspect
 import json
@@ -44,6 +50,7 @@ sys.modules['atemwire.mediaconvert'] = stub
 
 import atemwire.messages as M  # noqa: E402
 from atemwire import state as S  # noqa: E402
+from atemwire.messages import audio_legacy as AL  # noqa: E402
 from atemwire.protocol import AtemProtocol  # noqa: E402
 
 READERS = {}
@@ -53,13 +60,19 @@ for info in pkgutil.iter_modules(M.__path__):
         if (inspect.isfunction(fn) and fn.__module__ == mod.__name__
                 and list(inspect.signature(fn).parameters)[:1] == ['mx']):
             READERS[fname] = fn
-if len(READERS) != 88:
-    raise SystemExit(f'expected 88 readers, found {len(READERS)}')
+if len(READERS) != 93:
+    raise SystemExit(f'expected 93 readers, found {len(READERS)}')
 HELPERS = {
     'me_count': S.me_count, 'me_keyer_count': S.me_keyer_count,
     '_dsk_count': S._dsk_count, 'display_fps': S.display_fps,
     'decode_name': S.decode_name, 'md5_hex': S.md5_hex,
+    'legacy_volume_to_db': AL.legacy_volume_to_db,
+    'legacy_db_to_volume': AL.legacy_db_to_volume,
+    'legacy_pan_to_balance': AL.legacy_pan_to_balance,
 }
+# The helpers that take a value, not the mixerstate.
+VALUE_HELPERS = {'decode_name', 'md5_hex', 'legacy_volume_to_db',
+                 'legacy_db_to_volume', 'legacy_pan_to_balance'}
 
 rng = random.Random(0x5EED2026)
 
@@ -78,7 +91,8 @@ LEN = {}
 for code in ('PrgI PrvI AuxS TrSS TrPs TMxP TDpP TWpP TDvP TStP FtbS FtbP '
              'KeOn KeBP KeLm KACk KACC KePt KeDV KeFS KKFP DskB DskP DskS '
              'ColV InPr MPCE _mpl MRPr RXMS FAMP FASP AEBP AMBP AICP AILP '
-             'AIXP MOCP AMLP FAIP FMHP FAMS _pin WhoI V3sl _top _MeC').split():
+             'AIXP MOCP AMLP FAIP FMHP FAMS _pin WhoI V3sl _top _MeC '
+             'AMIP AMMO AMmO').split():
     LEN[code] = min_len(M.RECV_BY_CODE[code])
 LEN['FEna'] = 4
 LEN['KeFS'] = 8  # the parser tolerates less, but the flags sit up to byte 6
@@ -282,7 +296,7 @@ class Scenario:
         if kwargs:
             step['kwargs'] = norm(kwargs)
         try:
-            if name in ('decode_name', 'md5_hex'):
+            if name in VALUE_HELPERS:
                 step['result'] = norm(fn(*args, **kwargs))
             else:
                 step['result'] = norm(fn(mx, *args, **kwargs))
@@ -318,7 +332,11 @@ BARE_READERS = [
     'video_mode', 'available_video_modes', 'video_resolution',
     'product_name', 'device_name', 'sdi_3g_level', 'macro_play_running',
     'macro_play_index', 'me_count', '_dsk_count', 'display_fps',
+    'audio_mixer_type', 'legacy_audio_master', 'legacy_audio_strips',
+    'legacy_audio_headphones', 'legacy_audio_solo',
 ]
+LEGACY_READERS = ['audio_mixer_type', 'legacy_audio_master', 'legacy_audio_strips',
+                  'legacy_audio_headphones', 'legacy_audio_solo']
 
 
 def call_all(s, mes=(), pairs=(), dsks=(), auxes=(), gens=(), decks=(),
@@ -678,13 +696,157 @@ for h in [bytes(16), bytes(15) + b'\x01', b'\x80' + bytes(15)] + [rb(16) for _ i
 scenarios.append(s)
 
 
+# The legacy (pre-Fairlight) audio mixer (bmdwire#49): AMIP, AMMO and AMmO,
+# with InPr names. AMIP is 16 bytes from ATEM 8.0 firmware on and 20 before
+# it; both are fed. Source ids cover video inputs, media players in and out
+# of 2001-2099, the five named external inputs and others; types, plugs and
+# mix states include values the tables don't name. Volumes sit on the
+# scale's anchors (0, unity, the top) and beyond it.
+LEGACY_SOURCES = [0, 1, 2, 3, 4, 5, 8, 20, 1001, 1101, 1201, 1301, 1302, 1303,
+                  2001, 2002, 2099, 2100, 3010, 6000, 65535]
+LEGACY_VOLUMES = [0, 1, 2, 100, 4096, 16384, 23197, 32767, 32768, 32769,
+                  50000, 65380, 65381, 65382, 65535]
+LEGACY_BALANCES = [0, 1, -1, 50, 2500, -5000, 9999, 10000, 10001, -10000,
+                   -10001, 32767, -32768]
+LEGACY_PLUGS = [0, 1, 2, 3, 4, 5, 6, 32, 64, 128, 255]
+
+
+def legacy_amip(source, fill=None, pad=0):
+    """An AMIP payload in '>HB 2x B x BB x Hh 2x', pad bytes after it."""
+    if fill is not None:
+        b = bytearray(bytes([fill]) * 16)
+        u16_at(b, 0, source)
+        return bytes(b) + bytes([fill]) * pad
+    vol = rng.choice(LEGACY_VOLUMES) if rng.random() < .8 else rng.randrange(65536)
+    bal = rng.choice(LEGACY_BALANCES) if rng.random() < .8 else rng.randrange(-32768, 32768)
+    payload = struct.pack('>HB 2x B x BB x Hh 2x', source, pick(None, [0, 0, 1, 1, 2, 2, 3]),
+                          rng.randrange(256), pick(None, LEGACY_PLUGS),
+                          pick(None, [0, 1, 2, 3]), vol, bal)
+    return payload + rb(pad)
+
+
+def legacy_ammo(fill=None):
+    if fill is not None:
+        return bytes([fill]) * 8
+    vol = rng.choice(LEGACY_VOLUMES)
+    return struct.pack('>H2x?3x', vol, rng.random() < .5)
+
+
+def legacy_ammo_monitor(fill=None):
+    if fill is not None:
+        return bytes([fill]) * 12
+    return struct.pack('>?xH??H?xH', rng.random() < .6, rng.choice(LEGACY_VOLUMES),
+                       rng.random() < .3, rng.random() < .5,
+                       rng.choice(LEGACY_SOURCES + [rng.randrange(65536)]),
+                       rng.random() < .4, rng.choice([0, 1, 50, 5000, 9999, 10000, 65535]))
+
+
+def legacy_state(name, density, fill=None, with_fairlight=False):
+    """A legacy-mixer switcher: AMIP for some sources (either length), InPr
+    names for some, AMMO and AMmO each present with probability density,
+    and (with_fairlight) a FAMP beside them, which wins."""
+    s = Scenario(name)
+    sources = LEGACY_SOURCES if fill is not None else rng.sample(LEGACY_SOURCES, rng.randrange(0, len(LEGACY_SOURCES)))
+    for src in sources:
+        if fill is not None or rng.random() < .5:
+            b = bytearray(build('InPr', (src,), fill))
+            s.feed('InPr', bytes(b))
+        s.feed('AMIP', legacy_amip(src, fill, pad=rng.choice([0, 0, 4])))
+    if fill is not None or rng.random() < density:
+        s.feed('AMMO', legacy_ammo(fill))
+    if fill is not None or rng.random() < density:
+        s.feed('AMmO', legacy_ammo_monitor(fill))
+    if with_fairlight:
+        s.feed('FAMP', build('FAMP'))
+    for r in LEGACY_READERS:
+        s.call(r)
+    return s
+
+
+for fill in (0x00, 0xff, 0x80):
+    scenarios.append(legacy_state(f'legacy-fill-{fill:02x}', 1.0, fill=fill))
+for i, density in enumerate([1.0, 1.0, .8, .6, .5, .3, 1.0, .9]):
+    scenarios.append(legacy_state(f'legacy-random-{i}', density, with_fairlight=(i == 6)))
+
+# bmdwire's test_audio_legacy.py::_legacy_mx, from packets: two cameras (one
+# renamed), a media player whose video-side id has a name, the XLR input; an
+# AFV master and the monitor soloing camera 2. Then the mixer as each
+# packet arrives, the monitor's solo moving, and an input overwritten.
+s = Scenario('legacy-mixer')
+for r in LEGACY_READERS:
+    s.call(r)
+for src, long, short in ((1, 'Camera 1', 'CAM1'), (2, 'Pulpit', 'PULP'), (2001, 'Color 1', 'COL1')):
+    b = bytearray(build('InPr', (src,)))
+    b[2:22] = (long.encode() + bytes(20))[:20]
+    b[22:26] = (short.encode() + bytes(4))[:4]
+    s.feed('InPr', bytes(b))
+F = '>HB 2x B x BB x Hh 2x'
+for src, typ, plug, state, vol, bal in ((1001, 2, 32, 1, 65381, 0), (2001, 1, 0, 0, 0, 0),
+                                        (2, 0, 2, 2, 23197, 5000), (1, 0, 1, 1, 32768, -10000)):
+    s.feed('AMIP', struct.pack(F, src, typ, 0, plug, state, vol, bal))
+    for r in LEGACY_READERS:
+        s.call(r)
+s.feed('AMMO', struct.pack('>H2x?3x', 32768, True))
+s.call('audio_mixer_type')
+s.call('legacy_audio_master')
+s.feed('AMmO', struct.pack('>?xH??H?xH', True, 16384, True, True, 2, True, 5000))
+for r in LEGACY_READERS:
+    s.call(r)
+for solo, src in ((False, 2), (True, 1001), (True, 9)):
+    s.feed('AMmO', struct.pack('>?xH??H?xH', True, 0, False, solo, src, False, 0))
+    s.call('legacy_audio_headphones')
+    s.call('legacy_audio_solo')
+s.feed('AMIP', struct.pack(F, 1, 2, 7, 64, 3, 1, 1) + bytes(4))
+s.feed('AMIP', struct.pack(F, 1301, 2, 0, 32, 0, 0, 0) + bytes(4))
+s.feed('AMIP', struct.pack(F, 2100, 1, 0, 0, 1, 32768, 0))
+s.call('legacy_audio_strips')
+s.feed('FAMP', build('FAMP'))
+s.call('audio_mixer_type')
+scenarios.append(s)
+
+# The units, on their own. Volumes: every value near the ends and unity,
+# and a stride through the rest (every u16 is in the digest below). dB and
+# pan: anchors, ties, the clamps, and the
+# values Python's float() makes of 'inf', '-inf' and 'nan', given as those
+# strings (JSON has no infinities); pan raises on them.
+s = Scenario('legacy-units')
+volumes = sorted(set(range(-2, 300)) | set(range(32468, 33069)) | set(range(65235, 65540))
+                 | set(range(0, 65536, 97)) | {100000, 1 << 20})
+for v in volumes:
+    s.call('legacy_volume_to_db', v)
+dbs = [None, 'inf', '-inf', 'nan', 0.0, -0.0, 6.0, 6.01, 6.00003, 6.000035, 10.0, 20.0, 20.5,
+       1e308, -1e308, -100.0, -200.0, -6.020599913279624, -6.02, 5e-324, -5e-324]
+dbs += [float(d) for d in range(-120, 30)]
+dbs += [round(-10 + 0.01 * k, 2) for k in range(1611)]
+dbs += [AL.legacy_volume_to_db(v) for v in (1, 100, 4096, 16384, 32767, 32768, 50000, 65381)]
+dbs += [rng.uniform(-100, 10) for _ in range(200)]
+for db in dbs:
+    s.call('legacy_db_to_volume', db)
+pans = [0.0, -0.0, 100.0, -100.0, 12.34, 250.0, -250.0, 0.005, 0.015, 0.025, 0.125, -0.125,
+        0.375, 1.005, 2.5, -2.5, 99.995, 100.005, 1e300, -1e300, 5e-324, 'inf', '-inf', 'nan']
+pans += [round(-100 + 0.005 * k, 3) for k in range(0, 40001, 7)]
+pans += [rng.uniform(-150, 150) for _ in range(200)]
+for pan in pans:
+    s.call('legacy_pan_to_balance', pan)
+scenarios.append(s)
+
+
+# legacy_volume_to_db of every u16, as the SHA-256 of its results (each
+# float's IEEE 754 bits big-endian, None as eight 0xFF bytes): the one
+# reader helper that goes through log10, which the Go test checks bit for
+# bit over all of them.
+VOLUME_DIGEST = hashlib.sha256(b''.join(
+    b'\xff' * 8 if r is None else struct.pack('>d', r)
+    for r in map(AL.legacy_volume_to_db, range(65536)))).hexdigest()
+
 called = {st['call'] for sc in scenarios for st in sc.steps if 'call' in st}
 missing = (set(READERS) | set(HELPERS)) - called
 if missing:
     raise SystemExit(f'no cases for {sorted(missing)}')
 
 with open(OUT, 'w') as f:
-    f.write('{"bmdwire":"v1.4.0","generator":"internal/fixtures/oracle/gen_readers.py",\n')
+    f.write('{"bmdwire":"v1.6.0","generator":"internal/fixtures/oracle/gen_readers.py",\n')
+    f.write('"legacy_volume_to_db_every_u16":' + json.dumps(VOLUME_DIGEST) + ',\n')
     f.write('"readers":' + json.dumps(sorted(READERS)) + ',\n')
     f.write('"helpers":' + json.dumps(sorted(HELPERS)) + ',\n')
     f.write('"scenarios":[\n')

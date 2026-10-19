@@ -6,11 +6,11 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.5.5
+Tracks: bmdwire v1.6.0
 
-- The port follows **bmdwire v1.5.5** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.5.5`, commit `dbbe4f3`): v1.4.0 (tag `v1.4.0`, commit
-  `e04920b`), bmdwire#36, #38, #40, #42 and #46. It was written against **v1.3.0** (tag
+- The port follows **bmdwire v1.6.0** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.6.0`, commit `0eb73e5`): v1.4.0 (tag `v1.4.0`, commit
+  `e04920b`), bmdwire#36, #38, #40, #42, #46 and #49. It was written against **v1.3.0** (tag
   `v1.3.0`, commit `cea58c2`), and the code and these notes cite that tag
   wherever they were checked against it; v1.4.0 changed only what
   "bmdwire 1.4.0" below lists, so those citations hold for it. Cite the
@@ -72,13 +72,31 @@ Tracks: bmdwire v1.5.5
   `cancelTask`, which withdraws that one task and leaves the turn alone,
   and a lock it gives back goes through `releaseThenContinue`, which
   starts one. Two tests mirror bmdwire's new ones. No oracle changes.
+- **bmdwire 1.6.0** is bmdwire#49 (`02fba68`, merged as `55670cb`): the
+  legacy (pre-Fairlight) audio mixer. Ported: an `AMIP` from before ATEM
+  8.0 firmware, 20 bytes, parses as the 16 of later firmware do
+  (`626c785`, "Parsers"), where it was an error that lost the rest of its
+  packet; the five readers it adds (`audio_mixer_type` and the four
+  `legacy_audio_*`) and its three unit helpers (`legacy_volume_to_db`,
+  `legacy_db_to_volume`, `legacy_pan_to_balance`) ("Readers"); and the
+  `legacy-audio:` log lines (`03fa389`, "Session"). Its other half,
+  `build_full_state`'s audio section on a legacy mixer (`3e2f400`), waits
+  with `build_full_state` ("Readers", Not ported); the readers it is built
+  from are here. The CLI takes two things from it: `audio master
+  --volume` on the classic mixer goes through `legacy_db_to_volume`
+  ("Command table and CLI"), and `show audio` reads the classic mixer
+  through the readers ("Operations"). `recv.json` and `readers.json` are
+  regenerated at v1.6.0: the first changes only in its two `AMIP` cases
+  over 16 bytes, the second gains the new readers, helpers and 13
+  scenarios and keeps every earlier case as it was. None of it has met a
+  legacy switcher, here or in bmdwire.
 - The `Tracks:` line above says the same on one line, for workflows to
   read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.5.5`. Keep it a line of its own, exactly
+  tag `v1.6.0`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at v1.5.5, whose §5.4 marks each
+  header naming the version: bmdwire's at v1.6.0, whose §5.4 marks each
   fix. It is the specification for `atem/`. Its body says it describes
   1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
   follows, so it describes that apart from those marks.
@@ -152,7 +170,8 @@ Tracks: bmdwire v1.5.5
 
 - The fixtures are bmdwire v1.3.0's own test data, copied raw: every packet
   and bytecode literal in `atemwire/tests/*.py`, the profile XML golden and
-  the two `build_full_state` snapshots. Where a test builds a byte string
+  the two `build_full_state` snapshots (these as at v1.6.0, which added
+  `audio.mixer` to them, bmdwire#49). Where a test builds a byte string
   from an expression, the file holds what the expression evaluates to. The
   README there names the test file and test for each, and whether the test
   calls it a live capture.
@@ -328,6 +347,21 @@ two settings `Dial` needs a struct for.
   drops while it waits. On context cancellation the waiter is removed. An
   echo means a state packet with that key arrived after the command was
   queued; like atemwire, nothing ties it to this command in particular.
+- **Legacy audio in the log** (bmdwire#49, `03fa389`). The first `AMIP`
+  per source and the first `AMMO`, `AMmO` and `AMLv` a session stores are
+  logged at Info as `atem: legacy-audio: ` and atemwire's own line
+  (`legacyAudioDiagnostic`, `TestLegacyAudioDiagnostic` pins bmdwire's
+  text): the code, the payload in hex and every decoded attribute, as
+  Python prints them, with `volume_db` and `plug_name`. "First" is per
+  `Change.Key` for the session's life, re-handshakes included, as
+  atemwire's set lives as long as its `AtemProtocol`. `AMLv`'s inputs are
+  printed in the packet's order, read again from the payload, since the
+  state's map doesn't keep it. At each ready the mixer the dump showed
+  (`AudioMixerType`) is logged, Info for `legacy` or `unknown`, Debug for
+  Fairlight, which sends none of the four. atemwire guards the
+  description with a `try`; formatting it here can't fail. The engine
+  logs at Info, so the lines land in its log file, which is what a user
+  with a legacy switcher can send.
 - **TiRq** is sent once per completed dump, straight to the transport and
   not through the outbox, as atemwire's `send_commands` call in `loop()`
   is.
@@ -456,6 +490,12 @@ with a store function (where `save_field_data` puts the result);
   every packet that carries one (`FASP`, `AEBP`, `AICP`, `AILP`, `AIXP`
   and also `AMIP`, so `State.Audio.Inputs` is keyed `"<source>.0"`, as
   atemwire's `mixerstate['audio-input']` is).
+- **`AMIP` reads its first 16 bytes** (bmdwire#49, `626c785`): the
+  switcher sends 20 before ATEM 8.0 firmware, the first 14 the same
+  (LibAtem's `AudioMixerInputGetCommand` and its `V8` twin). Until
+  v1.6.0 atemwire wanted exactly 16, so an older legacy switcher's every
+  `AMIP` lost the rest of its packet, here as there. Under 16 is still an
+  error.
 - **Consumed packets.** `LKOB`, `FTCD`, `FTDC`, `FTDa` and `FTDE` are
   parsed and handed to the transfer engine, never stored; `State.store`
   alone (the oracle replay) parses and drops them. A lock release (`LKST`)
@@ -469,7 +509,7 @@ with a store function (where `save_field_data` puts the result);
   except the classic mixer's meters (`AMLv`), where Go's `math.Log10` and
   CPython's libm `log10` can differ in the last place.
 - **Verification.** `internal/fixtures/oracle/recv.json` holds 1,062
-  payloads fed to bmdwire v1.3.0's real `save_field_data` and what it did
+  payloads fed to bmdwire v1.6.0's real `save_field_data` and what it did
   with each. `TestParsersMatchAtemwire` replays every case: same error or
   not, same consumed/raw/stored outcome, same key, same attribute values
   (floats to 1e-12), and the value sits in the `State` tree under the
@@ -575,10 +615,11 @@ arguments, `Validator`.
 
 ## Readers (`atem/read_*.go`)
 
-bmdwire v1.3.0's 88 readers (the `atemwire.messages.*` functions whose
-first parameter is `mx`, SURFACE.md §2.1) are methods on `State`, one file
-per atemwire module (`read_switching.go`, `read_transition.go`, ...), so
-callers never see wire units. `read_state.go` holds what they share from
+bmdwire v1.3.0's 88 readers, and the five v1.6.0 adds for the legacy
+audio mixer (bmdwire#49), 93 in all (the `atemwire.messages.*` functions
+whose first parameter is `mx`, SURFACE.md §2.1), are methods on `State`,
+one file per atemwire module (`read_switching.go`, `read_transition.go`,
+..., `read_audio_legacy.go`), so callers never see wire units. `read_state.go` holds what they share from
 `state.py`.
 
 - **Names** are the reader names Go-cased with the package's initialisms
@@ -624,17 +665,43 @@ callers never see wire units. `read_state.go` holds what they share from
   the stable sort by band index, and the dynamics maps are filled in
   ascending strip-id order; both match atemwire for anything a switcher
   sends (keys equal the packets' own band index and strip id).
+- **The legacy mixer** (`read_audio_legacy.go`, bmdwire v1.6.0).
+  `AudioMixerType` is `audio_mixer_type`: `fairlight` once `FAMP` has
+  arrived, `legacy` once `AMMO` has, `unknown` before. The four readers'
+  dicts are `LegacyAudioMasterView`, `LegacyAudioStripView`,
+  `LegacyAudioHeadphonesView` and `LegacyAudioSoloView`, in the Fairlight
+  views' shapes less what the legacy mixer lacks. `legacy_audio_strips`
+  sorts by input type and source, stably over arrival order; `AMIP` is
+  keyed by its own source, so no two strips a switcher sends tie, and
+  the strip id breaks a tie a hand-built state has. The unit helpers are
+  functions: `LegacyVolumeToDB(int) *float64` (nil for silence),
+  `LegacyDBToVolume(*float64) uint16` (nil is atemwire's `None`,
+  silence) and `LegacyPanToBalance(float64) (int16, error)`, whose error
+  is the `ValueError` or `OverflowError` Python's `round()` raises on NaN
+  and the infinities. `legacy_volume_to_db` goes through `log10`, the one
+  libm function a reader result does: Go's `math.Log10` can differ from
+  CPython's in the last place, but rounded to two places it gives the
+  same bits for every u16 (`readers.json` carries the SHA-256 of all
+  65,536 results, which `TestLegacyVolumeToDBEveryU16` recomputes).
+  `legacy_db_to_volume`'s `pow` is floored to an integer, and matches
+  over the oracle's 1,990 cases.
 - **Not ported:** the read-modify-write operations built on readers
   (`toggle_usk`, `toggle_dsk`, `toggle_transition_*`, `set_transition_rate`)
-  and `build_full_state`; both come later.
+  and `build_full_state`, with v1.6.0's legacy audio section (`audio.mixer`
+  and the legacy shape, which the readers above make); both come later.
 - **Verification.** `internal/fixtures/oracle/readers.json`
-  (`gen_readers.py`) holds 23 scenarios: 2,129 packets fed to bmdwire
-  v1.3.0's `save_field_data`, interleaved with 7,048 reader and helper
+  (`gen_readers.py`) holds 36 scenarios: 2,336 packets fed to bmdwire
+  v1.6.0's `save_field_data`, interleaved with 17,025 reader and helper
   calls and their results. The scenarios cover the empty state, all-0x00,
   all-0xFF and all-0x80 payloads, random 1-4 M/E switchers with partial
   packet sets, split and stereo Fairlight strips, names, HyperDeck
-  planning, every video mode, and chroma sample values on decimal rounding
-  ties. Each call uses every index the state has plus out-of-range ones.
+  planning, every video mode, chroma sample values on decimal rounding
+  ties, and the legacy mixer (bmdwire's `_legacy_mx` from packets,
+  random and filled ones, `AMIP` at both lengths, a `FAMP` beside them,
+  and the unit helpers on their anchors, ties, clamps and NaN). The
+  legacy scenarios come after the others, so the generator's fixed seed
+  gives those the packets it gave them at v1.4.0. An exception is matched
+  only by a helper that returns an error (`raised`). Each call uses every index the state has plus out-of-range ones.
   `TestReadersMatchAtemwire` replays them through `State.store` and checks
   values bit for bit, int vs float, None, dict keys and list order. Every
   reader and helper must have cases, and the empty scenario is also run on
@@ -1189,16 +1256,22 @@ and a zero value selects nothing.
     `_AMC` for the classic mixer, which atemwire doesn't parse and keeps
     raw (`State.Raw`). Failing both, it is the mixer whose state it sent
     (`FAMP`/`FAIP` or `AMMO`/`AMIP`); the topology (`_top`) says nothing
-    about audio. On a classic switcher the engine (`forMixer`, after the
+    about audio. bmdwire v1.6.0's `audio_mixer_type`
+    (`State.AudioMixerType`) decides by `FAMP`, then `AMMO`, alone; `Mixer`
+    keeps the capabilities first, and agrees with it except on a state
+    with an input's packet but no master's, which it names and
+    `audio_mixer_type` calls unknown. On a classic switcher the engine (`forMixer`, after the
     arguments parse) sends `classic-audio master` for `audio master` and
     `classic-audio levels` for `audio levels`, with the same arguments:
     a Fairlight-only one (`--eq`, `--eq-gain`, `--makeup`) is refused,
     naming the classic command, and `--volume`, in dB as Fairlight's is,
-    goes on the classic mixer's scale, which atemwire leaves raw (0-65381):
-    32768 × 10^(dB/20), rounded, 32768 being 0 dB and 65381 +6 dB, the
-    classic fader's top; -inf and anything below the scale are 0. (The
-    scale is the one the classic mixer's u16 is known to hold; it is
-    unconfirmed on hardware, as the classic commands are.)
+    goes on the classic mixer's scale through `atem.LegacyDBToVolume`,
+    bmdwire v1.6.0's `legacy_db_to_volume`: floor(10^(dB/20) × 32768),
+    clamped to 0-65381, so 0 dB is 32768, +6 dB 65380 and only louder
+    the top; -inf is 0. (Before v1.6.0 atemwire left the scale raw and
+    the port rounded, so -6 dB sent 16423 where it now sends 16422. The
+    scale is LibAtem's and atem-connection's, unconfirmed on hardware,
+    as the classic commands are.)
     `classic-audio master --volume` stays atemwire's raw value. The
     result says what was sent (`CommandResult.Sent`, `"sent":
     "classic-audio master"` in `--json`, and the result line names it,
@@ -2733,8 +2806,10 @@ comes back. Indexes in results count from 1, as the flags do
     type, sources, on air, in the next transition, fly, mask, luma
     clip and gain), `dsk`, `transition` (the next one, each style's
     rate and settings, fade to black), `audio` (the Fairlight master and
-    strips, or the classic mixer's inputs, its raw volume as dB, 32768
-    being 0), `media` and `macros` (as `media list` and `macro list
+    strips, or the classic mixer's master and inputs through the legacy
+    readers, bmdwire v1.6.0: a media player is `MP<n>` and an external
+    input is named by its source, where `InPr`'s name for the same id is
+    the video source's, so 2001 was COL1), `media` and `macros` (as `media list` and `macro list
     --all`), `aux` and `hyperdecks` (the bound slots). `status` stays
     the short overview of them all. A DVE style atemwire's tables don't
     name (0-15) is `style N`.
@@ -3435,9 +3510,10 @@ follows the code.
   (`b89fcb7`, `d86ed31`, `4011dcb`; "Source of truth").
 - **§1 conventions, source names.** The private table also maps 4030 to
   `CleanFeed1` (alongside 7001); SURFACE.md's list leaves 4030 out.
-- **§2.4 `audio-input` (`AMIP`)** is listed as indexed by source; atemwire
+- **§2.4 `audio-input` (`AMIP`)** was listed as indexed by source; atemwire
   keys it by strip id, `"<source>.0"`, because the class carries a
   `strip_id` and `save_field_data` puts that in place of the first index.
+  v1.6.0's SURFACE.md lists it by strip, so the two agree from then on.
 - **§2.5 `lock-state` (`LKST`)** is listed as stored bare; atemwire stores
   only releases. A packet reporting a lock taken is dropped before storage,
   with no events. (The port stores both, per store: bmdwire#15.)
