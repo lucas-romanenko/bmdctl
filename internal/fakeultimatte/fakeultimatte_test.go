@@ -26,7 +26,7 @@ func client(u *Unit) *ultimatte.Client {
 func TestArchiveAndRestore(t *testing.T) {
 	u := New()
 	c := client(u)
-	z, info, err := c.Archive(ctx, Address, time.Now())
+	z, info, err := c.Archive(ctx, Address, time.Now(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

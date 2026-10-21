@@ -6,18 +6,18 @@
 // one end of a pipe for either port (9998 the text channel, 9996 the
 // binary one); Listen serves both on loopback.
 //
-// On 9998 it sends its prelude (its label, software release, CONTROL
-// values and FILE LIST, ending END PRELUDE:), then takes blocks: NETWORK
-// INTERFACE n, empty as a query (ACK and the section) or with fields as
-// a set (ACK and the fields echoed, or NAK for a value it won't take),
-// anything else NAK. An address set makes the interface reapply: the
-// next read-back reports Current Addresses 0.0.0.0/255.255.0.0, the one
-// after the new address, as the hardware did. On 9996 it answers one
-// request per connection: a preset slot's or a resource's bytes, or a
-// write's six-zero ACK (none without the frame's trailing zero). It is
-// not a keyer model: the presets and resources are opaque bytes, as
-// they are to ultimattewire. docs/PORTING.md, "Fake Ultimatte", records
-// it.
+// On 9998 it sends its prelude (its label, software release, CONTROL and
+// CONTROL DEFAULT values and FILE LIST, ending END PRELUDE:), then takes
+// blocks: NETWORK INTERFACE n, empty as a query (ACK and the section) or
+// with fields as a set (ACK and the fields echoed, or NAK for a value it
+// won't take), anything else NAK. An address set makes the interface
+// reapply: the next read-back reports Current Addresses
+// 0.0.0.0/255.255.0.0, the one after the new address, as the hardware
+// did. On 9996 it answers one request per connection: a preset slot's or
+// a resource's bytes, or a write's six-zero ACK (none without the
+// frame's trailing zero). It is not a keyer model: the presets and
+// resources are opaque bytes, as they are to ultimattewire.
+// docs/PORTING.md, "Fake Ultimatte", records it.
 package fakeultimatte
 
 import (
@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -93,7 +94,8 @@ func (u *Unit) Dial(ctx context.Context, network, addr string) (net.Conn, error)
 	down := u.down
 	u.mu.Unlock()
 	if down || port != 9998 && port != 9996 {
-		return nil, &net.OpError{Op: "dial", Net: network, Err: syscall.ECONNREFUSED}
+		to, _ := net.ResolveTCPAddr("tcp", addr) // an address, never a name
+		return nil, &net.OpError{Op: "dial", Net: network, Addr: to, Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
 	}
 	client, server := net.Pipe()
 	if port == 9998 {
@@ -137,6 +139,8 @@ func (u *Unit) prelude() string {
 	fmt.Fprintf(&b, "Label: %s\nSoftware Release: %s\n\n", u.Label, u.Release)
 	b.WriteString("CONTROL:\nMatte Density: 5000\nBlack Gloss: 1200\nShadow Level: 7500\nCursor X: 5000\n" +
 		"Transition Rate: 30\nOffset Black Balance: 2500\nFG Saturation Master: 5000\n\n")
+	b.WriteString("CONTROL DEFAULT:\nMatte Density: 5000\nBlack Gloss: 1000\nShadow Level: 5000\nCursor X: 5000\n" +
+		"Transition Rate: 30\nOffset Black Balance: 5000\nFG Saturation Master: 5000\n\n")
 	b.WriteString("FILE LIST:\n" + strings.Join(u.presets, "\n") + "\n\n")
 	b.WriteString("END PRELUDE:\n")
 	return b.String()

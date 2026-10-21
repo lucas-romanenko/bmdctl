@@ -17,7 +17,7 @@ import (
 
 // Confirm is what a destructive command would affect and the question a
 // person is asked: "slot 1 holds "logo", used by MP1 on program", "clear
-// it?".
+// it?". An impact too long for a line is several, joined by "\n".
 type Confirm struct {
 	Impact   string `json:"impact"`
 	Question string `json:"question"`

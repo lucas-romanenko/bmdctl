@@ -1,0 +1,78 @@
+$ bmdctl connect 192.0.2.41
+<b>Keyer A</>  <dim>Ultimatte</>
+  <b>saved as "Keyer A", now the default</>
+
+$ bmdctl status
+<b>Keyer A</>  <dim>Ultimatte</>
+
+  presets     Green Screen, Blue Screen, Studio B
+  address     192.0.2.41/255.255.252.0
+  gateway     192.0.2.1
+  dns         192.0.2.53
+  dhcp        off: static
+  mac         7c:2e:0d:00:00:01
+
+$ bmdctl presets
+<b>Keyer A</>  <dim>3 presets</>
+
+  <dim>1</>  Green Screen
+  <dim>2</>  Blue Screen
+  <dim>3</>  Studio B
+
+$ bmdctl controls
+<b>Keyer A</>  <dim>7 controls</>
+
+  Matte Density         <dim>5000</>  100%
+  Black Gloss           <dim>1200</>  12%
+  Shadow Level          <dim>7500</>  75%
+  Cursor X              <dim>5000</>  50%
+  Transition Rate       <dim>30</>    30 frames
+  Offset Black Balance  <dim>2500</>  -50%
+  FG Saturation Master  <dim>5000</>  100%
+
+$ bmdctl archive
+<b>Keyer A</>
+  ✓ presets   Green Screen, Blue Screen, Studio B                   <dim># ms</>
+  ✓ settings  GPISettings, SavedSettings                            <dim># ms</>
+  archive     Keyer_A.zip  1 KB · 3 presets · 2 settings            <dim># ms</>
+
+$ bmdctl restore Keyer_A.zip
+<b>Keyer A</>
+  Keyer A gets 3 presets and the settings: its live state changes
+  restore it? [y/N] y
+  ✓ presets   Blue Screen, Green Screen, Studio B                   <dim># ms</>
+  ✓ settings  GPISettings, SavedSettings                            <dim># ms</>
+  restore     Keyer_A.zip  3 presets · 2 settings                   <dim># ms</>
+
+$ bmdctl network set --address 192.0.2.42 --netmask 255.255.255.0
+<b>Keyer A</>
+  address 192.0.2.41/255.255.252.0 → 192.0.2.42/255.255.255.0
+  a wrong address puts Keyer A out of reach until someone visits it
+  set it? [y/N] n
+  <dim>cancelled</>
+[exit 5]
+
+$ bmdctl network set --gateway 192.0.2.254 --dns 192.0.2.53,192.0.2.54 --yes
+<b>Keyer A</>
+  gateway     192.0.2.1 → 192.0.2.254
+  dns         192.0.2.53 → 192.0.2.53, 192.0.2.54                   <dim># ms</>
+
+$ bmdctl network show
+<b>Keyer A</>  <dim>interface 0</>
+
+  address     192.0.2.41/255.255.252.0
+  gateway     192.0.2.254
+  dns         192.0.2.53, 192.0.2.54
+  dhcp        off: static
+  mac         7c:2e:0d:00:00:01
+
+$ bmdctl program 2
+! <red>error</>  Keyer A (192.0.2.41) is an Ultimatte
+!        <dim>bmdctl ultimatte --help</>
+[exit 1]
+
+$ bmdctl status
+! <red>error</>  Keyer A (192.0.2.41) did not answer
+!        <dim>TCP 9998: connection refused · bmdctl doctor checks the network</>
+[exit 2]
+

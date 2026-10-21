@@ -377,6 +377,8 @@ func (p *printer) screenError(r engine.Response) {
 		if strings.HasPrefix(cause, "no switcher answered at ") {
 			cause = ""
 		}
+		// An Ultimatte's: "TCP 9998: connection refused".
+		cause = strings.TrimPrefix(cause, "nothing answers on ")
 		hint = strings.Join(nonEmpty(cause, "bmdctl doctor checks the network"), " · ")
 	}
 	if n := p.noInput; n != nil && code == exitUsage {

@@ -133,8 +133,10 @@ class Sample:
             return status_row(line)
         if re.search(r"(^| )inputs$", v):
             return inputs_row(line)
-        if re.search(r"(^| )(media list|show media|macro list|show macros|video-modes|show hyperdecks)$", v):
+        if re.search(r"(^| )(media list|show media|macro list|show macros|video-modes|show hyperdecks|presets)$", v):
             return list_row(line)
+        if re.search(r"(^| )controls$", v):
+            return controls_row(line)
         if re.search(r"(^| )info$", v):
             return re.sub(r" (model \d+)$", lambda m: " " + tag("dim", m.group(1)), line)
         if re.search(r"(^| )clips$", v):
@@ -255,6 +257,15 @@ def inputs_row(line):
     rest = re.sub(r"● PGM$", tag("red", "● PGM"), rest)
     rest = re.sub(r"○ PVW$", tag("green", "○ PVW"), rest)
     return f"  {tag('dim', m.group(1))}  {rest}"
+
+
+def controls_row(line):
+    """An Ultimatte's control: its name, the raw value dim, the value in
+    the panel's units."""
+    m = re.match(r"^  (\S.*?)(\s{2,})(\S+)(\s{2,}\S.*)?$", line)
+    if not m:
+        return line
+    return f"  {m.group(1)}{m.group(2)}{tag('dim', m.group(3))}{m.group(4) or ''}"
 
 
 def list_row(line):

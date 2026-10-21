@@ -5,7 +5,6 @@ $ bmdctl connect 192.0.2.30
 $ bmdctl connect 192.0.2.40
 <b>Keyer A</>  <dim>Ultimatte</>
   <b>saved as "Keyer A", now the default</>
-  <dim>bmdctl has no Ultimatte commands yet</>
 
 $ bmdctl connect 192.0.2.30
 <b>Test Hub</>

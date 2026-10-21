@@ -10,7 +10,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
 
-// The tools are list_hosts and one per command group, about fifteen;
+// The tools are list_hosts and one per command group, about twenty;
 // every entry is a subcommand of its group's tool, under a name no other
 // in it has; a group is destructive where a subcommand is, and only then
 // takes confirm; every entry the lists name exists.
@@ -20,7 +20,7 @@ func TestTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	ts := tools(reg)
-	if len(ts) < 10 || len(ts) > 20 {
+	if len(ts) < 15 || len(ts) > 25 {
 		t.Errorf("%d tools", len(ts))
 	}
 	seen := map[string]bool{}

@@ -22,6 +22,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/hosts"
 	"github.com/lucas-romanenko/bmdctl/internal/paths"
+	"github.com/lucas-romanenko/bmdctl/ultimatte"
 	"github.com/lucas-romanenko/bmdctl/videohub"
 )
 
@@ -310,6 +311,8 @@ func (c *cli) reach(h hosts.Host, st *engine.Status) (status, detail string) {
 		return c.reachDeck(ctx, h, st)
 	case "videohub":
 		return c.reachHub(ctx, h, st)
+	case "ultimatte":
+		return c.reachKeyer(ctx, h)
 	}
 	if h.Device != "atem" {
 		port, ok := devicePorts[h.Device]
@@ -409,6 +412,27 @@ func (c *cli) reachHub(ctx context.Context, h hosts.Host, st *engine.Status) (st
 	}
 	return "ok", fmt.Sprintf("%s, %d x %d, protocol %s", snap.Device.ModelName, snap.Device.VideoInputs,
 		snap.Device.VideoOutputs, snap.Device.ProtocolVersion)
+}
+
+// reachKeyer checks an Ultimatte by reading its prelude: bmdctl keeps
+// no session to one.
+func (c *cli) reachKeyer(ctx context.Context, h hosts.Host) (status, detail string) {
+	host := h.Address
+	if hh, _, err := net.SplitHostPort(host); err == nil {
+		host = hh
+	}
+	u := ultimatte.Client{DialContext: func(ctx context.Context, _, a string) (net.Conn, error) { return c.dialTCP(ctx, a) },
+		PreludeQuiet: time.Second, PreludeDrain: 100 * time.Millisecond}
+	pre, err := u.ReadPrelude(ctx, host)
+	addr := net.JoinHostPort(host, fmt.Sprint(ultimatte.ControlPort))
+	switch {
+	case err != nil:
+		return "unreachable", fmt.Sprintf("nothing answers on TCP %s: %v", addr, unwrapNet(err))
+	case pre == "":
+		return "fail", fmt.Sprintf("TCP %s answers, but sends no prelude: not an Ultimatte?", addr)
+	}
+	label, _ := ultimatte.Label(pre)
+	return "ok", fmt.Sprintf("%s answers, %s", orNoneText(label), count(len(ultimatte.ParseFileList(pre)), "preset"))
 }
 
 // hostKeyOf is the engine's session key for an address.

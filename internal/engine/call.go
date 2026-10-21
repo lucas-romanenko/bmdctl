@@ -13,6 +13,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/hyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
+	"github.com/lucas-romanenko/bmdctl/ultimatte"
 	"github.com/lucas-romanenko/bmdctl/videohub"
 )
 
@@ -36,7 +37,11 @@ type call struct {
 	// Set for a request to a Videohub (videohub.go).
 	hub    *videohub.Session
 	hstate videohub.State // as the request found it
-	res    table.Resolver
+	// Set for a request to an Ultimatte (ultimatte.go): its client, its
+	// host:9998 and its host.
+	ult             *ultimatte.Client
+	ultKey, ultHost string
+	res             table.Resolver
 	// noInput is what a source that named nothing could have been, for
 	// a note if the arguments don't parse.
 	noInput *NoInput
@@ -441,6 +446,9 @@ func RegisterOperations(r *table.Registry) error {
 		return err
 	}
 	if err := registerHubOperations(r); err != nil {
+		return err
+	}
+	if err := registerUltOperations(r); err != nil {
 		return err
 	}
 	// input list, inputs' name before the first hardware session's

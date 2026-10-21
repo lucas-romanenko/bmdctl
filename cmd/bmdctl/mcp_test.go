@@ -167,12 +167,13 @@ func TestMCPTools(t *testing.T) {
 			t.Errorf("%s: %v", n, tl)
 		}
 	}
-	// A tool per command group, about fifteen.
-	if len(names) < 10 || len(names) > 20 {
+	// A tool per command group, about twenty.
+	if len(names) < 15 || len(names) > 25 {
 		t.Errorf("%d tools", len(names))
 	}
 	for _, n := range []string{"list_hosts", "wait_for_change", "atem_switching", "atem_usk", "atem_media", "atem_system", "atem_session",
-		"atem_sources", "hyperdeck_transport", "hyperdeck_session"} {
+		"atem_sources", "hyperdeck_transport", "hyperdeck_session", "videohub_routing", "videohub_session",
+		"ultimatte_profile", "ultimatte_network", "ultimatte_session"} {
 		if names[n] == nil {
 			t.Errorf("no tool %s", n)
 		}

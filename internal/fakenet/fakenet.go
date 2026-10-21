@@ -2,8 +2,8 @@
 
 // Package fakenet is a network of fake devices for tests: it answers the
 // device probe's two ways of asking an address (engine.Config's ProbeATEM
-// and ProbeDial), and dials the fake HyperDecks and Videohubs, so
-// nothing leaves the process.
+// and ProbeDial), and dials the fake HyperDecks, Videohubs and
+// Ultimattes, so nothing leaves the process.
 package fakenet
 
 import (
@@ -17,6 +17,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
 	"github.com/lucas-romanenko/bmdctl/internal/fakehyperdeck"
+	"github.com/lucas-romanenko/bmdctl/internal/fakeultimatte"
 	"github.com/lucas-romanenko/bmdctl/internal/fakevideohub"
 )
 
@@ -41,6 +42,7 @@ type Net struct {
 	atems      map[string]bool
 	decks      map[string]*fakehyperdeck.Deck
 	hubs       map[string]*fakevideohub.Hub
+	keyers     map[string]*fakeultimatte.Unit
 	videohubs  map[string]string
 	ultimattes map[string]string
 }
@@ -48,7 +50,8 @@ type Net struct {
 // New returns an empty network: nothing answers anywhere.
 func New() *Net {
 	return &Net{absent: map[string]bool{}, atems: map[string]bool{}, decks: map[string]*fakehyperdeck.Deck{},
-		hubs: map[string]*fakevideohub.Hub{}, videohubs: map[string]string{}, ultimattes: map[string]string{}}
+		hubs: map[string]*fakevideohub.Hub{}, keyers: map[string]*fakeultimatte.Unit{}, videohubs: map[string]string{},
+		ultimattes: map[string]string{}}
 }
 
 // EveryATEM puts a switcher at every host that holds no other device.
@@ -92,7 +95,18 @@ func (n *Net) Videohub(host, preamble string) {
 	n.mu.Unlock()
 }
 
-// Ultimatte puts a keyer at host that sends prelude on 9998.
+// Keyer puts a fake Ultimatte at host and returns it: it answers on
+// 9998 and 9996 as a unit does, where Ultimatte's stand-in only sends a
+// prelude.
+func (n *Net) Keyer(host string, u *fakeultimatte.Unit) *fakeultimatte.Unit {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.keyers[host] = u
+	return u
+}
+
+// Ultimatte puts a keyer at host that sends prelude on 9998, and does
+// nothing more: enough for the device probe.
 func (n *Net) Ultimatte(host, prelude string) {
 	n.mu.Lock()
 	n.ultimattes[host] = prelude
@@ -105,7 +119,7 @@ func (n *Net) ProbeATEM(ctx context.Context, addr string) error {
 	host, _, _ := net.SplitHostPort(addr)
 	n.mu.Lock()
 	ok := n.atems[host] || n.everyATEM && !n.absent[host] && n.decks[host] == nil && n.hubs[host] == nil &&
-		n.videohubs[host] == "" && n.ultimattes[host] == ""
+		n.keyers[host] == nil && n.videohubs[host] == "" && n.ultimattes[host] == ""
 	n.mu.Unlock()
 	if !ok {
 		return atem.ErrNoSwitcher
@@ -122,7 +136,7 @@ func (n *Net) Dial(ctx context.Context, network, addr string) (net.Conn, error) 
 	}
 	port, _ := strconv.Atoi(ps)
 	n.mu.Lock()
-	deck, router, hub, keyer := n.decks[host], n.hubs[host], n.videohubs[host], n.ultimattes[host]
+	deck, router, unit, hub, keyer := n.decks[host], n.hubs[host], n.keyers[host], n.videohubs[host], n.ultimattes[host]
 	n.mu.Unlock()
 	text := ""
 	switch {
@@ -130,6 +144,8 @@ func (n *Net) Dial(ctx context.Context, network, addr string) (net.Conn, error) 
 		return deck.Dial(ctx, network, addr)
 	case port == 9990 && router != nil:
 		return router.Dial(ctx, network, addr)
+	case (port == 9998 || port == 9996) && unit != nil:
+		return unit.Dial(ctx, network, addr)
 	case port == 9990 && hub != "":
 		text = hub
 	case port == 9998 && keyer != "":

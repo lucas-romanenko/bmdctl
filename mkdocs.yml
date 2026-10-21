@@ -137,6 +137,10 @@ nav:
       - Videohub:
           - routing: commands/videohub-routing.md
           - session: commands/videohub-session.md
+      - Ultimatte:
+          - profile: commands/ultimatte-profile.md
+          - network: commands/ultimatte-network.md
+          - session: commands/ultimatte-session.md
   - Agents: AGENTS.md
   - Hardware: HARDWARE.md
   - Architecture: ARCHITECTURE.md

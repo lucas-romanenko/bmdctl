@@ -142,7 +142,7 @@ func (c *cli) resolveTarget(g globals) (target, error) {
 // the default and the last host following, and the rename said on stderr.
 // A name another host goes by isn't taken; that is said instead.
 func (c *cli) adopt(g globals, t *target, sw engine.Switcher) {
-	if t.Host == nil || !slices.Contains([]string{"atem", "hyperdeck", "videohub"}, t.Device) || sw.Name == "" || t.Host.Name == sw.Name {
+	if t.Host == nil || !slices.Contains([]string{"atem", "hyperdeck", "videohub", "ultimatte"}, t.Device) || sw.Name == "" || t.Host.Name == sw.Name {
 		return
 	}
 	f, path, err := c.loadHosts()

@@ -3,8 +3,8 @@
 package mcp
 
 // The tools: one per command group of the table (atem.Groups,
-// hyperdeck.Groups, videohub.Groups: atem_switching, atem_usk,
-// hyperdeck_transport, videohub_routing, ...),
+// hyperdeck.Groups, videohub.Groups, ultimatte.Groups: atem_switching,
+// atem_usk, hyperdeck_transport, videohub_routing, ultimatte_profile, ...),
 // the subcommand a parameter whose enum is the group's commands, the
 // other parameters theirs; list_hosts; and wait_for_change (wait.go).
 
@@ -46,6 +46,8 @@ var readOnly = map[string]bool{
 	"hyperdeck connect": true, "hyperdeck disconnect": true,
 	"videohub status": true, "videohub outputs": true, "videohub inputs": true, "videohub state": true,
 	"videohub watch": true, "videohub connect": true, "videohub disconnect": true,
+	"ultimatte status": true, "ultimatte presets": true, "ultimatte controls": true, "ultimatte prelude": true,
+	"ultimatte network show": true, "ultimatte archive": true, "ultimatte connect": true,
 }
 
 // asksFirst are the entries that are not destructive but can be, by
@@ -78,7 +80,7 @@ var hostProp = table.Schema{"type": "string",
 
 func tools(reg *table.Registry) []tool {
 	out := []tool{{Name: "list_hosts", Title: "List hosts", special: "list_hosts",
-		Description: "The devices bmdctl knows (hosts.yml): each one's name, alias (a short name it goes by as well), address and type (atem, hyperdeck, videohub, ultimatte), and the default host. Call it first to learn what a host argument can be, and which tools a host takes: an atem host the atem_ tools, a hyperdeck host the hyperdeck_ tools, a videohub host the videohub_ tools.",
+		Description: "The devices bmdctl knows (hosts.yml): each one's name, alias (a short name it goes by as well), address and type (atem, hyperdeck, videohub, ultimatte), and the default host. Call it first to learn what a host argument can be, and which tools a host takes: an atem host the atem_ tools, a hyperdeck host the hyperdeck_ tools, a videohub host the videohub_ tools, an ultimatte host the ultimatte_ tools.",
 		InputSchema: table.Schema{"type": "object", "properties": table.Schema{}, "additionalProperties": false},
 		Annotations: map[string]any{"title": "List hosts", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}},
 		waitTool}
@@ -250,7 +252,8 @@ func toolError(code, msg string, extra map[string]any) map[string]any {
 	maps.Copy(out, extra)
 	text := "Error (" + code + "): " + msg
 	if c, ok := extra["confirm"].(*engine.Confirm); ok {
-		text = fmt.Sprintf("Not done: this is destructive. %s. %s Ask the operator; only if they agree, call it again with confirm: true.", c.Impact, c.Question)
+		text = fmt.Sprintf("Not done: this is destructive. %s. %s Ask the operator; only if they agree, call it again with confirm: true.",
+			strings.ReplaceAll(c.Impact, "\n", "; "), c.Question)
 	}
 	b, _ := json.Marshal(out)
 	return map[string]any{"content": []any{map[string]any{"type": "text", "text": text + "\n" + string(b)}},

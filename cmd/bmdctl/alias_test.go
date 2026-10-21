@@ -81,7 +81,7 @@ func TestAliases(t *testing.T) {
 	if code, out, _ := b.runAs("vhctl"); code != 0 || !strings.Contains(out, "usage: vhctl <command>") || !strings.Contains(out, "route <output> <input>") {
 		t.Errorf("vhctl: %d %q", code, out)
 	}
-	if code, out, _ := b.runAs("ultctl"); code != 0 || !strings.Contains(out, "bmdctl has no Ultimatte commands yet") {
+	if code, out, _ := b.runAs("ultctl"); code != 0 || !strings.Contains(out, "usage: ultctl <command>") || !strings.Contains(out, "restore <file>") {
 		t.Errorf("ultctl: %d %q", code, out)
 	}
 	// Completion completes the device's line.
