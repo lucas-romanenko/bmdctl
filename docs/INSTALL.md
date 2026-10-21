@@ -196,7 +196,7 @@ Run under another name, bmdctl is the command for one device:
 | `atemctl` | `bmdctl atem` | `atemctl cut` |
 | `hdctl` | `bmdctl hyperdeck` | `hdctl --host "Deck 1" play --loop` |
 | `vhctl` | `bmdctl videohub` | `vhctl route "Monitor A" "Camera 3"` |
-| `ultctl` | `bmdctl ultimatte` | no commands yet |
+| `ultctl` | `bmdctl ultimatte` | `ultctl archive keyer-a.zip` |
 
 bmdctl reads the name it was started as (case and `.exe` ignored), so
 any symlink or copy works. `hdctl --help` lists the HyperDeck's commands

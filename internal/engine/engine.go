@@ -31,6 +31,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/hyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/stillcache"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
+	"github.com/lucas-romanenko/bmdctl/ultimatte"
 	"github.com/lucas-romanenko/bmdctl/videohub"
 )
 
@@ -72,6 +73,10 @@ type Config struct {
 	// DialVideohub opens a Videohub session; nil means videohub.Dialer
 	// with Logger. Tests point it at internal/fakevideohub.
 	DialVideohub func(ctx context.Context, addr string) (*videohub.Session, error)
+	// Ultimatte reaches Ultimatte units, which keep no session: nil means
+	// ultimatte's defaults. Tests point its DialContext at
+	// internal/fakeultimatte.
+	Ultimatte *ultimatte.Client
 	// ProbeATEM and ProbeDial are the device probe's ways of asking an
 	// address (probe.go): an ATEM's handshake, and a TCP connection for
 	// the others. Nil means atem.Probe and a net.Dialer's; tests point
@@ -184,6 +189,9 @@ func New(cfg Config) *Engine {
 		d := videohub.Dialer{Logger: e.log}
 		e.cfg.DialVideohub = d.Dial
 	}
+	if e.cfg.Ultimatte == nil {
+		e.cfg.Ultimatte = &ultimatte.Client{}
+	}
 	if e.cfg.ProbeATEM == nil {
 		e.cfg.ProbeATEM = atem.Probe
 	}
@@ -206,6 +214,9 @@ func NewRegistry() (*table.Registry, error) {
 		return nil, err
 	}
 	if err := videohub.RegisterCommands(r); err != nil {
+		return nil, err
+	}
+	if err := ultimatte.RegisterCommands(r); err != nil {
 		return nil, err
 	}
 	if err := RegisterOperations(r); err != nil {
@@ -395,7 +406,7 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	if e.cfg.Background && req.Build != "" && e.cfg.BuildID != "" && req.Build != e.cfg.BuildID {
 		return nil, false, codeErr(CodeStale, "the engine runs another build of bmdctl and stops, for this one to start its own")
 	}
-	if req.Device != "atem" && req.Device != "hyperdeck" && req.Device != "videohub" {
+	if !slices.Contains([]string{"atem", "hyperdeck", "videohub", "ultimatte"}, req.Device) {
 		return nil, false, codeErr(CodeUsage, "no commands for device %q", req.Device)
 	}
 	entry := e.cfg.Registry.Find(req.Device, req.Path)
@@ -417,6 +428,8 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 		return c.runDeck() // hyperdeck.go
 	case "videohub":
 		return c.runHub() // videohub.go
+	case "ultimatte":
+		return c.runUlt() // ultimatte.go
 	}
 	o, isOp := e.ops[entry.Path]
 	if entry.Operation && !isOp {
@@ -481,7 +494,8 @@ func usageErr(err error) error {
 func hostKey(addr string) (string, error) { return deviceKey("atem", addr) }
 
 // deviceKey is addr as "host:port", lower-cased, the device's port by
-// default: 9910 for an ATEM, 9993 for a HyperDeck, 9990 for a Videohub.
+// default: 9910 for an ATEM, 9993 for a HyperDeck, 9990 for a Videohub,
+// 9998 for an Ultimatte (its text channel).
 func deviceKey(device, addr string) (string, error) {
 	h, p, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -491,6 +505,8 @@ func deviceKey(device, addr string) (string, error) {
 			p = fmt.Sprint(hyperdeck.DefaultPort)
 		case "videohub":
 			p = fmt.Sprint(videohub.DefaultPort)
+		case "ultimatte":
+			p = fmt.Sprint(ultimatte.ControlPort)
 		}
 	}
 	if h == "" {

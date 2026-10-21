@@ -58,8 +58,10 @@ type ArchiveInfo struct {
 // member is left out, never written as a placeholder a restore would
 // push into live hardware. An empty prelude is an *Error; so is one
 // AnnotatePreamble can't annotate (a value of inf), after every read.
-// now is the members' time.
-func (c *Client) Archive(ctx context.Context, host string, now time.Time) ([]byte, ArchiveInfo, error) {
+// now is the members' time; step, when not nil, is told each slot
+// ("presets/<slot>") and resource once it has been read, with the read's
+// error (bmdctl's addition, for progress).
+func (c *Client) Archive(ctx context.Context, host string, now time.Time, step func(member string, err error)) ([]byte, ArchiveInfo, error) {
 	pre, err := c.ReadPrelude(ctx, host)
 	if err != nil {
 		return nil, ArchiveInfo{}, err
@@ -72,6 +74,9 @@ func (c *Client) Archive(ctx context.Context, host string, now time.Time) ([]byt
 	blobs := map[string][]byte{}
 	for _, slot := range info.Slots {
 		blob, err := c.BinaryRequest(ctx, host, OpReadSlot, []byte(slot))
+		if step != nil {
+			step("presets/"+slot, err)
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, info, ctx.Err()
@@ -88,6 +93,9 @@ func (c *Client) Archive(ctx context.Context, host string, now time.Time) ([]byt
 	resources := map[string][]byte{}
 	for _, name := range Resources {
 		blob, err := c.BinaryRequest(ctx, host, OpReadResource, []byte(name))
+		if step != nil {
+			step(name, err)
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, info, ctx.Err()
@@ -273,9 +281,10 @@ func Plan(zipBytes []byte) (RestorePlan, error) {
 // live state, so last) with OpWriteResource, each named under
 // WireNamePrefix as Ultimatte Software Control names them. The first
 // push that fails stops it: ok is false and info says where. step, when
-// not nil, is told each member before it is pushed. A zip that isn't one
-// is an *Error.
-func (c *Client) Restore(ctx context.Context, host string, zipBytes []byte, step func(member string)) (bool, RestoreInfo, error) {
+// not nil, is told each member once it has been pushed, with the push's
+// error (bmdctl's addition, for progress). A zip that isn't one is an
+// *Error.
+func (c *Client) Restore(ctx context.Context, host string, zipBytes []byte, step func(member string, err error)) (bool, RestoreInfo, error) {
 	info := RestoreInfo{Presets: []PresetPushed{}}
 	plan, err := Plan(zipBytes)
 	if err != nil {
@@ -289,10 +298,11 @@ func (c *Client) Restore(ctx context.Context, host string, zipBytes []byte, step
 		if err != nil {
 			return nil, err
 		}
+		err = c.UploadOne(ctx, host, opcode, WireNamePrefix+"/"+wire, blob)
 		if step != nil {
-			step(member)
+			step(member, err)
 		}
-		return c.UploadOne(ctx, host, opcode, WireNamePrefix+"/"+wire, blob), nil
+		return err, nil
 	}
 	failed := func(err error) Pushed { msg := err.Error(); return Pushed{Error: &msg} }
 	for _, member := range plan.Presets {

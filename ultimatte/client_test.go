@@ -347,7 +347,7 @@ var archiveTime = time.Date(2026, 10, 21, 9, 30, 0, 0, time.Local)
 
 func TestArchive(t *testing.T) {
 	c, _ := client(archiveConns(t)...)
-	z, info, err := c.Archive(ctx, host, archiveTime)
+	z, info, err := c.Archive(ctx, host, archiveTime, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestArchive(t *testing.T) {
 // test_archive_omits_failed_resource_instead_of_placeholder
 func TestArchiveOmitsFailedResourceInsteadOfPlaceholder(t *testing.T) {
 	c, _ := client(archiveConns(t, "GPISettings", "preset-b")...)
-	z, info, err := c.Archive(ctx, host, archiveTime)
+	z, info, err := c.Archive(ctx, host, archiveTime, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestArchiveOmitsFailedResourceInsteadOfPlaceholder(t *testing.T) {
 // test_archive_empty_preamble_is_a_hard_failure
 func TestArchiveEmptyPreambleIsAHardFailure(t *testing.T) {
 	c, _ := client(newScript())
-	_, _, err := c.Archive(ctx, host, archiveTime)
+	_, _, err := c.Archive(ctx, host, archiveTime, nil)
 	wantIOError(t, err, "empty preamble")
 }
 

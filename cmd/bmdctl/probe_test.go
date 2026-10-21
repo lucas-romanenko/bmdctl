@@ -9,17 +9,17 @@ import (
 
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fakehyperdeck"
-	"github.com/lucas-romanenko/bmdctl/internal/fakenet"
+	"github.com/lucas-romanenko/bmdctl/internal/fakeultimatte"
 	"github.com/lucas-romanenko/bmdctl/internal/fakevideohub"
 )
 
 // devices puts one of each device on the bench's network: the ATEM at
-// fakeatem's address, a deck, a Videohub named Test Hub, an Ultimatte,
-// and nothing at 192.0.2.99.
+// fakeatem's address, a deck, a Videohub named Test Hub, an Ultimatte
+// labelled Keyer A, and nothing at 192.0.2.99.
 func devices(b *bench) {
 	b.net.Deck(fakehyperdeck.Address, fakehyperdeck.New())
 	b.net.Hub("192.0.2.30", fakevideohub.New()).Name = "Test Hub"
-	b.net.Ultimatte("192.0.2.40", fakenet.UltimattePrelude)
+	b.net.Keyer("192.0.2.40", fakeultimatte.New())
 	b.net.Absent("192.0.2.99")
 }
 
@@ -30,7 +30,7 @@ func TestConnectAsksTheAddress(t *testing.T) {
 	devices(b)
 	for _, c := range []struct{ addr, device, name, line string }{
 		{"192.0.2.30", "videohub", "Test Hub", ""}, // its connect: a session, pinned
-		{"192.0.2.40", "ultimatte", "Keyer A", `Keyer A (192.0.2.40)  Ultimatte  saved as "Keyer A", the default; bmdctl has no Ultimatte commands yet`},
+		{"192.0.2.40", "ultimatte", "Keyer A", `Keyer A (192.0.2.40)  answers, 3 presets; saved as "Keyer A", the default`},
 		{"192.0.2.10", "atem", "ATEM 1 M/E Constellation HD", ""},
 	} {
 		out := b.must("connect", c.addr)
@@ -66,19 +66,17 @@ func TestConnectAsksTheAddress(t *testing.T) {
 		!strings.Contains(errOut, "(bmdctl connect ADDRESS --type DEVICE connects without asking)") {
 		t.Errorf("%d %q", code, errOut)
 	}
-	// --json, for a device bmdctl has no commands for, has what was
-	// found and saved.
+	// An Ultimatte's --json is its connect's: it answered, by its label.
+	// There is no session; it is saved by the label all the same.
 	var r struct {
-		OK     bool `json:"ok"`
-		Result struct {
-			engine.ProbeResult
-			Saved string `json:"saved"`
-		} `json:"result"`
+		OK     bool              `json:"ok"`
+		Result engine.UltConnect `json:"result"`
 	}
-	b.net.Ultimatte("192.0.2.41", strings.Replace(fakenet.UltimattePrelude, "Keyer A", "Keyer B", 1))
+	b.net.Keyer("192.0.2.41", fakeultimatte.New()).Label = "Keyer B"
 	json.Unmarshal([]byte(b.must("--json", "connect", "192.0.2.41")), &r)
-	if !r.OK || r.Result.Device != "ultimatte" || r.Result.Name != "Keyer B" || r.Result.Saved != "Keyer B" {
-		t.Errorf("%+v", r)
+	if h := b.hostsFile(t).FindAddress("192.0.2.41"); !r.OK || r.Result.Label != "Keyer B" || r.Result.Presets != 3 ||
+		h == nil || h.Device != "ultimatte" || h.Name != "Keyer B" {
+		t.Errorf("%+v, host %+v", r, h)
 	}
 	// A Videohub's is its session's, as a switcher's is, and it is saved
 	// by the name it gives.

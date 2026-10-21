@@ -15,6 +15,7 @@ import (
 
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/fakehyperdeck"
+	"github.com/lucas-romanenko/bmdctl/internal/fakeultimatte"
 )
 
 // doctor checks against the bench: its reachability checks go to the
@@ -26,6 +27,9 @@ func (b *bench) doctor(args ...string) (int, string) {
 	c.dialTCP = func(ctx context.Context, addr string) (net.Conn, error) {
 		if strings.HasPrefix(addr, "192.0.2.20:") {
 			return fakehyperdeck.New().Dial(ctx, "tcp", addr)
+		}
+		if strings.HasPrefix(addr, fakeultimatte.Address+":") {
+			return fakeultimatte.New().Dial(ctx, "tcp", addr)
 		}
 		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
 	}
@@ -40,6 +44,7 @@ func TestDoctor(t *testing.T) {
 	b.must("hosts", "add", "192.0.2.12", "--as", "spare")
 	b.must("hosts", "add", "192.0.2.20", "--as", "deck", "--device", "hyperdeck")
 	b.must("hosts", "add", "192.0.2.21", "--as", "hub", "--device", "videohub")
+	b.must("hosts", "add", fakeultimatte.Address, "--as", "keyer", "--device", "ultimatte")
 	b.must("hosts", "default", "studio")
 	b.must("--host", "studio", "cut") // the engine holds studio's session
 
@@ -49,12 +54,13 @@ func TestDoctor(t *testing.T) {
 		"warn engine version", // the bench's engine reports no version
 		"ok socket " + b.env["BMDCTL_SOCKET"] + " (from $BMDCTL_SOCKET)",
 		"ok log",
-		"4 hosts, default studio",
+		"5 hosts, default studio",
 		"ok last host studio",
 		"host studio atem 192.0.2.10: the engine's session is ready: ATEM 1 M/E Constellation HD 1080p50",
 		"host spare atem 192.0.2.12: the engine's session is ready: ATEM 1 M/E Constellation HD 1080p50",
 		"ok host deck hyperdeck 192.0.2.20: HyperDeck Studio HD Mini, protocol 1.13, software 8.1.1",
 		"unreachable host hub videohub 192.0.2.21: nothing answers on TCP 192.0.2.21:9990: connection refused",
+		"ok host keyer ultimatte 192.0.2.41: Keyer A answers, 3 presets",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("lacks %q:\n%s", want, out)

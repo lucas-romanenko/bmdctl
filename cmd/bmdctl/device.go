@@ -178,10 +178,13 @@ func (c *cli) send(g globals, e *table.Entry, req engine.Request, out *printer, 
 func (c *cli) asks() bool { return c.terminal() && c.ttyIn }
 
 // confirm puts a destructive command's question, under the header: what
-// it would affect, then "clear it? [y/N] ". Only y or yes is a yes.
+// it would affect, a line each, then "clear it? [y/N] ". Only y or yes
+// is a yes.
 func (c *cli) confirm(out *printer) bool {
 	out.show(view{})
-	fmt.Fprintln(c.stdout, fit(indent+out.confirm.Impact, lineWidth))
+	for _, l := range strings.Split(out.confirm.Impact, "\n") {
+		fmt.Fprintln(c.stdout, fit(indent+l, lineWidth))
+	}
 	fmt.Fprintf(c.stdout, "%s%s [y/N] ", indent, out.confirm.Question)
 	line, _ := bufio.NewReader(c.stdin).ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(line)) {

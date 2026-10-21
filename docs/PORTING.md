@@ -1680,8 +1680,9 @@ response doesn't carry comes in note frames (Engine, "Notes":
   with none, how to add one (`bmdctl connect ADDRESS`). A HyperDeck's
   row is a switcher's: its model and video format, and its session or
   `not connected` (a pipe's, `no session`); only a device bmdctl has no
-  commands for (Videohub, Ultimatte) says `no commands yet`, which every
-  device but an ATEM said until after the presentation pass. The engine,
+  commands for says `no commands yet`: every device but an ATEM did until
+  after the presentation pass, a Videohub and an Ultimatte until phase 5,
+  none since. The engine,
   the commit and the hosts file are `bmdctl version`'s, which at a
   terminal prints them under the version. There is no other banner, and
   no prompt before results.
@@ -2036,8 +2037,9 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   (192.0.2.20) is a HyperDeck, not an ATEM`). A command the host's device
   hasn't but another has says what the host is: `DECK 1 (192.0.2.20) is a
   HyperDeck; bmdctl hyperdeck --help`, the step dim under it at a
-  terminal; a host of a device with no commands (a Videohub, an Ultimatte
-  until phase 5) says `...; bmdctl has no Videohub commands yet`.
+  terminal; a host of a device with no commands (a Videohub and an
+  Ultimatte until phase 5; none since) says `...; bmdctl has no Videohub
+  commands yet`.
   Device words are reserved: the ATEM command that binds a HyperDeck slot
   is `hyperdeck-slot`, not `hyperdeck`, which is the HyperDeck device
   (phase 4); a test keeps every command's first word off the device
@@ -2114,13 +2116,13 @@ there instead of taking every address for an ATEM.
   videohub or ultimatte, which also retypes a host already at that
   address), else the type hosts.yml has for the address, else what the
   probe says. A device with commands runs its connect as before, and
-  `remember` saves the host as that device. A Videohub or Ultimatte,
-  which bmdctl has no commands for until phase 5, is saved by the name
-  it gave (the address, where it gave none) and made the default; a
-  terminal shows the header (its name bold, its model and what it is
-  dim), `saved as "Test Hub", now the default` and, dim, `bmdctl has no
-  Videohub commands yet`; a pipe one line; `--json` the probe's result
-  with what was saved. At a terminal the spinner says `asking ADDRESS
+  `remember` saves the host as that device. A device bmdctl has no
+  commands for (a Videohub and an Ultimatte until phase 5; none since)
+  is saved by the name it gave (the address, where it gave none) and
+  made the default; a terminal shows the header (its name bold, its
+  model and what it is dim), `saved as "Test Hub", now the default` and,
+  dim, `bmdctl has no Videohub commands yet`; a pipe one line; `--json`
+  the probe's result with what was saved. At a terminal the spinner says `asking ADDRESS
   what it is`; nothing answering is `error  nothing answered at ADDRESS
   within 2s`, with `bmdctl connect ADDRESS --type DEVICE connects
   without asking` under it (the ports are the pipe's message).
@@ -2149,7 +2151,8 @@ bmdctl is `bmdctl <device>`: atem, hyperdeck, videohub, ultimatte.
 - **Help is the device's alone:** the alias with nothing but flags, with
   `help` or `--help`, prints that device's command list, its usage lines
   and examples under the alias's name (`usage: hdctl <command>`, `hdctl
-  play --speed 200`). vhctl and ultctl say there are no commands yet.
+  play --speed 200`). Until phase 5, vhctl and ultctl said there were no
+  commands yet.
 - **Completion** scripts register all five names and ask the name typed
   (`"${COMP_WORDS[0]}" __complete ...`), which puts its device word in
   front.
@@ -3586,8 +3589,9 @@ restore and the display ranges). ultimattewire has no SURFACE.md, so
 API: `Client{DialContext, ConnectTimeout, ReadTimeout, PreludeQuiet,
 ReplyQuiet, PreludeDrain, ReadbackTimeout, ReadbackPoll, RetryDelay}`
 with `ReadPrelude`, `BinaryRequest`, `UploadOne`, `Exchange`,
-`ReadNetwork`, `SetNetwork(ctx, host, index, NetworkSet)`,
-`Archive(ctx, host, now)`, `Restore(ctx, host, zip, step)`; the
+`ReadNetwork`, `ReadNetworkPrelude`, `SetNetwork(ctx, host, index,
+NetworkSet)`, `Archive(ctx, host, now, step)`, `Restore(ctx, host, zip,
+step)`; the
 functions `ParseSection`, `ParseFileList`, `Label`, `ExtractLabel`,
 `ParseInterface`, `BuildBlock`, `SectionName`, `ToDisplay`,
 `AnnotatePreamble`, `Plan`; `Ranges`; `*Error{Class, Msg}` with
@@ -3626,16 +3630,18 @@ functions `ParseSection`, `ParseFileList`, `Label`, `ExtractLabel`,
   members (zipfile also reads bzip2 and LZMA; Smart Remote writes
   deflate). A member that can't be read fails the restore, as `zf.read`
   raises outside the upload's `try`. Added for the engine: `step`, told
-  each member before it is pushed (for its `steps` notes), and `Plan`,
-  what a zip would push, for the confirmation.
+  each member once it is pushed, or failed (`Archive`'s once it is read),
+  for its `steps` notes, and `Plan`, what a zip would push, for the
+  confirmation.
 - **Network.** `NetworkSet` is `set_network`'s keywords (nil leaves a field
   alone; an empty DNS list clears it). Its read-back runs on the Client's
   clock, which tests move; `ReadbackTimeout` below zero is Python's
   `readback_timeout=0` (one read-back, no wait), since zero means the
   default. The never-settled message is Python's, the field names sorted
   and quoted as `sorted(fields)` prints them and the timeout as `:g`.
-  `exchange` keeps the prelude it reads (internally), for the engine's
-  header to name a unit by its label without a connection more.
+  `exchange` keeps the prelude it reads, and `ReadNetworkPrelude`
+  returns it with the interface, for the engine's header to name a unit
+  by its label without a connection more.
 - **Errors** are `*Error` with ultimattewire's class and message:
   `IOError` (the binary channel, an empty prelude), `UltimatteNetworkError`
   (a NAK, no ACK, never settled), `ValueError` (`set_network`'s refusals,
@@ -3653,6 +3659,94 @@ functions `ParseSection`, `ParseFileList`, `Label`, `ExtractLabel`,
   fixtures copied from them. The range table itself is generated from
   Python's (`ranges_table.go`). Nothing here has run against a unit.
 
+## Ultimatte commands (`internal/engine/ultimatte.go`, `cmd/bmdctl/keyer.go`)
+
+Phase 5: `bmdctl ultimatte ...` (`ultctl`), and every command to a host of
+type `ultimatte`, goes to a keyer through the engine.
+
+- **Every command is an operation**, as a Videohub's: ultimattewire has
+  calls, not a command table. `ultimatte.RegisterCommands` adds the
+  groups alone (`profile`: archive, restore; `network`: network show,
+  network set; `session`: status, presets, controls, prelude, connect).
+  The read is `network show`, not `network`: no command can also be a
+  group.
+- **No session.** ultimattewire opens a connection per call, and so does
+  the engine (`Config.Ultimatte`, an `ultimatte.Client`). `connect`
+  checks that the keyer answers (its label and preset count) and, with an
+  address, saves it; there is no `disconnect`, `watch` or `state`. Each
+  call's `switcher` note names the keyer by its prelude's `Label:` (raw,
+  not `extract_label`'s file name form), read on the connection the call
+  opens anyway.
+- **Reads.** `status` is the label, the presets and NETWORK INTERFACE 0,
+  on one connection; where the unit won't give the interface,
+  `network_error` says why and the presets still show. `presets` is the
+  FILE LIST; `controls` the CONTROL section (`--defaults` CONTROL
+  DEFAULT), each value raw and, for a control RANGES has, in the panel's
+  units (`to_display`, an `Offset ` name looked up without it, as
+  `annotate_preamble` does) and as `annotate_preamble` writes it;
+  `prelude` the prelude as it came; `network show [--interface N]` the
+  interface, in use and configured.
+- **archive [file]** is `archive()`. The CLI writes the zip (a file
+  frame), to the `extract_label` form of the label plus `.zip` where no
+  file is given, as Smart Remote 4 names it. Its steps are the presets
+  and the settings (GPISettings, SavedSettings), from the package's step
+  callback; a member that can't be read is a warning and is left out, as
+  ultimattewire leaves it.
+- **restore <file>** is destructive (exit 5 without `--yes`): presets
+  overwrite the slots of their names, and SavedSettings replaces what the
+  keyer is doing now. The confirmation counts what the zip holds
+  (`Plan`): `Keyer A gets 3 presets and the settings: its live state
+  changes`. What isn't an archive (not a zip, or none of `presets/`,
+  GPISettings, SavedSettings in it) is a usage error before anything is
+  sent. A refusal stops where ultimattewire stops: rejected (exit 4),
+  naming the member, with what came before it written. The steps are
+  archive's.
+- **network set** is destructive too: a wrong address puts a unit out of
+  reach until someone visits it. Its flags are `--address` and `--netmask`
+  (both or neither, as `set_network` wants: one field on the wire),
+  `--gateway`, `--dns` (a list; empty clears it) and `--dhcp`, at least
+  one; `--interface` picks the interface (0). The engine reads the
+  interface first, for the confirmation and the `values` note, then calls
+  `SetNetwork`, whose read-back must settle: one that never does is
+  `no_echo` (exit 3). The confirmation is a line per field, before →
+  after, then the warning where the address or DHCP changes: an impact
+  may now be several lines, joined by `\n`, which the terminal prints a
+  line each and MCP joins with `; `. The address and netmask are two
+  values, so at a terminal, where the result is a line per field, neither
+  is cut.
+- **Errors.** A NAK is rejected, on one line (`the keyer refused NETWORK
+  INTERFACE 0 (NAK)`; ultimattewire's message has the block on the next);
+  an argument refused before sending is usage; a dial that fails is
+  unreachable, `nothing answers on TCP 9998: connection refused` (the
+  terminal's hint, under `Keyer A (192.0.2.41) did not answer`); a unit
+  that sends no prelude is asked whether it is an Ultimatte.
+- **Output.** At a terminal the header is the label (with a dim
+  `Ultimatte` on status and connect). Status and network show are
+  label and value rows (`none` dim), presets a numbered list, controls
+  the name, the raw value dim and the panel's value; archive and restore
+  print their steps, then a line with the file, the size and the counts.
+  Down a pipe the reads are reports, a header line first; archive is
+  `Keyer A (192.0.2.41)  saved FILE: 3 presets, GPISettings,
+  SavedSettings, N bytes`, restore `... restored FILE: ...`, connect
+  `... answers, 3 presets`, as profile save's line is.
+- **Elsewhere:** the probe and `hosts add` found keyers since phase 4;
+  `connect ADDRESS` now runs the keyer's connect, which saves it. `doctor`
+  reads the prelude: the label and the preset count. The aliases
+  (`ultctl`), completion, help, `serve` (`/hosts/{host}/ultimatte/...`)
+  and `mcp` (`ultimatte_profile`, `ultimatte_network`,
+  `ultimatte_session`; everything but restore and network set read-only)
+  take the commands from the table. The "no commands yet" paths stay, for
+  a device hosts.yml knows that the table has no commands for; since
+  phase 5 there is none.
+- **Tests.** `cmd/bmdctl/keyer_test.go` runs every command through an
+  engine to the fake keyer: the reads as text and JSON, the zip written
+  and pushed back (the writes in order), the refusals without `--yes`,
+  network set's blocks and read-back, what is refused (a NAK, a lone
+  `--address`, a unit down), and that every entry runs
+  (`TestEveryUltCommandRuns`); `testdata/terminal/ultimatte.golden` is
+  the terminal's. A set that never settles is the package's to test (the
+  fake always settles). None of it has met a unit.
+
 ## Fake Ultimatte (`internal/fakeultimatte`)
 
 - **A keyer on any `net.Conn`:** `Unit.Dial` serves either port over a
@@ -3661,8 +3755,9 @@ functions `ParseSection`, `ParseFileList`, `Label`, `ExtractLabel`,
 - **What it holds:** an Ultimatte 12 4K labelled `Keyer A`, software 2.1,
   three presets (`Green Screen`, `Blue Screen`, `Studio B`), the two
   resources, and NETWORK INTERFACE 0 at 192.0.2.41/255.255.252.0. Its
-  prelude has the label, release, CONTROL values and FILE LIST, ending
-  `END PRELUDE:`; the connection stays open after it, as a unit's does.
+  prelude has the label, release, CONTROL and CONTROL DEFAULT values and
+  FILE LIST, ending `END PRELUDE:`; the connection stays open after it,
+  as a unit's does.
 - **What it answers:** on 9998, `NETWORK INTERFACE 0`, empty as a query
   (ACK and the section) or with fields as a set (ACK and the fields
   echoed; NAK for an address without a dotted mask or an unknown field),
@@ -3671,8 +3766,9 @@ functions `ParseSection`, `ParseFileList`, `Label`, `ExtractLabel`,
   request per connection: a preset's or resource's bytes (a slot it
   hasn't is the connection closed), or a write's six zeros (none
   without the trailing zero byte), the write kept.
-- **Controls:** `Down` (every connection refused: a unit re-addressed out
-  of reach), `RefuseNetwork` (NAK every block); `Writes`, `Blocks`,
+- **Controls:** `Down` (every connection refused, as a dial is, with the
+  address and `connect: connection refused`: a unit re-addressed out of
+  reach), `RefuseNetwork` (NAK every block); `Writes`, `Blocks`,
   `Presets`, `Static` to look inside.
 
 ## Traps inherited from atemwire

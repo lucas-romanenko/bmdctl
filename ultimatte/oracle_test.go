@@ -320,7 +320,7 @@ func replayCall(t *testing.T, call ultCall) {
 	case "archive":
 		var z []byte
 		var info ArchiveInfo
-		if z, info, err = c.Archive(ctx, host, time.Now()); err == nil {
+		if z, info, err = c.Archive(ctx, host, time.Now(), nil); err == nil {
 			got = map[string]any{"zip": zipRecord(t, z), "info": info}
 		}
 	case "restore":

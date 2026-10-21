@@ -212,6 +212,14 @@ func (c *Client) ReadNetwork(ctx context.Context, host string, index int) (Netwo
 	return iface, err
 }
 
+// ReadNetworkPrelude is ReadNetwork, and the prelude its session read
+// before the block: what names the unit (Label) without another
+// connection. bmdctl's addition: exchange reads the prelude and drops
+// it.
+func (c *Client) ReadNetworkPrelude(ctx context.Context, host string, index int) (NetworkInterface, string, error) {
+	return c.readNetwork(ctx, host, index)
+}
+
 // readNetwork is ReadNetwork, with the prelude the exchange read.
 func (c *Client) readNetwork(ctx context.Context, host string, index int) (NetworkInterface, string, error) {
 	pre, body, err := c.exchange(ctx, host, BuildBlock(index))

@@ -20,6 +20,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
 	"github.com/lucas-romanenko/bmdctl/internal/fakenet"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
+	"github.com/lucas-romanenko/bmdctl/ultimatte"
 	"github.com/lucas-romanenko/bmdctl/videohub"
 )
 
@@ -106,6 +107,10 @@ func (b *bench) startEngine(cfg engine.Config) error {
 	cfg.DialVideohub = func(ctx context.Context, addr string) (*videohub.Session, error) {
 		return (&videohub.Dialer{DialContext: b.net.Dial}).Dial(ctx, addr)
 	}
+	// A unit reads a reply to its quiet unless the reply ends in a colon,
+	// and keeps the prelude's connection open: short quiets for the tests.
+	cfg.Ultimatte = &ultimatte.Client{DialContext: b.net.Dial, PreludeQuiet: 100 * time.Millisecond,
+		ReplyQuiet: 100 * time.Millisecond, PreludeDrain: 10 * time.Millisecond, ReadbackPoll: 10 * time.Millisecond}
 	eng := engine.New(cfg)
 	b.mu.Lock()
 	b.eng = eng

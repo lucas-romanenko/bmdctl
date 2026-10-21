@@ -100,7 +100,7 @@ func OpenAPI(reg *table.Registry, version string) obj {
 		"info": obj{"title": "bmdctl", "version": version,
 			"description": "Blackmagic Design devices through bmdctl's engine: every command of its table. " +
 				"No authentication: it listens on 127.0.0.1 unless told otherwise. A host's device type decides which commands it takes; " +
-				"a HyperDeck's are also at /hosts/{host}/hyperdeck/... and a Videohub's at /hosts/{host}/videohub/... . Indexes count from 1. " +
+				"a HyperDeck's are also at /hosts/{host}/hyperdeck/... a Videohub's at /hosts/{host}/videohub/... and an Ultimatte's at /hosts/{host}/ultimatte/... . Indexes count from 1. " +
 				"An answer is the engine's, as bmdctl --json prints it: {ok, confirmed, result, took_ms} or {ok: false, code, error}."},
 		"servers": []any{obj{"url": "http://" + DefaultListen}},
 		"paths":   paths,

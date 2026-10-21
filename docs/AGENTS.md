@@ -5,9 +5,10 @@ every command of the command table, run through bmdctl's engine, on the
 devices hosts.yml names. There are two ways in, and they can be used
 together:
 
-- **`bmdctl mcp`**, a Model Context Protocol server: fifteen tools, one
-  per command group (`atem_switching`, `atem_usk`, `atem_media`,
-  `hyperdeck_transport`, ...) with the command as its `subcommand`, plus
+- **`bmdctl mcp`**, a Model Context Protocol server: twenty-one tools,
+  one per command group (`atem_switching`, `atem_usk`, `atem_media`,
+  `hyperdeck_transport`, `videohub_routing`, `ultimatte_profile`, ...)
+  with the command as its `subcommand`, plus
   `list_hosts` and `wait_for_change`, and each host's state as a
   resource the agent can subscribe to.
 - **The skill** in `skills/bmdctl/`, which tells the agent how to work a
@@ -87,7 +88,11 @@ Desktop hasn't been tried with bmdctl yet
   camera control), `atem_outputs` (multiviewer, SuperSource, recording,
   streaming), `atem_system` (info, video mode, startup, time) and
   `atem_session` (status, state, show, watch, connect, disconnect); a
-  HyperDeck's are `hyperdeck_transport` and `hyperdeck_session`. Each
+  HyperDeck's are `hyperdeck_transport` and `hyperdeck_session`; a
+  Videohub's `videohub_routing` (route, input and output renames) and
+  `videohub_session`; an Ultimatte's `ultimatte_profile` (archive,
+  restore), `ultimatte_network` (network show and set) and
+  `ultimatte_session` (status, presets, controls, prelude, connect). Each
   takes `subcommand`, the command less the group's word (`bmdctl
   transition wipe --rate 25` is `atem_transition {"subcommand": "wipe",
   "rate": 25}`; `bmdctl ftb toggle` is `atem_switching {"subcommand":

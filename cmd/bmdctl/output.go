@@ -253,6 +253,16 @@ func (p *printer) waiting() string {
 	case "profile images":
 		return "downloading the stills"
 	}
+	if p.e.Device == "ultimatte" {
+		switch p.e.Path {
+		case "archive":
+			return "archiving " + p.name()
+		case "restore":
+			return "restoring " + file + " to " + p.name()
+		case "network set":
+			return "setting " + p.name() + "'s network, then reading it back"
+		}
+	}
 	return "waiting for " + p.name()
 }
 
@@ -493,9 +503,9 @@ func flagTag(name, v string) string {
 }
 
 // shortAddress is an address as a line shows it: without the ATEM's,
-// the HyperDeck's or the Videohub's default port.
+// the HyperDeck's, the Videohub's or the Ultimatte's default port.
 func shortAddress(addr string) string {
-	for _, p := range []string{":9910", ":9993", ":9990"} {
+	for _, p := range []string{":9910", ":9993", ":9990", ":9998"} {
 		addr = strings.TrimSuffix(addr, p)
 	}
 	return addr

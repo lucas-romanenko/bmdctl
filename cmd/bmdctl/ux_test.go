@@ -173,11 +173,11 @@ func TestChangeColumn(t *testing.T) {
 	}
 }
 
-// The overview's "no commands yet" is for the devices bmdctl has no
-// commands for, not every device but an ATEM.
+// The overview's "no commands yet" is for a device bmdctl has no
+// commands for: since phase 5 every device it knows has them.
 func TestOverviewHasCommands(t *testing.T) {
 	c := newCLI(io.Discard, io.Discard)
-	for device, want := range map[string]bool{"": true, "atem": true, "hyperdeck": true, "videohub": true, "ultimatte": false} {
+	for device, want := range map[string]bool{"": true, "atem": true, "hyperdeck": true, "videohub": true, "ultimatte": true, "teranex": false} {
 		if got := c.hasCommands(device); got != want {
 			t.Errorf("hasCommands(%q) = %v, want %v", device, got, want)
 		}

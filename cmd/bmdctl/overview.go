@@ -123,6 +123,9 @@ func (c *cli) overviewScreen(ov *engine.Overview, list []overviewHost) []string 
 	var sessions []string
 	for _, h := range list {
 		row := []string{c.colour(bold, h.Name), shortAddress(h.Address), "", "", c.colour(dim, "not connected")}
+		if h.Device == "ultimatte" {
+			row[2], row[4] = "Ultimatte", c.colour(dim, "connects per command")
+		}
 		if h.Name == "" {
 			row[0] = c.colour(bold, shortAddress(h.Address))
 		}
@@ -299,6 +302,9 @@ func (c *cli) overviewLines(ov *engine.Overview, list []overviewHost, noHosts bo
 	var hostRows [][]string
 	for _, h := range list {
 		row := []string{paintWho(c.colour, h.Name, shortAddress(h.Address)), "", "", c.colour(dim, "no session")}
+		if h.Device == "ultimatte" {
+			row[1], row[3] = "Ultimatte", c.colour(dim, "connects per command")
+		}
 		if !c.hasCommands(h.Device) {
 			row[1] = h.Device
 			row[3] = "no commands yet"

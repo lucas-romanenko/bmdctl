@@ -1,15 +1,15 @@
 ---
 name: bmdctl
-description: Run Blackmagic ATEM switchers and HyperDeck recorders with bmdctl (CLI or MCP tools) on a live show, safely - check what is on air, switch, key graphics, cue clips.
+description: Run Blackmagic ATEM switchers, HyperDeck recorders, Videohub routers and Ultimatte keyers with bmdctl (CLI or MCP tools) on a live show, safely - check what is on air, switch, key graphics, cue clips, route feeds.
 ---
 
 # bmdctl
 
 bmdctl controls Blackmagic Design devices on the local network: ATEM
-switchers, HyperDeck recorders and Videohub routers (Ultimatte: saved, no
-commands yet). Use it when someone asks to switch a camera, run a
-transition, put a graphic or keyer on air, load a still, play or record a
-clip, route a feed on a router, or reports what a device is doing. Every command is a CLI line
+switchers, HyperDeck recorders, Videohub routers and Ultimatte keyers. Use
+it when someone asks to switch a camera, run a transition, put a graphic
+or keyer on air, load a still, play or record a clip, route a feed on a
+router, or reports what a device is doing. Every command is a CLI line
 (`bmdctl program cam2`) and, over MCP, a subcommand of its group's tool
 (`atem_switching {"subcommand": "program", "source": "cam2"}`; the tool's
 description lists its subcommands). The reference for all of them is
@@ -55,10 +55,11 @@ or a failure, read `status` again before saying it worked.
 
 These do nothing until a person agrees: `video-mode` (every output
 resyncs: the show drops), `startup save`, `startup clear`, `media clear`,
-`media clear-unlocked`, `macro delete`, `profile restore`; and uploading
-over a used still or macro slot, or recording a macro into one. Without
-`--yes` (`confirm: true` in a tool) bmdctl refuses and says what it would
-affect. Put that to the operator in their words and wait for a clear yes.
+`media clear-unlocked`, `macro delete`, `profile restore`, an Ultimatte's
+`restore` and `network set`; and uploading over a used still or macro
+slot, or recording a macro into one. Without `--yes` (`confirm: true` in a
+tool) bmdctl refuses and says what it would affect. Put that to the
+operator in their words and wait for a clear yes.
 **Never add `--yes` or `confirm: true` on your own**, not to finish a task,
 not because an earlier yes covered something else. One yes is for one command.
 
@@ -97,8 +98,7 @@ dsk on-air off
 transition mix 1:00
 aux 1 pgm
 ```
-A full restore of a saved setup is `profile restore show.xml`:
-destructive, so ask.
+A saved setup comes back with `profile restore show.xml` (destructive: ask).
 
 **3. Scheduled content change.** bmdctl doesn't schedule; cron, systemd
 timers or a show-control system run it. Write the change as an exec file,
@@ -132,17 +132,17 @@ bmdctl --host "Deck 1" play
 bmdctl auto
 ```
 `play --loop --single-clip` loops one clip; `loop off` lets it run out. A
-Videohub's ports are a number from 1 or a label: `bmdctl --host ROUTER route
-"Monitor A" "Camera 3"`; `outputs` lists each output's input, and its lock.
+Videohub's ports are a number from 1 or a label (`bmdctl --host ROUTER route
+"Monitor A" "Camera 3"`; `outputs` lists the routes and locks). An
+Ultimatte's `archive` saves its presets and settings to a zip for `restore`.
 
 ## Cautions
 
 - **Untested models.** bmdctl has been run on an ATEM 1 M/E Constellation
-  HD; other ATEMs speak the same protocol but are untested, and the
-  HyperDeck and Videohub commands have not met a deck or router yet. `record`, `next`, `prev`,
-  `loop` and `goto` by timecode are marked unverified, and so are some
-  ATEM commands (help says so). On an unfamiliar device, read `status`
-  after each change instead of trusting the result alone.
+  HD; other ATEMs are untested, and the HyperDeck, Videohub and Ultimatte
+  commands have not met a device yet. `record`, `next`, `prev`, `loop`,
+  `goto` by timecode and some ATEM commands are marked unverified (help
+  says so). On an unfamiliar device, read `status` after each change.
 - `undo` puts back the last program, preview, cut, auto, aux or keyer
   change made from this machine; say what it will restore before using it.
 - If a command fails with exit 2, `bmdctl doctor` says why. Don't retry a

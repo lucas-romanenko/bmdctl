@@ -50,6 +50,10 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Any Videohub command on a real router.** The protocol is checked
   against videohubwire (which routes Smart Videohub 40 x 40 and 80 x 80
   routers in production), not a router, from bmdctl.
+- **Any Ultimatte command on a real keyer.** The protocol is checked
+  against ultimattewire (whose archive and restore were verified on an
+  Ultimatte 12 4K), not a keyer, from bmdctl; `network set`'s read-back
+  and the CONTROL DEFAULT section are as the fake has them.
 - **Hosts:** `hosts discover`; `hosts add --as`; a rename made in ATEM
   Setup while bmdctl is in use; the device probe (`connect ADDRESS`
   asking what answers), which came after the last session.

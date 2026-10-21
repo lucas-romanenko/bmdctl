@@ -153,7 +153,7 @@ var deviceGroups = map[string]string{
 	"atem":      "an ATEM switcher's commands: program, cut, auto, usk, media, macro, ...",
 	"hyperdeck": "a HyperDeck's commands: play, stop, record, goto, clips, slot, ...",
 	"videohub":  "a Videohub router's commands: route, status, inputs, outputs, input rename, ...",
-	"ultimatte": "an Ultimatte keyer (no commands yet)",
+	"ultimatte": "an Ultimatte keyer's commands: status, presets, archive, restore, network, ...",
 }
 
 // presentDevices are the device types hosts.yml has a host of, in
