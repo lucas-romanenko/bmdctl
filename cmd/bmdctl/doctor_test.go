@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -120,6 +122,22 @@ func TestDoctor(t *testing.T) {
 	b.mu.Unlock()
 	if _, out = b.doctor(); !strings.Contains(out, "unreachable host studio") {
 		t.Errorf("unreachable ATEM:\n%s", out)
+	}
+}
+
+// A socket path too long for a Unix socket fails, where dialling it
+// says only "invalid argument".
+func TestDoctorLongSocket(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a named pipe")
+	}
+	b := newBench(t)
+	long := filepath.Join(b.dir, strings.Repeat("d", 120), "s.sock")
+	b.env["BMDCTL_SOCKET"] = long
+	_, out := b.doctor()
+	want := fmt.Sprintf("fail socket %s (from $BMDCTL_SOCKET) is %d bytes, longer than a Unix socket's path can be", long, len(long))
+	if !strings.Contains(out, want) {
+		t.Errorf("lacks %q:\n%s", want, out)
 	}
 }
 

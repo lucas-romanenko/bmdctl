@@ -145,6 +145,15 @@ func (c *cli) doctorEngine(sock string, add func(name, status, format string, ar
 	return &st
 }
 
+// maxSocketPath is the longest path a Unix socket can have: sun_path's
+// size less its NUL, 108 bytes on Linux and 104 on macOS and the BSDs.
+func maxSocketPath() int {
+	if runtime.GOOS == "linux" {
+		return 107
+	}
+	return 103
+}
+
 // doctorSocket checks the socket file, its directory and the lock.
 func (c *cli) doctorSocket(sock string, running bool, add func(name, status, format string, args ...any)) {
 	if paths.IsPipe(sock) {
@@ -158,6 +167,12 @@ func (c *cli) doctorSocket(sock string, running bool, add func(name, status, for
 		from = "$XDG_RUNTIME_DIR"
 	default:
 		from = "the temporary directory, as $XDG_RUNTIME_DIR is unset"
+	}
+	if n, most := len(sock), maxSocketPath(); n > most {
+		// Listening fails, and dialling says only "invalid argument".
+		add("socket", "fail", "%s (from %s) is %d bytes, longer than a Unix socket's path can be (%d): set $%s to a shorter one",
+			sock, from, n, most, paths.SocketEnv)
+		return
 	}
 	dir := filepath.Dir(sock)
 	fi, err := os.Stat(dir)
