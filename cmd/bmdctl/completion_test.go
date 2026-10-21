@@ -197,13 +197,22 @@ func TestManPage(t *testing.T) {
 	if code != 0 || !strings.HasPrefix(page, ".TH BMDCTL 1") {
 		t.Fatalf("%d %.80q", code, page)
 	}
+	// Every device's commands, a device's own but an ATEM's under its
+	// word.
 	reg, _ := engine.NewRegistry()
-	for _, e := range reg.Entries("atem") {
-		if !strings.Contains(page, ".SS \""+roff(e.Usage())+"\"\n") {
-			t.Errorf("no section for %s", e.Path)
+	for _, d := range reg.Devices() {
+		prefix := d + " "
+		if d == "atem" {
+			prefix = ""
+		}
+		for _, e := range reg.Entries(d) {
+			if !strings.Contains(page, ".SS \""+roff(prefix+e.Usage())+"\"\n") {
+				t.Errorf("no section for %s %s", d, e.Path)
+			}
 		}
 	}
-	for _, want := range []string{".SH EXIT STATUS", ".SH ENVIRONMENT", `\fB\-\-host H\fR`, `exec FILE|\- [\-\-continue]`} {
+	for _, want := range []string{".SH EXIT STATUS", ".SH ENVIRONMENT", `\fB\-\-host H\fR`, `exec FILE|\- [\-\-continue]`,
+		".SH HYPERDECK COMMANDS", ".SH VIDEOHUB COMMANDS", ".SH ULTIMATTE COMMANDS", "or \\fBultctl COMMAND\\fR;"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("lacks %q", want)
 		}
