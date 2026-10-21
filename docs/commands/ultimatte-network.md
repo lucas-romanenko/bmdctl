@@ -13,7 +13,7 @@ flags every command takes and the built-in commands.
 Set the keyer's network interface, and read it back once it has reapplied.
 
 ```
-bmdctl network set --address 192.168.1.20 --netmask 255.255.255.0
+bmdctl network set --address 192.168.1.42 --netmask 255.255.255.0
 bmdctl network set --gateway 192.168.1.1 --dns 192.168.1.1
 bmdctl network set --dhcp on
 ```

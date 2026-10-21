@@ -85,7 +85,7 @@ var ultExamples = map[string][]string{
 	"archive":      {"archive", "archive keyer-a.zip"},
 	"restore":      {"restore keyer-a.zip"},
 	"network show": {"network show", "network show --json"},
-	"network set":  {"network set --address 192.168.1.20 --netmask 255.255.255.0", "network set --gateway 192.168.1.1 --dns 192.168.1.1", "network set --dhcp on"},
+	"network set":  {"network set --address 192.168.1.42 --netmask 255.255.255.0", "network set --gateway 192.168.1.1 --dns 192.168.1.1", "network set --dhcp on"},
 	"connect":      {"connect 192.168.81.97", "connect"},
 }
 
