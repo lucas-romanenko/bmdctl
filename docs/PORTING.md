@@ -3159,7 +3159,10 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   maximal ill-formed subpart), blank heads are skipped, the code is read
   with a port of `int()` (signs, leading zeros, underscores, any script's
   decimal digits; beyond int32 it is malformed, where Python goes on with
-  a big integer), a head ending in a colon starts a block read to the first
+  a big integer; since phase 5 it strips as CPython's does, ASCII and
+  non-ASCII Unicode whitespace but not U+001C-U+001F, which
+  `internal/pytext`'s oracle found the first port stripping as
+  `str.strip()` does), a head ending in a colon starts a block read to the first
   empty line, and `params()` strips with Python's `str.strip()` (Unicode
   whitespace and U+001C-U+001F). The clip parsers split on single spaces
   from the right, as `_parse_disk_line` and `_parse_clips_v1_line` do; the
@@ -3389,6 +3392,117 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   through to the next clip, and nothing about a deck's timing is claimed.
   What a real deck answers to `goto: clip id: +1` on the last clip, or a
   goto beyond the timeline, is not known; the fake holds or refuses.
+
+## Videohub (`videohub/`)
+
+Phase 5. Ports bmdwire v1.6.0's `videohubwire/client.py`, the Videohub
+Ethernet Protocol on TCP 9990. videohubwire has no SURFACE.md, so
+`docs/SURFACE-videohub.md` inventories it, written from the code.
+
+API: `Dial(ctx, addr)`, `Dialer{DialContext, Logger}`; `Send(ctx, cmd)`,
+`Route`, `SetInputLabel`, `SetOutputLabel`, `Ping`; `State()`,
+`Snapshot()` (videohubwire's `state()`), `Subscribe()`, `Ready()`,
+`Connected()`, `Close()`, `Addr()`; a command type per block (`Route`,
+`InputLabel`, `OutputLabel`, `Ping`, each with `Block()`); `*Error`
+(videohubwire's `VideohubError`, its message) with `ErrRefused`,
+`ErrTimeout` and `ErrClosed` for `errors.Is`.
+
+- **atem.Session's shape, on a stream,** as hyperdeck's is: one owner
+  goroutine holds the writes, the commands waiting, the state and the
+  subscribers; one reader frames what the hub sends. videohubwire reads
+  only inside a call (`state()` drains for 50 ms); here the reader reads
+  all the time, so a push reaches the state when it comes and `Snapshot`
+  needs no drain.
+- **Answers are matched in order:** the hub answers every block with ACK
+  or NAK, other blocks between. Each command sent registers a waiter in
+  the owner step that writes it, and the next ACK or NAK is the oldest
+  waiter's; every other block is applied (and published). A NAK while a
+  ping waits is applied as a block, changing nothing, and the wait goes
+  on, as `ping()` does. On ACK the change is applied at once (the route,
+  the label as sent), before the hub's own broadcast, as videohubwire
+  does.
+- **Framing and parsing are ports, quirks included:** a block is the bytes
+  to the first `\n\n`, decoded as Python's `'replace'`; the header is the
+  first line stripped (so a stray blank line before a block loses it, and
+  CR LF never ends one: SURFACE-videohub.md §5.4 items 2 and 3); keys
+  stripped and `str.lower()`-ed, values stripped; indices and routes read
+  with Python's `int()` (signs, underscores, other scripts' digits), a
+  line that doesn't parse logged and skipped. The text rules are
+  `internal/pytext`'s: `Fields` is `str.split()` (the label cleaning),
+  `Lower` is `str.lower()`, with U+0130 and Final_Sigma as CPython has
+  them. `int()` beyond int64 skips the line, where Python goes on with a
+  big integer.
+- **Dial** connects with `ConnectTimeout` (3 s), and once more after 0.3 s
+  if that fails (videohubwire's cold-ARP retry), then reads the preamble
+  as `_read_preamble` does: to `END PRELUDE:`, or, once the device block
+  and a routing block have come, to 0.3 s without a block; before those
+  `ReadTimeout` (3 s) from the start, then `no state preamble from
+  <host> — is this a Videohub?`. The hub closing is `connection closed by
+  hub`. Ready is closed when Dial returns.
+- **Checks before sending** are videohubwire's, in its order and with its
+  messages, against the counts the state holds: a negative index, an
+  index at or past a count the device block gave, a label over 64
+  characters (code points) once whitespace is collapsed. A count `int()`
+  refuses is its `ValueError` message, not an `*Error`, as in Python.
+  Refusing a label that isn't UTF-8 is bmdctl's (Python's strings can't
+  hold one).
+- **State and pushes:** `State` is the six attributes, indices 0-based
+  as the wire's; `Name` is the friendly name, else the model. A block the
+  hub pushes after the preamble is published as a `Change` (`Key`
+  `routing`, `locks`, `input labels`, `output labels`, `device`,
+  `protocol`; `Values` what it carried, by index or key), each subscriber
+  its own copy, one 1024 behind closed and dropped. Blocks videohubwire
+  ignores are ignored and not published. Once the session has ended,
+  `State` returns what it held then.
+- **Deliberate differences**, each SURFACE-videohub.md §5.4 behaviour a
+  long-lived session can't keep:
+  - **A timeout ends the session** (§5.4 item 1): the hub's late answer
+    would otherwise be read as the next command's. The call returns
+    videohubwire's message (`timed out waiting for ACK routing 1 <- 3`),
+    matching `ErrTimeout`; the waiters behind it fail, the subscribers get
+    `ChangeDisconnected`. `TestATimeoutEndsTheSession`.
+  - **An answer to no command is dropped** (an ACK or NAK nobody waits
+    for), not kept for the next one; videohubwire's drain ignores one too,
+    but a call would have taken it. A context that ends first abandons the
+    wait and leaves the waiter, so its answer, when it comes, is dropped.
+    `TestAnAnswerToNothingIsDropped`, `TestALateAnswerIsDropped`.
+  - **After the session has ended** a call fails: `not connected` after
+    Close, as after `close()`, else why it ended.
+- **Verification.** `testdata/oracle/client.json` (`gen_client.py`)
+  records videohubwire v1.6.0's real client in 213 scripted sessions, 646
+  steps: the bytes sent, the result or exception, the six attributes after
+  each step and what it hadn't read. `TestClientMatchesVideohubwire`
+  replays each through a Session on a scripted hub that releases a call's
+  reply once the call is written (the session reads eagerly, and an early
+  ACK would be an answer to nothing), and compares bytes, results, errors
+  (class and message) and, where videohubwire had read everything, the
+  attributes. The generator leaves out the two things the differences
+  above change: a timeout is a session's last call, and no push holds an
+  ACK. `client_test.go` ports `test_videohubwire_client.py` one for one on
+  the fixtures copied from it (`testdata/fixtures`); `session_test.go`
+  tests what bmdctl adds. Nothing here has run against a hub.
+
+## Fake Videohub (`internal/fakevideohub`)
+
+- **A router on any `net.Conn`.** `Hub.Dial` is a `videohub.Dialer`'s
+  `DialContext`, one end of a `net.Pipe`; `Hub.Listen` serves loopback.
+  MIT. Each connection has its own writer goroutine, so a client that
+  stops reading holds up no other.
+- **What it holds:** a Smart Videohub 12G 16x16 named `Studio Router`,
+  protocol 2.8, sixteen labelled inputs (`Camera 1` ...) and outputs
+  (`Switcher 1` ...), output N routed from input N, nothing locked. Its
+  preamble is the six blocks, `CONFIGURATION:` and `END PRELUDE:`
+  (`NoMarker` leaves the marker off, as older firmware does).
+- **What it answers:** `PING:` ACK; a routing or label block ACK, if every
+  line's index (and a route's input) is in range and no route's output is
+  locked, else NAK and nothing changes; the request form (a header and no
+  body) ACK and the whole block; anything else NAK. Every change is pushed
+  to every connection, the one that made it too.
+- **Controls:** `Route` and `LockOutput` (another client's, pushed to
+  all), `Silence` (takes blocks, answers none), `Drop` (closes every
+  connection); `Commands`, `Routing`, `Labels` to look inside.
+- **Not a router model:** locks taken by bmdctl (`O`) aren't modelled,
+  since videohubwire never takes one; take mode is always off.
 
 ## Traps inherited from atemwire
 
