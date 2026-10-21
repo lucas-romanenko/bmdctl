@@ -3574,6 +3574,107 @@ type `videohub`, goes to a router through the engine.
 - **Not a router model:** locks taken by bmdctl (`O`) aren't modelled,
   since videohubwire never takes one; take mode is always off.
 
+## Ultimatte (`ultimatte/`)
+
+Phase 5. Ports bmdwire v1.6.0's `ultimattewire`, all of it:
+`_protocol.py` (the 9996 binary channel and the connect retry),
+`_preamble.py` (the 9998 prelude and its parsers), `network.py` (the 9998
+block protocol and the network interface) and `profile/` (archive,
+restore and the display ranges). ultimattewire has no SURFACE.md, so
+`docs/SURFACE-ultimatte.md` inventories it, written from the code.
+
+API: `Client{DialContext, ConnectTimeout, ReadTimeout, PreludeQuiet,
+ReplyQuiet, PreludeDrain, ReadbackTimeout, ReadbackPoll, RetryDelay}`
+with `ReadPrelude`, `BinaryRequest`, `UploadOne`, `Exchange`,
+`ReadNetwork`, `SetNetwork(ctx, host, index, NetworkSet)`,
+`Archive(ctx, host, now)`, `Restore(ctx, host, zip, step)`; the
+functions `ParseSection`, `ParseFileList`, `Label`, `ExtractLabel`,
+`ParseInterface`, `BuildBlock`, `SectionName`, `ToDisplay`,
+`AnnotatePreamble`, `Plan`; `Ranges`; `*Error{Class, Msg}` with
+`ErrRefused`, `ErrShort`, `ErrUnsettled`, `ErrValue` for `errors.Is`.
+
+- **Stateless, as ultimattewire is:** a `Client` keeps nothing; every
+  method opens the connections it needs (one per binary request, one per
+  text-channel exchange) and closes them. Its timings are its fields,
+  zero meaning ultimattewire's (5 s connect, 30 s for a write's ACK, 2 s
+  quiets, a 0.3 s drain, 15 s read-back every 0.5 s, 0.25 s before the
+  connect's one retry). A context bounds every read and write too: it
+  ending closes the connection's I/O at once (`context.AfterFunc`).
+- **Reads are ports, quirks included:** a read that times out is
+  Python's `socket.timeout` (caught where ultimattewire catches it, else
+  `*Error{Class: "TimeoutError", Msg: "timed out"}`); the unit closing is
+  an empty `recv`; text decodes as Python's `'replace'`. The two regexes
+  with lookahead and backtracking (`parse_section`'s, `extract_label`'s
+  `^Label:\s*(.+)$`, whose `\s*` crosses line ends) are scans that find
+  the match Python's would, on runes; `str.splitlines()`, `str.split()`,
+  `str.strip()`, `str.lower()`, `str.isdigit()`, `int()` and `float()`
+  are `internal/pytext`'s. CR LF preludes lose their sections, a `CONTROL`
+  value of `inf` fails an archive, and a superscript priority is
+  `ValueError`, as in Python (SURFACE-ultimatte.md §5.4).
+- **The archive's zip is CPython's** (3.12, checked): members in Smart
+  Remote's order, written with `zip.Writer.CreateRaw` so the headers are
+  zipfile's: no data descriptor, no extra field (Go's own writer adds an
+  extended timestamp), made by 2.0 on Unix, needing 2.0, flag 0x800 for a
+  name that isn't ASCII, directories stored and empty at 0o40755, files
+  deflated at the default level at 0o600, MS-DOS times from `now`. Only
+  the deflated bytes differ (Go's compressor, not zlib), which inflate to
+  the same; the oracle compares everything else. `Archive` takes `now`
+  where Python reads the clock.
+- **Restore** reads the zip as zipfile does: names in the central
+  directory's order, UTF-8 under flag 0x800 and code page 437 otherwise,
+  the last member of a name where there are two; only stored and deflated
+  members (zipfile also reads bzip2 and LZMA; Smart Remote writes
+  deflate). A member that can't be read fails the restore, as `zf.read`
+  raises outside the upload's `try`. Added for the engine: `step`, told
+  each member before it is pushed (for its `steps` notes), and `Plan`,
+  what a zip would push, for the confirmation.
+- **Network.** `NetworkSet` is `set_network`'s keywords (nil leaves a field
+  alone; an empty DNS list clears it). Its read-back runs on the Client's
+  clock, which tests move; `ReadbackTimeout` below zero is Python's
+  `readback_timeout=0` (one read-back, no wait), since zero means the
+  default. The never-settled message is Python's, the field names sorted
+  and quoted as `sorted(fields)` prints them and the timeout as `:g`.
+  `exchange` keeps the prelude it reads (internally), for the engine's
+  header to name a unit by its label without a connection more.
+- **Errors** are `*Error` with ultimattewire's class and message:
+  `IOError` (the binary channel, an empty prelude), `UltimatteNetworkError`
+  (a NAK, no ACK, never settled), `ValueError` (`set_network`'s refusals,
+  a priority), `TimeoutError`, `BadZipFile`, `OverflowError` (an inf
+  control value). A connection that can't be opened is the dialer's own
+  error, as Python's is the socket's.
+- **Verification.** `testdata/oracle/oracle.json` (`gen_oracle.py`)
+  records ultimattewire v1.6.0 itself: RANGES, 3,681 parser cases and 268
+  calls over scripted connections, each with its result or exception and
+  every connection's address, bytes sent and close; the archive's zip
+  member by member. `TestRangesMatchUltimattewire`,
+  `TestParsersMatchUltimattewire` and `TestCallsMatchUltimattewire`
+  replay them through the Go functions and a Client on the same scripts;
+  `client_test.go` ports the four test files one for one on the
+  fixtures copied from them. The range table itself is generated from
+  Python's (`ranges_table.go`). Nothing here has run against a unit.
+
+## Fake Ultimatte (`internal/fakeultimatte`)
+
+- **A keyer on any `net.Conn`:** `Unit.Dial` serves either port over a
+  `net.Pipe` (9998 the text channel, 9996 the binary one, anything else
+  refused); `Unit.Listen` serves both on loopback. MIT.
+- **What it holds:** an Ultimatte 12 4K labelled `Keyer A`, software 2.1,
+  three presets (`Green Screen`, `Blue Screen`, `Studio B`), the two
+  resources, and NETWORK INTERFACE 0 at 192.0.2.41/255.255.252.0. Its
+  prelude has the label, release, CONTROL values and FILE LIST, ending
+  `END PRELUDE:`; the connection stays open after it, as a unit's does.
+- **What it answers:** on 9998, `NETWORK INTERFACE 0`, empty as a query
+  (ACK and the section) or with fields as a set (ACK and the fields
+  echoed; NAK for an address without a dotted mask or an unknown field),
+  anything else NAK. An address set reapplies: the next read reports
+  `0.0.0.0/255.255.0.0`, the one after the new address. On 9996 one
+  request per connection: a preset's or resource's bytes (a slot it
+  hasn't is the connection closed), or a write's six zeros (none
+  without the trailing zero byte), the write kept.
+- **Controls:** `Down` (every connection refused: a unit re-addressed out
+  of reach), `RefuseNetwork` (NAK every block); `Writes`, `Blocks`,
+  `Presets`, `Static` to look inside.
+
 ## Traps inherited from atemwire
 
 Behaviour the port reproduces because bmdwire v1.3.0 has it, found while

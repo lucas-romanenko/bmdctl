@@ -1,0 +1,12 @@
+NETWORK INTERFACE 0:
+Name: BMD 10G Ethernet MAC
+Priority: 0
+MAC Address: 7c:2e:0d:00:00:01
+Dynamic IP: false
+Current Addresses: 192.0.2.98/255.255.252.0
+Current Gateway: 192.0.2.1
+Current DNS Servers: 
+Static Addresses: 192.0.2.98/255.255.252.0
+Static Gateway: 192.0.2.1
+Static DNS Servers:
+
