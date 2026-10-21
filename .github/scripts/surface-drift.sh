@@ -114,9 +114,12 @@ compare() {
 }
 
 compare docs/SURFACE-atem.md atemwire/docs/SURFACE.md required
-# hyperdeckwire has no SURFACE.md yet (docs/PORTING.md, "Source of
-# truth"); once bmdwire has one, make this required too.
+# hyperdeckwire, videohubwire and ultimattewire have no SURFACE.md yet
+# (docs/PORTING.md, "Source of truth"); once bmdwire has one, make its
+# comparison required too.
 compare docs/SURFACE-hyperdeck.md hyperdeckwire/docs/SURFACE.md optional
+compare docs/SURFACE-videohub.md videohubwire/docs/SURFACE.md optional
+compare docs/SURFACE-ultimatte.md ultimattewire/docs/SURFACE.md optional
 
 if [ "$drift" -eq 0 ]; then
 	exit 0
