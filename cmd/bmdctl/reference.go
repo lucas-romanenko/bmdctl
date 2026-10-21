@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
 )
 
@@ -237,11 +238,14 @@ func manPage(r *table.Registry) string {
 	var b strings.Builder
 	v := strings.TrimPrefix(versionString(), "bmdctl ")
 	fmt.Fprintf(&b, ".TH BMDCTL 1 \"\" \"bmdctl %s\" \"User Commands\"\n", roff(v))
-	b.WriteString(".SH NAME\nbmdctl \\- control Blackmagic Design ATEM switchers\n")
-	b.WriteString(".SH SYNOPSIS\n.B bmdctl\n[\\fIHOST\\fR] [\\fB\\-\\-host\\fR \\fIH\\fR] [\\fB\\-\\-json\\fR|\\fB\\-\\-quiet\\fR] [\\fB\\-\\-yes\\fR] [\\fBatem\\fR] \\fIcommand\\fR [\\fIarguments\\fR] [\\fB\\-\\-flag\\fR \\fIvalue\\fR ...]\n")
-	b.WriteString(".SH DESCRIPTION\nbmdctl sends commands to ATEM switchers over their UDP protocol and reads back their state. " +
-		"Commands run through a background engine that keeps a session open to each switcher; the first command starts it. " +
-		"A command that the switcher reports back is confirmed; one without such an echo is sent and left.\n")
+	b.WriteString(".SH NAME\nbmdctl \\- control Blackmagic Design ATEM switchers, HyperDeck recorders, Videohub routers and Ultimatte keyers\n")
+	b.WriteString(".SH SYNOPSIS\n.B bmdctl\n[\\fIHOST\\fR] [\\fB\\-\\-host\\fR \\fIH\\fR] [\\fB\\-\\-json\\fR|\\fB\\-\\-quiet\\fR] [\\fB\\-\\-yes\\fR] [\\fIdevice\\fR] \\fIcommand\\fR [\\fIarguments\\fR] [\\fB\\-\\-flag\\fR \\fIvalue\\fR ...]\n")
+	b.WriteString(".SH DESCRIPTION\nbmdctl sends commands to Blackmagic Design devices over their own protocols " +
+		"(UDP 9910 to an ATEM switcher, TCP to a HyperDeck, a Videohub or an Ultimatte) and reads back their state. " +
+		"Commands run through a background engine that keeps a session open to each switcher, deck and router; " +
+		"the first command starts it. A command that the device reports back is confirmed; one without such an echo is sent and left. " +
+		"A host's device decides which commands it takes; a device word (\\fBatem\\fR, \\fBhyperdeck\\fR, \\fBvideohub\\fR, " +
+		"\\fBultimatte\\fR) before the command names one.\n")
 	items := func(title string, list []refItem, bold bool) {
 		fmt.Fprintf(&b, ".SH %s\n", title)
 		for _, it := range list {
@@ -255,13 +259,42 @@ func manPage(r *table.Registry) string {
 	items("OPTIONS", refGlobalFlags, true)
 	items("BUILT-IN COMMANDS", refBuiltins, true)
 	items("CONVENTIONS", refNotes, false)
-	b.WriteString(".SH ATEM COMMANDS\n")
-	for _, e := range r.Entries("atem") {
-		fmt.Fprintf(&b, ".SS \"%s\"\n%s\n", roff(e.Usage()), roff(e.Summary))
+	for _, d := range r.Devices() {
+		manDevice(&b, r, d)
+	}
+	items("EXIT STATUS", refExit, true)
+	items("ENVIRONMENT", refEnv, true)
+	items("FILES", refFiles, true)
+	b.WriteString(".SH SEE ALSO\nThe docs directory of the bmdctl source: COMMANDS.md, PORTING.md, SURFACE\\-atem.md, " +
+		"SURFACE\\-hyperdeck.md, SURFACE\\-videohub.md, SURFACE\\-ultimatte.md.\n")
+	return b.String()
+}
+
+// manDevice is a device's section of the man page: its commands, as
+// docs/COMMANDS.md has them, an ATEM's without the device word (the
+// default), another's with it and its alias said once.
+func manDevice(b *strings.Builder, r *table.Registry, device string) {
+	name := engine.DeviceNames[device]
+	fmt.Fprintf(b, ".SH %s COMMANDS\n", strings.ToUpper(name))
+	prefix := ""
+	if device != "atem" {
+		prefix = device + " "
+		alias := ""
+		for a, d := range aliases {
+			if d == device {
+				alias = a
+			}
+		}
+		fmt.Fprintf(b, ".PP\n%s\n", roff(fmt.Sprintf("For a host that is %s %s: `bmdctl %s COMMAND`, or `%s COMMAND`; "+
+			"with --host naming such a host, the device word may be left out, as the examples do.",
+			engine.DeviceArticle(device), name, device, alias)))
+	}
+	for _, e := range r.Entries(device) {
+		fmt.Fprintf(b, ".SS \"%s\"\n%s\n", roff(prefix+e.Usage()), roff(e.Summary))
 		if len(e.Examples) > 0 {
 			b.WriteString(".PP\n.nf\n.RS\n")
 			for _, ex := range e.Examples {
-				fmt.Fprintf(&b, "bmdctl %s\n", roff(ex))
+				fmt.Fprintf(b, "bmdctl %s\n", roff(ex))
 			}
 			b.WriteString(".RE\n.fi\n")
 		}
@@ -282,7 +315,7 @@ func manPage(r *table.Registry) string {
 			notes = append(notes, "Echo: "+e.Echo+".")
 		}
 		if len(notes) > 0 {
-			fmt.Fprintf(&b, ".PP\n%s\n", roff(strings.Join(notes, " ")))
+			fmt.Fprintf(b, ".PP\n%s\n", roff(strings.Join(notes, " ")))
 		}
 		for _, p := range e.Ordered() {
 			need := ""
@@ -292,19 +325,14 @@ func manPage(r *table.Registry) string {
 			case !p.Required && e.Positional(p.Name):
 				need = " (optional)"
 			}
-			fmt.Fprintf(&b, ".TP\n\\fB%s\\fR \\fI%s\\fR%s\n%s\n", roff(e.Shown(p.Name)), roff(paramValue(p)), roff(need), roff(p.Help))
+			fmt.Fprintf(b, ".TP\n\\fB%s\\fR \\fI%s\\fR%s\n%s\n", roff(e.Shown(p.Name)), roff(paramValue(p)), roff(need), roff(p.Help))
 			if len(p.Names) > 0 {
 				var ns []string
 				for _, n := range p.SortedNames() {
 					ns = append(ns, fmt.Sprintf("%s=%d", n, p.Names[n]))
 				}
-				fmt.Fprintf(&b, "Values: %s.\n", roff(strings.Join(ns, ", ")))
+				fmt.Fprintf(b, "Values: %s.\n", roff(strings.Join(ns, ", ")))
 			}
 		}
 	}
-	items("EXIT STATUS", refExit, true)
-	items("ENVIRONMENT", refEnv, true)
-	items("FILES", refFiles, true)
-	b.WriteString(".SH SEE ALSO\nThe docs directory of the bmdctl source: COMMANDS.md, PORTING.md, SURFACE\\-atem.md.\n")
-	return b.String()
 }
