@@ -13,6 +13,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/hyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
+	"github.com/lucas-romanenko/bmdctl/videohub"
 )
 
 // call is one request on its way through the engine.
@@ -32,6 +33,9 @@ type call struct {
 	// Set for a request to a HyperDeck (hyperdeck.go).
 	deck   *hyperdeck.Session
 	dstate hyperdeck.State // as the request found it
+	// Set for a request to a Videohub (videohub.go).
+	hub    *videohub.Session
+	hstate videohub.State // as the request found it
 	res    table.Resolver
 	// noInput is what a source that named nothing could have been, for
 	// a note if the arguments don't parse.
@@ -434,6 +438,9 @@ func RegisterOperations(r *table.Registry) error {
 		return err
 	}
 	if err := registerDeckOperations(r); err != nil {
+		return err
+	}
+	if err := registerHubOperations(r); err != nil {
 		return err
 	}
 	// input list, inputs' name before the first hardware session's

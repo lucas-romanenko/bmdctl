@@ -22,6 +22,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/hosts"
 	"github.com/lucas-romanenko/bmdctl/internal/paths"
+	"github.com/lucas-romanenko/bmdctl/videohub"
 )
 
 const doctorUsage = `usage: bmdctl doctor [--json]
@@ -304,8 +305,11 @@ func (c *cli) doctorReach(f *hosts.File, st *engine.Status, add func(name, statu
 func (c *cli) reach(h hosts.Host, st *engine.Status) (status, detail string) {
 	ctx, cancel := context.WithTimeout(c.ctx, doctorTimeout)
 	defer cancel()
-	if h.Device == "hyperdeck" {
+	switch h.Device {
+	case "hyperdeck":
 		return c.reachDeck(ctx, h, st)
+	case "videohub":
+		return c.reachHub(ctx, h, st)
 	}
 	if h.Device != "atem" {
 		port, ok := devicePorts[h.Device]
@@ -373,6 +377,38 @@ func (c *cli) reachDeck(ctx context.Context, h hosts.Host, st *engine.Status) (s
 		detail += ", software " + info["software version"]
 	}
 	return "ok", detail
+}
+
+// reachHub checks a Videohub: through the engine's session if it has
+// one, else by reading its preamble.
+func (c *cli) reachHub(ctx context.Context, h hosts.Host, st *engine.Status) (status, detail string) {
+	addr := h.Address
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		addr = net.JoinHostPort(addr, fmt.Sprint(videohub.DefaultPort))
+	}
+	if st != nil {
+		for _, s := range st.Sessions {
+			if hosts.SameAddress(s.Host, addr) && s.Device == "videohub" && s.Ready {
+				return "ok", "the engine's session is ready: " + s.Product
+			}
+		}
+	}
+	d := videohub.Dialer{DialContext: func(ctx context.Context, _, a string) (net.Conn, error) { return c.dialTCP(ctx, a) }}
+	s, err := d.Dial(ctx, addr)
+	var ve *videohub.Error
+	switch {
+	case errors.As(err, &ve):
+		return "fail", fmt.Sprintf("TCP %s answers, but not as a Videohub: %v", addr, err)
+	case err != nil:
+		return "unreachable", fmt.Sprintf("nothing answers on TCP %s: %v", addr, unwrapNet(err))
+	}
+	defer s.Close()
+	snap, err := s.Snapshot()
+	if err != nil {
+		return "fail", fmt.Sprintf("TCP %s answers as a Videohub, but its device block has %v", addr, err)
+	}
+	return "ok", fmt.Sprintf("%s, %d x %d, protocol %s", snap.Device.ModelName, snap.Device.VideoInputs,
+		snap.Device.VideoOutputs, snap.Device.ProtocolVersion)
 }
 
 // hostKeyOf is the engine's session key for an address.

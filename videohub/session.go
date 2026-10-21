@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -428,6 +429,7 @@ func (s *Session) Send(ctx context.Context, c Command) error {
 		timeout = max(time.Until(dl), 0)
 	}
 	var err error
+	w := &waiter{cmd: c, deadline: time.Now().Add(timeout), ch: ch}
 	if derr := s.do(func() {
 		if err = check(c, s.state); err != nil {
 			return
@@ -437,7 +439,7 @@ func (s *Session) Send(ctx context.Context, c Command) error {
 			s.fail(err)
 			return
 		}
-		s.pending = append(s.pending, &waiter{cmd: c, deadline: time.Now().Add(timeout), ch: ch})
+		s.pending = append(s.pending, w)
 	}); derr != nil {
 		return derr
 	}
@@ -448,7 +450,25 @@ func (s *Session) Send(ctx context.Context, c Command) error {
 	case err := <-ch:
 		return err
 	case <-ctx.Done():
-		return ctx.Err()
+		if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return ctx.Err()
+		}
+		// The deadline is the waiter's: the session ends now, not at the
+		// owner's next tick, or a command sent meanwhile would take this
+		// one's answer.
+		msg, _ := what(c)
+		timedOut := &Error{Msg: msg, kind: ErrTimeout}
+		s.do(func() {
+			if slices.Contains(s.pending, w) {
+				s.fail(timedOut)
+			}
+		})
+		select {
+		case err := <-ch:
+			return err
+		default:
+			return timedOut
+		}
 	}
 }
 

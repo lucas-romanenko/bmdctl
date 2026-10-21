@@ -78,8 +78,11 @@ func TestAliases(t *testing.T) {
 	if code, out, _ := b.runAs("atemctl", "--host", "192.0.2.10", "program", "2"); code != 0 || !strings.Contains(out, "program") {
 		t.Errorf("atemctl program: %d %q", code, out)
 	}
-	if code, out, _ := b.runAs("vhctl"); code != 0 || !strings.Contains(out, "bmdctl has no Videohub commands yet") {
+	if code, out, _ := b.runAs("vhctl"); code != 0 || !strings.Contains(out, "usage: vhctl <command>") || !strings.Contains(out, "route <output> <input>") {
 		t.Errorf("vhctl: %d %q", code, out)
+	}
+	if code, out, _ := b.runAs("ultctl"); code != 0 || !strings.Contains(out, "bmdctl has no Ultimatte commands yet") {
+		t.Errorf("ultctl: %d %q", code, out)
 	}
 	// Completion completes the device's line.
 	if code, out, _ := b.runAs("hdctl", "__complete", "pl"); code != 0 || out != "play\n" {

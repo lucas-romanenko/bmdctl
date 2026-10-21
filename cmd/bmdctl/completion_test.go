@@ -64,7 +64,9 @@ func TestComplete(t *testing.T) {
 		{[]string{"hyperdeck", ""}, []string{"clips", "connect", "disconnect", "goto", "loop", "next", "play", "prev",
 			"record", "slot", "state", "status", "stop", "watch"}},
 		{[]string{"hyperdeck", "play", "--s"}, []string{"--single-clip", "--speed"}},
-		{[]string{"videohub", ""}, nil},
+		{[]string{"videohub", ""}, []string{"connect", "disconnect", "input", "inputs", "output", "outputs", "route", "state", "status", "watch"}},
+		{[]string{"videohub", "input", ""}, []string{"rename"}},
+		{[]string{"ultimatte", ""}, nil},
 	} {
 		if got := complete(c.args...); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%q: %q, want %q", c.args, got, c.want)

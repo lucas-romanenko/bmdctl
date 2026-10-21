@@ -34,6 +34,7 @@ type printer struct {
 	stdoutUsed bool     // a file went to stdout: print nothing else there
 	watch      *watchView
 	deckWatch  *deckWatch       // a HyperDeck's watch (deck.go)
+	hubWatch   *hubWatch        // a Videohub's watch (hub.go)
 	sw         *engine.Switcher // the switcher, from the engine's note
 	vals       []engine.Value   // what the command set, from its note
 	connected  bool             // this request opened the session
@@ -491,10 +492,13 @@ func flagTag(name, v string) string {
 	return ""
 }
 
-// shortAddress is an address as a line shows it: without the ATEM's or
-// the HyperDeck's default port.
+// shortAddress is an address as a line shows it: without the ATEM's,
+// the HyperDeck's or the Videohub's default port.
 func shortAddress(addr string) string {
-	return strings.TrimSuffix(strings.TrimSuffix(addr, ":9910"), ":9993")
+	for _, p := range []string{":9910", ":9993", ":9990"} {
+		addr = strings.TrimSuffix(addr, p)
+	}
+	return addr
 }
 
 // since is a duration as a person reads it: 12s, 3m12s, 1h04m.

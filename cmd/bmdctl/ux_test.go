@@ -177,7 +177,7 @@ func TestChangeColumn(t *testing.T) {
 // commands for, not every device but an ATEM.
 func TestOverviewHasCommands(t *testing.T) {
 	c := newCLI(io.Discard, io.Discard)
-	for device, want := range map[string]bool{"": true, "atem": true, "hyperdeck": true, "videohub": false, "ultimatte": false} {
+	for device, want := range map[string]bool{"": true, "atem": true, "hyperdeck": true, "videohub": true, "ultimatte": false} {
 		if got := c.hasCommands(device); got != want {
 			t.Errorf("hasCommands(%q) = %v, want %v", device, got, want)
 		}

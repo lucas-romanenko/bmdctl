@@ -43,7 +43,8 @@ print, encode or serve the same response.
 | `atem/macro` | LGPL-3.0 | The macro bytecode codec |
 | `atem/profile` | LGPL-3.0 | Profile save and apply, ATEM Software Control's XML |
 | `hyperdeck` | MIT | The HyperDeck Ethernet Protocol: session, state from notifications, commands |
-| `videohub`, `ultimatte` | MIT | Package docs only, until phase 5 |
+| `videohub` | MIT | The Videohub Ethernet Protocol: session, the preamble and pushed blocks, routing and labels |
+| `ultimatte` | MIT | Package docs only, until phase 5 brings it |
 | `internal/table` | MIT | The command table every device fills |
 | `internal/engine` | MIT | The background engine, its socket protocol and the operations |
 | `internal/hosts` | MIT | hosts.yml: reading, writing, resolving a name |
