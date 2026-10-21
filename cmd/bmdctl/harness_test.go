@@ -238,10 +238,12 @@ func runCLI(args ...string) (code int, stdout, stderr string) {
 	return code, o.String(), e.String()
 }
 
-// eventually polls f until it is true or a few seconds pass.
+// eventually waits up to 15 s for f: a CI runner under -race can take
+// seconds over what a desk does (each command a fresh CLI hashes this
+// test binary for its build), and only a failing test waits it out.
 func eventually(t *testing.T, what string, f func() bool) {
 	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); !f(); {
+	for deadline := time.Now().Add(15 * time.Second); !f(); {
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting for %s", what)
 		}
