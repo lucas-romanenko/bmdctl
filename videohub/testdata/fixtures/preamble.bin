@@ -1,0 +1,38 @@
+PROTOCOL PREAMBLE:
+Version: 2.7
+
+VIDEOHUB DEVICE:
+Device present: true
+Model name: Blackmagic Smart Videohub 40 x 40
+Friendly name: Test Hub
+Unique ID: 0123456789AB
+Video inputs: 4
+Video processing units: 0
+Video outputs: 4
+Video monitoring outputs: 0
+Serial ports: 0
+
+INPUT LABELS:
+0 Camera 1
+1 Camera 2
+2 Replay Out
+3 
+
+OUTPUT LABELS:
+0 Monitor A
+1 Switcher In 1
+2 Stream Enc
+3 
+
+VIDEO OUTPUT LOCKS:
+0 U
+1 L
+2 O
+3 U
+
+VIDEO OUTPUT ROUTING:
+0 0
+1 2
+2 1
+3 3
+
