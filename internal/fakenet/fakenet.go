@@ -2,8 +2,8 @@
 
 // Package fakenet is a network of fake devices for tests: it answers the
 // device probe's two ways of asking an address (engine.Config's ProbeATEM
-// and ProbeDial), and dials the fake HyperDecks, so nothing leaves the
-// process.
+// and ProbeDial), and dials the fake HyperDecks and Videohubs, so
+// nothing leaves the process.
 package fakenet
 
 import (
@@ -17,6 +17,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
 	"github.com/lucas-romanenko/bmdctl/internal/fakehyperdeck"
+	"github.com/lucas-romanenko/bmdctl/internal/fakevideohub"
 )
 
 // VideohubPreamble is the start of a Videohub's state dump, as
@@ -39,6 +40,7 @@ type Net struct {
 	absent     map[string]bool
 	atems      map[string]bool
 	decks      map[string]*fakehyperdeck.Deck
+	hubs       map[string]*fakevideohub.Hub
 	videohubs  map[string]string
 	ultimattes map[string]string
 }
@@ -46,7 +48,7 @@ type Net struct {
 // New returns an empty network: nothing answers anywhere.
 func New() *Net {
 	return &Net{absent: map[string]bool{}, atems: map[string]bool{}, decks: map[string]*fakehyperdeck.Deck{},
-		videohubs: map[string]string{}, ultimattes: map[string]string{}}
+		hubs: map[string]*fakevideohub.Hub{}, videohubs: map[string]string{}, ultimattes: map[string]string{}}
 }
 
 // EveryATEM puts a switcher at every host that holds no other device.
@@ -73,7 +75,17 @@ func (n *Net) DeckAt(host string) *fakehyperdeck.Deck {
 	return n.decks[host]
 }
 
-// Videohub puts a router at host that sends preamble on 9990.
+// Hub puts a fake Videohub at host and returns it: it answers on 9990
+// as a router does, where Videohub's stand-in only sends a preamble.
+func (n *Net) Hub(host string, h *fakevideohub.Hub) *fakevideohub.Hub {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.hubs[host] = h
+	return h
+}
+
+// Videohub puts a router at host that sends preamble on 9990, and does
+// nothing more: enough for the device probe.
 func (n *Net) Videohub(host, preamble string) {
 	n.mu.Lock()
 	n.videohubs[host] = preamble
@@ -92,7 +104,8 @@ func (n *Net) Ultimatte(host, prelude string) {
 func (n *Net) ProbeATEM(ctx context.Context, addr string) error {
 	host, _, _ := net.SplitHostPort(addr)
 	n.mu.Lock()
-	ok := n.atems[host] || n.everyATEM && !n.absent[host] && n.decks[host] == nil && n.videohubs[host] == "" && n.ultimattes[host] == ""
+	ok := n.atems[host] || n.everyATEM && !n.absent[host] && n.decks[host] == nil && n.hubs[host] == nil &&
+		n.videohubs[host] == "" && n.ultimattes[host] == ""
 	n.mu.Unlock()
 	if !ok {
 		return atem.ErrNoSwitcher
@@ -109,12 +122,14 @@ func (n *Net) Dial(ctx context.Context, network, addr string) (net.Conn, error) 
 	}
 	port, _ := strconv.Atoi(ps)
 	n.mu.Lock()
-	deck, hub, keyer := n.decks[host], n.videohubs[host], n.ultimattes[host]
+	deck, router, hub, keyer := n.decks[host], n.hubs[host], n.videohubs[host], n.ultimattes[host]
 	n.mu.Unlock()
 	text := ""
 	switch {
 	case port == 9993 && deck != nil:
 		return deck.Dial(ctx, network, addr)
+	case port == 9990 && router != nil:
+		return router.Dial(ctx, network, addr)
 	case port == 9990 && hub != "":
 		text = hub
 	case port == 9998 && keyer != "":

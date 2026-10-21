@@ -3,7 +3,8 @@
 package mcp
 
 // The tools: one per command group of the table (atem.Groups,
-// hyperdeck.Groups: atem_switching, atem_usk, hyperdeck_transport, ...),
+// hyperdeck.Groups, videohub.Groups: atem_switching, atem_usk,
+// hyperdeck_transport, videohub_routing, ...),
 // the subcommand a parameter whose enum is the group's commands, the
 // other parameters theirs; list_hosts; and wait_for_change (wait.go).
 
@@ -43,6 +44,8 @@ var readOnly = map[string]bool{
 	"atem macro decode": true, "atem macro encode": true, "atem watch": true, "atem connect": true, "atem disconnect": true,
 	"hyperdeck status": true, "hyperdeck clips": true, "hyperdeck state": true, "hyperdeck watch": true,
 	"hyperdeck connect": true, "hyperdeck disconnect": true,
+	"videohub status": true, "videohub outputs": true, "videohub inputs": true, "videohub state": true,
+	"videohub watch": true, "videohub connect": true, "videohub disconnect": true,
 }
 
 // asksFirst are the entries that are not destructive but can be, by
@@ -75,7 +78,7 @@ var hostProp = table.Schema{"type": "string",
 
 func tools(reg *table.Registry) []tool {
 	out := []tool{{Name: "list_hosts", Title: "List hosts", special: "list_hosts",
-		Description: "The devices bmdctl knows (hosts.yml): each one's name, alias (a short name it goes by as well), address and type (atem, hyperdeck, videohub, ultimatte), and the default host. Call it first to learn what a host argument can be, and which tools a host takes: an atem host the atem_ tools, a hyperdeck host the hyperdeck_ tools.",
+		Description: "The devices bmdctl knows (hosts.yml): each one's name, alias (a short name it goes by as well), address and type (atem, hyperdeck, videohub, ultimatte), and the default host. Call it first to learn what a host argument can be, and which tools a host takes: an atem host the atem_ tools, a hyperdeck host the hyperdeck_ tools, a videohub host the videohub_ tools.",
 		InputSchema: table.Schema{"type": "object", "properties": table.Schema{}, "additionalProperties": false},
 		Annotations: map[string]any{"title": "List hosts", "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}},
 		waitTool}

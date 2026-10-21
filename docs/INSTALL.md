@@ -195,7 +195,7 @@ Run under another name, bmdctl is the command for one device:
 |---|---|---|
 | `atemctl` | `bmdctl atem` | `atemctl cut` |
 | `hdctl` | `bmdctl hyperdeck` | `hdctl --host "Deck 1" play --loop` |
-| `vhctl` | `bmdctl videohub` | no commands yet |
+| `vhctl` | `bmdctl videohub` | `vhctl route "Monitor A" "Camera 3"` |
 | `ultctl` | `bmdctl ultimatte` | no commands yet |
 
 bmdctl reads the name it was started as (case and `.exe` ignored), so

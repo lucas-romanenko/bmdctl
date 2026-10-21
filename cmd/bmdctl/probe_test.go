@@ -10,14 +10,15 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 	"github.com/lucas-romanenko/bmdctl/internal/fakehyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/fakenet"
+	"github.com/lucas-romanenko/bmdctl/internal/fakevideohub"
 )
 
 // devices puts one of each device on the bench's network: the ATEM at
-// fakeatem's address, a deck, a Videohub, an Ultimatte, and nothing at
-// 192.0.2.99.
+// fakeatem's address, a deck, a Videohub named Test Hub, an Ultimatte,
+// and nothing at 192.0.2.99.
 func devices(b *bench) {
 	b.net.Deck(fakehyperdeck.Address, fakehyperdeck.New())
-	b.net.Videohub("192.0.2.30", fakenet.VideohubPreamble)
+	b.net.Hub("192.0.2.30", fakevideohub.New()).Name = "Test Hub"
 	b.net.Ultimatte("192.0.2.40", fakenet.UltimattePrelude)
 	b.net.Absent("192.0.2.99")
 }
@@ -28,7 +29,7 @@ func TestConnectAsksTheAddress(t *testing.T) {
 	b := newBench(t)
 	devices(b)
 	for _, c := range []struct{ addr, device, name, line string }{
-		{"192.0.2.30", "videohub", "Test Hub", `Test Hub (192.0.2.30)  Videohub  saved as "Test Hub", the default; bmdctl has no Videohub commands yet`},
+		{"192.0.2.30", "videohub", "Test Hub", ""}, // its connect: a session, pinned
 		{"192.0.2.40", "ultimatte", "Keyer A", `Keyer A (192.0.2.40)  Ultimatte  saved as "Keyer A", the default; bmdctl has no Ultimatte commands yet`},
 		{"192.0.2.10", "atem", "ATEM 1 M/E Constellation HD", ""},
 	} {
@@ -44,11 +45,12 @@ func TestConnectAsksTheAddress(t *testing.T) {
 	}
 	// What a host is decides where its commands go.
 	code, _, errOut := b.run("--host", "test hub", "program", "2")
-	if code != exitUsage || !strings.Contains(errOut, "Test Hub (192.0.2.30) is a Videohub; bmdctl has no Videohub commands yet") {
+	if code != exitUsage || !strings.Contains(errOut, "Test Hub (192.0.2.30) is a Videohub; bmdctl videohub --help") {
 		t.Errorf("%d %q", code, errOut)
 	}
-	// --type says what it is, without asking: the host is retyped.
-	b.must("connect", "192.0.2.40", "--type", "videohub")
+	// --type says what it is, without asking: the host is retyped, and
+	// then connected to as that (no Videohub answers there).
+	b.run("connect", "192.0.2.40", "--type", "videohub")
 	if h := b.hostsFile(t).FindAddress("192.0.2.40"); h.Device != "videohub" {
 		t.Errorf("--type: %+v", h)
 	}
@@ -64,7 +66,8 @@ func TestConnectAsksTheAddress(t *testing.T) {
 		!strings.Contains(errOut, "(bmdctl connect ADDRESS --type DEVICE connects without asking)") {
 		t.Errorf("%d %q", code, errOut)
 	}
-	// --json has what was found and saved.
+	// --json, for a device bmdctl has no commands for, has what was
+	// found and saved.
 	var r struct {
 		OK     bool `json:"ok"`
 		Result struct {
@@ -72,11 +75,23 @@ func TestConnectAsksTheAddress(t *testing.T) {
 			Saved string `json:"saved"`
 		} `json:"result"`
 	}
-	b.net.Videohub("192.0.2.31", strings.Replace(fakenet.VideohubPreamble, "Test Hub", "Hub 2", 1))
-	json.Unmarshal([]byte(b.must("--json", "connect", "192.0.2.31")), &r)
-	if !r.OK || r.Result.Device != "videohub" || r.Result.Name != "Hub 2" || r.Result.Saved != "Hub 2" ||
-		r.Result.Model != "Blackmagic Smart Videohub 40 x 40" {
+	b.net.Ultimatte("192.0.2.41", strings.Replace(fakenet.UltimattePrelude, "Keyer A", "Keyer B", 1))
+	json.Unmarshal([]byte(b.must("--json", "connect", "192.0.2.41")), &r)
+	if !r.OK || r.Result.Device != "ultimatte" || r.Result.Name != "Keyer B" || r.Result.Saved != "Keyer B" {
 		t.Errorf("%+v", r)
+	}
+	// A Videohub's is its session's, as a switcher's is, and it is saved
+	// by the name it gives.
+	var s struct {
+		OK     bool                 `json:"ok"`
+		Result engine.SessionStatus `json:"result"`
+	}
+	b.net.Hub("192.0.2.31", fakevideohub.New()).Name = "Hub 2"
+	json.Unmarshal([]byte(b.must("--json", "connect", "192.0.2.31")), &s)
+	f := b.hostsFile(t)
+	if h := f.FindAddress("192.0.2.31"); !s.OK || s.Result.Device != "videohub" || s.Result.Product != "Blackmagic Smart Videohub 12G 16x16" ||
+		!s.Result.Ready || h == nil || h.Name != "Hub 2" || f.Default != "Hub 2" {
+		t.Errorf("%+v, host %+v, default %q", s, h, f.Default)
 	}
 }
 
@@ -113,7 +128,7 @@ func TestHelpListsTheDevicesThere(t *testing.T) {
 	}
 	b.must("connect", "192.0.2.30")
 	out = b.must("help")
-	if !strings.Contains(out, "  videohub    a Videohub router (no commands yet)") ||
+	if !strings.Contains(out, "  videohub    a Videohub router's commands: route, status, inputs, outputs, input rename, ...") ||
 		!strings.Contains(out, "also atem, hyperdeck, ultimatte (none in hosts.yml)") {
 		t.Errorf("a videohub:\n%s", out)
 	}

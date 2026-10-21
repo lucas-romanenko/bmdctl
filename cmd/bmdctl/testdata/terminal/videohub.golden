@@ -1,0 +1,100 @@
+$ bmdctl connect 192.0.2.31
+<b>Studio Router</>  <dim>Blackmagic Smart Videohub 12G 16x16 · connected # ms</>
+  <b>saved as "Studio Router", now the default</>
+
+$ bmdctl --host studio router status
+<b>Studio Router</>  <dim>16 × 16 · 1 output locked</>
+
+  <dim> 1</>  Switcher 1      Camera 1
+  <dim> 2</>  Switcher 2      Camera 2
+  <dim> 3</>  Switcher 3      Camera 3
+  <dim> 4</>  Switcher 4      Camera 4
+  <dim> 5</>  Monitor A       Replay
+  <dim> 6</>  Monitor B       Graphics
+  <dim> 7</>  Stream Encoder  Program
+  <dim> 8</>  Recorder 1      Preview
+  <dim> 9</>  Recorder 2      Multiview
+  <dim>10</>  Projector       Playback 1
+  <dim>11</>  Wall 1          Playback 2
+  <dim>12</>  Wall 2          Studio Feed
+  <dim>13</>  Truck           Remote 1
+  <dim>14</>  Spare 1         Remote 2
+  <dim>15</>  Spare 2         Bars
+  <dim>16</>  Test            Black                                       <dim>locked</>
+
+$ bmdctl --host studio router inputs
+<b>Studio Router</>  <dim>16 inputs</>
+
+  <dim> 1</>  Camera 1     <dim>to 1</>
+  <dim> 2</>  Camera 2     <dim>to 2</>
+  <dim> 3</>  Camera 3     <dim>to 3</>
+  <dim> 4</>  Camera 4     <dim>to 4</>
+  <dim> 5</>  Replay       <dim>to 5</>
+  <dim> 6</>  Graphics     <dim>to 6</>
+  <dim> 7</>  Program      <dim>to 7</>
+  <dim> 8</>  Preview      <dim>to 8</>
+  <dim> 9</>  Multiview    <dim>to 9</>
+  <dim>10</>  Playback 1   <dim>to 10</>
+  <dim>11</>  Playback 2   <dim>to 11</>
+  <dim>12</>  Studio Feed  <dim>to 12</>
+  <dim>13</>  Remote 1     <dim>to 13</>
+  <dim>14</>  Remote 2     <dim>to 14</>
+  <dim>15</>  Bars         <dim>to 15</>
+  <dim>16</>  Black        <dim>to 16</>
+
+$ bmdctl --host studio router route 5 7
+<b>Studio Router</>
+  route Monitor A  Replay → Program                                 <dim># ms</>
+
+$ bmdctl --host studio router route monitor a prog
+<b>Studio Router</>
+  route Monitor A  Program                                       <dim>already</>
+
+$ bmdctl --host studio router route projector graphics
+<b>Studio Router</>
+  route Projector  Playback 1 → Graphics                            <dim># ms</>
+
+$ bmdctl --host studio router output rename 5 Director
+<b>Studio Router</>
+  output rename 5  Monitor A → Director                             <dim># ms</>
+
+$ bmdctl --host studio router input rename camera 3 Wide Shot
+<b>Studio Router</>
+  input rename 3  Camera 3 → Wide Shot                              <dim># ms</>
+
+$ bmdctl --host studio router route spare 1
+! <red>error</>  output "spare" could be 14 "Spare 1", 15 "Spare 2": give more of…
+[exit 1]
+
+$ bmdctl --host studio router route 16 1
+! <red>error</>  the router refused: output 16 "Test" is locked by another client
+[exit 4]
+
+$ bmdctl --host studio router outputs
+<b>Studio Router</>  <dim>16 outputs</>
+
+  <dim> 1</>  Switcher 1      Camera 1
+  <dim> 2</>  Switcher 2      Camera 2
+  <dim> 3</>  Switcher 3      Wide Shot
+  <dim> 4</>  Switcher 4      Camera 4
+  <dim> 5</>  Director        Program
+  <dim> 6</>  Monitor B       Graphics
+  <dim> 7</>  Stream Encoder  Program
+  <dim> 8</>  Recorder 1      Preview
+  <dim> 9</>  Recorder 2      Multiview
+  <dim>10</>  Projector       Graphics
+  <dim>11</>  Wall 1          Playback 2
+  <dim>12</>  Wall 2          Studio Feed
+  <dim>13</>  Truck           Remote 1
+  <dim>14</>  Spare 1         Remote 2
+  <dim>15</>  Spare 2         Bars
+  <dim>16</>  Test            Black                                       <dim>locked</>
+
+$ bmdctl --host studio router program 2
+! <red>error</>  Studio Router (192.0.2.31) is a Videohub
+!        <dim>bmdctl videohub --help</>
+[exit 1]
+
+$ bmdctl --host studio router disconnect
+<b>Studio Router</>  disconnected
+

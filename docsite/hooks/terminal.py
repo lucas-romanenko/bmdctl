@@ -76,7 +76,7 @@ def kind(command):
         ws = shlex.split(command, comments=True)
     except ValueError:
         return "plain"
-    if not ws or ws[0] not in ("bmdctl", "hdctl", "atemctl") or re.search(r"[|;>]", command) or PLAIN_FLAGS & set(ws):
+    if not ws or ws[0] not in ("bmdctl", "hdctl", "atemctl", "vhctl", "ultctl") or re.search(r"[|;>]", command) or PLAIN_FLAGS & set(ws):
         return "plain"
     rest = words(command)
     if not rest:
@@ -127,6 +127,8 @@ class Sample:
         if BOLD.match(line):
             return indented(line, "b")
         v = self.view
+        if re.search(r"(^| )(status|outputs)$", v) and HUB_ROW.match(line):
+            return hub_row(line)
         if re.search(r"(^| )(status|show keys|show dsk)$", v):
             return status_row(line)
         if re.search(r"(^| )inputs$", v):
@@ -227,13 +229,29 @@ def status_row(line):
     return re.sub(r"(\s{2,})(● active)$", lambda m: m.group(1) + tag("dim", m.group(2)), line)
 
 
+# A Videohub's output: its number, its label, the input routed to it,
+# maybe a lock at the line's end. No ATEM or deck status row starts with
+# a number.
+HUB_ROW = re.compile(r"^  ( {0,2}\d{1,3})  (\S.*)$")
+
+
+def hub_row(line):
+    """A router's output: its number dim, no input ("none") dim, a lock at
+    the line's end dim."""
+    m = HUB_ROW.match(line)
+    rest = re.sub(r"(\s{2,})(locked|ours)$", lambda m: m.group(1) + tag("dim", m.group(2)), m.group(2))
+    rest = re.sub(r"(\s{2,})none(\s|$)", lambda m: m.group(1) + tag("dim", "none") + m.group(2), rest)
+    return f"  {tag('dim', m.group(1))}  {rest}"
+
+
 def inputs_row(line):
     """An input: its number dim, and on the one on program or preview a dim
-    leader to its mark."""
+    leader to its mark; a router's, where it is routed to, dim."""
     m = re.match(r"^  (   |\s*\d+)  (.*)$", line)
     if not m:
         return line
-    rest = re.sub(r"(·(?: ·)*)(\s+)(● PGM|○ PVW)$", lambda m: tag("dim", m.group(1)) + m.group(2) + m.group(3), m.group(2))
+    rest = re.sub(r"(\s{2,})(to \d+(?:, \d+)*|routed nowhere)$", lambda m: m.group(1) + tag("dim", m.group(2)), m.group(2))
+    rest = re.sub(r"(·(?: ·)*)(\s+)(● PGM|○ PVW)$", lambda m: tag("dim", m.group(1)) + m.group(2) + m.group(3), rest)
     rest = re.sub(r"● PGM$", tag("red", "● PGM"), rest)
     rest = re.sub(r"○ PVW$", tag("green", "○ PVW"), rest)
     return f"  {tag('dim', m.group(1))}  {rest}"

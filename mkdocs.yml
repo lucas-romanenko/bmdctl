@@ -134,6 +134,9 @@ nav:
       - HyperDeck:
           - transport: commands/hyperdeck-transport.md
           - session: commands/hyperdeck-session.md
+      - Videohub:
+          - routing: commands/videohub-routing.md
+          - session: commands/videohub-session.md
   - Agents: AGENTS.md
   - Hardware: HARDWARE.md
   - Architecture: ARCHITECTURE.md

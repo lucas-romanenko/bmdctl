@@ -6,10 +6,10 @@ description: Run Blackmagic ATEM switchers and HyperDeck recorders with bmdctl (
 # bmdctl
 
 bmdctl controls Blackmagic Design devices on the local network: ATEM
-switchers and HyperDeck recorders (Videohub and Ultimatte: saved, no
+switchers, HyperDeck recorders and Videohub routers (Ultimatte: saved, no
 commands yet). Use it when someone asks to switch a camera, run a
 transition, put a graphic or keyer on air, load a still, play or record a
-clip, or reports what a device is doing. Every command is a CLI line
+clip, route a feed on a router, or reports what a device is doing. Every command is a CLI line
 (`bmdctl program cam2`) and, over MCP, a subcommand of its group's tool
 (`atem_switching {"subcommand": "program", "source": "cam2"}`; the tool's
 description lists its subcommands). The reference for all of them is
@@ -131,15 +131,15 @@ bmdctl preview cam4                      # the deck's input on preview
 bmdctl --host "Deck 1" play
 bmdctl auto
 ```
-`play --loop --single-clip` loops one clip (a background); `loop off`
-lets it run out; `stop` holds the last frame. `hdctl` and `atemctl` are
-short for `bmdctl hyperdeck` and `bmdctl atem`.
+`play --loop --single-clip` loops one clip; `loop off` lets it run out. A
+Videohub's ports are a number from 1 or a label: `bmdctl --host ROUTER route
+"Monitor A" "Camera 3"`; `outputs` lists each output's input, and its lock.
 
 ## Cautions
 
 - **Untested models.** bmdctl has been run on an ATEM 1 M/E Constellation
   HD; other ATEMs speak the same protocol but are untested, and the
-  HyperDeck commands have not met a deck yet. `record`, `next`, `prev`,
+  HyperDeck and Videohub commands have not met a deck or router yet. `record`, `next`, `prev`,
   `loop` and `goto` by timecode are marked unverified, and so are some
   ATEM commands (help says so). On an unfamiliar device, read `status`
   after each change instead of trusting the result alone.

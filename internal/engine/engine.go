@@ -31,6 +31,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/hyperdeck"
 	"github.com/lucas-romanenko/bmdctl/internal/stillcache"
 	"github.com/lucas-romanenko/bmdctl/internal/table"
+	"github.com/lucas-romanenko/bmdctl/videohub"
 )
 
 // IdleTimeout is how long an unpinned session lives without a request.
@@ -68,6 +69,9 @@ type Config struct {
 	// hyperdeck.Dialer with Logger. Tests point it at
 	// internal/fakehyperdeck.
 	DialHyperDeck func(ctx context.Context, addr string) (*hyperdeck.Session, error)
+	// DialVideohub opens a Videohub session; nil means videohub.Dialer
+	// with Logger. Tests point it at internal/fakevideohub.
+	DialVideohub func(ctx context.Context, addr string) (*videohub.Session, error)
 	// ProbeATEM and ProbeDial are the device probe's ways of asking an
 	// address (probe.go): an ATEM's handshake, and a TCP connection for
 	// the others. Nil means atem.Probe and a net.Dialer's; tests point
@@ -125,8 +129,8 @@ type Engine struct {
 	stopping bool
 }
 
-// devSession is a session to a device: an *atem.Session or a
-// *hyperdeck.Session.
+// devSession is a session to a device: an *atem.Session, a
+// *hyperdeck.Session or a *videohub.Session.
 type devSession interface {
 	Connected() bool
 	Ready() <-chan struct{}
@@ -136,7 +140,7 @@ type devSession interface {
 // host is one device address and its session.
 type host struct {
 	key    string // canonical "host:port"
-	device string // atem, hyperdeck
+	device string // atem, hyperdeck, videohub
 
 	// Guarded by Engine.mu.
 	sess    devSession
@@ -176,6 +180,10 @@ func New(cfg Config) *Engine {
 		d := hyperdeck.Dialer{Logger: e.log}
 		e.cfg.DialHyperDeck = d.Dial
 	}
+	if e.cfg.DialVideohub == nil {
+		d := videohub.Dialer{Logger: e.log}
+		e.cfg.DialVideohub = d.Dial
+	}
 	if e.cfg.ProbeATEM == nil {
 		e.cfg.ProbeATEM = atem.Probe
 	}
@@ -195,6 +203,9 @@ func NewRegistry() (*table.Registry, error) {
 		return nil, err
 	}
 	if err := hyperdeck.RegisterCommands(r); err != nil {
+		return nil, err
+	}
+	if err := videohub.RegisterCommands(r); err != nil {
 		return nil, err
 	}
 	if err := RegisterOperations(r); err != nil {
@@ -384,7 +395,7 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	if e.cfg.Background && req.Build != "" && e.cfg.BuildID != "" && req.Build != e.cfg.BuildID {
 		return nil, false, codeErr(CodeStale, "the engine runs another build of bmdctl and stops, for this one to start its own")
 	}
-	if req.Device != "atem" && req.Device != "hyperdeck" {
+	if req.Device != "atem" && req.Device != "hyperdeck" && req.Device != "videohub" {
 		return nil, false, codeErr(CodeUsage, "no commands for device %q", req.Device)
 	}
 	entry := e.cfg.Registry.Find(req.Device, req.Path)
@@ -401,8 +412,11 @@ func (e *Engine) handle(ctx context.Context, req Request, out sink, start time.T
 	if req.Host == "" {
 		return nil, false, codeErr(CodeUsage, "no switcher named: give --host")
 	}
-	if req.Device == "hyperdeck" {
+	switch req.Device {
+	case "hyperdeck":
 		return c.runDeck() // hyperdeck.go
+	case "videohub":
+		return c.runHub() // videohub.go
 	}
 	o, isOp := e.ops[entry.Path]
 	if entry.Operation && !isOp {
@@ -467,13 +481,16 @@ func usageErr(err error) error {
 func hostKey(addr string) (string, error) { return deviceKey("atem", addr) }
 
 // deviceKey is addr as "host:port", lower-cased, the device's port by
-// default: 9910 for an ATEM, 9993 for a HyperDeck.
+// default: 9910 for an ATEM, 9993 for a HyperDeck, 9990 for a Videohub.
 func deviceKey(device, addr string) (string, error) {
 	h, p, err := net.SplitHostPort(addr)
 	if err != nil {
 		h, p = strings.Trim(addr, "[]"), fmt.Sprint(atem.DefaultPort)
-		if device == "hyperdeck" {
+		switch device {
+		case "hyperdeck":
 			p = fmt.Sprint(hyperdeck.DefaultPort)
+		case "videohub":
+			p = fmt.Sprint(videohub.DefaultPort)
 		}
 	}
 	if h == "" {
@@ -576,6 +593,8 @@ func dialMessage(key string, err error) string {
 		return key + ": no session"
 	case errors.Is(err, context.DeadlineExceeded) && strings.HasSuffix(key, fmt.Sprintf(":%d", hyperdeck.DefaultPort)):
 		return fmt.Sprintf("no HyperDeck answered at %s within %v", key, hyperdeck.ConnectTimeout)
+	case errors.Is(err, context.DeadlineExceeded) && strings.HasSuffix(key, fmt.Sprintf(":%d", videohub.DefaultPort)):
+		return fmt.Sprintf("no Videohub answered at %s within %v", key, videohub.ConnectTimeout)
 	case errors.Is(err, context.DeadlineExceeded):
 		return fmt.Sprintf("no switcher answered at %s within %v", key, atem.ConnectTimeout)
 	}
@@ -587,7 +606,8 @@ func dialMessage(key string, err error) string {
 func (e *Engine) dial(h *host) {
 	var s devSession
 	var err error
-	if h.device == "hyperdeck" {
+	switch h.device {
+	case "hyperdeck":
 		ctx, cancel := context.WithTimeout(e.ctx, atem.ConnectTimeout)
 		var d *hyperdeck.Session
 		d, err = e.cfg.DialHyperDeck(ctx, h.key)
@@ -595,7 +615,17 @@ func (e *Engine) dial(h *host) {
 		if err == nil {
 			s = d
 		}
-	} else {
+	case "videohub":
+		// The connect's retry and the preamble's wait both fit: 3 s, 0.3
+		// s and 3 s.
+		ctx, cancel := context.WithTimeout(e.ctx, 2*videohub.ConnectTimeout+videohub.ReadTimeout)
+		var v *videohub.Session
+		v, err = e.cfg.DialVideohub(ctx, h.key)
+		cancel()
+		if err == nil {
+			s = v
+		}
+	default:
 		ctx, cancel := context.WithTimeout(e.ctx, atem.ConnectTimeout)
 		var a *atem.Session
 		a, err = e.cfg.Dial(ctx, h.key)
@@ -634,6 +664,9 @@ func describe(s devSession) (name, product, mode string) {
 	case *hyperdeck.Session:
 		st := x.State()
 		return st.Name(), st.Model(), st.Transport["video format"]
+	case *videohub.Session:
+		st := x.State()
+		return st.Name(), st.Model(), ""
 	}
 	return "", "", ""
 }
@@ -823,7 +856,7 @@ type Status struct {
 // SessionStatus is one device's session.
 type SessionStatus struct {
 	Host      string     `json:"host"`
-	Device    string     `json:"device,omitempty"` // atem, hyperdeck
+	Device    string     `json:"device,omitempty"` // atem, hyperdeck, videohub
 	Connected bool       `json:"connected"`
 	Ready     bool       `json:"ready"`
 	Pinned    bool       `json:"pinned"`

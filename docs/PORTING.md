@@ -3482,6 +3482,76 @@ API: `Dial(ctx, addr)`, `Dialer{DialContext, Logger}`; `Send(ctx, cmd)`,
   the fixtures copied from it (`testdata/fixtures`); `session_test.go`
   tests what bmdctl adds. Nothing here has run against a hub.
 
+## Videohub commands (`internal/engine/videohub.go`, `cmd/bmdctl/hub.go`)
+
+Phase 5: `bmdctl videohub ...` (`vhctl`), and every command to a host of
+type `videohub`, goes to a router through the engine.
+
+- **Every command is an operation:** a port is named by its number or its
+  label, which only the router's state resolves, and the table's resolver
+  knows one namespace where a route has two. So there are no wire
+  entries and no `--dry-run`; `videohub.RegisterCommands` adds the groups
+  alone (`routing`: route and the renames; `session`: the reads).
+  Commands: `route <output> <input>`, `input rename <input> <label>`,
+  `output rename <output> <label>`, `status`, `outputs`, `inputs`,
+  `watch [--count N]`, `state [--path P]`, `connect [address]`,
+  `disconnect`.
+- **Ports count from 1**, as Videohub Control and the router's panel
+  number them, in arguments, lines and JSON (`table.Index`); the wire,
+  `state` and `watch --json` count from 0, as videohubwire does. A port
+  is its number (numbers win), else its label exactly, ignoring case,
+  else the one label it starts; two are listed. A number out of range
+  says how many there are.
+- **The engine's sessions** are keyed `host:9990`; `Config.DialVideohub`
+  dials one (`videohub.Dialer`), with 9 s for the connect, its retry and
+  the preamble. The `switcher` note carries the router's name (its
+  friendly name, else its model) and model; there is nothing live to put
+  in the header, as `on_air` is a switcher's.
+- **A write says what it changed** in a `values` note: a route the output
+  by its label and the input before → after; a rename the port's number
+  and the label before → after (as `CleanLabel` sends it). One the router
+  holds already is not sent, `already`. The router acks every block, so a
+  write is confirmed (the ACK) or refused: never `sent`. The after is the
+  state on the ACK, which applies the change at once, as videohubwire
+  does.
+- **What the router refuses** (NAK) is `rejected`, exit 4, the ports named
+  from 1: `the router refused: output 16 "Test" is locked by another
+  client` where its lock reads L, else `the router refused input 7
+  "Program" to output 5 "Monitor A" (locked?)` (videohubwire's message
+  counts from 0). No answer within `--timeout` is `no_echo`, exit 3, and
+  ends the session (Videohub, Deliberate differences); the next command
+  dials again. What videohubwire refuses before sending (a label over 64
+  characters) is a usage error with its message.
+- **status** is the router's size and locked outputs in the header, then a
+  row per output: its number dim, its label, the input on it (`none` dim),
+  and a lock at the line's end (`locked`, `ours`) dim. **outputs** is the
+  rows alone; **inputs** each input's number, label and, dim, the outputs
+  it is on (`to 1, 5`, `routed nowhere`). Down a pipe each is a table:
+  number, label, input number and label, lock. `state` is the session's
+  `videohub.State` as JSON.
+- **watch** streams the blocks the router pushes as `ChangeEvent`s: kind
+  `state`, the block as key (`routing`, `input labels`, `output labels`,
+  `locks`, `device`, `protocol`) and what it carried as value, indices
+  from 0. The CLI shows a line per index against a `state` snapshot taken
+  once watching: `route  out 5 Monitor A  Replay → Program`, `label  in 3
+  Camera 3  Camera 3 → Wide Shot`, `lock  out 16 Test  unlocked → locked`.
+- **Elsewhere:** the probe, `connect ADDRESS` and `hosts add` found
+  routers since phase 4; now `connect` opens the session, and a host is
+  renamed when the router's name changes, as a switcher's is. `doctor`
+  reads a router's preamble (model, size, protocol) where the engine has
+  no ready session to it. The aliases, completion, help, `serve`
+  (`/hosts/{host}/videohub/...`) and `mcp` (`videohub_routing`,
+  `videohub_session`; the reads are read-only tools) take the commands
+  from the table. The site colours a router's rows by their shape (a
+  number first), since `status` is also a switcher's and a deck's.
+- **Tests.** `cmd/bmdctl/hub_test.go` runs each command through an engine
+  to the fake router (a pipe through `internal/fakenet`): the blocks sent,
+  each write's before → after, the refusals (a locked output, a silent
+  router), reads as text and JSON, watch, and that every entry runs
+  (`TestEveryHubCommandRuns`); `testdata/terminal/videohub.golden` is the
+  terminal's. The fake refuses only a locked output, so the refusal of an
+  unlocked one is untested. None of it has met a router.
+
 ## Fake Videohub (`internal/fakevideohub`)
 
 - **A router on any `net.Conn`.** `Hub.Dial` is a `videohub.Dialer`'s

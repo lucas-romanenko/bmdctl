@@ -20,6 +20,7 @@ import (
 	"github.com/lucas-romanenko/bmdctl/internal/fakeatem"
 	"github.com/lucas-romanenko/bmdctl/internal/fakenet"
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
+	"github.com/lucas-romanenko/bmdctl/videohub"
 )
 
 // TestMain lets a test run this binary as bmdctl itself: a spawned
@@ -101,6 +102,9 @@ func (b *bench) startEngine(cfg engine.Config) error {
 	cfg.ProbeATEM, cfg.ProbeDial = b.net.ProbeATEM, b.net.Dial
 	cfg.DialHyperDeck = func(ctx context.Context, addr string) (*hyperdeck.Session, error) {
 		return (&hyperdeck.Dialer{DialContext: b.net.Dial}).Dial(ctx, addr)
+	}
+	cfg.DialVideohub = func(ctx context.Context, addr string) (*videohub.Session, error) {
+		return (&videohub.Dialer{DialContext: b.net.Dial}).Dial(ctx, addr)
 	}
 	eng := engine.New(cfg)
 	b.mu.Lock()
