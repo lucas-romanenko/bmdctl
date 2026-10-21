@@ -90,9 +90,11 @@ bmdctl follows bmdwire; it never leads it.
   while porting), is a bmdwire PR with its tests before bmdctl has it.
 - bmdwire's SURFACE.md is the source of truth. `docs/SURFACE-atem.md` is
   a copy of `atemwire/docs/SURFACE.md`, never edited ahead of it.
-  hyperdeckwire has none yet, so `docs/SURFACE-hyperdeck.md` was written
-  here; anything new about the HyperDeck protocol still goes to bmdwire
-  first, and into a `hyperdeckwire/docs/SURFACE.md` there.
+  hyperdeckwire, videohubwire and ultimattewire have none yet, so
+  `docs/SURFACE-hyperdeck.md`, `docs/SURFACE-videohub.md` and
+  `docs/SURFACE-ultimatte.md` were written here; anything new about those
+  protocols still goes to bmdwire first, and into a `docs/SURFACE.md`
+  beside the package there.
 - bmdctl ports from it and cites the bmdwire PR (`bmdwire#N` and the
   commit) in the code and in `docs/PORTING.md`.
 - Never add a command or packet to bmdctl that bmdwire doesn't have
