@@ -1854,7 +1854,14 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   plus the CLI's own reference (`reference.go`: flags, built-ins,
   conventions, exit status, environment, files), in plain ASCII roff
   (anything else as groff's `\[uXXXX]`), checked with `groff -ww` where
-  groff is installed.
+  groff is installed. Each device's commands are a section (`ATEM
+  COMMANDS`, `HYPERDECK COMMANDS`, ...): an ATEM's under their usage, the
+  others' under the device word and the usage (`hyperdeck goto <clip>`),
+  as COMMANDS.md heads them, with a line saying how they are run (the
+  device word, the alias, or a host of that device). Until the release
+  dry run after phase 5 found it, the page had the ATEM's alone, and its
+  NAME and DESCRIPTION named only switchers; `TestManPage` now checks
+  every device's entries.
 - **`docs/COMMANDS.md`** starts with that same CLI reference, then an
   index of the commands by group (the MCP tools' groups, `Groups` in
   `atem/groups.go` and `hyperdeck/groups.go`); each group's entries are a
@@ -1879,9 +1886,11 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
 - **What it checks**, one line each, `ok`, `warn`, `fail` or
   `unreachable`: the engine (running or not; never started by doctor;
   its version against this CLI's, since an engine left running across an
-  upgrade serves the old code), the socket (where it comes from, its
-  directory's owner, a non-socket file in its place, a socket left by an
-  engine that died, a mode other users can reach), the state directory
+  upgrade serves the old code), the socket (where it comes from, a path
+  too long for a Unix socket, which dialling reports only as `invalid
+  argument`: over 107 bytes on Linux, 103 elsewhere; its directory's
+  owner, a non-socket file in its place, a socket left by an engine that
+  died, a mode other users can reach), the state directory
   (writable; the log's size), `hosts.yml` (parses; `File.Check`: names,
   addresses, device types, a default that isn't a host), `BMDCTL_HOST`
   and the last host (each a host or an address), and each host's
@@ -1889,9 +1898,13 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
 - **Reachability**: an ATEM the engine has a ready session to is
   reported from that session, not dialled a second time; otherwise doctor
   dials it itself (`atem.Dial`, 5 s), reports the model and video mode,
-  and closes the session. HyperDeck, Videohub and Ultimatte have no
-  protocol in bmdctl yet, so doctor checks that their TCP port (9993,
-  9990, 9998) accepts a connection. Hosts are checked at once.
+  and closes the session. A HyperDeck or Videohub is reported the same
+  way, from the engine's ready session, else by reading its greeting and
+  device info (a deck) or its preamble (a router: model, size,
+  protocol). An Ultimatte has no session: doctor reads its prelude (its
+  label and preset count). Until phase 4 and phase 5 brought their
+  protocols, doctor only checked that their TCP port accepted a
+  connection. Hosts are checked at once.
 - **Exit status**: 1 if anything is misconfigured (`fail`), else 2 if a
   host only didn't answer, else 0; warnings don't count. `--json` prints
   `{ok, result: {checks}}`. Tests replace both diallers, so nothing
