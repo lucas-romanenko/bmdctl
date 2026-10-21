@@ -1,0 +1,15 @@
+Label: Keyer A
+Software Release: 2.0
+
+CONTROL:
+Matte Density: 5000
+Transition Rate: 30
+Offset Black Balance: 2500
+Not A Param: 12
+FILE LIST:
+preset-a
+preset-b
+
+GPI SETTINGS:
+
+END PRELUDE:
