@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/lucas-romanenko/bmdctl/internal/pytext"
 )
 
 // Response is one response block off the wire: the head's code and text
@@ -37,12 +39,12 @@ func (r Response) IsAsync() bool { return r.Code >= 500 && r.Code < 600 }
 func (r Response) Params() map[string]string {
 	out := map[string]string{}
 	for _, line := range r.Lines {
-		s := pyStrip(line)
+		s := pytext.Strip(line)
 		if s == "" || !strings.Contains(s, ":") {
 			continue
 		}
 		k, v, _ := strings.Cut(s, ":")
-		out[pyStrip(k)] = pyStrip(v)
+		out[pytext.Strip(k)] = pytext.Strip(v)
 	}
 	return out
 }
@@ -98,7 +100,7 @@ func (r *reader) line() (string, error) {
 	for len(b) > 0 && b[len(b)-1] == '\r' {
 		b = b[:len(b)-1]
 	}
-	return pyDecode(b), nil
+	return pytext.Decode(b), nil
 }
 
 // maxLine bounds one line: a disk list is many short lines.
@@ -117,9 +119,9 @@ func (r *reader) response() (Response, error) {
 			continue
 		}
 		code, text, _ := strings.Cut(head, " ")
-		n, err := pyInt(code)
+		n, err := pytext.Int(code)
 		if err != nil || n < -1<<31 || n > 1<<31-1 {
-			return Response{}, fmt.Errorf("hyperdeck: %w: %s", ErrMalformed, pyRepr(head))
+			return Response{}, fmt.Errorf("hyperdeck: %w: %s", ErrMalformed, pytext.Repr(head))
 		}
 		resp := Response{Code: int(n), Text: text}
 		if strings.HasSuffix(text, ":") {
@@ -154,8 +156,8 @@ type Clip struct {
 // looksLikeClipLine is _looks_like_clip_line: the text before the first
 // colon, once the line is stripped, is a number.
 func looksLikeClipLine(line string) bool {
-	head, _, _ := strings.Cut(pyStrip(line), ":")
-	return pyIsDecimal(head)
+	head, _, _ := strings.Cut(pytext.Strip(line), ":")
+	return pytext.IsDecimal(head)
 }
 
 // parseClipLines is _parse_clip_lines: every clip-shaped line parsed,
@@ -178,15 +180,15 @@ func parseClipLines(lines []string, parse func(string) (Clip, error)) []Clip {
 // rest, split on single spaces as Python's split(' ') splits, so names
 // keep their spaces once joined again.
 func clipTokens(line string) (int, []string, error) {
-	head, rest, _ := strings.Cut(pyStrip(line), ":")
-	id, err := pyInt(pyStrip(head))
+	head, rest, _ := strings.Cut(pytext.Strip(line), ":")
+	id, err := pytext.Int(pytext.Strip(head))
 	if err != nil {
 		return 0, nil, err
 	}
 	if id < -1<<31 || id > 1<<31-1 {
 		return 0, nil, fmt.Errorf("clip id %d out of range", id)
 	}
-	return int(id), strings.Split(pyStrip(rest), " "), nil
+	return int(id), strings.Split(pytext.Strip(rest), " "), nil
 }
 
 // parseDiskLine is _parse_disk_line: "{id}: {name} {file format} {video
@@ -197,7 +199,7 @@ func parseDiskLine(line string) (Clip, error) {
 		return Clip{}, err
 	}
 	if len(t) < 4 {
-		return Clip{}, fmt.Errorf("malformed disk list line: %s", pyRepr(line))
+		return Clip{}, fmt.Errorf("malformed disk list line: %s", pytext.Repr(line))
 	}
 	n := len(t)
 	file, video := t[n-3], t[n-2]
@@ -212,7 +214,7 @@ func parseClipsLine(line string) (Clip, error) {
 		return Clip{}, err
 	}
 	if len(t) < 3 {
-		return Clip{}, fmt.Errorf("malformed clips line: %s", pyRepr(line))
+		return Clip{}, fmt.Errorf("malformed clips line: %s", pytext.Repr(line))
 	}
 	n := len(t)
 	start := t[n-2]

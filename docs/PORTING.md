@@ -3166,7 +3166,8 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   clip-line filter counts decimal digits where Python's `isdigit()` also
   counts superscripts, and a head of those is skipped by the parser there
   and by the filter here, with the same list. Messages quote with a port
-  of `repr()`. These ports are hyperdeck's own: `atem`'s are LGPL.
+  of `repr()`. These ports live in `internal/pytext` (MIT), which the
+  three MIT device packages share; `atem`'s are its own, under the LGPL.
 - **Dial** opens TCP with a 5 s deadline (`ConnectTimeout`,
   `DEFAULT_CONNECT_TIMEOUT`) and reads the greeting as `connect` does: the
   first block, whatever it is (`skip_async=False`). Then, unless `Bare`,

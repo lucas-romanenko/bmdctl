@@ -9,6 +9,8 @@ package hyperdeck
 import (
 	"context"
 	"fmt"
+
+	"github.com/lucas-romanenko/bmdctl/internal/pytext"
 )
 
 func (s *Session) params(ctx context.Context, c Command) (map[string]string, error) {
@@ -81,7 +83,7 @@ func (s *Session) ClipsCount(ctx context.Context) (int, error) {
 	if !ok {
 		v = "0"
 	}
-	n, err := pyInt(v)
+	n, err := pytext.Int(v)
 	if err != nil {
 		return 0, fmt.Errorf("hyperdeck: clips count: %w", err)
 	}
