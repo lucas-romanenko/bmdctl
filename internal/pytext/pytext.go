@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-package hyperdeck
-
-// What hyperdeckwire's text handling does in Python, ported: the client
-// decodes each line with decode('utf-8', 'replace'), strips with
-// str.strip(), reads numbers with int() and quotes heads with repr(), and
-// the results the deck's answers parse to depend on all four
-// (docs/PORTING.md, "HyperDeck").
+// Package pytext is what bmdwire's text handling does in Python, ported
+// for the MIT device packages (hyperdeck, videohub, ultimatte): decoding
+// with decode('utf-8', 'replace'), str.strip(), int(), repr(), and the
+// rest the three libraries' parsing depends on, each matching CPython 3.12
+// (docs/PORTING.md, "HyperDeck"). atem keeps its own, under its licence.
+package pytext
 
 import (
 	"fmt"
@@ -15,20 +14,20 @@ import (
 	"unicode/utf8"
 )
 
-// pyIsSpace is Python's str.isspace() for one character: Go's
+// IsSpace is Python's str.isspace() for one character: Go's
 // unicode.IsSpace and the four information separators U+001C-U+001F.
-func pyIsSpace(r rune) bool {
+func IsSpace(r rune) bool {
 	return unicode.IsSpace(r) || r >= 0x1c && r <= 0x1f
 }
 
-// pyStrip is Python's str.strip() with no argument.
-func pyStrip(s string) string { return strings.TrimFunc(s, pyIsSpace) }
+// Strip is Python's str.strip() with no argument.
+func Strip(s string) string { return strings.TrimFunc(s, IsSpace) }
 
-// pyDecode is Python's bytes.decode('utf-8', 'replace'): one U+FFFD for
+// Decode is Python's bytes.decode('utf-8', 'replace'): one U+FFFD for
 // each maximal subpart of an ill-formed sequence (a lead byte and the
 // continuation bytes that could still have completed it), where Go's own
 // helpers give one per byte or one per run.
-func pyDecode(b []byte) string {
+func Decode(b []byte) string {
 	if utf8.Valid(b) {
 		return string(b)
 	}
@@ -83,14 +82,14 @@ func pyDecode(b []byte) string {
 	return out.String()
 }
 
-// pyInt is Python's int() of a str in base 10: surrounding whitespace,
+// Int is Python's int() of a str in base 10: surrounding whitespace,
 // an optional sign, decimal digits of any script with single underscores
 // between them. It errors with Python's ValueError message where Python
 // raises, and also for a value beyond int64, where Python would carry on
 // with a big integer.
-func pyInt(s string) (int64, error) {
-	bad := fmt.Errorf("invalid literal for int() with base 10: %s", pyRepr(s))
-	t := pyStrip(s)
+func Int(s string) (int64, error) {
+	bad := fmt.Errorf("invalid literal for int() with base 10: %s", Repr(s))
+	t := Strip(s)
 	neg := false
 	if t != "" && (t[0] == '+' || t[0] == '-') {
 		neg, t = t[0] == '-', t[1:]
@@ -108,12 +107,12 @@ func pyInt(s string) (int64, error) {
 			prevDigit = false
 			continue
 		}
-		d, ok := decimalValue(r)
+		d, ok := DecimalValue(r)
 		if !ok {
 			return 0, bad
 		}
 		if n > (1<<63-1-int64(d))/10 {
-			return 0, fmt.Errorf("%s does not fit in 64 bits", pyRepr(s))
+			return 0, fmt.Errorf("%s does not fit in 64 bits", Repr(s))
 		}
 		n, prevDigit = n*10+int64(d), true
 	}
@@ -126,11 +125,11 @@ func pyInt(s string) (int64, error) {
 	return n, nil
 }
 
-// decimalValue is a decimal digit's value in any script. Unicode encodes
+// DecimalValue is a decimal digit's value in any script. Unicode encodes
 // every set of decimal digits (category Nd) as a run of ten, zero first,
 // so the value is the distance from the start of its run of digits,
 // modulo ten.
-func decimalValue(r rune) (int, bool) {
+func DecimalValue(r rune) (int, bool) {
 	if r >= '0' && r <= '9' {
 		return int(r - '0'), true
 	}
@@ -144,28 +143,28 @@ func decimalValue(r rune) (int, bool) {
 	return int(r-start) % 10, true
 }
 
-// pyIsDecimal reports whether s is non-empty and made only of decimal
+// IsDecimal reports whether s is non-empty and made only of decimal
 // digits. hyperdeckwire's clip-line filter calls str.isdigit(), which
 // also counts digits that aren't decimal (superscripts, circled digits);
 // a head made of those passes its filter and then fails int(), so the
 // line is skipped either way.
-func pyIsDecimal(s string) bool {
+func IsDecimal(s string) bool {
 	if s == "" {
 		return false
 	}
 	for _, r := range s {
-		if _, ok := decimalValue(r); !ok {
+		if _, ok := DecimalValue(r); !ok {
 			return false
 		}
 	}
 	return true
 }
 
-// pyRepr is Python's repr() of a str: single quotes unless the string
+// Repr is Python's repr() of a str: single quotes unless the string
 // holds one and no double quote, backslash escapes for the quote, the
 // backslash, tab, newline and carriage return, and \x, \u or \U escapes
 // for anything else unprintable.
-func pyRepr(s string) string {
+func Repr(s string) string {
 	q := byte('\'')
 	if strings.ContainsRune(s, '\'') && !strings.ContainsRune(s, '"') {
 		q = '"'
