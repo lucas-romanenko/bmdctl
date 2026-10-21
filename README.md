@@ -7,14 +7,15 @@
 
 <!-- --8<-- [start:intro] -->
 bmdctl is one binary that controls Blackmagic Design production equipment
-over the network. It runs ATEM switchers and HyperDeck recorders now;
-Videohub routers and Ultimatte keyers are next. It talks each device's own
-protocol (UDP 9910 to an ATEM, TCP 9993 to a HyperDeck), so no Blackmagic
-SDK, driver or ATEM Software Control is involved. A background engine keeps
-a session open to each device, and every command is also served over HTTP
-and to AI agents over MCP.
+over the network: ATEM switchers, HyperDeck recorders, Videohub routers
+and Ultimatte keyers. It talks each device's own protocol (UDP 9910 to an
+ATEM, TCP to the others), so no Blackmagic SDK, driver or ATEM Software
+Control is involved. A background engine keeps a session open to each
+switcher, deck and router, and every command is also served over HTTP and
+to AI agents over MCP.
 
-ATEM verified on hardware; HyperDeck ported, not yet run on a deck.
+ATEM verified on hardware; HyperDeck, Videohub and Ultimatte ported, not
+yet run on one.
 <!-- --8<-- [end:intro] -->
 
 <!-- --8<-- [start:sample] -->
@@ -101,7 +102,7 @@ The documentation is also a site, https://lucas-romanenko.github.io/bmdctl/
   from the command table (`bmdctl man` prints the same).
 - [docs/AGENTS.md](docs/AGENTS.md): the MCP server and the Claude skill.
 - [docs/HARDWARE.md](docs/HARDWARE.md): what has run on real hardware (one
-  ATEM so far, no HyperDeck yet) and what hasn't.
+  ATEM so far; no deck, router or keyer yet) and what hasn't.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the packages, the
   engine and the tests fit together.
 - [CONTRIBUTING.md](CONTRIBUTING.md): building, testing and adding a
@@ -111,7 +112,8 @@ The documentation is also a site, https://lucas-romanenko.github.io/bmdctl/
 
 - [bmdwire](https://github.com/lucas-romanenko/bmdwire), the Python
   original by the same author. bmdctl's device packages are a port of its
-  v1.3.0 libraries.
+  libraries (atemwire, hyperdeckwire, videohubwire, ultimattewire),
+  following v1.6.0.
 - [pyatem](https://git.sr.ht/~martijnbraam/pyatem) by Martijn Braam and the
   OpenAtem contributors, for the ATEM protocol groundwork. atemwire, which
   `atem/` ports, is a fork of it ([atem/NOTICE](atem/NOTICE)).

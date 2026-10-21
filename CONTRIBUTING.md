@@ -40,7 +40,7 @@ root:
 | Rewrite the terminal goldens after an output change | `go test ./cmd/bmdctl -run TestTerminal -update`, then read the diff |
 | Read the documentation site while writing | `pip install -r docsite/requirements.txt`, then `mkdocs serve` (http://127.0.0.1:8000/bmdctl/) |
 | Check the site as CI does | `mkdocs build --strict` and `python3 docsite/test_terminal.py` |
-| Regenerate the oracles | the scripts in `internal/fixtures/oracle/` and `hyperdeck/testdata/oracle/` (their READMEs) |
+| Regenerate the oracles | the scripts in `internal/fixtures/oracle/` and in `testdata/oracle/` under `hyperdeck/`, `videohub/` and `ultimatte/` (their READMEs) |
 | Release dry run | `goreleaser release --snapshot --clean` (builds into `dist/`, publishes nothing) |
 
 ## Tests
@@ -59,7 +59,8 @@ root:
   `tail`'s status, so a failing run reads as passing. Write the output to
   a file and check `$?`, or check `${PIPESTATUS[0]}`.
 - **Nothing leaves the machine.** Tests use loopback only; devices are
-  the fakes in `internal/fakeatem`, `internal/fakehyperdeck` and
+  the fakes in `internal/fakeatem`, `internal/fakehyperdeck`,
+  `internal/fakevideohub`, `internal/fakeultimatte` and
   `internal/fakenet`.
 - **What a terminal shows is snapshot-tested** in
   `cmd/bmdctl/testdata/terminal/`. A new view gets a golden. The rules
@@ -87,13 +88,13 @@ session is recorded in [docs/HARDWARE.md](docs/HARDWARE.md).
 
 ## Oracles
 
-The oracle files (`internal/fixtures/oracle/*.json`,
-`hyperdeck/testdata/oracle/client.json`) record what bmdwire v1.3.0
-itself does with thousands of generated inputs, and the Go tests replay
-them. They are committed, so running the tests needs no Python.
-Regenerating them needs bmdwire checked out at tag `v1.3.0` (commit
-`cea58c2`) beside this repository, as `../bmdwire`; the scripts take its
-path. A change to a script, or a reason to think bmdwire's behaviour was
+The oracle files (`internal/fixtures/oracle/*.json` and the
+`testdata/oracle/` of `hyperdeck/`, `videohub/` and `ultimatte/`) record
+what bmdwire itself does with thousands of generated inputs, and the Go
+tests replay them. They are committed, so running the tests needs no
+Python. Regenerating one needs bmdwire checked out at the tag its README
+names (`v1.3.0`, `v1.4.0` or `v1.6.0`) beside this repository, as
+`../bmdwire`; the scripts take its path. A change to a script, or a reason to think bmdwire's behaviour was
 recorded wrong, is the only reason to regenerate.
 
 ## Adding a command
@@ -137,10 +138,15 @@ in `cmd/bmdctl/screen*.go`, with a golden.
 
 **A HyperDeck command** is the same, hyperdeckwire first, in
 `hyperdeck/table.go` (one line) or `internal/engine/hyperdeck.go` (reads
-the deck first).
+the deck first). **A Videohub or Ultimatte command**, videohubwire or
+ultimattewire first, is always an operation, in
+`internal/engine/videohub.go` or `internal/engine/ultimatte.go`, with its
+views in `cmd/bmdctl/hub.go` or `keyer.go`.
 
-`TestEveryCommandRuns` sends every entry to the fake switcher, so a new
-one has to work there too; teach the fake (`internal/fakeatem/echoes.go`
+`TestEveryCommandRuns` sends every entry to the fake switcher (and
+`TestEveryDeckCommandRuns`, `TestEveryHubCommandRuns` and
+`TestEveryUltCommandRuns` to the other fakes), so a new one has to work
+there too; teach the fake (`internal/fakeatem/echoes.go`
 or `mirror.go`) to answer it if needed. A command nobody has confirmed
 on a switcher is marked `Unverified`, and says so when sent.
 
@@ -158,9 +164,9 @@ The repository has two licences, and a file's directory decides which:
   `atem/doc.go`. `internal/fixtures/` holds data copied from atemwire's
   tests and is LGPL-3.0-only too.
 - **Everything else is MIT** (`// SPDX-License-Identifier: MIT`): the CLI,
-  `hyperdeck/` (a port of hyperdeckwire, which is MIT, with its test data
-  in `hyperdeck/testdata/`), the other device packages and the rest of
-  `internal/`.
+  `hyperdeck/`, `videohub/` and `ultimatte/` (ports of hyperdeckwire,
+  videohubwire and ultimattewire, which are MIT, each with its test data
+  in its `testdata/`) and the rest of `internal/`.
 
 The split keeps the LGPL to the code that has to carry it. A program can
 use the MIT packages under MIT terms, and the `atem` package under the

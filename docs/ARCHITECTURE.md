@@ -2,11 +2,14 @@
 
 How bmdctl is put together, for someone about to change it. The decision
 log behind every choice here is [PORTING.md](PORTING.md); the specs for
-the device packages are [SURFACE-atem.md](SURFACE-atem.md) and
-[SURFACE-hyperdeck.md](SURFACE-hyperdeck.md). bmdctl's device packages
-are a Go port of bmdwire v1.3.0, the Python libraries; where this page
-says "atemwire" or "hyperdeckwire" it means bmdwire's packages at that
-tag.
+the device packages are [SURFACE-atem.md](SURFACE-atem.md),
+[SURFACE-hyperdeck.md](SURFACE-hyperdeck.md),
+[SURFACE-videohub.md](SURFACE-videohub.md) and
+[SURFACE-ultimatte.md](SURFACE-ultimatte.md). bmdctl's device packages
+are a Go port of bmdwire's Python libraries, following v1.6.0 (the
+`Tracks:` line in PORTING.md); where this page says "atemwire",
+"hyperdeckwire", "videohubwire" or "ultimattewire" it means bmdwire's
+packages.
 
 ## The shape of it
 
@@ -24,11 +27,11 @@ tag.
                                  |
                    bmdctl engine  (internal/engine)
         sessions, parsing, operations, notes, undo, transfers
-                  /                                  \
-          atem.Session                         hyperdeck.Session
-          UDP 9910                             TCP 9993
-               |                                     |
-          ATEM switcher                          HyperDeck
+         /                 |                  |                 \
+  atem.Session    hyperdeck.Session   videohub.Session   ultimatte.Client
+  UDP 9910        TCP 9993            TCP 9990           TCP 9998, 9996
+       |                 |                  |                  |
+  ATEM switcher      HyperDeck          Videohub           Ultimatte
 ```
 
 Every way in ends at the engine, and only the engine talks to devices.
@@ -55,7 +58,10 @@ print, encode or serve the same response.
 | `internal/mcp` | MIT | The MCP server |
 | `internal/fakeatem` | MIT | A fake switcher at the `net.PacketConn` level |
 | `internal/fakehyperdeck` | MIT | A fake deck on any `net.Conn` |
-| `internal/fakenet` | MIT | A network of fakes, for the device probe |
+| `internal/fakevideohub` | MIT | A fake router on any `net.Conn` |
+| `internal/fakeultimatte` | MIT | A fake keyer, both its ports, on any `net.Conn` |
+| `internal/fakenet` | MIT | A network of fakes at addresses, for the device probe and the CLI's tests |
+| `internal/pytext` | MIT | CPython's text rules (decode, strip, split, `int()`, `float()`), for the ports' parsers |
 | `internal/fixtures` | LGPL-3.0 | atemwire's test data and the oracles generated from atemwire |
 | `internal/release` | MIT | Tests of install.sh and the Scoop manifest |
 | `cmd/bmdctl` | MIT | The CLI: parsing, output, exec, completion, man page, doctor |
@@ -84,14 +90,20 @@ The devices fill the registry explicitly, with no `init()`:
 
 ```
   atem.RegisterCommands -------+
-  hyperdeck.RegisterCommands --+--> table.Registry  (engine.NewRegistry)
-  engine.RegisterOperations ---+          |
-                                          +--> ParseLine: CLI, exec, serve, mcp
+  hyperdeck.RegisterCommands --+
+  videohub.RegisterCommands ---+--> table.Registry  (engine.NewRegistry)
+  ultimatte.RegisterCommands --+          |
+  engine.RegisterOperations ---+          +--> ParseLine: CLI, exec, serve, mcp
                                           +--> --help, bmdctl __complete
                                           +--> docs/COMMANDS.md, bmdctl(1)
                                           +--> GET /openapi.json
                                           +--> MCP tools, one per group
 ```
+
+A Videohub's and an Ultimatte's `RegisterCommands` add their groups
+alone: every command of theirs is an operation, since a router's port
+is named by a label only its state knows and a keyer's calls each open
+their own connections.
 
 So a new command is a table entry, and the parser, help, completion,
 the reference, the man page, the HTTP route and the MCP tool all come
@@ -188,7 +200,10 @@ One request per connection, one JSON object per line:
 
 `hyperdeck.Session` has the same shape over TCP: one owner, one reader,
 answers matched to commands in order, and state kept from the deck's
-notifications.
+notifications. `videohub.Session` is the same again, its state the
+router's preamble and the blocks it pushes. An Ultimatte has no session:
+`ultimatte.Client` opens the connections a call needs and closes them,
+as ultimattewire does, so the engine keeps nothing for a keyer.
 
 ## State and subscriptions
 
@@ -283,8 +298,10 @@ The fakes are what the tests talk to instead:
   media and macro pools and their locks, and has controls for the bad
   days: dropped and delayed packets, silence, stale session ids, another
   client holding a lock, failing transfers.
-- **`fakehyperdeck`** speaks the deck's protocol over a pipe or loopback
-  TCP. **`fakenet`** puts fakes at addresses for the device probe.
+- **`fakehyperdeck`**, **`fakevideohub`** and **`fakeultimatte`** speak
+  a deck's, a router's and a keyer's protocols over a pipe or loopback
+  TCP. **`fakenet`** puts fakes at addresses, for the device probe and
+  the CLI's tests.
 - **The CLI's bench** (`cmd/bmdctl/harness_test.go`) runs a real engine
   on a socket in a temporary directory, its dialler handing each session
   a fresh fake. The terminal goldens in
@@ -296,8 +313,8 @@ CI's runner is slower than a desk.
 
 ## Oracle tests against the Python
 
-The port is checked against bmdwire v1.3.0 itself, not only against
-tests written from reading it. Scripts beside the oracle files run the
+The port is checked against bmdwire itself, at the version each oracle
+records, not only against tests written from reading it. Scripts beside the oracle files run the
 Python on generated inputs and record what it did; the Go tests replay
 every case and require the same result:
 
@@ -310,11 +327,14 @@ every case and require the same result:
 | `internal/fixtures/oracle/macro.json` | 1,987 bytecode decodes, 4,272 op encodes | `TestDecodeMatchesAtemwire`, `TestEncodeMatchesAtemwire` |
 | `internal/fixtures/oracle/profile.json` | profile saves, applies and parses | `TestSaveMatchesAtemwire` and three more |
 | `hyperdeck/testdata/oracle/client.json` | 747 scripted sessions, 872 calls | `TestClientMatchesHyperdeckwire` |
+| `videohub/testdata/oracle/client.json` | 213 scripted sessions, 646 steps | `TestClientMatchesVideohubwire` |
+| `ultimatte/testdata/oracle/oracle.json` | the display ranges, 3,681 parser cases, 268 scripted calls | `TestRangesMatchUltimattewire` and two more |
 
 The recorded files are committed, so the tests need no Python. Only
-regenerating them needs a bmdwire checkout at `v1.3.0` beside this
-repository; the READMEs in `internal/fixtures/` and `hyperdeck/testdata/`
-give the commands. Where the port departs from bmdwire on purpose, the
+regenerating them needs a bmdwire checkout beside this repository, at
+the tag each README names; the READMEs in `internal/fixtures/` and the
+`testdata/` of `hyperdeck/`, `videohub/` and `ultimatte/` give the
+commands. Where the port departs from bmdwire on purpose, the
 oracle case says so and PORTING.md, "Deliberate differences", says why.
 
 ## Hardware tests

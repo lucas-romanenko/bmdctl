@@ -3,8 +3,9 @@
 This walks through bmdctl one task at a time. Each page shows a
 command and what it prints at a terminal. The examples use one switcher,
 STUDIO A at 192.168.1.20 (an ATEM 1 M/E Constellation HD at 1080p25),
-and one HyperDeck, Deck 1 at 192.168.1.50; your names, sources and
-times will differ.
+one HyperDeck, Deck 1 at 192.168.1.50, a Videohub, Studio Router at
+192.168.1.60, and an Ultimatte, Keyer A at 192.168.1.41; your names,
+sources and times will differ.
 
 At a terminal, and in the documentation site's samples, the value now on
 program is red, the value now on preview green, the switcher's name
@@ -32,6 +33,9 @@ command and flag; `bmdctl <command> --help` prints one with examples.
   the first is sent; `-t` timestamps.
 - [undo](guide/undo.md): putting back the last change.
 - [HyperDeck](guide/hyperdeck.md): a deck's transport, clips and slots.
+- [Videohub](guide/videohub.md): a router's routes, labels and locks.
+- [Ultimatte](guide/ultimatte.md): a keyer's presets and controls,
+  archive and restore, its network settings.
 - [Scripting](guide/scripting.md): the line format a pipe gets, `--json`,
   exit status, the state, `--dry-run`.
 - [The engine](guide/engine.md): the background process that holds the

@@ -114,6 +114,8 @@ nav:
       - exec: guide/exec.md
       - undo: guide/undo.md
       - HyperDeck: guide/hyperdeck.md
+      - Videohub: guide/videohub.md
+      - Ultimatte: guide/ultimatte.md
       - Scripting: guide/scripting.md
       - The engine: guide/engine.md
   - Commands:

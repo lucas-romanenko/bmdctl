@@ -39,10 +39,11 @@ regenerate them with `go generate ./cmd/bmdctl` (it runs
 shows (colour, the prompt, the spinner) is snapshot-tested in
 `cmd/bmdctl/testdata/terminal/`; after changing it, rewrite them with
 `go test ./cmd/bmdctl -run TestTerminal -update` and read the diff. The oracles in
-`internal/fixtures/oracle/` and `hyperdeck/testdata/oracle/` are
-regenerated with the scripts beside them (see the README there) against
-`../bmdwire` at the version each file records (`recv.json` and
-`readers.json` at `v1.6.0`, the rest at `v1.4.0`; `imaging.json` and the
+`internal/fixtures/oracle/` and the `testdata/oracle/` of `hyperdeck/`,
+`videohub/` and `ultimatte/` are regenerated with the scripts beside
+them (see the README there) against `../bmdwire` at the version each
+file records (`recv.json`, `readers.json` and the Videohub and Ultimatte
+oracles at `v1.6.0`, the rest at `v1.4.0`; `imaging.json` and the
 HyperDeck `client.json` at `v1.3.0`, the READMEs say why).
 
 The documentation site (`mkdocs.yml`) is built from `docs/` as it is:
@@ -110,9 +111,10 @@ bmdctl follows bmdwire; it never leads it.
 ## Rules
 
 - **Mirror bmdwire, don't redesign it.** `docs/SURFACE-atem.md` is the spec
-  for `atem/`, `docs/SURFACE-hyperdeck.md` for `hyperdeck/`; read
-  `../bmdwire/atemwire/` and `../bmdwire/hyperdeckwire/` for anything they
-  leave out. Cite
+  for `atem/`, `docs/SURFACE-hyperdeck.md` for `hyperdeck/`,
+  `docs/SURFACE-videohub.md` for `videohub/` and `docs/SURFACE-ultimatte.md`
+  for `ultimatte/`; read the bmdwire package (`../bmdwire/atemwire/` and
+  so on) for anything they leave out. Cite
   the tag (`bmdwire v1.3.0`) wherever the port references it. Where the port
   must differ, say so in `docs/PORTING.md` with the reason.
 - **Standard library only** in the device packages (`atem`, `hyperdeck`,
@@ -123,7 +125,8 @@ bmdctl follows bmdwire; it never leads it.
   from `atem/doc.go`). `hyperdeck/`, `videohub/`, `ultimatte/`, `cmd/` and
   the other `internal/` packages are MIT (`// SPDX-License-Identifier: MIT`).
   `internal/fixtures/` holds data copied from atemwire's tests and is
-  LGPL-3.0-only; hyperdeckwire's (MIT) is in `hyperdeck/testdata/`.
+  LGPL-3.0-only; hyperdeckwire's, videohubwire's and ultimattewire's (MIT)
+  are in their packages' `testdata/`.
 - **Commits.** One commit per step, conventional commit messages
   (`feat(atem): …`, `test(fixtures): …`, `docs: …`), and push after every
   commit. The build/vet/test line above is green at each one.
@@ -132,9 +135,9 @@ bmdctl follows bmdwire; it never leads it.
   the background engine, hosts, every command through the engine,
   `exec`, completion, man pages and `doctor`. Phase 4 added the HyperDeck
   package and commands, the device probe, the alias binaries, `serve`,
-  `mcp`, the Claude skill and the release. Videohub and Ultimatte (and
-  hyperdeckwire's FTP upload and setup API) are phase 5. Don't start them
-  unless asked.
+  `mcp`, the Claude skill and the release. Phase 5 added the Videohub
+  and Ultimatte packages and commands; the rest of it, hyperdeckwire's
+  FTP upload and setup API, is not started. Don't start it unless asked.
 
 ## Where things are
 
@@ -152,6 +155,12 @@ bmdctl follows bmdwire; it never leads it.
 - `hyperdeck/`: the HyperDeck package (TCP 9993); `hyperdeck/testdata/`
   its fixtures and oracle. `internal/fakehyperdeck/`: a fake deck on any
   `net.Conn` (a pipe, or loopback).
+- `videohub/`: the Videohub package (TCP 9990), `ultimatte/` the Ultimatte
+  package (TCP 9998 and 9996), each with its fixtures and oracle in
+  `testdata/`. `internal/fakevideohub/`, `internal/fakeultimatte/`: a fake
+  router and a fake keyer. `internal/fakenet/`: the fakes at addresses,
+  for the probe and the CLI's tests. `internal/pytext/`: CPython's text
+  rules, which the ports' parsers follow.
 - `internal/engine/`: the background engine (sessions, the socket
   protocol, the operations that aren't one wire command).
 - `internal/hosts/`: hosts.yml. `internal/paths/`: where files live.

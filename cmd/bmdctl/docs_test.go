@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -73,7 +74,7 @@ type docLine struct {
 }
 
 var (
-	inlineCommand = regexp.MustCompile("`((?:bmdctl|hdctl) [^`]+)`")
+	inlineCommand = regexp.MustCompile("`((?:bmdctl|atemctl|hdctl|vhctl|ultctl) [^`]+)`")
 	// Syntax rather than an example: a word in capitals (HOST, ADDRESS),
 	// <one>, [optional], one|other, or "...".
 	placeholder = regexp.MustCompile(`(^|\s)[A-Z]+(\s|$|\|)|[<\[|]|\.\.\.`)
@@ -137,8 +138,8 @@ func commandLines(page string) []docLine {
 }
 
 // shellCommands are the bmdctl commands in a shell line: it is cut at
-// |, ; and && outside quotes, and each part that runs bmdctl (or hdctl)
-// is one, less a do or then before it.
+// |, ; and && outside quotes, and each part that runs bmdctl (or an
+// alias) is one, less a do or then before it.
 func shellCommands(line string) []string {
 	var parts []string
 	var cur strings.Builder
@@ -173,8 +174,10 @@ func shellCommands(line string) []string {
 		for _, kw := range []string{"do ", "then "} {
 			p = strings.TrimPrefix(p, kw)
 		}
-		if p == "bmdctl" || strings.HasPrefix(p, "bmdctl ") || strings.HasPrefix(p, "hdctl ") {
-			out = append(out, p)
+		for _, name := range []string{"bmdctl", "atemctl", "hdctl", "vhctl", "ultctl"} {
+			if p == name || strings.HasPrefix(p, name+" ") {
+				out = append(out, p)
+			}
 		}
 	}
 	return out
@@ -208,15 +211,16 @@ func builtinArgs(name string) (subs []string, one bool) {
 // line gets before it is sent: a built-in's sub-command and arguments
 // as its summary gives them, else the device command it names, with its
 // arguments, read without a switcher (precheck). A first word that is
-// no command is taken for a host, as bmdctl takes it.
+// no command is taken for a host, as bmdctl takes it. The host's device
+// isn't known, so a line is any device's that reads it.
 func checkWords(c *cli, args []string) error {
 	device := ""
 	if len(args) > 0 {
 		switch args[0] {
 		case "bmdctl":
 			args = args[1:]
-		case "hdctl":
-			device, args = "hyperdeck", args[1:]
+		case "atemctl", "hdctl", "vhctl", "ultctl":
+			device, args = aliases[args[0]], args[1:]
 		}
 	}
 	g, words, tokens, err := splitLine(args)
@@ -248,20 +252,23 @@ func checkWords(c *cli, args []string) error {
 		}
 		return nil
 	}
-	devices := []string{"atem", "hyperdeck"}
+	devices := c.reg.Devices()
 	if device != "" {
 		devices = []string{device}
 	}
 	var e *table.Entry
 	var raw map[string]string
+	var refused error // the first device's that has the command
 	for _, d := range devices {
 		var nc *table.NoCommand
-		if e, raw, err = c.reg.ParseLine(d, words, tokens); !errors.As(err, &nc) {
+		if e, raw, err = c.reg.ParseLine(d, words, tokens); err == nil {
 			break
+		} else if !errors.As(err, &nc) && refused == nil {
+			refused = err
 		}
 	}
 	if err != nil {
-		return err
+		return cmp.Or(refused, err)
 	}
 	return precheck(e, raw, g)
 }
