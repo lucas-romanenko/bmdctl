@@ -8,14 +8,12 @@ package main
 // values notes. Ports count from 1, as Videohub Control numbers them.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/lucas-romanenko/bmdctl/internal/engine"
 )
@@ -171,30 +169,13 @@ func (p *printer) startHubWatch() {
 		Routing      map[string]int    `json:"routing"`
 		Locks        map[string]string `json:"locks"`
 	}
-	if p.askHub("state", &st) {
+	if p.c.askEngine(engine.Request{Device: "videohub", Host: p.t.Address, Path: "state"}, &st) {
 		w.inputs, w.outputs, w.locks = st.InputLabels, st.OutputLabels, st.Locks
 		for k, v := range st.Routing {
 			w.routing[k] = strconv.Itoa(v)
 		}
 	}
 	p.hubWatch = w
-}
-
-// askHub asks the engine for one of the router's reads, quietly, within
-// a second; false if it can't.
-func (p *printer) askHub(path string, v any) bool {
-	conn, err := p.c.dialRunning()
-	if err != nil {
-		return false
-	}
-	defer conn.Close()
-	ctx, cancel := context.WithTimeout(p.c.ctx, time.Second)
-	defer cancel()
-	resp, err := engine.Call(ctx, conn, engine.Request{Device: "videohub", Host: p.t.Address, Path: path, Build: p.c.build()}, nil)
-	if err != nil || !resp.OK {
-		return false
-	}
-	return json.Unmarshal(resp.Result.(json.RawMessage), v) == nil
 }
 
 // port is a port as a watch line names it: its number from 1 and its

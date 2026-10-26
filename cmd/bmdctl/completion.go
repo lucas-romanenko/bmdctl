@@ -326,6 +326,14 @@ func (c *cli) ask(g globals, path string, params map[string]string, v any) bool 
 	if err != nil || t.Device != "" && t.Device != "atem" {
 		return false
 	}
+	return c.askEngine(engine.Request{Device: "atem", Host: t.Address, Path: path, Params: params}, v)
+}
+
+// askEngine runs a read-only request on a running engine (never starting
+// one), within a second, and decodes its result into v; false if any of
+// that fails. The watches use it for the state they show changes
+// against, completion for what a switcher holds.
+func (c *cli) askEngine(req engine.Request, v any) bool {
 	conn, err := c.dialRunning()
 	if err != nil {
 		return false
@@ -333,7 +341,8 @@ func (c *cli) ask(g globals, path string, params map[string]string, v any) bool 
 	defer conn.Close()
 	ctx, cancel := context.WithTimeout(c.ctx, time.Second)
 	defer cancel()
-	resp, err := engine.Call(ctx, conn, engine.Request{Device: "atem", Host: t.Address, Path: path, Params: params, Build: c.build()}, nil)
+	req.Build = c.build()
+	resp, err := engine.Call(ctx, conn, req, nil)
 	if err != nil || !resp.OK {
 		return false
 	}

@@ -8,7 +8,6 @@ package main
 // the engine's values notes.
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -243,7 +242,7 @@ func (p *printer) startDeckWatch() {
 			Name string `json:"name"`
 		} `json:"timeline"`
 	}
-	if p.askDeck("state", &st) {
+	if p.c.askEngine(engine.Request{Device: "hyperdeck", Host: p.t.Address, Path: "state"}, &st) {
 		w.blocks["transport"], w.blocks["remote"], w.blocks["configuration"] = st.Transport, st.Remote, st.Configuration
 		for id, s := range st.Slots {
 			w.blocks["slot:"+id] = s
@@ -253,23 +252,6 @@ func (p *printer) startDeckWatch() {
 		}
 	}
 	p.deckWatch = w
-}
-
-// askDeck asks the engine for one of the deck's reads, quietly, within a
-// second; false if it can't.
-func (p *printer) askDeck(path string, v any) bool {
-	conn, err := p.c.dialRunning()
-	if err != nil {
-		return false
-	}
-	defer conn.Close()
-	ctx, cancel := context.WithTimeout(p.c.ctx, time.Second)
-	defer cancel()
-	resp, err := engine.Call(ctx, conn, engine.Request{Device: "hyperdeck", Host: p.t.Address, Path: path, Build: p.c.build()}, nil)
-	if err != nil || !resp.OK {
-		return false
-	}
-	return json.Unmarshal(resp.Result.(json.RawMessage), v) == nil
 }
 
 // line is one notification as a watch line: its block, then each field
