@@ -124,9 +124,10 @@ type answer struct {
 // (device info, transport info, each slot's info, remote, configuration,
 // clips get). It returns once that is done. A failure of one of those
 // (an older deck refusing a notification) is logged and leaves that part
-// of the state empty; the connection failing fails Dial. Without a
-// context deadline it gives up after ConnectTimeout to connect and read
-// the greeting, and ReadTimeout for each answer after it.
+// of the state empty; the connection failing fails Dial. Connecting and
+// reading the greeting take ConnectTimeout at most, or less if the
+// context's deadline is sooner; each answer after it takes ReadTimeout
+// without a context deadline, else what is left of it.
 func (d *Dialer) Dial(ctx context.Context, addr string) (*Session, error) {
 	addr = withPort(addr)
 	log := d.Logger
@@ -138,12 +139,11 @@ func (d *Dialer) Dial(ctx context.Context, addr string) (*Session, error) {
 		var nd net.Dialer
 		dial = nd.DialContext
 	}
-	cctx := ctx
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		cctx, cancel = context.WithTimeout(ctx, ConnectTimeout)
-		defer cancel()
-	}
+	// ConnectTimeout whatever the caller's deadline, as hyperdeckwire's
+	// connect: a longer deadline (the engine's covers the state read
+	// too) had a deck that never answered waited on for all of it.
+	cctx, cancel := context.WithTimeout(ctx, ConnectTimeout)
+	defer cancel()
 	conn, err := dial(cctx, "tcp", addr)
 	if err != nil {
 		return nil, err

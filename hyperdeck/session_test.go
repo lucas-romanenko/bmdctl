@@ -228,6 +228,30 @@ func TestARejectedConnectionFailsDial(t *testing.T) {
 	}
 }
 
+// A deck that takes the connection and never greets fails Dial after
+// ConnectTimeout, whatever the caller's deadline: the engine dials with
+// a longer one, for the state read after the greeting.
+func TestASilentGreetingFailsDialAfterConnectTimeout(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	var far net.Conn
+	silent := func(context.Context, string, string) (net.Conn, error) {
+		near, f := net.Pipe()
+		far = f
+		return near, nil
+	}
+	start := time.Now()
+	_, err := (&Dialer{DialContext: silent}).Dial(ctx, "192.0.2.20:9993")
+	took := time.Since(start)
+	if far != nil {
+		far.Close()
+	}
+	if !errors.Is(err, context.DeadlineExceeded) || took < ConnectTimeout || took > ConnectTimeout+3*time.Second {
+		t.Errorf("%v after %v, want a deadline after %v", err, took, ConnectTimeout)
+	}
+}
+
 func TestALineBreakIsRefused(t *testing.T) {
 	d := fakehyperdeck.New()
 	s := dialFake(t, d)

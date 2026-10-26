@@ -146,12 +146,13 @@ func (c *call) deckSend(cmd hyperdeck.Command) (hyperdeck.Response, error) {
 	ctx, cancel := context.WithTimeout(c.ctx, c.req.timeout())
 	defer cancel()
 	r, err := c.deck.SendAndWait(ctx, cmd)
-	return r, deckErr(cmd, err)
+	return r, deckErr(cmd, err, c.req.timeout())
 }
 
 // deckErr gives a deck's error its code: a refusal is rejected (exit 4),
-// no answer in time no_echo (3), the session gone unreachable (2).
-func deckErr(cmd hyperdeck.Command, err error) error {
+// no answer within wait (the request's timeout) no_echo (3), the session
+// gone unreachable (2).
+func deckErr(cmd hyperdeck.Command, err error, wait time.Duration) error {
 	var de *hyperdeck.Error
 	switch {
 	case err == nil:
@@ -159,7 +160,7 @@ func deckErr(cmd hyperdeck.Command, err error) error {
 	case errors.As(err, &de):
 		return codeErr(CodeRejected, "the deck refused %s: %s (%d)", strings.SplitN(cmd.Line(), ":", 2)[0], de.Text, de.Code)
 	case errors.Is(err, hyperdeck.ErrTimeout):
-		return codeErr(CodeNoEcho, "sent %q, but the deck did not answer within %v", cmd.Line(), hyperdeck.ReadTimeout)
+		return codeErr(CodeNoEcho, "sent %q, but the deck did not answer within %v", cmd.Line(), wait)
 	case errors.Is(err, hyperdeck.ErrClosed), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return &Error{CodeUnreachable, err}
 	}

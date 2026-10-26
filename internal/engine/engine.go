@@ -610,7 +610,8 @@ func dialMessage(key string, err error) string {
 	case errors.Is(err, context.DeadlineExceeded) && strings.HasSuffix(key, fmt.Sprintf(":%d", hyperdeck.DefaultPort)):
 		return fmt.Sprintf("no HyperDeck answered at %s within %v", key, hyperdeck.ConnectTimeout)
 	case errors.Is(err, context.DeadlineExceeded) && strings.HasSuffix(key, fmt.Sprintf(":%d", videohub.DefaultPort)):
-		return fmt.Sprintf("no Videohub answered at %s within %v", key, videohub.ConnectTimeout)
+		// videohub.Dial tries twice, each try ConnectTimeout.
+		return fmt.Sprintf("no Videohub answered at %s (tried twice, %v each)", key, videohub.ConnectTimeout)
 	case errors.Is(err, context.DeadlineExceeded):
 		return fmt.Sprintf("no switcher answered at %s within %v", key, atem.ConnectTimeout)
 	}

@@ -127,6 +127,13 @@ func TestDeckRefusals(t *testing.T) {
 	if code != exitRejected || !strings.Contains(errOut, "the deck refused play: remote control disabled (111)") {
 		t.Errorf("%d %q", code, errOut)
 	}
+	// A deck that stops answering: the message names the wait it was
+	// given (--timeout), not the session's default.
+	d.Silence(true)
+	code, _, errOut = b.run("--timeout", "200ms", "play")
+	if code != exitNoEcho || !strings.Contains(errOut, `sent "transport info", but the deck did not answer within 200ms`) {
+		t.Errorf("silent: %d %q", code, errOut)
+	}
 }
 
 // Reads: status, clips, state, watch, down a pipe and as JSON.
