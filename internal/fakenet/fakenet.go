@@ -71,13 +71,6 @@ func (n *Net) Deck(host string, d *fakehyperdeck.Deck) *fakehyperdeck.Deck {
 	return d
 }
 
-// DeckAt returns the HyperDeck at host, if any.
-func (n *Net) DeckAt(host string) *fakehyperdeck.Deck {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.decks[host]
-}
-
 // Hub puts a fake Videohub at host and returns it: it answers on 9990
 // as a router does, where Videohub's stand-in only sends a preamble.
 func (n *Net) Hub(host string, h *fakevideohub.Hub) *fakevideohub.Hub {
@@ -136,20 +129,21 @@ func (n *Net) Dial(ctx context.Context, network, addr string) (net.Conn, error) 
 	}
 	port, _ := strconv.Atoi(ps)
 	n.mu.Lock()
-	deck, router, unit, hub, keyer := n.decks[host], n.hubs[host], n.keyers[host], n.videohubs[host], n.ultimattes[host]
+	deck, hub, keyer := n.decks[host], n.hubs[host], n.keyers[host]
+	preamble, prelude := n.videohubs[host], n.ultimattes[host] // the stand-ins
 	n.mu.Unlock()
 	text := ""
 	switch {
 	case port == 9993 && deck != nil:
 		return deck.Dial(ctx, network, addr)
-	case port == 9990 && router != nil:
-		return router.Dial(ctx, network, addr)
-	case (port == 9998 || port == 9996) && unit != nil:
-		return unit.Dial(ctx, network, addr)
-	case port == 9990 && hub != "":
-		text = hub
-	case port == 9998 && keyer != "":
-		text = keyer
+	case port == 9990 && hub != nil:
+		return hub.Dial(ctx, network, addr)
+	case (port == 9998 || port == 9996) && keyer != nil:
+		return keyer.Dial(ctx, network, addr)
+	case port == 9990 && preamble != "":
+		text = preamble
+	case port == 9998 && prelude != "":
+		text = prelude
 	default:
 		return nil, &net.OpError{Op: "dial", Net: network, Err: syscall.ECONNREFUSED}
 	}

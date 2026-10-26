@@ -18,9 +18,6 @@ import (
 // aliases are the names bmdctl answers to as one device's command.
 var aliases = map[string]string{"atemctl": "atem", "hdctl": "hyperdeck", "vhctl": "videohub", "ultctl": "ultimatte"}
 
-// aliasNames are the alias names, in the order help lists them.
-var aliasNames = []string{"atemctl", "hdctl", "vhctl", "ultctl"}
-
 // aliasFor is the device a program name (argv[0]) stands for, and the
 // name as typed; "" for bmdctl itself. Case and a .exe suffix are
 // ignored, for Windows.

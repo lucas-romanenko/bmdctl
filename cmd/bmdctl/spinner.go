@@ -126,13 +126,6 @@ func (s *spinner) set(label string) {
 	s.label, s.since, s.prog = label, s.now(), nil
 }
 
-// elapsed is how long the wait for the current label has gone on.
-func (s *spinner) elapsed() time.Duration {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.now().Sub(s.since)
-}
-
 // clear takes the spinner's line away, if a frame is on it. Under mu.
 func (s *spinner) clear() {
 	if s.shown {

@@ -2,7 +2,6 @@
 /bmdctl
 *.test
 *.out
-/bmdctl
 /test.png
 /back.png
 /.claude/
