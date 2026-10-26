@@ -1,7 +1,7 @@
 {
     "##": "Install with: scoop install https://raw.githubusercontent.com/lucas-romanenko/bmdctl/main/scoop/bmdctl.json . It installs the latest release, and nothing rewrites it at a release: the url is releases/latest/download, whose archive keeps its name, and there is no pinned hash. version 'nightly' is how Scoop is told the url isn't pinned: it skips the hash check, and scoop update bmdctl fetches the latest again (once a day; bmdctl version says which release it is). checkver and autoupdate let a bucket pin a release: checkver.ps1 -u writes its version, url and hash from checksums.txt.",
     "version": "nightly",
-    "description": "Control Blackmagic Design ATEM switchers and HyperDeck recorders from the command line.",
+    "description": "Control Blackmagic Design ATEM switchers, HyperDeck recorders, Videohub routers and Ultimatte keyers from the command line.",
     "homepage": "https://github.com/lucas-romanenko/bmdctl",
     "license": "MIT AND LGPL-3.0-only",
     "architecture": {

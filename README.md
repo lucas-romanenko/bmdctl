@@ -77,7 +77,7 @@ bmdctl program cam2           # a number, cam2, mp1, bars, or the input's name
 - **Switcher configs in git.** `bmdctl profile save show.xml` writes ATEM
   Software Control's XML and the media pool stills beside it. Commit them,
   and a change to a show's setup is a diff. (`profile restore` loads one
-  back; it has not yet run on hardware.)
+  back; parts of it have run on hardware, and docs/HARDWARE.md says which.)
 - **AI agents over MCP.** `bmdctl mcp` gives Claude Code, Claude Desktop or
   any MCP client a tool per command group. Destructive commands do nothing
   until a person confirms. See [docs/AGENTS.md](docs/AGENTS.md).

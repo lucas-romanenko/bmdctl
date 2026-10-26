@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        bmdctl controls ATEM switchers and HyperDeck recorders today, and
-        has run on one ATEM model (docs/HARDWARE.md). Videohub and
-        Ultimatte are next. Reports of other models, working or not, are
+        bmdctl controls ATEM switchers, HyperDeck recorders, Videohub
+        routers and Ultimatte keyers, and has run on one ATEM model
+        (docs/HARDWARE.md). Reports of other models, working or not, are
         how that list grows.
   - type: input
     id: device

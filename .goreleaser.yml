@@ -99,8 +99,9 @@ nfpms:
     homepage: https://github.com/lucas-romanenko/bmdctl
     maintainer: Lucas Romanenko <lucas@romanenko.com>
     description: |-
-      Control Blackmagic Design ATEM switchers and HyperDeck recorders from the
-      command line, over HTTP (bmdctl serve) and from AI agents (bmdctl mcp).
+      Control Blackmagic Design ATEM switchers, HyperDeck recorders, Videohub
+      routers and Ultimatte keyers from the command line, over HTTP
+      (bmdctl serve) and from AI agents (bmdctl mcp).
     license: MIT AND LGPL-3.0-only
     section: video
     bindir: /usr/bin

@@ -13,8 +13,9 @@
 site_name: bmdctl
 site_url: https://lucas-romanenko.github.io/bmdctl/
 site_description: >-
-  One binary that controls Blackmagic Design ATEM switchers and HyperDeck
-  recorders over the network, from a terminal, scripts and AI agents.
+  One binary that controls Blackmagic Design ATEM switchers, HyperDeck
+  recorders, Videohub routers and Ultimatte keyers over the network, from a
+  terminal, scripts and AI agents.
 site_author: Lucas Romanenko
 repo_url: https://github.com/lucas-romanenko/bmdctl
 repo_name: lucas-romanenko/bmdctl

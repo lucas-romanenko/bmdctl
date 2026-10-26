@@ -1,10 +1,11 @@
 # Contributing
 
 Thanks for looking. bmdctl is a port of [bmdwire](https://github.com/lucas-romanenko/bmdwire)
-v1.3.0 with a CLI on top, so most changes start from one rule: mirror
-bmdwire, don't redesign it. [docs/PORTING.md](docs/PORTING.md) records
-every decision the port has made; read the section for the code you're
-changing before you change it, and add to it when you make a new one.
+with a CLI on top, so most changes start from one rule: mirror bmdwire,
+don't redesign it. [docs/PORTING.md](docs/PORTING.md) records every
+decision the port has made, and its `Tracks:` line the bmdwire version it
+follows; read the section for the code you're changing before you change
+it, and add to it when you make a new one.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is the map.
 
 Bug reports and device-support requests are welcome as issues. For a

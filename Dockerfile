@@ -8,7 +8,7 @@
 # host's 127.0.0.1:8880 (no authentication: keep it there, or pass
 # `engine --serve --listen ADDRESS` deliberately). hosts.yml, the log and the
 # still cache live under /data; the engine's socket is in /run/bmdctl, a
-# volume a host's bmdctl can share (README.md):
+# volume a host's bmdctl can share (docs/INSTALL.md, "Docker"):
 #
 #   docker run -d --network host -v bmdctl:/data -v /run/bmdctl:/run/bmdctl \
 #       ghcr.io/lucas-romanenko/bmdctl
