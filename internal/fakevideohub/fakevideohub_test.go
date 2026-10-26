@@ -22,6 +22,25 @@ func dial(t *testing.T, h *Hub) *videohub.Session {
 	return s
 }
 
+// Over loopback, through videohub.Dial's own net.Dialer: Listen serves a
+// real TCP connection as Dial serves a pipe.
+func TestOverLoopback(t *testing.T) {
+	h := New()
+	l, err := h.Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	s, err := videohub.Dial(context.Background(), l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if snap, err := s.Snapshot(); err != nil || snap.Device.FriendlyName != "Studio Router" || len(snap.Outputs) != 16 {
+		t.Fatalf("%+v %v", snap, err)
+	}
+}
+
 func TestPreambleAndRoute(t *testing.T) {
 	h := New()
 	s := dial(t, h)

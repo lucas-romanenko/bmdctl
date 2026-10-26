@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -21,6 +23,29 @@ var ctx = context.Background()
 func client(u *Unit) *ultimatte.Client {
 	return &ultimatte.Client{DialContext: u.Dial, PreludeQuiet: 50 * time.Millisecond, ReplyQuiet: 50 * time.Millisecond,
 		PreludeDrain: 10 * time.Millisecond, ReadbackPoll: 10 * time.Millisecond}
+}
+
+// Over loopback, both channels on real TCP connections: Listen serves
+// what Dial's pipes do. The client dials 9998 and 9996; this dialer
+// takes each to its listener.
+func TestOverLoopback(t *testing.T) {
+	u := New()
+	lc, ls, err := u.Listen("127.0.0.1:0", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lc.Close()
+	defer ls.Close()
+	to := map[string]string{strconv.Itoa(ultimatte.ControlPort): lc.Addr().String(), strconv.Itoa(ultimatte.SettingsPort): ls.Addr().String()}
+	c := client(u)
+	c.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		_, port, _ := net.SplitHostPort(addr)
+		var d net.Dialer
+		return d.DialContext(ctx, network, to[port])
+	}
+	if _, info, err := c.Archive(ctx, Address, time.Now(), nil); err != nil || info.Label != "Keyer_A" || len(info.Slots) != 3 {
+		t.Fatalf("%+v %v", info, err)
+	}
 }
 
 func TestArchiveAndRestore(t *testing.T) {
