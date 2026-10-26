@@ -226,8 +226,7 @@ func TestOverview(t *testing.T) {
 	}
 	// The engine's commit; an engine of another build says so, whatever
 	// its commit (two builds of one dirty tree share one).
-	b.engine().Stop()
-	eventually(t, "the engine to go", func() bool { _, err := os.Stat(b.env["BMDCTL_SOCKET"]); return os.IsNotExist(err) })
+	b.stopEngine()
 	c, o, _ := b.cli("")
 	c.run(nil)
 	if !strings.HasPrefix(o.String(), "engine  not running; the next command starts it\n") || !strings.Contains(o.String(), "studio (192.0.2.10)") {

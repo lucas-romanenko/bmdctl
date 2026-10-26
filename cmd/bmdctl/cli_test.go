@@ -460,11 +460,7 @@ func TestNoEngine(t *testing.T) {
 // does.
 func TestCommandStartsTheEngine(t *testing.T) {
 	b := newBench(t)
-	b.engine().Stop()
-	eventually(t, "the old engine to go", func() bool {
-		_, err := os.Stat(b.env["BMDCTL_SOCKET"])
-		return os.IsNotExist(err)
-	})
+	b.stopEngine()
 	c, o, e := b.cli("")
 	spawned := 0
 	c.spawn = func(exe string, args, env []string) error {
@@ -496,16 +492,10 @@ func TestCommandStartsTheEngine(t *testing.T) {
 func TestStaleEngineRestarts(t *testing.T) {
 	b := newBench(t)
 	restart := func(build string, bg bool) *engine.Engine {
-		b.engine().Stop()
-		// The old engine removes its socket before it lets go of its
-		// lock (unixListener.Close), so wait for the lock, not the socket.
-		eventually(t, "the old engine to go", func() bool {
-			err := b.startEngine(engine.Config{BuildID: build, Background: bg})
-			if err != nil && !errors.Is(err, engine.ErrRunning) {
-				t.Fatal(err)
-			}
-			return err == nil
-		})
+		b.stopEngine()
+		if err := b.startEngine(engine.Config{BuildID: build, Background: bg}); err != nil {
+			t.Fatal(err)
+		}
 		return b.engine()
 	}
 	// cli is a bmdctl of build b whose spawn starts an engine of build.
@@ -584,7 +574,7 @@ func TestStaleEngineRestarts(t *testing.T) {
 // reports it and its sessions; it logs to its log file.
 func TestEngineForeground(t *testing.T) {
 	b := newBench(t)
-	b.engine().Stop()
+	b.stopEngine()
 	c, _, errOut := b.cli("")
 	done := make(chan int)
 	go func() { done <- c.run([]string{"engine", "--log-level", "debug"}) }()
@@ -631,7 +621,7 @@ func TestEngineForeground(t *testing.T) {
 // background engine, which answers, then stops on request.
 func TestSpawnedEngine(t *testing.T) {
 	b := newBench(t)
-	b.engine().Stop()
+	b.stopEngine()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -716,7 +706,7 @@ func TestPinIdleEnv(t *testing.T) {
 		t.Errorf("soon: %v", err)
 	}
 	b := newBench(t)
-	b.engine().Stop()
+	b.stopEngine()
 	run := func(env string, args ...string) (stop func() (int, string)) {
 		t.Helper()
 		b.env[PinIdleEnv] = env

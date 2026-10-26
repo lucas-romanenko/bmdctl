@@ -43,6 +43,8 @@ type bench struct {
 	env  map[string]string
 	eng  *engine.Engine
 	dump []byte
+	// served is closed once eng's Serve has returned.
+	served chan struct{}
 
 	mu    sync.Mutex
 	sws   []*fakeatem.Switcher
@@ -112,13 +114,25 @@ func (b *bench) startEngine(cfg engine.Config) error {
 	cfg.Ultimatte = &ultimatte.Client{DialContext: b.net.Dial, PreludeQuiet: 100 * time.Millisecond,
 		ReplyQuiet: 100 * time.Millisecond, PreludeDrain: 10 * time.Millisecond, ReadbackPoll: 10 * time.Millisecond}
 	eng := engine.New(cfg)
-	b.mu.Lock()
-	b.eng = eng
-	b.mu.Unlock()
 	served := make(chan struct{})
+	b.mu.Lock()
+	b.eng, b.served = eng, served
+	b.mu.Unlock()
 	go func() { eng.Serve(l); close(served) }()
 	b.t.Cleanup(func() { eng.Stop(); <-served })
 	return nil
+}
+
+// stopEngine stops the bench's engine and waits for it to let go of its
+// socket and its lock. Stop alone may return before then: an engine
+// stopped before its Serve has begun closes the listener only once Serve
+// begins, so another engine started meanwhile found it running.
+func (b *bench) stopEngine() {
+	b.mu.Lock()
+	eng, served := b.eng, b.served
+	b.mu.Unlock()
+	eng.Stop()
+	<-served
 }
 
 // engine is the bench's current engine.
