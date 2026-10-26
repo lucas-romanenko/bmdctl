@@ -157,20 +157,21 @@ func TestDeckReads(t *testing.T) {
 	if out := b.must("state", "--path", "transport.status"); out != "stopped\n" {
 		t.Errorf("state: %q", out)
 	}
-	// watch: a change from the deck's front panel, as it comes.
-	asked := func() int { return strings.Count(strings.Join(d.Commands(), "\n"), "transport info") }
-	n := asked()
-	done := make(chan string)
-	go func() {
-		_, out, _ := b.run("watch", "--count", "2")
-		done <- out
-	}()
-	// The watch reads the transport, then once it watches the CLI asks
-	// for the state, which reads it again: then nothing can be missed.
-	eventually(t, "the watch", func() bool { return asked() >= n+2 })
+	// watch: a change from the deck's front panel, as it comes. The CLI
+	// says it watches once it has the state to show changes against: a
+	// change before then may be in that state already, with no before.
+	c, o, _ := b.cli("")
+	ew := newLineWriter()
+	c.stderr = ew
+	done := make(chan int)
+	go func() { done <- c.run([]string{"watch", "--count", "2"}) }()
+	if l := ew.next(t); l != "watching; Ctrl-C to stop" {
+		t.Fatalf("stderr %q", l)
+	}
 	d.Press("play")
 	d.SetRemote(false)
-	got := <-done
+	<-done
+	got := o.String()
 	if !strings.Contains(got, "transport  stopped → play") || !strings.Contains(got, "remote  enabled true → false") {
 		t.Errorf("watch:\n%s", got)
 	}
