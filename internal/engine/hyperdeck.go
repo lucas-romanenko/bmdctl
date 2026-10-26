@@ -8,7 +8,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -32,13 +31,7 @@ type DeckLive struct {
 }
 
 // deckOps are the HyperDeck's operations, by path.
-var deckOps = func() map[string]operation {
-	m := map[string]operation{}
-	for _, o := range deckOperations() {
-		m[o.entry.Path] = o
-	}
-	return m
-}()
+var deckOps = byPath(deckOperations())
 
 func deckOperations() []operation {
 	return []operation{
@@ -90,13 +83,7 @@ var deckExamples = map[string][]string{
 }
 
 func registerDeckOperations(r *table.Registry) error {
-	var es []table.Entry
-	for _, o := range deckOperations() {
-		e := o.entry
-		e.Device, e.Operation, e.Examples, e.Group = "hyperdeck", true, deckExamples[e.Path], hyperdeck.GroupOf(e.Path)
-		es = append(es, e)
-	}
-	return r.Add(es...)
+	return r.Add(entries("hyperdeck", deckOperations(), deckExamples, hyperdeck.GroupOf)...)
 }
 
 // runDeck runs a HyperDeck request: the session, a fresh transport for
@@ -516,38 +503,10 @@ func opDeckClips(c *call) (any, bool, error) {
 	return r, false, nil
 }
 
-func opDeckState(c *call) (any, bool, error) {
-	raw, err := json.Marshal(c.deck.State())
-	if err != nil {
-		return nil, false, err
-	}
-	if !c.args.Has("path") || c.args.Value("path") == "" {
-		return json.RawMessage(raw), false, nil
-	}
-	sub, err := selectPath(raw, c.args.Value("path").(string))
-	if err != nil {
-		return nil, false, &Error{CodeUsage, err}
-	}
-	return sub, false, nil
-}
+func opDeckState(c *call) (any, bool, error) { return stateAt(c, c.deck.State()) }
 
 func opDeckDisconnect(c *call) (any, bool, error) {
-	key, err := deviceKey("hyperdeck", c.req.Host)
-	if err != nil {
-		return nil, false, err
-	}
-	c.e.mu.Lock()
-	h := c.e.hosts[key]
-	var d *hyperdeck.Session
-	if h != nil {
-		d, _ = h.sess.(*hyperdeck.Session)
-	}
-	c.e.mu.Unlock()
-	if d != nil && d.Connected() {
-		c.note(Note{Switcher: c.e.deckNote(h, d.State(), 0)})
-	}
-	closed, err := c.e.disconnectKey(key)
-	return DisconnectResult{Host: key, Closed: closed}, false, err
+	return disconnectDevice(c, "hyperdeck", func(h *host, d *hyperdeck.Session) *Switcher { return c.e.deckNote(h, d.State(), 0) })
 }
 
 // opDeckWatch streams the notifications the deck sends: each a
@@ -557,33 +516,10 @@ func opDeckDisconnect(c *call) (any, bool, error) {
 func opDeckWatch(c *call) (any, bool, error) {
 	ch, cancel := c.deck.Subscribe()
 	defer cancel()
-	limit := uint64(0)
-	if c.args.Has("count") {
-		limit = c.args.Value("count").(uint64)
-	}
-	if err := c.out.response(Response{OK: true, Result: ChangeEvent{Kind: "watching", Time: now()},
-		TookMS: time.Since(c.start).Milliseconds()}); err != nil {
-		return nil, false, err
-	}
-	var n uint64
-	for {
-		select {
-		case <-c.ctx.Done():
-			return streamEnd{}, false, nil
-		case ch, ok := <-ch:
-			if !ok {
-				return nil, false, codeErr(CodeUnreachable, "the session closed")
-			}
-			ev := ChangeEvent{Kind: "state", Opcode: strconv.Itoa(ch.Code), Key: ch.Key, Value: ch.Params, Time: now()}
-			if ch.Kind == hyperdeck.ChangeDisconnected {
-				ev = ChangeEvent{Kind: "disconnected", Time: now()}
-			}
-			if err := c.out.response(Response{OK: true, Result: ev, TookMS: time.Since(c.start).Milliseconds()}); err != nil {
-				return streamEnd{}, false, nil
-			}
-			if n++; limit > 0 && n >= limit {
-				return streamEnd{}, false, nil
-			}
+	return streamChanges(c, ch, func(ch hyperdeck.Change) (ChangeEvent, bool) {
+		if ch.Kind == hyperdeck.ChangeDisconnected {
+			return ChangeEvent{Kind: "disconnected", Time: now()}, true
 		}
-	}
+		return ChangeEvent{Kind: "state", Opcode: strconv.Itoa(ch.Code), Key: ch.Key, Value: ch.Params, Time: now()}, true
+	})
 }

@@ -423,23 +423,32 @@ type operation struct {
 }
 
 // atemOperations maps each ATEM operation's path to its definition.
-func atemOperations() map[string]operation {
-	m := map[string]operation{}
-	for _, o := range operations() {
+func atemOperations() map[string]operation { return byPath(operations()) }
+
+// byPath maps each of a device's operations' paths to its definition.
+func byPath(ops []operation) map[string]operation {
+	m := make(map[string]operation, len(ops))
+	for _, o := range ops {
 		m[o.entry.Path] = o
 	}
 	return m
 }
 
-// RegisterOperations adds the engine's operations to r.
-func RegisterOperations(r *table.Registry) error {
-	var es []table.Entry
-	for _, o := range operations() {
+// entries are a device's operations as the table lists them: each marked
+// an operation of device, with its examples and its command group.
+func entries(device string, ops []operation, examples map[string][]string, group func(string) string) []table.Entry {
+	es := make([]table.Entry, 0, len(ops))
+	for _, o := range ops {
 		e := o.entry
-		e.Device, e.Operation, e.Examples, e.Group = "atem", true, opExamples[e.Path], atem.GroupOf(e.Path)
+		e.Device, e.Operation, e.Examples, e.Group = device, true, examples[e.Path], group(e.Path)
 		es = append(es, e)
 	}
-	if err := r.Add(es...); err != nil {
+	return es
+}
+
+// RegisterOperations adds the engine's operations to r.
+func RegisterOperations(r *table.Registry) error {
+	if err := r.Add(entries("atem", operations(), opExamples, atem.GroupOf)...); err != nil {
 		return err
 	}
 	if err := registerDeckOperations(r); err != nil {

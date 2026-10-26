@@ -23,13 +23,7 @@ import (
 )
 
 // ultOps are the Ultimatte's operations, by path.
-var ultOps = func() map[string]operation {
-	m := map[string]operation{}
-	for _, o := range ultOperations() {
-		m[o.entry.Path] = o
-	}
-	return m
-}()
+var ultOps = byPath(ultOperations())
 
 func ultOperations() []operation {
 	iface := table.Param{Name: "interface", Kind: table.Uint, Default: "0", Help: "the network interface: 0 on an Ultimatte 12"}
@@ -90,13 +84,7 @@ var ultExamples = map[string][]string{
 }
 
 func registerUltOperations(r *table.Registry) error {
-	var es []table.Entry
-	for _, o := range ultOperations() {
-		e := o.entry
-		e.Device, e.Operation, e.Examples, e.Group = "ultimatte", true, ultExamples[e.Path], ultimatte.GroupOf(e.Path)
-		es = append(es, e)
-	}
-	return r.Add(es...)
+	return r.Add(entries("ultimatte", ultOperations(), ultExamples, ultimatte.GroupOf)...)
 }
 
 // runUlt runs an Ultimatte request: the unit's address, then the

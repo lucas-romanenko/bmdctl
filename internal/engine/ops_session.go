@@ -313,8 +313,11 @@ func opInfo(c *call) (any, bool, error) {
 	return r, false, nil
 }
 
-func opState(c *call) (any, bool, error) {
-	raw, err := json.Marshal(c.state)
+func opState(c *call) (any, bool, error) { return stateAt(c, c.state) }
+
+// stateAt is a device's state op: v as JSON, or the part --path names.
+func stateAt(c *call, v any) (any, bool, error) {
+	raw, err := json.Marshal(v)
 	if err != nil {
 		return nil, false, err
 	}
@@ -326,6 +329,30 @@ func opState(c *call) (any, bool, error) {
 		return nil, false, &Error{CodeUsage, err}
 	}
 	return sub, false, nil
+}
+
+// disconnectDevice is a device's disconnect op: it closes the engine's
+// session to the host, pinned or not, naming it in the header first if
+// it is up (note). A host's session is only ever one that dialled, so
+// the assertion's ok is its nil check too.
+func disconnectDevice[S interface{ Connected() bool }](c *call, device string, note func(*host, S) *Switcher) (any, bool, error) {
+	key, err := deviceKey(device, c.req.Host)
+	if err != nil {
+		return nil, false, err
+	}
+	c.e.mu.Lock()
+	h := c.e.hosts[key]
+	var s S
+	ok := false
+	if h != nil {
+		s, ok = h.sess.(S)
+	}
+	c.e.mu.Unlock()
+	if ok && s.Connected() {
+		c.note(Note{Switcher: note(h, s)})
+	}
+	closed, err := c.e.disconnectKey(key)
+	return DisconnectResult{Host: key, Closed: closed}, false, err
 }
 
 // selectPath follows a dotted path of JSON keys and array indices into
@@ -404,13 +431,34 @@ func opWatch(c *call) (any, bool, error) {
 	if c.args.Has("filter") {
 		filters = c.args.Value("filter").([]string)
 	}
+	all := c.args.Value("all").(bool)
+	return streamChanges(c, ch, func(ch atem.Change) (ChangeEvent, bool) {
+		ev := ChangeEvent{Opcode: ch.Opcode, Key: ch.Key, Value: ch.Value, Time: now()}
+		switch ch.Kind {
+		case atem.ChangeState:
+			ev.Kind = "state"
+		case atem.ChangeReady:
+			ev.Kind = "ready"
+		case atem.ChangeDisconnected:
+			ev.Kind = "disconnected"
+		}
+		matches := slices.ContainsFunc(filters, func(f string) bool { return strings.HasPrefix(ch.Key, strings.TrimSpace(f)) })
+		if ev.Kind == "state" && (len(filters) > 0 && !matches || watchHidden[ch.Opcode] && !all && !matches) {
+			return ev, false // noise, or said already, unless asked for
+		}
+		return ev, true
+	})
+}
+
+// streamChanges is a device's watch: once the subscription (ch) exists it
+// says "watching", so a script can act knowing nothing will be missed;
+// then each change as event makes it (unless event drops it), until
+// --count of them, the caller hangs up or the session closes.
+func streamChanges[C any](c *call, ch <-chan C, event func(C) (ChangeEvent, bool)) (any, bool, error) {
 	limit := uint64(0)
 	if c.args.Has("count") {
 		limit = c.args.Value("count").(uint64)
 	}
-	all := c.args.Value("all").(bool)
-	// Watching has begun once the subscription exists: tell the caller,
-	// so a script can act knowing nothing will be missed.
 	if err := c.out.response(Response{OK: true, Result: ChangeEvent{Kind: "watching", Time: now()},
 		TookMS: time.Since(c.start).Milliseconds()}); err != nil {
 		return nil, false, err
@@ -420,22 +468,13 @@ func opWatch(c *call) (any, bool, error) {
 		select {
 		case <-c.ctx.Done():
 			return streamEnd{}, false, nil
-		case ch, ok := <-ch:
+		case change, ok := <-ch:
 			if !ok {
 				return nil, false, codeErr(CodeUnreachable, "the session closed")
 			}
-			ev := ChangeEvent{Opcode: ch.Opcode, Key: ch.Key, Value: ch.Value, Time: now()}
-			switch ch.Kind {
-			case atem.ChangeState:
-				ev.Kind = "state"
-			case atem.ChangeReady:
-				ev.Kind = "ready"
-			case atem.ChangeDisconnected:
-				ev.Kind = "disconnected"
-			}
-			matches := slices.ContainsFunc(filters, func(f string) bool { return strings.HasPrefix(ch.Key, strings.TrimSpace(f)) })
-			if ev.Kind == "state" && (len(filters) > 0 && !matches || watchHidden[ch.Opcode] && !all && !matches) {
-				continue // noise, or said already, unless asked for
+			ev, send := event(change)
+			if !send {
+				continue
 			}
 			if err := c.out.response(Response{OK: true, Result: ev, TookMS: time.Since(c.start).Milliseconds()}); err != nil {
 				return streamEnd{}, false, nil // the caller hung up

@@ -9,7 +9,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -22,13 +21,7 @@ import (
 )
 
 // hubOps are the Videohub's operations, by path.
-var hubOps = func() map[string]operation {
-	m := map[string]operation{}
-	for _, o := range hubOperations() {
-		m[o.entry.Path] = o
-	}
-	return m
-}()
+var hubOps = byPath(hubOperations())
 
 func hubOperations() []operation {
 	port := func(name, help string) table.Param {
@@ -89,13 +82,7 @@ var hubExamples = map[string][]string{
 }
 
 func registerHubOperations(r *table.Registry) error {
-	var es []table.Entry
-	for _, o := range hubOperations() {
-		e := o.entry
-		e.Device, e.Operation, e.Examples, e.Group = "videohub", true, hubExamples[e.Path], videohub.GroupOf(e.Path)
-		es = append(es, e)
-	}
-	return r.Add(es...)
+	return r.Add(entries("videohub", hubOperations(), hubExamples, videohub.GroupOf)...)
 }
 
 // runHub runs a Videohub request: the session, the notes, the operation.
@@ -429,38 +416,10 @@ func opHubInputs(c *call) (any, bool, error) {
 	return r, false, nil
 }
 
-func opHubState(c *call) (any, bool, error) {
-	raw, err := json.Marshal(c.hub.State())
-	if err != nil {
-		return nil, false, err
-	}
-	if !c.args.Has("path") || c.args.Value("path") == "" {
-		return json.RawMessage(raw), false, nil
-	}
-	sub, err := selectPath(raw, c.args.Value("path").(string))
-	if err != nil {
-		return nil, false, &Error{CodeUsage, err}
-	}
-	return sub, false, nil
-}
+func opHubState(c *call) (any, bool, error) { return stateAt(c, c.hub.State()) }
 
 func opHubDisconnect(c *call) (any, bool, error) {
-	key, err := deviceKey("videohub", c.req.Host)
-	if err != nil {
-		return nil, false, err
-	}
-	c.e.mu.Lock()
-	h := c.e.hosts[key]
-	var s *videohub.Session
-	if h != nil {
-		s, _ = h.sess.(*videohub.Session)
-	}
-	c.e.mu.Unlock()
-	if s != nil && s.Connected() {
-		c.note(Note{Switcher: c.e.hubNote(h, s.State(), 0)})
-	}
-	closed, err := c.e.disconnectKey(key)
-	return DisconnectResult{Host: key, Closed: closed}, false, err
+	return disconnectDevice(c, "videohub", func(h *host, s *videohub.Session) *Switcher { return c.e.hubNote(h, s.State(), 0) })
 }
 
 // opHubWatch streams the blocks the router pushes: each a ChangeEvent
@@ -470,33 +429,10 @@ func opHubDisconnect(c *call) (any, bool, error) {
 func opHubWatch(c *call) (any, bool, error) {
 	ch, cancel := c.hub.Subscribe()
 	defer cancel()
-	limit := uint64(0)
-	if c.args.Has("count") {
-		limit = c.args.Value("count").(uint64)
-	}
-	if err := c.out.response(Response{OK: true, Result: ChangeEvent{Kind: "watching", Time: now()},
-		TookMS: time.Since(c.start).Milliseconds()}); err != nil {
-		return nil, false, err
-	}
-	var n uint64
-	for {
-		select {
-		case <-c.ctx.Done():
-			return streamEnd{}, false, nil
-		case ch, ok := <-ch:
-			if !ok {
-				return nil, false, codeErr(CodeUnreachable, "the session closed")
-			}
-			ev := ChangeEvent{Kind: "state", Key: ch.Key, Value: ch.Values, Time: now()}
-			if ch.Kind == videohub.ChangeDisconnected {
-				ev = ChangeEvent{Kind: "disconnected", Time: now()}
-			}
-			if err := c.out.response(Response{OK: true, Result: ev, TookMS: time.Since(c.start).Milliseconds()}); err != nil {
-				return streamEnd{}, false, nil
-			}
-			if n++; limit > 0 && n >= limit {
-				return streamEnd{}, false, nil
-			}
+	return streamChanges(c, ch, func(ch videohub.Change) (ChangeEvent, bool) {
+		if ch.Kind == videohub.ChangeDisconnected {
+			return ChangeEvent{Kind: "disconnected", Time: now()}, true
 		}
-	}
+		return ChangeEvent{Kind: "state", Key: ch.Key, Value: ch.Values, Time: now()}, true
+	})
 }
