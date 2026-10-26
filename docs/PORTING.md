@@ -108,7 +108,7 @@ Tracks: bmdwire v1.6.0
   package's code has changed since 1.0.0 (videohubwire) and 0.2.0.dev0
   (ultimattewire, `5342705`).
 - **Drift is reported, not merged.** `.github/workflows/surface-drift.yml`
-  compares both files every night, less their header comment, with the
+  compares the four copies every night, less their header comment, with the
   SURFACE.md bmdwire main has beside each package, and keeps one issue,
   "SURFACE drift from bmdwire", open while they differ: rewritten each
   night, closed once they match. It never edits a SURFACE file; catching

@@ -1,5 +1,6 @@
-# Nightly: compare docs/SURFACE-atem.md and docs/SURFACE-hyperdeck.md
-# with the SURFACE.md each has on bmdwire main, and keep one issue, "SURFACE
+# Nightly: compare the four SURFACE copies (docs/SURFACE-atem.md,
+# -hyperdeck.md, -videohub.md and -ultimatte.md) with the SURFACE.md each
+# package has on bmdwire main, and keep one issue, "SURFACE
 # drift from bmdwire", saying how they differ: opened when they first
 # differ, rewritten every night they still do, closed once they match.
 # The comparison is .github/scripts/surface-drift.sh; the issue body
@@ -41,9 +42,13 @@ jobs:
           repository: lucas-romanenko/bmdwire
           ref: main
           path: bmdwire
+          # Every package the script compares: a path left out here reads
+          # as "not on bmdwire main" even once bmdwire has it.
           sparse-checkout: |
             atemwire/docs
             hyperdeckwire/docs
+            videohubwire/docs
+            ultimattewire/docs
       - name: Compare
         id: compare
         run: |
