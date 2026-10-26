@@ -46,9 +46,10 @@ root:
 ## Tests
 
 - **Always with `-race`.** CI runs `go test -race ./...` on every push
-  and pull request, and a nightly job runs the session and CLI packages
-  50 times over. The race detector changes timing as well as finding
-  races: tests have passed without it and failed with it.
+  and pull request. The race detector changes timing as well as finding
+  races: tests have passed without it and failed with it. A test that
+  fails now and then shows itself run many times over:
+  `go test ./atem -race -count=50 -run TestName`.
 - **Wait for a condition, never for a sleep.** A test against the fake
   switcher waits for something to happen (`Dial` returning with the
   dump in, `Ready`, a transfer queued, a `connecting to` line), not for
