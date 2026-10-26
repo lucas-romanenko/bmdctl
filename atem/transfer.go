@@ -539,6 +539,14 @@ wait:
 	for {
 		select {
 		case r := <-t.done:
+			// The last report was queued before the result: when both
+			// are ready, select may take the result first, and the
+			// report would be lost.
+			select {
+			case p := <-t.progress:
+				progress(p)
+			default:
+			}
 			return r.data, r.err
 		case p := <-t.progress: // nil, and never ready, without WithProgress
 			progress(p)
