@@ -10,9 +10,10 @@ Tracks: bmdwire v1.6.0
 
 - The port follows **bmdwire v1.6.0** (`github.com/lucas-romanenko/bmdwire`,
   tag `v1.6.0`, commit `0eb73e5`): v1.4.0 (tag `v1.4.0`, commit
-  `e04920b`), bmdwire#36, #38, #40, #42, #46 and #49. It was written against **v1.3.0** (tag
-  `v1.3.0`, commit `cea58c2`), and the code and these notes cite that tag
-  wherever they were checked against it; v1.4.0 changed only what
+  `e04920b`), bmdwire#36, #38, #40, #42, #46, #47 and #49. It was
+  written against **v1.3.0** (tag `v1.3.0`, commit `cea58c2`), and the
+  code and these notes cite that tag wherever they were checked against
+  it; v1.4.0 changed only what
   "bmdwire 1.4.0" below lists, so those citations hold for it. Cite the
   tag a claim was checked against, in comments and docs alike.
 - **Fixes merged after v1.3.0** that the port takes too, each a bmdwire
@@ -135,8 +136,8 @@ Tracks: bmdwire v1.6.0
   (still upload) and turned out not to be needed: the fit ports Pillow's own
   kernel (see "Still images").
 - One commit per step of the plan, conventional commit messages, pushed
-  after every commit. `go build ./... && go vet ./... && go test ./...` is
-  green at every commit.
+  after every commit. `go build ./... && go vet ./... && go test -race
+  ./...` is green at every commit.
 - The hardware rule (see `CLAUDE.md`) covers tests and development tooling:
   no test, example, generator or script contacts a real switcher unless
   built with `-tags hardware`; hardware tests take the target from
@@ -151,9 +152,9 @@ Tracks: bmdwire v1.6.0
   background engine, hosts, every command through the engine, `exec`,
   completion, man pages and `doctor`. Phase 4 adds the HyperDeck package
   and its commands, the device probe, the alias binaries, `serve`, `mcp`,
-  the Claude skill and the release. Out of scope until asked (phase 5):
-  the Videohub and Ultimatte packages beyond their `doc.go`, and
-  hyperdeckwire's FTP upload and configuration API.
+  the Claude skill and the release. Phase 5 adds the Videohub and
+  Ultimatte packages and their commands; the rest of it, hyperdeckwire's
+  FTP upload and configuration API, is out of scope until asked.
 
 ## Licensing
 
@@ -888,9 +889,10 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   and never waits on, and `runTransfer` calls `f` on the caller's
   goroutine, taking a report still waiting once the result has come
   (the session queues the last report before the result, and a
-  `select` with both ready picks either: the nightly race run lost the
-  last report, the end of a bar, a few times in 50). As atemwire counts it: an upload, the bytes queued of all
-  it sends (compressed, for a still; atemwire counts each as its UDP
+  `select` with both ready picks either: a `-race -count=50` run, the
+  nightly removed in f051c48, lost the last report, the end of a bar, a
+  few times in 50). As atemwire counts it: an upload, the bytes queued
+  of all it sends (compressed, for a still; atemwire counts each as its UDP
   thread sends it); a still download, the bytes received of the frame's
   uncompressed size, so it may end short (atemwire every 20 chunks,
   here every chunk); a macro download none.

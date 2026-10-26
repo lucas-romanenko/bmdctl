@@ -322,9 +322,9 @@ every case and require the same result:
 |---|---|---|
 | `internal/fixtures/oracle/recv.json` | 1,062 payloads through every state parser | `TestParsersMatchAtemwire` |
 | `internal/fixtures/oracle/send.json` | 5,966 calls over all 82 commands | `TestCommandsMatchAtemwire` |
-| `internal/fixtures/oracle/readers.json` | 7,048 reader calls over 23 switcher states | `TestReadersMatchAtemwire` |
+| `internal/fixtures/oracle/readers.json` | 17,025 reader calls over 36 scenarios | `TestReadersMatchAtemwire` |
 | `internal/fixtures/oracle/imaging.json` | colour conversion, RLE and the image fit | `TestImagingMatchesAtemwire`, `TestFitFrameMatchesWebATEM` |
-| `internal/fixtures/oracle/macro.json` | 1,987 bytecode decodes, 4,272 op encodes | `TestDecodeMatchesAtemwire`, `TestEncodeMatchesAtemwire` |
+| `internal/fixtures/oracle/macro.json` | 2,128 bytecode decodes, 4,273 op encodes | `TestDecodeMatchesAtemwire`, `TestEncodeMatchesAtemwire` |
 | `internal/fixtures/oracle/profile.json` | profile saves, applies and parses | `TestSaveMatchesAtemwire` and three more |
 | `hyperdeck/testdata/oracle/client.json` | 747 scripted sessions, 872 calls | `TestClientMatchesHyperdeckwire` |
 | `videohub/testdata/oracle/client.json` | 213 scripted sessions, 646 steps | `TestClientMatchesVideohubwire` |
