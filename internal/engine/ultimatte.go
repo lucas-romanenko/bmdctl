@@ -589,17 +589,17 @@ func addr(a, m string) string {
 func networkValues(cur, after ultimatte.NetworkInterface, set ultimatte.NetworkSet) []Value {
 	var vs []Value
 	if set.Address != nil {
-		vs = append(vs, Value{Param: "address", Before: str(orNone(cur.StaticAddress)), After: orNone(after.StaticAddress)},
-			Value{Param: "netmask", Before: str(orNone(cur.StaticNetmask)), After: orNone(after.StaticNetmask)})
+		vs = append(vs, Value{Param: "address", Before: ptr(orNone(cur.StaticAddress)), After: orNone(after.StaticAddress)},
+			Value{Param: "netmask", Before: ptr(orNone(cur.StaticNetmask)), After: orNone(after.StaticNetmask)})
 	}
 	if set.Gateway != nil {
-		vs = append(vs, Value{Param: "gateway", Before: str(cur.StaticGateway), After: after.StaticGateway})
+		vs = append(vs, Value{Param: "gateway", Before: ptr(cur.StaticGateway), After: after.StaticGateway})
 	}
 	if set.DNS != nil {
-		vs = append(vs, Value{Param: "dns", Before: str(dnsText(cur.StaticDNS)), After: dnsText(after.StaticDNS)})
+		vs = append(vs, Value{Param: "dns", Before: ptr(dnsText(cur.StaticDNS)), After: dnsText(after.StaticDNS)})
 	}
 	if set.Dynamic != nil {
-		vs = append(vs, Value{Param: "dhcp", Before: str(dhcpText(cur.Dynamic)), After: dhcpText(after.Dynamic)})
+		vs = append(vs, Value{Param: "dhcp", Before: ptr(dhcpText(cur.Dynamic)), After: dhcpText(after.Dynamic)})
 	}
 	return vs
 }

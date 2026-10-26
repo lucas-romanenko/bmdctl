@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -587,7 +588,7 @@ func (a *applier) upstreamKeyers() error {
 		a.res.NoteApplied("upstream_keyers (" + kept[0] + ")")
 	default:
 		var parts []string
-		for _, me := range sortedKeys(kept) {
+		for _, me := range slices.Sorted(maps.Keys(kept)) {
 			parts = append(parts, fmt.Sprintf("M/E%d: %s", me+1, kept[me]))
 		}
 		a.res.NoteApplied("upstream_keyers (" + strings.Join(parts, "; ") + ")")
@@ -596,15 +597,6 @@ func (a *applier) upstreamKeyers() error {
 }
 
 func hasKey[V any](m map[int]V, k int) bool { _, ok := m[k]; return ok }
-
-func sortedKeys[V any](m map[int]V) []int {
-	var ks []int
-	for k := range m {
-		ks = append(ks, k)
-	}
-	slices.Sort(ks)
-	return ks
-}
 
 // The per-keyer field tables of apply.py: XML attribute, the label
 // atemwire uses for it, and the command field it sets.

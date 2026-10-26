@@ -264,7 +264,7 @@ func opHubRoute(c *call) (any, bool, error) {
 	before := inputText(snap, snap.Outputs[out].Source)
 	values := func(after string) {
 		c.note(Note{Values: []Value{{Param: "output", After: snap.Outputs[out].Label},
-			{Param: "input", Before: str(before), After: after}}})
+			{Param: "input", Before: ptr(before), After: after}}})
 	}
 	if src := snap.Outputs[out].Source; src != nil && *src == in {
 		r.Already, r.Command = true, ""
@@ -310,7 +310,7 @@ func opHubRename(c *call) (any, bool, error) {
 	r := CommandResult{Command: blockText(cmd), Args: c.displayArgs()}
 	before, clean := labels[i], videohub.CleanLabel(label)
 	values := func(after string) {
-		c.note(Note{Values: []Value{{Param: kind, After: strconv.Itoa(i + 1)}, {Param: "label", Before: str(before), After: after}}})
+		c.note(Note{Values: []Value{{Param: kind, After: strconv.Itoa(i + 1)}, {Param: "label", Before: ptr(before), After: after}}})
 	}
 	if before == clean {
 		r.Already, r.Command = true, ""

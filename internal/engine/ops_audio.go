@@ -13,6 +13,7 @@ package engine
 // sends the one the switcher has and classic-audio forces the classic one.
 
 import (
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -200,7 +201,7 @@ collect:
 			Peak: [2]float64{classic.Master[2], classic.Master[3]}}
 		r.Monitor = &Meter{Name: "Monitor", Level: [2]float64{classic.Monitor[0], classic.Monitor[1]},
 			Peak: [2]float64{classic.Monitor[2], classic.Monitor[3]}}
-		for _, src := range sortedKeysU16(classic.Input) {
+		for _, src := range slices.Sorted(maps.Keys(classic.Input)) {
 			v := classic.Input[src]
 			r.Strips = append(r.Strips, Meter{Strip: strconv.Itoa(int(src)), Name: sourceOf(st, int(src)).Name,
 				Level: [2]float64{v[0], v[1]}, Peak: [2]float64{v[2], v[3]}})
@@ -225,14 +226,5 @@ func sortedKeysStr[V any](m map[string]V) []string {
 		}
 		return strings.Compare(ac, bc)
 	})
-	return ks
-}
-
-func sortedKeysU16[V any](m map[uint16]V) []uint16 {
-	ks := make([]uint16, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	slices.SortFunc(ks, func(a, b uint16) int { return int(a) - int(b) })
 	return ks
 }

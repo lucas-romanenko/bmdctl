@@ -217,8 +217,6 @@ func clipText(st hyperdeck.State) string {
 	return "clip " + strconv.Itoa(id)
 }
 
-func str(s string) *string { return &s }
-
 // refresh reads the transport again, for what a command did.
 func (c *call) refresh() (hyperdeck.State, error) {
 	if err := c.deckAsk(hyperdeck.TransportInfo{}); err != nil {
@@ -254,7 +252,7 @@ func (c *call) sendDeckEntry() (any, bool, error) {
 	}
 	if c.deckAlready(before) {
 		r.Already = true
-		c.note(Note{Values: []Value{{Param: param, Before: str(read(before)), After: read(before)}}})
+		c.note(Note{Values: []Value{{Param: param, Before: ptr(read(before)), After: read(before)}}})
 		return r, true, nil
 	}
 	if _, err := c.deckSend(cmd.Command); err != nil {
@@ -265,7 +263,7 @@ func (c *call) sendDeckEntry() (any, bool, error) {
 		return r, true, err
 	}
 	r.State = after.Transport
-	c.note(Note{Values: []Value{{Param: param, Before: str(read(before)), After: read(after)}}})
+	c.note(Note{Values: []Value{{Param: param, Before: ptr(read(before)), After: read(after)}}})
 	return r, true, nil
 }
 
@@ -403,7 +401,7 @@ func opDeckGoto(c *call) (any, bool, error) {
 	if err != nil {
 		return nil, true, err
 	}
-	c.note(Note{Values: []Value{{Param: param, Before: str(read(before)), After: read(after)}}})
+	c.note(Note{Values: []Value{{Param: param, Before: ptr(read(before)), After: read(after)}}})
 	return CommandResult{Command: cmd.Line(), Args: c.displayArgs(), State: after.Transport}, true, nil
 }
 
@@ -454,7 +452,7 @@ func opDeckLoop(c *call) (any, bool, error) {
 	r := CommandResult{Args: c.displayArgs()}
 	if st.Loop() == on {
 		r.Already, r.Command = true, ""
-		c.note(Note{Values: []Value{{Param: "loop", Before: str(onOff[on]), After: onOff[on]}}})
+		c.note(Note{Values: []Value{{Param: "loop", Before: ptr(onOff[on]), After: onOff[on]}}})
 		return r, true, nil
 	}
 	sp, _ := st.Speed()
@@ -469,7 +467,7 @@ func opDeckLoop(c *call) (any, bool, error) {
 		return nil, true, err
 	}
 	r.State = after.Transport
-	c.note(Note{Values: []Value{{Param: "loop", Before: str(onOff[st.Loop()]), After: onOff[after.Loop()]}}})
+	c.note(Note{Values: []Value{{Param: "loop", Before: ptr(onOff[st.Loop()]), After: onOff[after.Loop()]}}})
 	return r, true, nil
 }
 

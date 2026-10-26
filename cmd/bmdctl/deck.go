@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -284,17 +285,12 @@ func (w *deckWatch) line(ev watchEvent) watchLine {
 	if old == nil {
 		old = map[string]string{}
 	}
-	now := make(map[string]string, len(old)+len(vals))
-	for k, v := range old {
-		now[k] = v
-	}
-	for k, v := range vals {
-		now[k] = v
-	}
+	now := maps.Clone(old)
+	maps.Copy(now, vals)
 	w.blocks[ev.Key] = now
 	verb := strings.Replace(ev.Key, ":", " ", 1)
 	var changes []string
-	keys := sortedKeys(vals)
+	keys := slices.Sorted(maps.Keys(vals))
 	if ev.Key == "transport" {
 		if _, ok := vals["status"]; ok || vals["speed"] != "" {
 			changes = append(changes, arrow(statusText(old), statusText(now)))
@@ -373,13 +369,4 @@ func screenDeckWatch(p *printer, _ engine.Response, raw json.RawMessage) view {
 		l.change = strings.TrimSuffix(l.change, "record") + p.c.colour(red, "record")
 	}
 	return view{rows: []string{indent + p.c.colour(dim, clock) + "  " + l.screen(p.c.colour)}}
-}
-
-func sortedKeys(m map[string]string) []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	slices.Sort(ks)
-	return ks
 }

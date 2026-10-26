@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"slices"
 	"strconv"
@@ -319,7 +320,7 @@ func (s *Session) receive(m incoming) {
 func (s *Session) publish(c Change) {
 	for id, ch := range s.subs {
 		cp := c
-		cp.Values = cloneMap(c.Values)
+		cp.Values = maps.Clone(c.Values)
 		select {
 		case ch <- cp:
 		default:
@@ -328,14 +329,6 @@ func (s *Session) publish(c Change) {
 			s.log.Warn("subscriber fell behind: dropped")
 		}
 	}
-}
-
-func cloneMap(m map[string]string) map[string]string {
-	c := make(map[string]string, len(m))
-	for k, v := range m {
-		c[k] = v
-	}
-	return c
 }
 
 // fail ends the session for err.

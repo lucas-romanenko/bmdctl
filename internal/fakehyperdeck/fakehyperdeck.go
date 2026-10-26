@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"slices"
 	"strconv"
@@ -367,7 +368,7 @@ func (d *Deck) handle(c *conn, line string) (string, []note) {
 	case "configuration":
 		if !hasArgs {
 			var kv []string
-			for _, k := range sortedKeys(d.config) {
+			for _, k := range slices.Sorted(maps.Keys(d.config)) {
 				kv = append(kv, k, d.config[k])
 			}
 			return d.block(211, "configuration", kv...), nil
@@ -704,12 +705,3 @@ func (p paramSet) bool(k string) (bool, bool) {
 }
 
 func (p paramSet) rest(k string) string { return p[k] }
-
-func sortedKeys(m map[string]string) []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	slices.Sort(ks)
-	return ks
-}

@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -220,7 +221,7 @@ func (w *hubWatch) lines(ev watchEvent) []watchLine {
 	}
 	var vals map[string]string
 	json.Unmarshal(ev.Value, &vals)
-	keys := sortedKeys(vals)
+	keys := slices.Sorted(maps.Keys(vals))
 	slices.SortStableFunc(keys, func(a, b string) int { x, _ := strconv.Atoi(a); y, _ := strconv.Atoi(b); return x - y })
 	var out []watchLine
 	for _, k := range keys {
