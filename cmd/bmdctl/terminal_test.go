@@ -515,8 +515,7 @@ func TestTerminalBanner(t *testing.T) {
 	tr.run("program", "cam1") // an ordinary command: no banner
 	tr.run("version")
 	// A command that starts the engine: no banner either.
-	b.engine().Stop()
-	eventually(t, "the engine to go", func() bool { _, err := os.Stat(b.env["BMDCTL_SOCKET"]); return os.IsNotExist(err) })
+	b.stopEngine()
 	c, o, e := b.cli("")
 	c.tty, c.ttyErr, c.spinAfter = true, true, time.Hour
 	c.spawn = func(string, []string, []string) error { return b.startEngine(engine.Config{}) }

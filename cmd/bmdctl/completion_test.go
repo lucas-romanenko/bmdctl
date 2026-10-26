@@ -138,7 +138,7 @@ func TestComplete(t *testing.T) {
 		}
 	}
 	// No engine: no names, and no engine started.
-	b.engine().Stop()
+	b.stopEngine()
 	if got := complete("--host", "studio", "program", ""); got != nil {
 		t.Errorf("sources without an engine: %q", got)
 	}

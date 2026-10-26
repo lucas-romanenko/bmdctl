@@ -93,7 +93,7 @@ func TestDoctor(t *testing.T) {
 	path := filepath.Join(b.env["XDG_CONFIG_HOME"], "bmdctl", "hosts.yml")
 	os.WriteFile(path, []byte("default: gone\nhosts:\n  - name: studio\n    address: 192.0.2.10\n"), 0o644)
 	b.env[HostEnv] = "no such host!"
-	b.engine().Stop()
+	b.stopEngine()
 	l, err := net.Listen("unix", b.env["BMDCTL_SOCKET"])
 	if err != nil {
 		t.Fatal(err)
