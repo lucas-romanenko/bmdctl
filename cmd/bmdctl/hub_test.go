@@ -167,8 +167,10 @@ func TestTerminalHub(t *testing.T) {
 	b := newBench(t)
 	h := b.net.Hub(fakevideohub.Address, fakevideohub.New())
 	tr := &transcript{b: b}
-	tr.run("connect", fakevideohub.Address)
+	// Locked before the session opens, so it comes in the preamble:
+	// locked after, status could ask before the lock came in.
 	h.LockOutput(15, true)
+	tr.run("connect", fakevideohub.Address)
 	tr.run("--host", "studio router", "status")
 	tr.run("--host", "studio router", "inputs")
 	tr.run("--host", "studio router", "route", "5", "7")
