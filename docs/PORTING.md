@@ -886,7 +886,10 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   goroutine: a transfer under `WithProgress(ctx, f)` gets a channel
   holding the latest `Progress{Done, Total}`, which the owner replaces
   and never waits on, and `runTransfer` calls `f` on the caller's
-  goroutine. As atemwire counts it: an upload, the bytes queued of all
+  goroutine, taking a report still waiting once the result has come
+  (the session queues the last report before the result, and a
+  `select` with both ready picks either: the nightly race run lost the
+  last report, the end of a bar, a few times in 50). As atemwire counts it: an upload, the bytes queued of all
   it sends (compressed, for a still; atemwire counts each as its UDP
   thread sends it); a still download, the bytes received of the frame's
   uncompressed size, so it may end short (atemwire every 20 chunks,
