@@ -2262,6 +2262,11 @@ stdout (newline-delimited JSON-RPC 2.0; logs on stderr), its requests
 sent to the engine as any command's are (started if none runs). How to
 add it to Claude Code and Claude Desktop is docs/AGENTS.md.
 
+- **What isn't a request:** a line that isn't JSON-RPC 2.0 is a parse
+  error (-32700); a message with neither a method nor a result or error
+  is an Invalid Request (-32600), answered with its id (null without
+  one); one with a result or error is a response, which the server,
+  sending no requests, ignores.
 - **Both eras of the protocol** (checked against the specification at
   modelcontextprotocol.io in October 2026): the current revision,
   2026-07-28, has no handshake (each request's `_meta` carries

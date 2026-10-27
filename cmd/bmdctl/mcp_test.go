@@ -450,3 +450,29 @@ func TestMCPSubscriptionKeepsSession(t *testing.T) {
 		t.Fatalf("an hour after: %+v", s)
 	}
 }
+
+// A message that is neither a request (no method) nor a response (no
+// result or error) is JSON-RPC's Invalid Request, answered with its id.
+func TestMCPInvalidRequest(t *testing.T) {
+	b := newBench(t)
+	m := b.mcp(t)
+	ch := make(chan map[string]any, 1)
+	m.mu.Lock()
+	m.waits["99"] = ch
+	m.mu.Unlock()
+	m.send(map[string]any{"jsonrpc": "2.0", "id": 99})
+	select {
+	case r := <-ch:
+		e, _ := r["error"].(map[string]any)
+		if e == nil || e["code"] != float64(-32600) || r["id"] != float64(99) {
+			t.Errorf("%v", r)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no answer to an invalid request")
+	}
+	// A response is still ignored, and the server still answers.
+	m.send(map[string]any{"jsonrpc": "2.0", "id": 100, "result": map[string]any{}})
+	if r := m.request("ping", nil, false); r["error"] != nil {
+		t.Errorf("ping after a response: %v", r)
+	}
+}

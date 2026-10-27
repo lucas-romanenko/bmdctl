@@ -118,6 +118,10 @@ type message struct {
 	ID      json.RawMessage `json:"id,omitempty"`
 	Method  string          `json:"method,omitempty"`
 	Params  json.RawMessage `json:"params,omitempty"`
+	// Result and Error make it a response, which this server, sending no
+	// requests, ignores.
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  json.RawMessage `json:"error,omitempty"`
 }
 
 type rpcError struct {
@@ -152,6 +156,11 @@ func (s *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
 			continue
 		}
 		if m.Method == "" {
+			if m.Result == nil && m.Error == nil {
+				// Neither a request nor a response: JSON-RPC's Invalid
+				// Request, answered with its id (null without one).
+				s.reply(m.ID, nil, &rpcError{Code: codeInvalidRequest, Message: "not a request: it has no method"})
+			}
 			continue // a response: this server sends no requests
 		}
 		if len(m.ID) == 0 {
