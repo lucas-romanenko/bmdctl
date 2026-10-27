@@ -23,8 +23,8 @@ recorded by running it (`hyperdeck/testdata/oracle/client.json`).
   Protocol on TCP 9993 (control, clips, timeline, configuration);
   `upload.py`, clip upload over the deck's FTP server; `setup.py`, the
   configuration API on the deck's HTTP port that HyperDeck Setup drives.
-  bmdctl's phase 4 ports `client.py`. `upload.py` and `setup.py` are
-  inventoried here (§3) and not ported yet.
+  bmdctl ports `client.py`; `upload.py` and `setup.py` are inventoried
+  here (§3) and not ported yet.
 - **Protocol reference:** BMD's `HyperDeckEthernetProtocol.pdf` (December
   2024). hyperdeckwire wraps a subset of it (§5.1 lists what it leaves out).
 - **Verified on hardware** (its README): a HyperDeck Studio HD Mini on

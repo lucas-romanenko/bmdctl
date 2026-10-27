@@ -16,10 +16,9 @@ go build ./... && go vet ./... && go test -race ./...
 
 All three must be green after every commit, and `gofmt -l .` must print
 nothing (CI's Format step fails otherwise). `-race` is what CI runs
-(`.github/workflows/ci.yml`); without it the timing differs, and CI
-failed on every push from `90f3cdd` to `817ee63` while a plain
-`go test ./...` passed. Nothing in the default build or test run touches
-the network beyond loopback.
+(`.github/workflows/ci.yml`), and the timing differs without it: a plain
+`go test ./...` can pass where CI fails. Nothing in the default build or
+test run touches the network beyond loopback.
 
 Before every commit: go test -race ./<package> for every package you touched, not just the tests you were working on. Red CI from a test you didn't run is a wasted push.
 
@@ -55,7 +54,8 @@ the goldens. `.github/workflows/pages.yml` publishes it on a push to
 main (skipped while the repository is private). docs/PORTING.md,
 "Documentation site", records how it is put together.
 
-Releases are GoReleaser's: the owner pushes the `v*` tag; never tag.
+Releases are GoReleaser's: the maintainer pushes the `v*` tag, so never
+tag.
 `goreleaser release --snapshot --clean` is the dry run (docs/PORTING.md,
 "Release", says what was checked); `install.sh`, `scoop/bmdctl.json` and
 the `Dockerfile` belong to it.
@@ -131,14 +131,9 @@ bmdctl follows bmdwire; it never leads it.
 - **Commits.** One commit per step, conventional commit messages
   (`feat(atem): …`, `test(fixtures): …`, `docs: …`), and push after every
   commit. The build/vet/test line above is green at each one.
-- **Scope.** Phase 2 added transfers (stills, macros), the macro bytecode
-  codec, profiles and the display-unit readers. Phase 3 added the binary:
-  the background engine, hosts, every command through the engine,
-  `exec`, completion, man pages and `doctor`. Phase 4 added the HyperDeck
-  package and commands, the device probe, the alias binaries, `serve`,
-  `mcp`, the Claude skill and the release. Phase 5 added the Videohub
-  and Ultimatte packages and commands; the rest of it, hyperdeckwire's
-  FTP upload and setup API, is not started. Don't start it unless asked.
+- **Scope.** Not ported yet: hyperdeckwire's FTP clip upload
+  (`upload.py`) and its setup API (`setup.py`). Don't start either unless
+  asked.
 
 ## Where things are
 
