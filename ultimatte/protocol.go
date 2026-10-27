@@ -2,7 +2,7 @@
 
 package ultimatte
 
-// The connections and the 9996 binary channel of bmdwire v1.6.0's
+// The connections and the 9996 binary channel of bmdwire v1.7.0's
 // ultimattewire/_protocol.py: _connect_with_retry, binary_request and
 // upload_one.
 

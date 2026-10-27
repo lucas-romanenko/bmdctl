@@ -2,7 +2,7 @@
 
 package ultimatte
 
-// bmdwire v1.6.0's ultimattewire/tests (test_preamble.py,
+// bmdwire v1.7.0's ultimattewire/tests (test_preamble.py,
 // test_protocol.py, test_profile.py, test_network.py), ported one for
 // one: each test names its Python counterpart. The Python tests fake the
 // sockets, or the module seams (read_preamble, binary_request,
@@ -103,6 +103,63 @@ func TestExtractLabelSanitizesForFilenames(t *testing.T) {
 		if got := ExtractLabel(in); got != want {
 			t.Errorf("%q: %q, want %q", in, got, want)
 		}
+	}
+}
+
+// ---- extract_model / parse_current_file (bmdwire#52) ------------------------
+
+// prelude12_4K is PRELUDE_12_4K: the sections an Ultimatte 12 4K with
+// software 2.3 sent (2026-10-27), the others left out and its Unique ID
+// zeroed.
+const prelude12_4K = "PROTOCOL PREAMBLE:\nVersion: 2.3\n\n" +
+	"IDENTITY:\nModel: Ultimatte 12 4K\nLabel: Studio Keyer\n" +
+	"Unique ID: 00000000000000000000000000000000\n\n" +
+	"VERSION:\nProduct ID: BE8F\nHardware Version: 0100\n" +
+	"Software Version: 2AE2D1CA\nSoftware Release: 2.3\n\n" +
+	"CURRENT FILE:\nName: 3\nStatus: Modified\n\n" +
+	"FILE LIST:\n1\n2\n\n" +
+	"END PRELUDE:\n"
+
+// test_extract_model_reads_identity
+func TestExtractModelReadsIdentity(t *testing.T) {
+	if got := ExtractModel(prelude12_4K); got != "Ultimatte 12 4K" {
+		t.Fatalf("%q", got)
+	}
+}
+
+// test_extract_model_without_identity_is_empty
+func TestExtractModelWithoutIdentityIsEmpty(t *testing.T) {
+	if got := ExtractModel(string(fixture(t, "sample-prelude.txt"))); got != "" {
+		t.Fatalf("%q", got)
+	}
+}
+
+// test_parse_current_file_reads_name_and_status
+func TestParseCurrentFileReadsNameAndStatus(t *testing.T) {
+	if name, status := ParseCurrentFile(prelude12_4K); name != "3" || status != "Modified" {
+		t.Fatalf("%q %q", name, status)
+	}
+	// What the same unit said after a restore of its own archive.
+	after := strings.Replace(prelude12_4K, "Name: 3\nStatus: Modified", "Name: Ultimatte Defaults\nStatus: Clean", 1)
+	if name, status := ParseCurrentFile(after); name != "Ultimatte Defaults" || status != "Clean" {
+		t.Fatalf("after: %q %q", name, status)
+	}
+}
+
+// test_parse_current_file_without_the_section_is_empty
+func TestParseCurrentFileWithoutTheSectionIsEmpty(t *testing.T) {
+	if name, status := ParseCurrentFile(string(fixture(t, "sample-prelude.txt"))); name != "" || status != "" {
+		t.Fatalf("%q %q", name, status)
+	}
+}
+
+// test_the_12_4k_prelude_keeps_its_label_and_file_list
+func TestThe12_4KPreludeKeepsItsLabelAndFileList(t *testing.T) {
+	if got := ExtractLabel(prelude12_4K); got != "Studio_Keyer" {
+		t.Errorf("label %q", got)
+	}
+	if got := ParseFileList(prelude12_4K); !slices.Equal(got, []string{"1", "2"}) {
+		t.Errorf("file list %q", got)
 	}
 }
 

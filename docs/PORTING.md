@@ -94,7 +94,7 @@ Tracks: bmdwire v1.7.1
   legacy switcher, here or in bmdwire.
 - The `Tracks:` line above says the same on one line, for workflows to
   read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.6.0`. Keep it a line of its own, exactly
+  tag `v1.7.1`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
@@ -106,9 +106,10 @@ Tracks: bmdwire v1.7.1
   bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md.
   `docs/SURFACE-videohub.md` and `docs/SURFACE-ultimatte.md` are the same
   for `videohub/` and `ultimatte/` (phase 5), written from videohubwire's
-  and ultimattewire's code at v1.6.0, which have none either; neither
-  package's code has changed since 1.0.0 (videohubwire) and 0.2.0.dev0
-  (ultimattewire, `5342705`).
+  code at v1.6.0 and ultimattewire's at v1.7.0 (`eb47e22`), which have
+  none either. videohubwire's code hasn't changed since 1.0.0;
+  ultimattewire's last change is 1.7.0's `extract_model` and
+  `parse_current_file` (bmdwire#52, `ac1af08`).
 - **Drift is reported, not merged.** `.github/workflows/surface-drift.yml`
   compares the four copies every night, less their header comment, with the
   SURFACE.md bmdwire main has beside each package, and keeps one issue,
@@ -1910,7 +1911,9 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   way, from the engine's ready session, else by reading its greeting and
   device info (a deck) or its preamble (a router: model, size,
   protocol). An Ultimatte has no session: doctor reads its prelude (its
-  label and preset count). Until phase 4 and phase 5 brought their
+  label and preset count), giving up 1 s after the last byte with a 100
+  ms drain, where `read_preamble` waits 2 s and 0.3 s: a check, not a
+  read whose text matters. Until phase 4 and phase 5 brought their
   protocols, doctor only checked that their TCP port accepted a
   connection. Hosts are checked at once.
 - **Exit status**: 1 if anything is misconfigured (`fail`), else 2 if a
@@ -3756,16 +3759,22 @@ type `ultimatte`, goes to a keyer through the engine.
   group.
 - **No session.** ultimattewire opens a connection per call, and so does
   the engine (`Config.Ultimatte`, an `ultimatte.Client`). `connect`
-  checks that the keyer answers (its label and preset count) and, with an
-  address, saves it; there is no `disconnect`, `watch` or `state`. Each
-  call's `switcher` note names the keyer by its prelude's `Label:` (raw,
-  not `extract_label`'s file name form), read on the connection the call
-  opens anyway, and gives its model as `product` (`ExtractModel`,
-  bmdwire#52, after the twentieth hardware run). So a terminal's header
-  says `Keyer A  Ultimatte 12 4K` where it said `Ultimatte`, which it
-  still says for a unit with no IDENTITY, and a pipe's report header
-  gains the model, as a deck's has its own (`Keyer A (192.0.2.41)
-  Ultimatte 12 4K`); the probe's model is the same, else `Ultimatte`.
+  checks that the keyer answers (its label and preset count) and, with
+  an address, saves it; there is no `disconnect`, `watch` or `state`.
+  Each call's `switcher` note names the keyer by its prelude's `Label:`
+  (raw, not `extract_label`'s file name form), read on the connection
+  the call opens anyway, except for two: `archive` reads the prelude for
+  its result, then `archive_unit_to_bytes` reads its own, two
+  connections to ultimattewire's one; and `restore` reads it for the
+  label and CURRENT FILE before anything is sent, `--yes` or not, where
+  `restore_unit_from_bytes` uses 9996 alone, so a unit whose 9998
+  doesn't answer can't be restored from the CLI. It gives its model as
+  `product` (`ExtractModel`, bmdwire#52, after the twentieth hardware
+  run). So a terminal's header says `Keyer A  Ultimatte 12 4K` where it
+  said `Ultimatte`, which it still says for a unit with no IDENTITY, and
+  a pipe's report header gains the model, as a deck's has its own
+  (`Keyer A (192.0.2.41) Ultimatte 12 4K`); the probe's model is the
+  same, else `Ultimatte`.
 - **Reads.** `status` is the label, the presets and NETWORK INTERFACE 0,
   on one connection; where the unit won't give the interface,
   `network_error` says why and the presets still show. `presets` is the
@@ -3774,13 +3783,17 @@ type `ultimatte`, goes to a keyer through the engine.
   units (`to_display`, an `Offset ` name looked up without it, as
   `annotate_preamble` does) and as `annotate_preamble` writes it;
   `prelude` the prelude as it came; `network show [--interface N]` the
-  interface, in use and configured.
+  interface, in use and configured: `NetworkInterface`'s fields but
+  `priority` and `raw`, with `index` as `interface` and `dynamic` as
+  `dhcp`.
 - **archive [file]** is `archive()`. The CLI writes the zip (a file
   frame), to the `extract_label` form of the label plus `.zip` where no
   file is given, as Smart Remote 4 names it. Its steps are the presets
   and the settings (GPISettings, SavedSettings), from the package's step
   callback; a member that can't be read is a warning and is left out, as
-  ultimattewire leaves it.
+  ultimattewire leaves it. Its result is the bytes, the label, the
+  presets read, the resources and the warnings; `info`'s slot sizes and
+  FILE LIST aren't in it.
 - **restore <file>** is destructive (exit 5 without `--yes`): presets
   overwrite the slots of their names, and SavedSettings replaces what the
   keyer is doing now. The confirmation counts what the zip holds
@@ -3804,7 +3817,9 @@ type `ultimatte`, goes to a keyer through the engine.
   one; `--interface` picks the interface (0). The engine reads the
   interface first, for the confirmation and the `values` note, then calls
   `SetNetwork`, whose read-back must settle: one that never does is
-  `no_echo` (exit 3). The confirmation is a line per field, before →
+  `no_echo` (exit 3). The result is each field set, before → after, not
+  the whole interface `set_network` returns. `--dns` entries are trimmed
+  and empty ones dropped before the list goes. The confirmation is a line per field, before →
   after, then the warning where the address or DHCP changes: an impact
   may now be several lines, joined by `\n`, which the terminal prints a
   line each and MCP joins with `; `. The address and netmask are two

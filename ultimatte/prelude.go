@@ -2,8 +2,9 @@
 
 package ultimatte
 
-// The 9998 prelude of bmdwire v1.6.0's ultimattewire/_preamble.py:
-// read_preamble, parse_section, parse_file_list, extract_label.
+// The 9998 prelude of bmdwire v1.7.0's ultimattewire/_preamble.py:
+// read_preamble, parse_section, parse_file_list, extract_label, and
+// 1.7.0's extract_model and parse_current_file (bmdwire#52).
 
 import (
 	"bytes"

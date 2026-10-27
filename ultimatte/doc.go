@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package ultimatte reaches Blackmagic Design Ultimatte 12 keyers over
-// their two TCP channels, ported from bmdwire v1.6.0's ultimattewire: the
+// their two TCP channels, ported from bmdwire v1.7.0's ultimattewire: the
 // text prelude on 9998 and its parsers (label, the preset FILE LIST, the
 // CONTROL values), the block protocol on 9998 that reads and sets the
 // network interface, the binary reads and writes on 9996, and Smart

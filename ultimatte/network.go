@@ -2,7 +2,7 @@
 
 package ultimatte
 
-// The 9998 block protocol and the network interface, bmdwire v1.6.0's
+// The 9998 block protocol and the network interface, bmdwire v1.7.0's
 // ultimattewire/network.py: build_block, parse_interface, exchange,
 // read_network, set_network.
 

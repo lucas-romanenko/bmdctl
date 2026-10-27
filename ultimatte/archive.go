@@ -2,7 +2,7 @@
 
 package ultimatte
 
-// Archive and restore, bmdwire v1.6.0's ultimattewire/profile/archive.py
+// Archive and restore, bmdwire v1.7.0's ultimattewire/profile/archive.py
 // and restore.py: the zip Smart Remote 4 writes with Archive All and
 // reads with Restore.
 
