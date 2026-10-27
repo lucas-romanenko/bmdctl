@@ -70,6 +70,7 @@ archives:
         strip_parent: true
       - README.md
       - LICENSE
+      - NOTICE
       - atem/LICENSE
       - atem/LICENSE-gpl3.txt
       - atem/NOTICE
@@ -80,6 +81,7 @@ archives:
     files:
       - README.md
       - LICENSE
+      - NOTICE
       - atem/LICENSE
       - atem/LICENSE-gpl3.txt
       - atem/NOTICE
@@ -140,6 +142,8 @@ nfpms:
         dst: /usr/share/fish/vendor_completions.d/bmdctl.fish
       - src: LICENSE
         dst: /usr/share/doc/bmdctl/LICENSE
+      - src: NOTICE
+        dst: /usr/share/doc/bmdctl/NOTICE
       - src: atem/LICENSE
         dst: /usr/share/doc/bmdctl/atem/LICENSE
       - src: atem/LICENSE-gpl3.txt

@@ -121,8 +121,10 @@ The documentation is also a site, https://lucas-romanenko.github.io/bmdctl/
 
 ## Licence
 
-`atem/` is LGPL-3.0-only ([atem/LICENSE](atem/LICENSE)), as atemwire, the
-pyatem fork it ports, is. Everything else is MIT ([LICENSE](LICENSE)).
+bmdctl is MIT ([LICENSE](LICENSE)), except for two directories that are
+LGPL-3.0-only: `atem/` ([atem/LICENSE](atem/LICENSE)), as atemwire, the
+pyatem fork it ports, is, and `internal/fixtures/`, data copied from
+atemwire's tests. [NOTICE](NOTICE) maps them.
 
 Not affiliated with or endorsed by Blackmagic Design Pty Ltd. ATEM,
 HyperDeck, Videohub and Ultimatte are trademarks of Blackmagic Design.

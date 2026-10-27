@@ -1,0 +1,15 @@
+bmdctl
+Copyright (c) 2026 Lucas Romanenko
+
+bmdctl carries two licences, and a file's directory decides which:
+
+  atem/       LGPL-3.0-only  (a Go port of bmdwire's atemwire, itself a fork
+                              of pyatem; see atem/LICENSE, atem/LICENSE-gpl3.txt
+                              and atem/NOTICE)
+  internal/fixtures/
+              LGPL-3.0-only  (data copied from atemwire's test suite; see
+                              internal/fixtures/README.md)
+  everything else            MIT (LICENSE)
+
+Not affiliated with or endorsed by Blackmagic Design Pty Ltd. ATEM,
+HyperDeck, Ultimatte and Videohub are trademarks of Blackmagic Design.

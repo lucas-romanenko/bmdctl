@@ -172,6 +172,10 @@ Tracks: bmdwire v1.7.1
   hyperdeckwire, which is MIT; its fixtures and oracle are in
   `hyperdeck/testdata/`, not `internal/fixtures/`, so the LGPL directory
   holds only atemwire's data.
+- The root `LICENSE` is MIT's text alone, so GitHub and pkg.go.dev
+  detect it; `NOTICE` maps the directories to their licences and carries
+  the trademark line, and goes in every archive and package beside the
+  licences.
 
 ## Fixtures (`internal/fixtures`)
 
