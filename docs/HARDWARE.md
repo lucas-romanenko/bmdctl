@@ -13,9 +13,11 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One switcher model so far, in eighteen sessions. Its firmware was first
-recorded in the tenth, 9.2.1; before that the rows give the protocol
-version the switcher's `_ver` packet reported, 2.30.
+One ATEM model so far, in eighteen sessions, then one HyperDeck and one
+Ultimatte, a session each. The ATEM's firmware was first recorded in the
+tenth, 9.2.1; before that the rows give the protocol version the
+switcher's `_ver` packet reported, 2.30. No Videohub has been run: the
+owner's two are live.
 
 | Device | Firmware | Video mode | Verified | Date |
 |---|---|---|---|---|
@@ -37,6 +39,8 @@ version the switcher's `_ver` packet reported, 2.30.
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads as ATEM Software Control sends them (bmdwire#36): `profile restore` of 20 photographic stills in 11.2 s (ASC 12 s), every frame exact | 2026-10-15 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Another client's turn (bmdwire#38, #40): ATEM Software Control connecting during back-to-back downloads loads all 20 thumbnails (none with bmdwire#36's handover) | 2026-10-15 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads beside another session in the same process, as WebATEM runs them (bmdwire#42): 20 of 20, every frame exact; bmdwire 1.5.2 deadlocked after 2 | 2026-10-15 |
+| HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `connect`, `status`, `clips` (timeline and disk), `state`, `watch`; `stop`, `play` (speed, loop, single clip), `goto` by clip id, `slot`; `next`, `prev` and `record` refused as the deck refuses them | 2026-10-27 |
+| Ultimatte 12 4K | 2.3 | 1080p25 | `connect`, `status`, `prelude`, `controls`, `presets`, `network show`, `archive`; `restore` (presets and settings back byte for byte, the saved settings applied live) | 2026-10-27 |
 
 ## Unverified
 
@@ -45,15 +49,15 @@ fakes and, for the protocol, against bmdwire's own code.
 
 - **Other devices and modes:** any ATEM but the Constellation HD, and
   any video mode but 1080p25.
-- **Any HyperDeck command on a real deck.** The protocol is checked
-  against hyperdeckwire, not a deck.
+- **HyperDeck:** `record` (the deck had no input), `goto` by timecode or
+  name, a second disk, remote control off, and any deck but the Studio
+  HD Mini. The rest is checked against hyperdeckwire, not a deck.
 - **Any Videohub command on a real router.** The protocol is checked
   against videohubwire (which routes Smart Videohub 40 x 40 and 80 x 80
   routers in production), not a router, from bmdctl.
-- **Any Ultimatte command on a real keyer.** The protocol is checked
-  against ultimattewire (whose archive and restore were verified on an
-  Ultimatte 12 4K), not a keyer, from bmdctl; `network set`'s read-back
-  and the CONTROL DEFAULT section are as the fake has them.
+- **Ultimatte:** `network set` (not run: a wrong value takes the unit off
+  the network), a restore of another unit's archive or of Smart Remote
+  4's Archive All, and any keyer but the 12 4K.
 - **Hosts:** `hosts discover`; `hosts add --as`; a rename made in ATEM
   Setup while bmdctl is in use; the device probe (`connect ADDRESS`
   asking what answers), which came after the last session.
@@ -852,3 +856,80 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Changed because of it:** bmdwire#42; an application's #41 waits for
   the WebATEM release that takes it.
 - **Not yet verified on hardware:** as after the seventeenth run.
+
+## 2026-10-27: nineteenth run, the first HyperDeck
+
+- **Commit:** `c0d5593`, built as its own binary and run with its own
+  config, state and socket, so the owner's hosts.yml was never touched.
+  Every connect named its device (`--type`), so the probe knocked on no
+  other port.
+- **Deck:** the owner's test HyperDeck, a HyperDeck Studio HD Mini at
+  192.168.82.192, software 9.0.2, protocol 1.19 (the fake speaks 1.13),
+  1080p25. Slot 1 an SD card (64 GB, 44 min left), slots 2 and 3 empty,
+  no video input. One 10 s DNxHD220 clip playing on loop, single clip.
+- **Run:** read-only first: `connect --type hyperdeck`, `status`,
+  `clips`, `clips --disk`, `state`, `state --path transport.status`, each
+  down a pipe and as JSON; `watch` for 8 s; the terminal views. Then, with
+  the owner's go-ahead, writes with a `watch` running through them: `stop`,
+  `play`, `loop off`, `loop on`, `goto 1`, `slot 1`, `next`, `prev`,
+  `play --speed 50` and `100`, `record bmdctl-test`, `stop`; then back to
+  clip 1 playing on loop, single clip, as it was.
+- **Result:** every read and write answered in 1 to 3 ms (172 ms for the
+  `goto` out of preview), each write confirmed by the deck's own
+  notification; `watch` showed each change as it came, before → after.
+  The state parsed every block (none left over), and the terminal views
+  kept to 72 columns. What the deck does that the fake doesn't:
+  - `next` and `prev` on a one-clip timeline: the deck refuses `goto:
+    clip id: +1` (and `-1`) with 109, out of range. The fake holds at
+    the ends; docs/PORTING.md had this as unknown.
+  - `record` with no input: refused, 110 no input, so nothing was
+    written to the card. The attempt put the deck in preview, which
+    `stop` didn't leave (it answers, and nothing changes); `goto` did.
+  - `stop` clears loop and single clip (the deck's notification:
+    `loop true → false, single clip true → false`), and `play` without
+    `--loop` plays once: so `loop on` a second later found the clip had
+    run out ("the deck is stopped").
+  - Two of bmdctl's own: `watch` said `forward` where the result line
+    said `forward 50%`, and `status` lists an empty slot as `empty, 0s
+    left`.
+- **Changed because of it:** nothing yet. The deck's answers at the ends
+  of the timeline and its preview after a refused record go to bmdwire
+  first (hyperdeckwire's notes), then the fake and bmdctl's messages.
+- **Not yet verified on hardware:** as the list at the top says.
+
+## 2026-10-27: twentieth run, the first Ultimatte
+
+- **Commit:** `c0d5593`, run as in the nineteenth.
+- **Keyer:** the owner's test Ultimatte, an Ultimatte 12 4K at
+  192.168.81.42, software release 2.3, protocol 2.3, 1080p25, no input
+  locked. Label "Studio Keyer", presets "1" and "2", its current file
+  "3", modified and not saved.
+- **Run:** read-only first: `connect --type ultimatte`, `status`,
+  `prelude`, `controls`, `presets`, `network show`, each down a pipe and as
+  JSON, `archive`, the terminal views. Then, with the owner's go-ahead:
+  `restore` of that archive without `--yes` (refused, exit 5), then with
+  it; a prelude just before and after, and an archive after.
+- **Result:** the reads matched the prelude field for field (666 lines,
+  CONTROL DEFAULT among them), the controls' percentages are
+  ultimattewire's ranges, and the terminal views kept to 72 columns.
+  `archive` took 0.7 s: both presets, GPISettings, SavedSettings and the
+  readable config, Smart Remote 4's layout. `restore` took 2.9 s, and the
+  archive after it was byte for byte the same for the presets,
+  GPISettings and SavedSettings. But writing SavedSettings applied it
+  live: this unit's saved settings were still its defaults, and its
+  1080p25 working state had never been saved. The current file became
+  "Ultimatte Defaults" (clean), the video format 525i59.94 NTSC, and 38
+  values changed (the densities, shadow, cleanup, the FG colour, the
+  window skew, Monitor Out `fg` → `program`, Active Unit `off` → `on`).
+  The restore's confirmation says only "its live state changes", and
+  `--yes` skips it. The values before it were handed to the owner to set
+  back on the unit; no command in bmdctl or ultimattewire sets them.
+  Also: bmdctl calls the unit "Ultimatte", though its prelude's
+  `IDENTITY:` says `Model: Ultimatte 12 4K`; neither bmdctl nor
+  ultimattewire reads that block.
+- **Changed because of it:** nothing yet. To bmdwire first: that a
+  SavedSettings write applies it live, video format included, and the
+  model in `IDENTITY:`. Then bmdctl's restore confirmation says what is
+  lost (the unsaved current file, the video format), and its header names
+  the model.
+- **Not yet verified on hardware:** as the list at the top says.
