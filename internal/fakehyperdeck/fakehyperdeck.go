@@ -424,6 +424,9 @@ func (d *Deck) handle(c *conn, line string) (string, []note) {
 	case "clips count":
 		return d.block(214, "clips count", "clip count", strconv.Itoa(len(d.timeline))), nil
 	case "clips get":
+		if len(d.timeline) == 0 { // as a Studio HD Mini on 9.0.2 answers (bmdwire#57)
+			return refuse(107, "timeline empty")
+		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "205 clips info:\r\nclip count: %d\r\n", len(d.timeline))
 		start := 0

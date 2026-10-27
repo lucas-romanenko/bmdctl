@@ -104,12 +104,10 @@ $ bmdctl --host deck 1 configuration set video-input HDMI
 $ bmdctl --host deck 1 remote off
 <b>Deck 1</>  <dim>stopped</>
   remote      on → off                                              <dim># ms</>
-!   <dim>hyperdeck remote is unverified on hardware</>
 
 $ bmdctl --host deck 1 remote on
 <b>Deck 1</>  <dim>stopped</>
   remote      off → on                                              <dim># ms</>
-!   <dim>hyperdeck remote is unverified on hardware</>
 
 $ bmdctl --host deck 1 disconnect
 <b>Deck 1</>  disconnected

@@ -6,11 +6,12 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.7.0
+Tracks: bmdwire v1.7.1
 
-- The port follows **bmdwire v1.7.0** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.7.0`, commit `eb47e22`): v1.4.0 (tag `v1.4.0`, commit
-  `e04920b`), bmdwire#36, #38, #40, #42, #46, #47, #49, #52 and #53. It was
+- The port follows **bmdwire v1.7.1** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.7.1`, commit `7f73b0c`): v1.4.0 (tag `v1.4.0`, commit
+  `e04920b`), bmdwire#36, #38, #40, #42, #46, #47, #49, #52, #53, #56
+  and #57. It was
   written against **v1.3.0** (tag `v1.3.0`, commit `cea58c2`), and the
   code and these notes cite that tag wherever they were checked against
   it; v1.4.0 changed only what
@@ -3315,6 +3316,15 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   hyperdeckwire never sends them (SURFACE-hyperdeck.md §5.1), and the
   notice says so; `goto` by timecode is too, though the entry isn't
   marked, since by clip it is hyperdeckwire's own line.
+- **An empty timeline** (bmdwire#57, after the twenty-first hardware
+  run): a deck answers `clips get` on one with `107 timeline empty`, not
+  an empty 205, and hyperdeckwire 1.7.1's `clips_get` returns `[]` for
+  it. So does `Session.ClipsGet`, which also empties the session's
+  timeline, so `status` doesn't go on counting the clips it last saw;
+  the engine reads the timeline through it (`clips`, `goto` by name,
+  the `timeline` commands). The fake answers an empty timeline's `clips
+  get` with 107, as the deck does. Before, `clips` and every `timeline`
+  command failed on an empty timeline, which the run left the deck with.
 - **The timeline:** `timeline add <name> [--before N]`,
   `timeline remove <clip>` and `timeline clear` are hyperdeckwire's
   `clips_add`, `clips_remove` and `clips_clear`. Not `clips add`: `clips`
@@ -3329,8 +3339,8 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   says.
 - **The setup group:** `remote <on>` is `remote_enable`, read back after
   (`remote info`); off, the deck refuses every write, from any client,
-  until it is on again, which the fake takes over 9993 (marked
-  unverified until a deck does). `configuration show` and `configuration
+  until it is on again, over 9993 too: the twenty-first hardware run's
+  deck took `remote on` with remote off, as the fake does. `configuration show` and `configuration
   set <setting> <value>` are `configuration` and `set_configuration` with
   one setting: not `configuration` alone, which would be a command and a
   group. The setting is named as the deck names it, lower case, `-` and

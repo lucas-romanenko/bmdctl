@@ -40,8 +40,6 @@ bmdctl remote on
 bmdctl remote off
 ```
 
-**Unverified.**
-
 | argument | value | | |
 |---|---|---|---|
 | `<on>` | bool | required | on lets clients control the deck; off refuses their writes until it is on again |

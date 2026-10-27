@@ -366,7 +366,18 @@ func TestDeckTimeline(t *testing.T) {
 		{[]string{"timeline", "remove", "intro"}, "timeline remove  4 clips → 3 clips"},
 		{[]string{"timeline", "clear", "--yes"}, "timeline clear  3 clips → empty"},
 		{[]string{"timeline", "clear", "--yes"}, "timeline clear  empty"},
+		// The deck answers clips get on an empty timeline with 107, which
+		// is an empty timeline, not a refusal (bmdwire#57): clips lists
+		// none, and add works.
+		{[]string{"clips"}, ""},
+		{[]string{"timeline", "add", "Outro.mov"}, "timeline add  empty → 1 clip"},
 	} {
+		if c.want == "" {
+			if out := b.must(c.args...); out != "" {
+				t.Errorf("%v on an empty timeline: %q", c.args, out)
+			}
+			continue
+		}
 		out := strings.Join(strings.Fields(b.must(c.args...)), " ")
 		if want := strings.Join(strings.Fields("Deck 1 (192.0.2.20)  "+c.want), " "); !strings.HasPrefix(out, want) {
 			t.Errorf("%v: %q, want %q", c.args, out, want)
@@ -379,7 +390,7 @@ func TestDeckTimeline(t *testing.T) {
 		}
 	}
 	want := []string{"clips add: name: Outro.mov", "clips add: clip id: 1 name: Interview.mov",
-		"clips remove: clip id: 1", "clips remove: clip id: 1", "clips clear"}
+		"clips remove: clip id: 1", "clips remove: clip id: 1", "clips clear", "clips add: name: Outro.mov"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("sent %q, want %q", got, want)
 	}
@@ -389,7 +400,7 @@ func TestDeckTimeline(t *testing.T) {
 		msg  string
 	}{
 		{[]string{"timeline", "add", "Nowhere.mov"}, exitRejected, "the deck refused clips add: clip not found (112)"},
-		{[]string{"timeline", "add", "Outro.mov", "--before", "9"}, exitUsage, "--before 9: the timeline has 0 clips"},
+		{[]string{"timeline", "add", "Outro.mov", "--before", "9"}, exitUsage, "--before 9: the timeline has 1 clip"},
 		{[]string{"timeline", "remove", "nothing"}, exitUsage, `clip "nothing": no timeline clip is named so (bmdctl clips lists them)`},
 	} {
 		if code, _, errOut := b.run(c.args...); code != c.code || !strings.Contains(errOut, c.msg) {

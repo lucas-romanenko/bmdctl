@@ -85,7 +85,7 @@ component, composite), `audio_input` (embedded, XLR, RCA), `audio_codec`
 | `configuration()` | `configuration` | `params()` |
 | `disk_list(slot_id=None)` | `disk list` / `disk list: slot id: {n}` | `List[Clip]` from `_parse_disk_line` |
 | `clips_count()` | `clips count` | `int(params().get('clip count', '0'))`; a value `int()` refuses raises `ValueError` |
-| `clips_get()` | `clips get` | `List[Clip]` from `_parse_clips_v1_line` (version 1 rows) |
+| `clips_get()` | `clips get` | `List[Clip]` from `_parse_clips_v1_line` (version 1 rows); `[]` on an empty timeline, where the deck answers `107 timeline empty` (1.7.1, bmdwire#57) |
 | `model`, `protocol_version` (properties) | | the greeting's `model` and `protocol version` params, `''` without |
 
 - **`Response(code, text, lines)`**, frozen: `is_ok()` 200-299,

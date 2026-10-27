@@ -65,8 +65,7 @@ func deckOperations() []operation {
 		{entry: table.Entry{Path: "timeline clear", Summary: "Empty the timeline; the files stay on the disk.", Destructive: true},
 			run: opDeckClipsClear},
 		{entry: table.Entry{Path: "remote", Summary: "Turn the deck's remote control on or off; off, it refuses every other write, bmdctl's included.",
-			Params:     []table.Param{{Name: "on", Kind: table.Bool, Required: true, Help: "on lets clients control the deck; off refuses their writes until it is on again"}},
-			Unverified: true},
+			Params: []table.Param{{Name: "on", Kind: table.Bool, Required: true, Help: "on lets clients control the deck; off refuses their writes until it is on again"}}},
 			run: opDeckRemote},
 		{entry: table.Entry{Path: "configuration show", Summary: "Show the deck's configuration: each setting as the deck names it, and its value."},
 			run: opDeckConfigurationShow},
@@ -480,10 +479,19 @@ func opDeckClipsClear(c *call) (any, bool, error) {
 // of the last read, since a deck sends no notification when it changes
 // (a record adds a clip, another client edits it).
 func (c *call) timeline() ([]hyperdeck.Clip, error) {
-	if err := c.deckAsk(hyperdeck.ClipsGet{}); err != nil {
+	if err := c.readTimeline(); err != nil {
 		return nil, err
 	}
 	return c.deck.State().Timeline, nil
+}
+
+// readTimeline reads the timeline into the session's state: an empty one
+// is none, not the deck's 107 (Session.ClipsGet, bmdwire#57).
+func (c *call) readTimeline() error {
+	ctx, cancel := context.WithTimeout(c.ctx, c.req.timeout())
+	defer cancel()
+	_, err := c.deck.ClipsGet(ctx)
+	return deckErr(hyperdeck.ClipsGet{}, err, c.req.timeout())
 }
 
 // timelineEdit sends an edit of the timeline, then reads the timeline
@@ -500,7 +508,7 @@ func (c *call) timelineEdit(cmd hyperdeck.Command, before int) (any, bool, error
 	if _, err := c.deckSend(cmd); err != nil {
 		return nil, false, err
 	}
-	if _, err := c.deckSend(hyperdeck.ClipsGet{}); err != nil {
+	if err := c.readTimeline(); err != nil {
 		return r, true, err
 	}
 	c.note(Note{Values: []Value{{Param: "timeline", Before: ptr(timeline(before)), After: timeline(len(c.deck.State().Timeline))}}})
@@ -625,7 +633,7 @@ func (c *call) clipNamed(s string, orTimecode bool) (int, error) {
 	if n, err := strconv.Atoi(s); err == nil && n > 0 {
 		return n, nil
 	}
-	if err := c.deckAsk(hyperdeck.ClipsGet{}); err != nil {
+	if err := c.readTimeline(); err != nil {
 		return 0, err
 	}
 	clips := c.deck.State().Timeline
@@ -724,7 +732,7 @@ func opDeckClips(c *call) (any, bool, error) {
 		}
 		return DeckClips{Source: "disk", Slot: id, Clips: clips}, false, nil
 	}
-	if err := c.deckAsk(hyperdeck.ClipsGet{}); err != nil {
+	if err := c.readTimeline(); err != nil {
 		return nil, false, err
 	}
 	st := c.deck.State()

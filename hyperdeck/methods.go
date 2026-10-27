@@ -8,6 +8,7 @@ package hyperdeck
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/lucas-romanenko/bmdctl/internal/pytext"
@@ -90,9 +91,17 @@ func (s *Session) ClipsCount(ctx context.Context) (int, error) {
 	return int(n), nil
 }
 
-// ClipsGet returns the timeline's clips.
+// ClipsGet returns the timeline's clips. An empty timeline is none, as
+// hyperdeckwire 1.7.1's clips_get has it (bmdwire#57): a deck answers
+// clips get on one with 107 timeline empty, not an empty 205, which
+// empties the session's timeline too.
 func (s *Session) ClipsGet(ctx context.Context) ([]Clip, error) {
 	r, err := s.SendAndWait(ctx, ClipsGet{})
+	var de *Error
+	if errors.As(err, &de) && de.Code == 107 {
+		s.do(func() { s.state.Timeline = []Clip{} })
+		return []Clip{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
