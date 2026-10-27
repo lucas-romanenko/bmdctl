@@ -253,3 +253,36 @@ func TestEveryDeckCommandRuns(t *testing.T) {
 		t.Errorf("ran %d of %d", ran, len(entries))
 	}
 }
+
+// As the test deck showed them (docs/HARDWARE.md, the nineteenth run): a
+// watch line names slow play's speed, as the command's result line does
+// (the deck reports it as forward, speed 50), and a terminal's status
+// leaves an empty slot's "0s left" out, where a pipe keeps it.
+func TestDeckSpeedAndEmptySlotAsADeckSentThem(t *testing.T) {
+	w := &deckWatch{blocks: map[string]map[string]string{"transport": {"status": "stopped", "speed": "0"}},
+		names: map[string]string{}}
+	ev := watchEvent{Kind: "state", Key: "transport", Value: json.RawMessage(`{"status":"forward","speed":"50"}`)}
+	if got := w.line(ev).text(); got != "transport  stopped → forward 50%" {
+		t.Errorf("watch: %q", got)
+	}
+	var o, e strings.Builder
+	p := &printer{c: newCLI(&o, &e)}
+	zero, left := 0, 2640
+	r := engine.DeckStatusResult{Slots: []engine.DeckSlot{
+		{Slot: 1, Status: "mounted", Volume: "UNTITLED", RemainingS: &left, Active: true},
+		{Slot: 2, Status: "empty", RemainingS: &zero}}}
+	slot2 := func(term bool) string {
+		for _, row := range p.deckStatusRows(r, term) {
+			if row[0] == "slot 2" {
+				return row[1]
+			}
+		}
+		return ""
+	}
+	if got := slot2(true); got != "empty" {
+		t.Errorf("terminal: %q", got)
+	}
+	if got := slot2(false); got != "empty, 0s left" {
+		t.Errorf("pipe: %q", got)
+	}
+}

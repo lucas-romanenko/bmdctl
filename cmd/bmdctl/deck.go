@@ -86,7 +86,9 @@ func (p *printer) deckStatusRows(r engine.DeckStatusResult, term bool) [][]strin
 	rows = append(rows, []string{"timeline", count(r.Clips, "clip")})
 	for _, s := range r.Slots {
 		left := ""
-		if s.RemainingS != nil {
+		// An empty slot has no time to record into: a terminal leaves its
+		// "0s left" out. A pipe keeps it, as it always printed it.
+		if s.RemainingS != nil && !(term && s.Status == "empty") {
 			left = clock(*s.RemainingS) + " left"
 		}
 		row := []string{fmt.Sprintf("slot %d", s.Slot), strings.Join(nonEmpty(s.Volume, s.Status, left), sep)}
@@ -305,8 +307,11 @@ func (w *deckWatch) clip(id string) string {
 }
 
 func statusText(m map[string]string) string {
+	// The speed as the engine's transportText shows it in a result: for
+	// any status but stopped and record. A deck reports slow play as
+	// forward (speed 50), which said only "forward" here.
 	s := m["status"]
-	if sp := m["speed"]; s == "play" && sp != "" && sp != "100" && sp != "0" {
+	if sp := m["speed"]; s != "" && s != "stopped" && s != "record" && sp != "" && sp != "100" && sp != "0" {
 		s += " " + sp + "%"
 	}
 	return s
