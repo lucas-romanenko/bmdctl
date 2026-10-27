@@ -4,10 +4,11 @@
 
     python3 -I gen_oracle.py /path/to/bmdwire oracle.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.6.0.
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.7.0.
 
 Three parts. The parsers (parse_section, parse_file_list, extract_label,
-annotate_preamble, to_display, parse_interface, build_block) on a pool
+extract_model, parse_current_file, annotate_preamble, to_display,
+parse_interface, build_block) on a pool
 of preludes and echoes, with RANGES itself. The channels' calls
 (binary_request, upload_one, read_preamble, exchange, read_network,
 set_network, archive_unit_to_bytes, restore_unit_from_bytes), each over
@@ -205,6 +206,26 @@ for _ in range(25):
     PRELUDES.append(f'Label: Keyer {rng.randrange(10)}\nSoftware Release: 2.1\n\nCONTROL:\n{body}\n'
                     f'FILE LIST:\n' + '\n'.join(f'slot-{i}' for i in range(rng.randrange(0, 4))) + '\n\nEND PRELUDE:\n')
 
+# IDENTITY and CURRENT FILE (bmdwire#52), a pool of their own so
+# PRELUDES, whose last two the calls below use, stays as it was: a 12 4K's
+# sections as it sent them (software 2.3, 2026-10-27, its Unique ID
+# zeroed), then the edges of _field.
+UNIT_12_4K = ('PROTOCOL PREAMBLE:\nVersion: 2.3\n\nIDENTITY:\nModel: Ultimatte 12 4K\nLabel: Studio Keyer\n'
+              'Unique ID: 00000000000000000000000000000000\n\nVERSION:\nProduct ID: BE8F\nSoftware Release: 2.3\n\n'
+              'CURRENT FILE:\nName: 3\nStatus: Modified\n\nFILE LIST:\n1\n2\n\nEND PRELUDE:\n')
+IDENTITIES = [
+    UNIT_12_4K,
+    UNIT_12_4K.replace('Name: 3\nStatus: Modified', 'Name: Ultimatte Defaults\nStatus: Clean'),
+    UNIT_12_4K.replace('\n', '\r\n'),
+    'IDENTITY:\nModel:   Ultimatte 12  \t\n\n', 'IDENTITY:\nModel:\nLabel: A\n', 'IDENTITY:\nmodel: X\nModel X\n',
+    'IDENTITY:\nModel: a: b\n', 'IDENTITY:\n\nDEVICE:\nModel: Elsewhere\n', 'DEVICE:\nModel: Elsewhere\n',
+    'IDENTITY:\nModel: First\nModel: Second\n', 'IDENTITY:\n  Model  :  Spaced  \n', 'Identity:\nModel: Lower\n',
+    'IDENTITY:\nModel: one\u2028Model: two\n', 'IDENTITY:\nModel:\u00a0Nbsp\u3000\n',
+    'CURRENT FILE:\nName: Studio B\n', 'CURRENT FILE:\nStatus: Clean\n', 'CURRENT FILE:\nName:x\nStatus:y\n',
+    'CURRENT FILE:\nName: a\x1cStatus: b\n', 'CURRENT FILE:\n\nFILE LIST:\nName: no\n',
+    'CURRENT FILE:\nName: 3\nStatus: Modified\nEND PRELUDE:\nName: after\n',
+]
+
 ECHOES = [ECHO, ECHO.replace('Dynamic IP: false', 'Dynamic IP: TRUE'), ECHO.replace('Dynamic IP: false\n', ''),
           ECHO.replace('192.0.2.98/255.255.252.0', '192.0.2.98'),
           ECHO.replace('Current Addresses: 192.0.2.98/255.255.252.0', 'Current Addresses: a/b, c/d'),
@@ -216,7 +237,7 @@ ECHOES = [ECHO, ECHO.replace('Dynamic IP: false', 'Dynamic IP: TRUE'), ECHO.repl
           'Current Addresses: 10.0.0.1/255.0.0.0\nStatic Addresses: 10.0.0.1/255.0.0.0\n']
 
 parsers = []
-for text in PRELUDES:
+for text in PRELUDES + IDENTITIES:
     for header in ('CONTROL', 'FILE LIST', 'GPI SETTINGS', 'NO SUCH', 'CONTROL DEFAULT', 'OTHER', 'B C'):
         parsers.append({'fn': 'parse_section', 'text': text, 'header': header, 'result': P.parse_section(text, header)})
     parsers.append({'fn': 'parse_file_list', 'text': text, 'result': P.parse_file_list(text)})
@@ -225,6 +246,9 @@ for text in PRELUDES:
         parsers.append({'fn': 'annotate_preamble', 'text': text, 'result': annotate_preamble(text)})
     except Exception as e:  # noqa: BLE001
         parsers.append({'fn': 'annotate_preamble', 'text': text, 'error': exc(e)})
+for text in PRELUDES + IDENTITIES:
+    parsers.append({'fn': 'extract_model', 'text': text, 'result': P.extract_model(text)})
+    parsers.append({'fn': 'parse_current_file', 'text': text, 'result': list(P.parse_current_file(text))})
 for text in ECHOES:
     for index in (0, 2):
         try:
@@ -374,7 +398,12 @@ def zip_of(members, *, strip_utf8_flag=False):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
         for name, data in members:
-            zf.writestr(name, data)
+            # As writestr(name, data) makes it, but at a fixed time: with
+            # the time of the run, every regeneration changed every zip.
+            zi = zipfile.ZipInfo(name, date_time=(2026, 10, 21, 0, 0, 0))
+            zi.compress_type = zipfile.ZIP_DEFLATED
+            zi.external_attr = (0o40775 << 16 | 0x10) if zi.is_dir() else 0o600 << 16
+            zf.writestr(zi, data)
     b = bytearray(buf.getvalue())
     if strip_utf8_flag:  # as a zip written without the UTF-8 flag would be: cp437 names
         for sig, off in ((b'PK\x03\x04', 6), (b'PK\x01\x02', 8)):
@@ -411,7 +440,7 @@ for i, z in enumerate(ZIPS):
         calls.append(run('restore', scripts, zip=z))
 
 with open(OUT, 'w') as f:
-    json.dump({'bmdwire': 'v1.6.0', 'generator': 'ultimatte/testdata/oracle/gen_oracle.py',
+    json.dump({'bmdwire': 'v1.7.0', 'generator': 'ultimatte/testdata/oracle/gen_oracle.py',
                'ranges': {k: list(v) for k, v in RANGES.items()}, 'parsers': parsers, 'calls': calls},
               f, ensure_ascii=True, separators=(',', ':'))
     f.write('\n')

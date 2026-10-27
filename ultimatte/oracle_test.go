@@ -81,7 +81,7 @@ func loadUltOracle(t *testing.T) ultOracle {
 	if err := dec.Decode(&o); err != nil {
 		t.Fatal(err)
 	}
-	if o.Bmdwire != "v1.6.0" || len(o.Calls) < 200 || len(o.Parsers) < 3000 {
+	if o.Bmdwire != "v1.7.0" || len(o.Calls) < 200 || len(o.Parsers) < 4000 {
 		t.Fatalf("oracle from bmdwire %s: %d calls, %d parser cases", o.Bmdwire, len(o.Calls), len(o.Parsers))
 	}
 	return o
@@ -159,6 +159,11 @@ func TestParsersMatchUltimattewire(t *testing.T) {
 			got = ParseFileList(c.Text)
 		case "extract_label":
 			got = ExtractLabel(c.Text)
+		case "extract_model":
+			got = ExtractModel(c.Text)
+		case "parse_current_file":
+			name, status := ParseCurrentFile(c.Text)
+			got = []string{name, status}
 		case "annotate_preamble":
 			got, err = AnnotatePreamble(c.Text)
 		case "parse_interface":

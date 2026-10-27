@@ -17,6 +17,7 @@ import (
 
 	"github.com/lucas-romanenko/bmdctl/atem"
 	"github.com/lucas-romanenko/bmdctl/hyperdeck"
+	"github.com/lucas-romanenko/bmdctl/ultimatte"
 )
 
 // ProbeTimeout caps a probe: whatever hasn't answered by then hasn't.
@@ -225,5 +226,9 @@ func (e *Engine) probeUltimatte(ctx context.Context, addr string, ownPort bool) 
 	if !ok || strings.Contains(text, "VIDEOHUB DEVICE:") || !ownPort && !label {
 		return ProbeResult{}, fmt.Errorf("ultimatte: %s sent no prelude", addr)
 	}
-	return ProbeResult{Device: "ultimatte", Name: kv["label"], Model: "Ultimatte"}, nil
+	model := ultimatte.ExtractModel(text) // IDENTITY's, bmdwire#52
+	if model == "" {
+		model = "Ultimatte"
+	}
+	return ProbeResult{Device: "ultimatte", Name: kv["label"], Model: model}, nil
 }

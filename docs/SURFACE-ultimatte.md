@@ -1,5 +1,5 @@
 <!--
-Written for bmdctl from bmdwire v1.6.0 (tag v1.6.0, commit 0eb73e5),
+Written for bmdctl from bmdwire v1.7.0 (tag v1.7.0, commit eb47e22),
 package ultimattewire/, which has no SURFACE.md of its own. It is the
 specification for bmdctl's ultimatte package, as docs/SURFACE-atem.md is
 for atem. Corrections and port decisions go in docs/PORTING.md
@@ -8,7 +8,7 @@ for atem. Corrections and port decisions go in docs/PORTING.md
 
 # ultimattewire: complete library surface
 
-An inventory of everything bmdwire v1.6.0's `ultimattewire` can do, built
+An inventory of everything bmdwire v1.7.0's `ultimattewire` can do, built
 for mapping to CLI commands. Every entry was read from the code
 (`_protocol.py`, `_preamble.py`, `network.py`, `profile/archive.py`,
 `profile/restore.py`, `profile/_ranges.py`, the two `__init__.py`); where
@@ -16,10 +16,11 @@ its README or a docstring says otherwise, the code wins and §5.3 lists the
 disagreement. What the code does with every kind of input was also
 recorded by running it (`ultimatte/testdata/oracle/`).
 
-- **Source read:** `bmdwire` v1.6.0 (`github.com/lucas-romanenko/bmdwire`,
-  commit `0eb73e5`), package `ultimattewire/`. Its code last changed in
-  0.2.0.dev0 (`5342705`, the network interface); every release since has
-  changed only the README's version.
+- **Source read:** `bmdwire` v1.7.0 (`github.com/lucas-romanenko/bmdwire`,
+  commit `eb47e22`), package `ultimattewire/`. Its code changed in
+  0.2.0.dev0 (`5342705`, the network interface) and then in 1.7.0
+  (bmdwire#52, `ac1af08`: `extract_model`, `parse_current_file`, and the
+  restore's docs on what it overwrites).
 - **Two channels:** TCP 9998, a text channel (the prelude the unit sends on
   connect, then blocks), and TCP 9996, a binary channel (one request per
   connection: preset slots and two named resources).
@@ -66,7 +67,12 @@ info)`. The zip is read with `zipfile`; a file that isn't a zip raises
    name `{prefix}/GPISettings`.
 3. **`SavedSettings`**, if present: opcode `0x0103`, name
    `{prefix}/SavedSettings`. It overwrites the live state, so it goes
-   last.
+   last. The unit runs those settings at once, video format included,
+   and what was changed on it and not saved is gone: `parse_current_file`
+   (§2.1) says `Modified` when there is something to lose. Seen on a 12
+   4K with software 2.3 (bmdwire#52): a restore of the unit's own archive,
+   whose saved settings were its defaults, left it on "Ultimatte
+   Defaults" in 525i59.94 NTSC, from unsaved settings in 1080p25.
 
 `prefix` is `/private/var/folders/00/000000000000000000000000000000/T/Ultimatte Software Control-PYREST`,
 the shape of the vendor app's temporary path (the unit appears to read
@@ -135,6 +141,17 @@ returns the interface read back once it has settled.
   (`splitlines()`, so `\r`, `\v`, `\f`, U+001C-U+001E, U+0085, U+2028 and
   U+2029 split too), each stripped, the empty ones dropped: the preset
   slots' names.
+- **`extract_model(text)`** (1.7.0): the `IDENTITY` section's `Model`
+  (`_field`, below), `""` when it has none. A 12 4K on software 2.3 says
+  `Ultimatte 12 4K`.
+- **`parse_current_file(text)`** (1.7.0): `(name, status)`, the `CURRENT
+  FILE` section's `Name` and `Status`, `""` each when absent: the file
+  the live settings came from, and `Clean` while they match it or
+  `Modified` once changed on the unit.
+- **`_field(text, header, key)`**: `parse_section(text,
+  header).splitlines()`, each line split at its first colon
+  (`partition`); the first whose key is `key` once stripped gives its
+  value, stripped; `""` when none does.
 - **`extract_label(text)`**: the regex `^Label:\s*(.+)$` (`MULTILINE`):
   the first `Label:` line's value, stripped, every run of characters
   other than ASCII letters, digits, `.`, `_` and `-` replaced by one `_`
@@ -335,7 +352,7 @@ values as anything but text to annotate.
 ### 5.2 Implemented, but not exposed
 
 `read_preamble`, `parse_section`, `parse_file_list`, `extract_label`,
-`binary_request`, `upload_one`, `_connect_with_retry`, `to_display`,
+`extract_model`, `parse_current_file`, `binary_request`, `upload_one`, `_connect_with_retry`, `to_display`,
 `annotate_preamble` and `RANGES` are module functions not exported from
 the package.
 

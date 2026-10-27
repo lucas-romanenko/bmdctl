@@ -42,8 +42,8 @@ shows (colour, the prompt, the spinner) is snapshot-tested in
 `internal/fixtures/oracle/` and the `testdata/oracle/` of `hyperdeck/`,
 `videohub/` and `ultimatte/` are regenerated with the scripts beside
 them (see the README there) against `../bmdwire` at the version each
-file records (`recv.json`, `readers.json` and the Videohub and Ultimatte
-oracles at `v1.6.0`, the rest at `v1.4.0`; `imaging.json` and the
+file records (`recv.json`, `readers.json` and the Videohub oracle at
+`v1.6.0`, the Ultimatte one at `v1.7.0`, the rest at `v1.4.0`; `imaging.json` and the
 HyperDeck `client.json` at `v1.3.0`, the READMEs say why).
 
 The documentation site (`mkdocs.yml`) is built from `docs/` as it is:

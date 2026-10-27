@@ -107,10 +107,12 @@ func (c *call) runUlt() (any, bool, error) {
 }
 
 // ultNote is the Switcher note for a keyer: its label as its prelude has
-// it (raw, not extract_label's filename form).
+// it (raw, not extract_label's filename form), and its model as IDENTITY
+// names it (bmdwire#52), "" from a unit that sends none.
 func (c *call) ultNote(prelude string) string {
 	label, _ := ultimatte.Label(prelude)
-	c.note(Note{Switcher: &Switcher{Host: c.ultKey, Device: "ultimatte", Name: label, Ready: true}})
+	c.note(Note{Switcher: &Switcher{Host: c.ultKey, Device: "ultimatte", Name: label,
+		Product: ultimatte.ExtractModel(prelude), Ready: true}})
 	return label
 }
 
@@ -416,7 +418,8 @@ func opUltRestore(c *call) (any, bool, error) {
 	}
 	label, _ := ultimatte.Label(pre)
 	if !c.req.Yes {
-		return nil, false, c.refuse(restoreImpact(orKeyer(label), plan), "restore it?",
+		file, status := ultimatte.ParseCurrentFile(pre)
+		return nil, false, c.refuse(restoreImpact(orKeyer(label), plan, file, status), "restore it?",
 			"%s %s is destructive: add --yes to run it", c.req.Device, c.req.Path)
 	}
 	// archive's steps: the presets, then the settings, as many as the
@@ -481,8 +484,10 @@ func orKeyer(label string) string {
 
 // restoreImpact is what a restore overwrites, for the confirmation: a
 // preset replaces the slot of its name, the saved settings what the
-// keyer is doing now.
-func restoreImpact(label string, plan ultimatte.RestorePlan) string {
+// keyer is doing now, video format and all, and with it whatever was
+// changed on the unit and not saved: CURRENT FILE (file, status) says
+// whether there is any (bmdwire#52). A line each.
+func restoreImpact(label string, plan ultimatte.RestorePlan, file, status string) string {
 	var parts []string
 	if n := len(plan.Presets); n > 0 {
 		parts = append(parts, fmt.Sprintf("%d preset%s", n, plural(n)))
@@ -498,7 +503,10 @@ func restoreImpact(label string, plan ultimatte.RestorePlan) string {
 	s := label + " gets " + strings.Join(parts, " and ")
 	switch {
 	case plan.Saved:
-		s += ": its live state changes"
+		s += "\nthe saved settings become its live state, video format included"
+		if status == "Modified" {
+			s += fmt.Sprintf("\nits unsaved changes to %q are lost", file)
+		}
 	case len(plan.Presets) > 0:
 		s += ", over any of the same name"
 	}

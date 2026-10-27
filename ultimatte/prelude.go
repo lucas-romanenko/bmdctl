@@ -240,3 +240,29 @@ func ExtractLabel(text string) string {
 	}
 	return b.String()
 }
+
+// ExtractModel is extract_model (bmdwire#52): the IDENTITY section's
+// Model, "" when it has none. A 12 4K on software 2.3 says "Ultimatte
+// 12 4K".
+func ExtractModel(text string) string { return field(text, "IDENTITY", "Model") }
+
+// ParseCurrentFile is parse_current_file (bmdwire#52): CURRENT FILE's
+// Name and Status, the file the live settings came from and "Clean"
+// while they match it or "Modified" once they have been changed on the
+// unit; "" each when it has none. A restore's SavedSettings replace the
+// live settings, so Modified is what a restore loses.
+func ParseCurrentFile(text string) (name, status string) {
+	return field(text, "CURRENT FILE", "Name"), field(text, "CURRENT FILE", "Status")
+}
+
+// field is _field: the value of a section's first line whose key, before
+// its first colon (str.partition), is key once stripped; the lines as
+// str.splitlines() splits them, the value stripped. "" when none is.
+func field(text, header, key string) string {
+	for _, l := range pytext.SplitLines(ParseSection(text, header)) {
+		if k, v, ok := strings.Cut(l, ":"); ok && pytext.Strip(k) == key {
+			return pytext.Strip(v)
+		}
+	}
+	return ""
+}

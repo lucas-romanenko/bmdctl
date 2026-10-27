@@ -3597,7 +3597,8 @@ type `videohub`, goes to a router through the engine.
 
 ## Ultimatte (`ultimatte/`)
 
-Phase 5. Ports bmdwire v1.6.0's `ultimattewire`, all of it:
+Phase 5. Ports bmdwire v1.6.0's `ultimattewire`, all of it, and 1.7.0's
+two parsers (bmdwire#52):
 `_protocol.py` (the 9996 binary channel and the connect retry),
 `_preamble.py` (the 9998 prelude and its parsers), `network.py` (the 9998
 block protocol and the network interface) and `profile/` (archive,
@@ -3611,6 +3612,7 @@ with `ReadPrelude`, `BinaryRequest`, `UploadOne`, `Exchange`,
 NetworkSet)`, `Archive(ctx, host, now, step)`, `Restore(ctx, host, zip,
 step)`; the
 functions `ParseSection`, `ParseFileList`, `Label`, `ExtractLabel`,
+`ExtractModel`, `ParseCurrentFile`,
 `ParseInterface`, `BuildBlock`, `SectionName`, `ToDisplay`,
 `AnnotatePreamble`, `Plan`; `Ranges`; `*Error{Class, Msg}` with
 `ErrRefused`, `ErrShort`, `ErrUnsettled`, `ErrValue` for `errors.Is`.
@@ -3667,7 +3669,9 @@ functions `ParseSection`, `ParseFileList`, `Label`, `ExtractLabel`,
   control value). A connection that can't be opened is the dialer's own
   error, as Python's is the socket's.
 - **Verification.** `testdata/oracle/oracle.json` (`gen_oracle.py`)
-  records ultimattewire v1.6.0 itself: RANGES, 3,681 parser cases and 268
+  records ultimattewire v1.7.0 itself: RANGES, 4,041 parser cases (the
+  IDENTITY and CURRENT FILE ones in a pool of their own, so the calls'
+  preludes stay as they were) and 268
   calls over scripted connections, each with its result or exception and
   every connection's address, bytes sent and close; the archive's zip
   member by member. `TestRangesMatchUltimattewire`,
@@ -3694,7 +3698,12 @@ type `ultimatte`, goes to a keyer through the engine.
   address, saves it; there is no `disconnect`, `watch` or `state`. Each
   call's `switcher` note names the keyer by its prelude's `Label:` (raw,
   not `extract_label`'s file name form), read on the connection the call
-  opens anyway.
+  opens anyway, and gives its model as `product` (`ExtractModel`,
+  bmdwire#52, after the twentieth hardware run). So a terminal's header
+  says `Keyer A  Ultimatte 12 4K` where it said `Ultimatte`, which it
+  still says for a unit with no IDENTITY, and a pipe's report header
+  gains the model, as a deck's has its own (`Keyer A (192.0.2.41)
+  Ultimatte 12 4K`); the probe's model is the same, else `Ultimatte`.
 - **Reads.** `status` is the label, the presets and NETWORK INTERFACE 0,
   on one connection; where the unit won't give the interface,
   `network_error` says why and the presets still show. `presets` is the
@@ -3712,9 +3721,14 @@ type `ultimatte`, goes to a keyer through the engine.
   ultimattewire leaves it.
 - **restore <file>** is destructive (exit 5 without `--yes`): presets
   overwrite the slots of their names, and SavedSettings replaces what the
-  keyer is doing now. The confirmation counts what the zip holds
-  (`Plan`): `Keyer A gets 3 presets and the settings: its live state
-  changes`. What isn't an archive (not a zip, or none of `presets/`,
+  keyer is doing now, video format included. The confirmation counts
+  what the zip holds (`Plan`), a line each: `Keyer A gets 3 presets and
+  the settings`, `the saved settings become its live state, video format
+  included`, and, where CURRENT FILE says `Modified`, `its unsaved
+  changes to "Studio B" are lost` (`ParseCurrentFile`, bmdwire#52). The
+  twentieth hardware run restored a 12 4K this way and lost its
+  unsaved 1080p25 state to its saved defaults in NTSC; the old line said
+  only `its live state changes`. What isn't an archive (not a zip, or none of `presets/`,
   GPISettings, SavedSettings in it) is a usage error before anything is
   sent. A refusal stops where ultimattewire stops: rejected (exit 4),
   naming the member, with what came before it written. The steps are

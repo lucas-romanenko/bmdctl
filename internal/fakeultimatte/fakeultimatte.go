@@ -57,6 +57,12 @@ type iface struct {
 // set them before serving.
 type Unit struct {
 	Label, Release string
+	// Model is IDENTITY's Model, as a 12 4K's prelude has it ("" sends no
+	// IDENTITY); File and FileStatus are CURRENT FILE's Name and Status
+	// ("Modified": changed on the unit and not saved). A restore leaves
+	// them as they are: what a unit names its live state after one was
+	// seen only for its own defaults (docs/HARDWARE.md, the twentieth run).
+	Model, File, FileStatus string
 
 	mu       sync.Mutex
 	presets  []string // FILE LIST order
@@ -75,7 +81,8 @@ type Unit struct {
 // New returns an Ultimatte 12 4K labelled "Keyer A" on software 2.1: three
 // presets, the two resources, and a static address, 192.0.2.41/22.
 func New() *Unit {
-	u := &Unit{Label: "Keyer A", Release: "2.1", presets: []string{"Green Screen", "Blue Screen", "Studio B"},
+	u := &Unit{Label: "Keyer A", Release: "2.1", Model: "Ultimatte 12 4K", File: "Studio B", FileStatus: "Clean",
+		presets: []string{"Green Screen", "Blue Screen", "Studio B"},
 		slots: map[string][]byte{"Green Screen": []byte("green preset blob"), "Blue Screen": []byte("blue preset blob"),
 			"Studio B": []byte("studio b preset blob")},
 		gpi: []byte("GPI settings blob"), saved: bytes.Repeat([]byte("saved settings "), 20)}
@@ -132,15 +139,29 @@ func (u *Unit) Listen(control, settings string) (net.Listener, net.Listener, err
 	return lc, ls, nil
 }
 
+// SetFile sets CURRENT FILE: changes made on the unit are "Modified"
+// until it saves them.
+func (u *Unit) SetFile(name, status string) {
+	u.mu.Lock()
+	u.File, u.FileStatus = name, status
+	u.mu.Unlock()
+}
+
 // prelude is what 9998 sends on connect. Called with mu.
 func (u *Unit) prelude() string {
 	var b strings.Builder
 	b.WriteString("PROTOCOL PREAMBLE:\nVersion: 2.1\n\n")
+	if u.Model != "" {
+		fmt.Fprintf(&b, "IDENTITY:\nModel: %s\n\n", u.Model)
+	}
 	fmt.Fprintf(&b, "Label: %s\nSoftware Release: %s\n\n", u.Label, u.Release)
 	b.WriteString("CONTROL:\nMatte Density: 5000\nBlack Gloss: 1200\nShadow Level: 7500\nCursor X: 5000\n" +
 		"Transition Rate: 30\nOffset Black Balance: 2500\nFG Saturation Master: 5000\n\n")
 	b.WriteString("CONTROL DEFAULT:\nMatte Density: 5000\nBlack Gloss: 1000\nShadow Level: 5000\nCursor X: 5000\n" +
 		"Transition Rate: 30\nOffset Black Balance: 5000\nFG Saturation Master: 5000\n\n")
+	if u.File != "" {
+		fmt.Fprintf(&b, "CURRENT FILE:\nName: %s\nStatus: %s\n\n", u.File, u.FileStatus)
+	}
 	b.WriteString("FILE LIST:\n" + strings.Join(u.presets, "\n") + "\n\n")
 	b.WriteString("END PRELUDE:\n")
 	return b.String()

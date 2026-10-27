@@ -102,7 +102,17 @@ func ultStatusRows(r engine.UltStatusResult) [][]string {
 func screenUltStatus(p *printer, _ engine.Response, raw json.RawMessage) view {
 	var r engine.UltStatusResult
 	json.Unmarshal(raw, &r)
-	return view{about: []string{"Ultimatte"}, gap: true, rows: p.termRows(ultStatusRows(r))}
+	return view{about: []string{p.keyerModel()}, gap: true, rows: p.termRows(ultStatusRows(r))}
+}
+
+// keyerModel is the keyer's model as its prelude's IDENTITY names it
+// (the note's Product, bmdwire#52), else "Ultimatte": a unit that sends
+// none.
+func (p *printer) keyerModel() string {
+	if p.sw != nil && p.sw.Product != "" {
+		return p.sw.Product
+	}
+	return "Ultimatte"
 }
 
 func formatUltStatus(p *printer, _ engine.Response, raw json.RawMessage) []string {
@@ -313,7 +323,7 @@ func screenUltConnect(p *printer, _ engine.Response, raw json.RawMessage) view {
 	default:
 		out = append(out, c.resultLine("connect", "answers · "+count(r.Presets, "preset")+" · no session is kept", ""))
 	}
-	return view{about: []string{"Ultimatte"}, rows: out}
+	return view{about: []string{p.keyerModel()}, rows: out}
 }
 
 func formatUltConnect(p *printer, _ engine.Response, raw json.RawMessage) []string {

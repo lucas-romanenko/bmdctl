@@ -3,7 +3,7 @@ $ bmdctl connect 192.0.2.30
   <b>saved as "Test Hub", now the default</>
 
 $ bmdctl connect 192.0.2.40
-<b>Keyer A</>  <dim>Ultimatte</>
+<b>Keyer A</>  <dim>Ultimatte 12 4K</>
   <b>saved as "Keyer A", now the default</>
 
 $ bmdctl connect 192.0.2.30

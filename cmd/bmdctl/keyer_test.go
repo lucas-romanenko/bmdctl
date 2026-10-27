@@ -56,10 +56,10 @@ func TestKeyerReads(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"status"}, "Keyer A (192.0.2.41)\npresets  Green Screen, Blue Screen, Studio B\n" +
+		{[]string{"status"}, "Keyer A (192.0.2.41)  Ultimatte 12 4K\npresets  Green Screen, Blue Screen, Studio B\n" +
 			"address  192.0.2.41/255.255.252.0\ngateway  192.0.2.1\ndns      192.0.2.53\ndhcp     off: static\nmac      7c:2e:0d:00:00:01\n"},
-		{[]string{"presets"}, "Keyer A (192.0.2.41)\nGreen Screen\nBlue Screen\nStudio B\n"},
-		{[]string{"network", "show"}, "Keyer A (192.0.2.41)\naddress  192.0.2.41/255.255.252.0\ngateway  192.0.2.1\n" +
+		{[]string{"presets"}, "Keyer A (192.0.2.41)  Ultimatte 12 4K\nGreen Screen\nBlue Screen\nStudio B\n"},
+		{[]string{"network", "show"}, "Keyer A (192.0.2.41)  Ultimatte 12 4K\naddress  192.0.2.41/255.255.252.0\ngateway  192.0.2.1\n" +
 			"dns      192.0.2.53\ndhcp     off: static\nmac      7c:2e:0d:00:00:01\n"},
 	} {
 		if out := b.must(c.args...); out != c.want {
@@ -73,7 +73,7 @@ func TestKeyerReads(t *testing.T) {
 	if out := b.must("controls", "--defaults"); !strings.Contains(out, "\nBlack Gloss           1000  10%\n") {
 		t.Errorf("defaults:\n%s", out)
 	}
-	if out := b.must("prelude"); !strings.HasPrefix(out, "PROTOCOL PREAMBLE:\nVersion: 2.1\n\nLabel: Keyer A\n") ||
+	if out := b.must("prelude"); !strings.HasPrefix(out, "PROTOCOL PREAMBLE:\nVersion: 2.1\n\nIDENTITY:\nModel: Ultimatte 12 4K\n\nLabel: Keyer A\n") ||
 		!strings.HasSuffix(out, "\nStudio B\n\nEND PRELUDE:\n") {
 		t.Errorf("prelude:\n%s", out)
 	}
@@ -203,6 +203,7 @@ func TestTerminalKeyer(t *testing.T) {
 	tr.run("controls")
 	tr.run("archive")
 	tr.in = &yes
+	u.SetFile("Studio B", "Modified") // changed on the unit, not saved: the restore says it loses them
 	tr.run("restore", "Keyer_A.zip")
 	tr.in = &no
 	tr.run("network", "set", "--address", "192.0.2.42", "--netmask", "255.255.255.0")

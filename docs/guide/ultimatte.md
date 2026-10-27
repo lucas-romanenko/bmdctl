@@ -10,7 +10,7 @@ a real keyer yet ([HARDWARE.md](../HARDWARE.md#unverified)).
 $ bmdctl hosts add 192.168.1.41
 added Keyer A (192.168.1.41)
 $ bmdctl --host keyer status
-Keyer A  Ultimatte
+Keyer A  Ultimatte 12 4K
 
   presets     Green Screen, Blue Screen, Studio B
   address     192.168.1.41/255.255.252.0
@@ -65,13 +65,17 @@ A preset or setting that can't be read is left out and named under the
 result, so a later restore never writes placeholder bytes to the keyer.
 
 `restore` pushes an archive back: each preset replaces the one of its
-name, and the saved settings replace what the keyer is doing now, so
-it asks first (`--yes` doesn't ask):
+name, and the saved settings become what the keyer is doing now, video
+format included. Anything changed on the unit and not saved there is
+lost, so it asks first, and says when there is something to lose
+(`--yes` doesn't ask). Save on the unit first if you want to keep it:
 
 ```
 $ bmdctl --host keyer restore Keyer_A.zip
 Keyer A
-  Keyer A gets 3 presets and the settings: its live state changes
+  Keyer A gets 3 presets and the settings
+  the saved settings become its live state, video format included
+  its unsaved changes to "Studio B" are lost
   restore it? [y/N] y
   ✓ presets   Blue Screen, Green Screen, Studio B                 720 ms
   ✓ settings  GPISettings, SavedSettings                          380 ms

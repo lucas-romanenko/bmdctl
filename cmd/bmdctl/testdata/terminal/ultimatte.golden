@@ -1,9 +1,9 @@
 $ bmdctl connect 192.0.2.41
-<b>Keyer A</>  <dim>Ultimatte</>
+<b>Keyer A</>  <dim>Ultimatte 12 4K</>
   <b>saved as "Keyer A", now the default</>
 
 $ bmdctl status
-<b>Keyer A</>  <dim>Ultimatte</>
+<b>Keyer A</>  <dim>Ultimatte 12 4K</>
 
   presets     Green Screen, Blue Screen, Studio B
   address     192.0.2.41/255.255.252.0
@@ -38,7 +38,9 @@ $ bmdctl archive
 
 $ bmdctl restore Keyer_A.zip
 <b>Keyer A</>
-  Keyer A gets 3 presets and the settings: its live state changes
+  Keyer A gets 3 presets and the settings
+  the saved settings become its live state, video format included
+  its unsaved changes to "Studio B" are lost
   restore it? [y/N] y
   ✓ presets   Blue Screen, Green Screen, Studio B                   <dim># ms</>
   ✓ settings  GPISettings, SavedSettings                            <dim># ms</>
