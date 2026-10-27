@@ -108,7 +108,9 @@ func audioDump(t *testing.T, extra ...[]byte) []byte {
 }
 
 // audio master, levels and meters reach whichever mixer the switcher
-// reports: its capabilities (_FAC, _AMC) first, then its state.
+// has, as atemwire's audio_mixer_type decides it: the Fairlight one once
+// FAMP has come, else the classic one once AMMO has. A capability packet
+// (_FAC, or _AMC, which atemwire doesn't know) says nothing.
 func TestAudioFollowsMixer(t *testing.T) {
 	fac, amc := fakeatem.Command("_FAC", make([]byte, 4)), fakeatem.Command("_AMC", make([]byte, 4))
 	ammo := fakeatem.Command("AMMO", make([]byte, 8))
@@ -117,9 +119,8 @@ func TestAudioFollowsMixer(t *testing.T) {
 		dump        []byte
 	}{
 		{"Fairlight state", "fairlight", fixtures.Bytes(t, "dump/initial-dump.bin")},
-		{"_AMC", "classic", audioDump(t, amc)},
 		{"classic state", "classic", audioDump(t, ammo)},
-		{"_FAC over classic state", "fairlight", audioDump(t, fac, ammo)},
+		{"classic state with _FAC and _AMC", "classic", audioDump(t, fac, amc, ammo)},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			b := newBenchDump(t, c.dump)

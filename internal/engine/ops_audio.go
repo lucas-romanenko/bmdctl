@@ -38,22 +38,16 @@ func audioOperations() []operation {
 	}
 }
 
-// Mixer is the audio mixer the switcher reports: "fairlight" when it
-// sent the Fairlight mixer's capabilities (_FAC, which atemwire keeps
-// raw) and "classic" when it sent the classic mixer's (_AMC); failing
-// both, the mixer whose state it sent; "" when it sent neither. Its
-// topology (_top) says nothing about audio.
+// Mixer is the audio mixer the switcher has, as atemwire's
+// audio_mixer_type (State.AudioMixerType, bmdwire v1.6.0) decides it:
+// "fairlight" once it has sent the Fairlight master (FAMP), else
+// "classic" once it has sent the classic one (AMMO); "" when it has sent
+// neither.
 func Mixer(st atem.State) string {
-	_, fac := st.Raw["_FAC"]
-	_, amc := st.Raw["_AMC"]
-	switch {
-	case fac:
+	switch st.AudioMixerType() {
+	case "fairlight":
 		return "fairlight"
-	case amc:
-		return "classic"
-	case st.Fairlight.Master != nil || len(st.Fairlight.Inputs) > 0:
-		return "fairlight"
-	case st.Audio.Master != nil || len(st.Audio.Inputs) > 0:
+	case "legacy":
 		return "classic"
 	}
 	return ""

@@ -1267,15 +1267,13 @@ and a zero value selects nothing.
   - **Where both mixers have a command** (master, levels, meters),
     `audio` sends the one the switcher has and `classic-audio` forces
     the classic one. The switcher's mixer (`engine.Mixer`, also `info`'s
-    `audio`) is the one whose capabilities it sent: `_FAC` for Fairlight,
-    `_AMC` for the classic mixer, which atemwire doesn't parse and keeps
-    raw (`State.Raw`). Failing both, it is the mixer whose state it sent
-    (`FAMP`/`FAIP` or `AMMO`/`AMIP`); the topology (`_top`) says nothing
-    about audio. bmdwire v1.6.0's `audio_mixer_type`
-    (`State.AudioMixerType`) decides by `FAMP`, then `AMMO`, alone; `Mixer`
-    keeps the capabilities first, and agrees with it except on a state
-    with an input's packet but no master's, which it names and
-    `audio_mixer_type` calls unknown. On a classic switcher the engine (`forMixer`, after the
+    `audio`) is bmdwire v1.6.0's `audio_mixer_type`
+    (`State.AudioMixerType`): Fairlight once `FAMP` has come, else classic
+    once `AMMO` has, else none. Until 2026-10-27 `Mixer` went first by a
+    capability packet, `_FAC` or `_AMC`; atemwire has never heard of
+    `_AMC`, so that was protocol knowledge bmdwire didn't have, and the
+    masters decide alone now. The topology (`_top`) says nothing about
+    audio. On a classic switcher the engine (`forMixer`, after the
     arguments parse) sends `classic-audio master` for `audio master` and
     `classic-audio levels` for `audio levels`, with the same arguments:
     a Fairlight-only one (`--eq`, `--eq-gain`, `--makeup`) is refused,
