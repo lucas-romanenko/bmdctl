@@ -284,7 +284,8 @@ resent (below).
 The session is what bmdwire v1.3.0 spreads over `ATEMConnection` (worker
 thread, send queue, readiness flags), `AtemProtocol` (`loop`, `mixerstate`,
 events) and `ready.wait_ready`. The pool (`acquire_connection`, ref counts,
-the 2 s grace timer) is not part of it; it belongs with hosts, later.
+the 2 s grace timer) is not part of it: the engine keeps a session per
+switcher instead ("Engine").
 
 API: `Dial(ctx, addr) (*Session, error)`; `Send(cmd) error`;
 `SendAndWait(ctx, cmd) (Change, error)`; `State() State`;
@@ -405,9 +406,9 @@ two settings `Dial` needs a struct for.
 - **Close** gives back any store lock held (`release_locks_now`, see
   "Transfers"), says goodbye, closes the socket, fails pending waiters and
   transfers with `ErrClosed` and closes subscriber channels.
-- **Not yet:** typed state (step 4) and parsers (step 5), so `State` holds
-  every packet raw at this step; `last_run_macro_index` arrives with the
-  `MRPr` parser; transfers, locks and the pool later.
+- **Built on later:** typed state ("State") and the parsers ("Parsers"),
+  `last_run_macro_index` with the `MRPr` parser, transfers and locks
+  ("Transfers"); the pool's place is the engine's ("Engine").
 
 ## State (`atem/state.go`, `atem/clone.go`)
 
@@ -582,7 +583,13 @@ arguments, `Validator`.
   `StreamingServiceSet` refuse the argument combinations their
   constructors raise on. Read-modify-write operations (`toggle_usk`,
   `toggle_dsk`, `toggle_transition_*`, `set_transition_rate`) need state
-  and are not commands; the CLI can build them from `State` later.
+  and are not commands; the engine builds them from `State`
+  ("Operations", groups b and c).
+- **Not ported:** the two RGB setters, `ColorGeneratorCommand.from_rgb`
+  and `KeyPropertiesDveCommand.set_border_color_rgb`, which turn RGB into
+  the hue, saturation and luma the commands carry (`colorsys.rgb_to_hls`).
+  `color` and `usk dve` take hue, saturation and luma, as the wire does;
+  the reverse, the `get_rgb` readers, are ported ("State", Methods).
 - **Unverified** are the 20 classes atemwire restored from upstream pyatem
   without re-verifying them (`CTPr`, `CTPs`, the four legacy audio, `CCmd`,
   `CMvI`, `CMvP`, `CSBP`, `CSSc`, `CRMS`, `RcTM`, `CRSS`, `STAB`, `StrR`,
@@ -697,10 +704,12 @@ one file per atemwire module (`read_switching.go`, `read_transition.go`,
   65,536 results, which `TestLegacyVolumeToDBEveryU16` recomputes).
   `legacy_db_to_volume`'s `pow` is floored to an integer, and matches
   over the oracle's 1,990 cases.
-- **Not ported:** the read-modify-write operations built on readers
-  (`toggle_usk`, `toggle_dsk`, `toggle_transition_*`, `set_transition_rate`)
-  and `build_full_state`, with v1.6.0's legacy audio section (`audio.mixer`
-  and the legacy shape, which the readers above make); both come later.
+- **Not ported:** `build_full_state` (and `ATEM.snapshot()`), with
+  v1.6.0's legacy audio section (`audio.mixer` and the legacy shape,
+  which the readers above make). `state` prints the session's `State`
+  instead. The read-modify-write operations built on readers
+  (`toggle_usk`, `toggle_dsk`, `toggle_transition_*`,
+  `set_transition_rate`) are the engine's ("Operations").
 - **Verification.** `internal/fixtures/oracle/readers.json`
   (`gen_readers.py`) holds 36 scenarios: 2,336 packets fed to bmdwire
   v1.6.0's `save_field_data`, interleaved with 17,025 reader and helper
@@ -1171,8 +1180,9 @@ and a zero value selects nothing.
   re-indents the tree in place, as to_xml does. ParseError text and
   positions only approximate expat's. Non-ASCII name characters use Go's
   Unicode tables, not expat's Appendix B.
-- **Not ported:** `download_media_pool_images` (needs still download and PNG
-  export), `_source_symbol` (unused), `_ProtocolAdapter`/`_resolve_connection`.
+- **Not ported here:** `download_media_pool_images`, which the engine
+  does ("Operations", "Images"); `_source_symbol` (unused),
+  `_ProtocolAdapter`/`_resolve_connection`.
 - **Verification:** `oracle/profile.json` from `gen_profile.py` (bmdwire
   `v1.3.0-9-g785aac7`) holds the golden's state, 46 saves, 274 applies
   (18,628 events, 30 raising) and 130 parses, all replayed byte for
@@ -3524,7 +3534,14 @@ API: `Dial(ctx, addr)`, `Dialer{DialContext, Logger}`; `Send(ctx, cmd)`,
   and a routing block have come, to 0.3 s without a block; before those
   `ReadTimeout` (3 s) from the start, then `no state preamble from
   <host> — is this a Videohub?`. The hub closing is `connection closed by
-  hub`. Ready is closed when Dial returns.
+  hub`. Ready is closed when Dial returns. The two timeouts are fixed, not
+  `connect_timeout` and `read_timeout` arguments: a command's own is its
+  context's deadline (`--timeout`). There is no `connect()` again on one
+  Session: a new one is dialled, and starts with no state.
+- **A block over 1 MiB ends the session** (`ErrClosed`, `a block of more
+  than 1 MiB`), where videohubwire's buffer grows without end: a hub's
+  biggest block, 288 labels of 64 characters, is well under 100 KiB, so
+  only a stream that isn't a Videohub's gets there.
 - **Checks before sending** are videohubwire's, in its order and with its
   messages, against the counts the state holds: a negative index, an
   index at or past a count the device block gave, a label over 64
@@ -3581,7 +3598,10 @@ type `videohub`, goes to a router through the engine.
   Commands: `route <output> <input>`, `input rename <input> <label>`,
   `output rename <output> <label>`, `status`, `outputs`, `inputs`,
   `watch [--count N]`, `state [--path P]`, `connect [address]`,
-  `disconnect`.
+  `disconnect`. `Ping` has no command: the engine's session already
+  knows when the hub goes, and `doctor` reads the preamble. The same goes
+  for a HyperDeck's `Ping` and `ClipsCount` (`status` counts the
+  timeline it reads).
 - **Ports count from 1**, as Videohub Control and the router's panel
   number them, in arguments, lines and JSON (`table.Index`); the wire,
   `state` and `watch --json` count from 0, as videohubwire does. A port
