@@ -6,7 +6,7 @@ the device packages are [SURFACE-atem.md](SURFACE-atem.md),
 [SURFACE-hyperdeck.md](SURFACE-hyperdeck.md),
 [SURFACE-videohub.md](SURFACE-videohub.md) and
 [SURFACE-ultimatte.md](SURFACE-ultimatte.md). bmdctl's device packages
-are a Go port of bmdwire's Python libraries, following v1.6.0 (the
+are a Go port of bmdwire's Python libraries, following v1.7.1 (the
 `Tracks:` line in PORTING.md); where this page says "atemwire",
 "hyperdeckwire", "videohubwire" or "ultimattewire" it means bmdwire's
 packages.

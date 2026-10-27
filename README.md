@@ -4,6 +4,8 @@
 
 [![CI](https://github.com/lucas-romanenko/bmdctl/actions/workflows/ci.yml/badge.svg)](https://github.com/lucas-romanenko/bmdctl/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/lucas-romanenko/bmdctl)](https://github.com/lucas-romanenko/bmdctl/releases/latest)
+[![Go Reference](https://pkg.go.dev/badge/github.com/lucas-romanenko/bmdctl.svg)](https://pkg.go.dev/github.com/lucas-romanenko/bmdctl)
+[![Licence: MIT and LGPL-3.0](https://img.shields.io/badge/licence-MIT%20%26%20LGPL--3.0-blue)](NOTICE)
 
 <!-- --8<-- [start:intro] -->
 bmdctl is one binary that controls Blackmagic Design production equipment
@@ -14,8 +16,13 @@ Control is involved. A background engine keeps a session open to each
 switcher, deck and router, and every command is also served over HTTP and
 to AI agents over MCP.
 
-ATEM verified on hardware; HyperDeck, Videohub and Ultimatte ported, not
-yet run on one.
+It's for the people who run and automate studios, live events and
+broadcast rooms: an engineer at a terminal or over SSH, a cron job, a
+show controller such as Companion, or an AI agent, all with the same
+commands.
+
+Run on an ATEM, a HyperDeck and an Ultimatte; Videohub ported, not yet
+run on a router.
 <!-- --8<-- [end:intro] -->
 
 <!-- --8<-- [start:sample] -->
@@ -101,8 +108,8 @@ The documentation is also a site, https://lucas-romanenko.github.io/bmdctl/
 - [docs/COMMANDS.md](docs/COMMANDS.md): every command and flag, generated
   from the command table (`bmdctl man` prints the same).
 - [docs/AGENTS.md](docs/AGENTS.md): the MCP server and the Claude skill.
-- [docs/HARDWARE.md](docs/HARDWARE.md): what has run on real hardware (one
-  ATEM so far; no deck, router or keyer yet) and what hasn't.
+- [docs/HARDWARE.md](docs/HARDWARE.md): what has run on real hardware (an
+  ATEM, a HyperDeck and an Ultimatte; no Videohub yet) and what hasn't.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the packages, the
   engine and the tests fit together.
 - [CONTRIBUTING.md](CONTRIBUTING.md): building, testing and adding a
@@ -113,7 +120,7 @@ The documentation is also a site, https://lucas-romanenko.github.io/bmdctl/
 - [bmdwire](https://github.com/lucas-romanenko/bmdwire), the Python
   original by the same author. bmdctl's device packages are a port of its
   libraries (atemwire, hyperdeckwire, videohubwire, ultimattewire),
-  following v1.6.0.
+  following v1.7.1.
 - [pyatem](https://git.sr.ht/~martijnbraam/pyatem) by Martijn Braam and the
   OpenAtem contributors, for the ATEM protocol groundwork. atemwire, which
   `atem/` ports, is a fork of it ([atem/NOTICE](atem/NOTICE)).

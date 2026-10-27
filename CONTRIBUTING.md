@@ -80,8 +80,9 @@ switcher unless built with `-tags hardware`, and CI never builds with it.
 A hardware test:
 
 - reads its target from `BMDCTL_TEST_ATEM` and refuses anything other
-  than `192.168.81.85` or `192.168.81.86`, the project's two bench
-  switchers;
+  than `192.168.81.85` or `192.168.81.86`, the maintainer's two test
+  switchers, so the hardware tests run only on that bench (CI and
+  contributors run everything else, against the fakes);
 - only reads, unless `BMDCTL_TEST_WRITE=1` is also set;
 - even then, never changes the video mode, clears stills, restores a
   profile or saves startup state.
@@ -98,9 +99,10 @@ The oracle files (`internal/fixtures/oracle/*.json` and the
 what bmdwire itself does with thousands of generated inputs, and the Go
 tests replay them. They are committed, so running the tests needs no
 Python. Regenerating one needs bmdwire checked out at the tag its README
-names (`v1.3.0`, `v1.4.0` or `v1.6.0`) beside this repository, as
-`../bmdwire`; the scripts take its path. A change to a script, or a reason to think bmdwire's behaviour was
-recorded wrong, is the only reason to regenerate.
+names (from `v1.3.0` to `v1.7.1`) beside this repository, as
+`../bmdwire`; the scripts take its path. A change to a script, or a
+reason to think bmdwire's behaviour was recorded wrong, is the only
+reason to regenerate.
 
 ## Adding a command
 

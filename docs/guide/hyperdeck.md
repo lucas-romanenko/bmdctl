@@ -1,8 +1,9 @@
 # HyperDeck
 
 A HyperDeck is a host like a switcher; commands go to it with `--host`,
-or through `hdctl`, which is `bmdctl hyperdeck`. Nothing here has run on
-a real deck yet ([HARDWARE.md](../HARDWARE.md#unverified)).
+or through `hdctl`, which is `bmdctl hyperdeck`. Most of it has run on a
+HyperDeck Studio HD Mini; [HARDWARE.md](../HARDWARE.md#unverified) lists
+what hasn't.
 
 ```
 $ bmdctl --host deck status

@@ -33,5 +33,5 @@ STUDIO A  PGM CAM2 · PVW CAM3
 - `macro record 6 "Lower third in"` records what you do next into slot
   6, until `macro stop`.
 - `macro delete`, and uploading or recording over a used slot, ask
-  first, as media does. Macro upload hasn't run on hardware yet
-  ([HARDWARE.md](../HARDWARE.md#unverified)).
+  first, as media does. On hardware, only an empty macro has been
+  uploaded so far ([HARDWARE.md](../HARDWARE.md#unverified)).

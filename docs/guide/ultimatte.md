@@ -3,8 +3,9 @@
 An Ultimatte keyer is a host like a switcher: commands go to it with
 `--host`, or through `ultctl`, which is `bmdctl ultimatte`. There is no
 session to keep: each command connects, does its work and hangs up, as
-Smart Remote 4 does. A keyer goes by its label. Nothing here has run on
-a real keyer yet ([HARDWARE.md](../HARDWARE.md#unverified)).
+Smart Remote 4 does. A keyer goes by its label. All of it but `network
+set` has run on an Ultimatte 12 4K
+([HARDWARE.md](../HARDWARE.md#unverified)).
 
 ```
 $ bmdctl hosts add 192.168.1.41

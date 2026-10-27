@@ -32,6 +32,6 @@ $ git add show.xml "ATEM Media Pool" && git commit -m "STUDIO A before Saturday"
   if they are beside it. It rewrites the switcher's setup, so it asks
   first. Program, preview and the video mode are left alone unless asked
   (`--program --preview`); `--macros-only` restores just the macros.
-  On hardware, only the macros and the Fairlight mixer have been restored
-  so far ([HARDWARE.md](../HARDWARE.md#unverified)): try the rest on a
+  On hardware, the macros, the Fairlight mixer and the media pool's stills
+  have been restored so far ([HARDWARE.md](../HARDWARE.md#unverified)): try the rest on a
   spare switcher before a show.
