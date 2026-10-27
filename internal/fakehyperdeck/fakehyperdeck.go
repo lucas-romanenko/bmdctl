@@ -53,6 +53,7 @@ type Deck struct {
 	FPS                                              int // frames per second of its timecode
 
 	mu       sync.Mutex
+	noInput  bool    // no video input: record is refused, 110
 	slots    []*slot // index 0 is slot id 1
 	active   int     // slot id
 	timeline []Clip
@@ -187,6 +188,14 @@ func (d *Deck) SetRemote(on bool) {
 	defer d.mu.Unlock()
 	d.remote = on
 	d.broadcast("remote", d.block(510, "remote info", "enabled", strconv.FormatBool(on)))
+}
+
+// NoInput takes the deck's video input away, or gives it back: without
+// one it refuses record, as a deck with nothing plugged in does.
+func (d *Deck) NoInput(on bool) {
+	d.mu.Lock()
+	d.noInput = on
+	d.mu.Unlock()
 }
 
 // Silence makes the deck take commands without answering them.
@@ -481,13 +490,32 @@ func (d *Deck) handle(c *conn, line string) (string, []note) {
 		if !write() {
 			return refuse(111, "remote control disabled")
 		}
-		return ok, notes("transport", d.setStatus("stopped", 0))
+		// As a Studio HD Mini on 9.0.2 does (bmdwire#53): stop leaves
+		// preview as it is, and clears loop and single clip.
+		if d.status == "preview" {
+			return ok, nil
+		}
+		var kv []string
+		if d.loop {
+			d.loop = false
+			kv = append(kv, "loop", "false")
+		}
+		if d.single {
+			d.single = false
+			kv = append(kv, "single clip", "false")
+		}
+		return ok, notes("transport", d.setStatus("stopped", 0, kv...))
 	case "record":
 		if !write() {
 			return refuse(111, "remote control disabled")
 		}
 		if d.status == "record" {
 			return refuse(150, "invalid state")
+		}
+		if d.noInput {
+			// Refused, and in preview all the same (bmdwire#53).
+			a, _ := refuse(110, "no input")
+			return a, notes("transport", d.setStatus("preview", 0))
 		}
 		d.recName = p.rest("name")
 		return ok, notes("transport", d.setStatus("record", 0))
@@ -507,7 +535,10 @@ func (d *Deck) handle(c *conn, line string) (string, []note) {
 				return refuse(102, "invalid value")
 			}
 			if strings.HasPrefix(v, "+") || strings.HasPrefix(v, "-") {
-				id = min(max(d.clipID+id, 1), len(d.timeline))
+				// Past either end is refused, not held there (bmdwire#53).
+				if id = d.clipID + id; id < 1 || id > len(d.timeline) {
+					return refuse(109, "out of range")
+				}
 			} else if id < 1 || id > len(d.timeline) {
 				return refuse(112, "clip not found")
 			}
@@ -524,8 +555,12 @@ func (d *Deck) handle(c *conn, line string) (string, []note) {
 		} else {
 			return refuse(101, "unsupported parameter")
 		}
-		return ok, notes("transport", d.block(508, "transport info", "clip id", d.clipIDText(),
-			"display timecode", d.timecode(), "timecode", d.timecode()))
+		kv := []string{"clip id", d.clipIDText(), "display timecode", d.timecode(), "timecode", d.timecode()}
+		if d.status == "preview" { // a goto takes the deck out of preview (bmdwire#53)
+			d.status = "stopped"
+			kv = append([]string{"status", "stopped"}, kv...)
+		}
+		return ok, notes("transport", d.block(508, "transport info", kv...))
 	}
 	return refuse(100, "syntax error")
 }

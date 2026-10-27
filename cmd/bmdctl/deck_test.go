@@ -122,6 +122,41 @@ func TestDeckRefusals(t *testing.T) {
 			t.Errorf("%v: %d %q, want %d %q", c.args, code, errOut, c.code, c.msg)
 		}
 	}
+	// As the test deck answered (docs/HARDWARE.md, the nineteenth run;
+	// bmdwire#53): next and prev past the timeline's ends are refused,
+	// not held there.
+	b.must("goto", "3")
+	if code, _, errOut := b.run("next"); code != exitRejected || !strings.Contains(errOut, "the deck refused goto: out of range (109)") {
+		t.Errorf("next on the last clip: %d %q", code, errOut)
+	}
+	b.must("goto", "1")
+	if code, _, errOut := b.run("prev"); code != exitRejected || !strings.Contains(errOut, "the deck refused goto: out of range (109)") {
+		t.Errorf("prev on the first clip: %d %q", code, errOut)
+	}
+	// stop clears loop and single clip.
+	b.must("play", "--loop", "--single-clip")
+	b.must("stop")
+	if out := b.must("state", "--path", "transport.loop"); out != "false\n" {
+		t.Errorf("loop after stop: %q", out)
+	}
+	// With no input, record is refused and the deck is in preview all the
+	// same; stop leaves it there, and a goto brings it out.
+	d.NoInput(true)
+	if code, _, errOut := b.run("record", "take"); code != exitRejected || !strings.Contains(errOut, "the deck refused record: no input (110)") {
+		t.Errorf("record with no input: %d %q", code, errOut)
+	}
+	for _, step := range []struct {
+		args []string
+		want string
+	}{{nil, "preview"}, {[]string{"stop"}, "preview"}, {[]string{"goto", "1"}, "stopped"}} {
+		if step.args != nil {
+			b.must(step.args...)
+		}
+		if out := b.must("state", "--path", "transport.status"); out != step.want+"\n" {
+			t.Errorf("after %v: %q, want %s", step.args, out, step.want)
+		}
+	}
+	d.NoInput(false)
 	d.SetRemote(false)
 	code, _, errOut := b.run("play")
 	if code != exitRejected || !strings.Contains(errOut, "the deck refused play: remote control disabled (111)") {

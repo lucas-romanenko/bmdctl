@@ -6,11 +6,11 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.6.0
+Tracks: bmdwire v1.7.0
 
-- The port follows **bmdwire v1.6.0** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.6.0`, commit `0eb73e5`): v1.4.0 (tag `v1.4.0`, commit
-  `e04920b`), bmdwire#36, #38, #40, #42, #46, #47 and #49. It was
+- The port follows **bmdwire v1.7.0** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.7.0`, commit `eb47e22`): v1.4.0 (tag `v1.4.0`, commit
+  `e04920b`), bmdwire#36, #38, #40, #42, #46, #47, #49, #52 and #53. It was
   written against **v1.3.0** (tag `v1.3.0`, commit `cea58c2`), and the
   code and these notes cite that tag wherever they were checked against
   it; v1.4.0 changed only what
@@ -3399,20 +3399,24 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   get, clips count, remote, configuration, notify (per connection),
   ping; play (speed 0 reports stopped, as hyperdeckwire found on
   hardware), stop, record (stopping adds the clip, named or `Clip
-  0001.mov`), goto by clip id (absolute, or `+N`/`-N` held at the ends),
+  0001.mov`; with no input, `NoInput`, refused 110 and in preview all the
+  same, which stop leaves and a goto ends), goto by clip id (absolute, or
+  `+N`/`-N`, refused 109 past the ends), stop clearing loop and single
+  clip: each as a Studio HD Mini on 9.0.2 does (the nineteenth hardware
+  run, bmdwire#53),
   by timecode, slot select, clips clear/add/remove, remote enable, quit.
   Writes need remote control (111); a clip it hasn't is 112, an empty
   timeline 107, a value out of range 102 or 109, anything else 100. Each
   change goes to the connections that turned its notification on, with
   only what changed (508, 502, 510, 511).
 - **Controls:** `SetRemote` and `Press(status)` (the front panel, heard
-  by every connection), `Silence` (takes commands, answers none), `Send`
+  by every connection), `NoInput` (nothing plugged in), `Silence` (takes commands, answers none), `Send`
   (raw text to every connection), `Reject(n)` (120 to the next n), `Drop`
   (closes every connection); `Commands`, `Status`, `Slot` to look inside.
 - **Not a deck model.** The timecode moves only on goto, nothing plays
   through to the next clip, and nothing about a deck's timing is claimed.
-  What a real deck answers to `goto: clip id: +1` on the last clip, or a
-  goto beyond the timeline, is not known; the fake holds or refuses.
+  A goto by timecode beyond the timeline is not known from a deck; the
+  fake refuses it, 109.
 
 ## Videohub (`videohub/`)
 

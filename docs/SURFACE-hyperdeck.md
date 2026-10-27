@@ -1,6 +1,7 @@
 <!--
 Written for bmdctl from bmdwire v1.3.0 (tag v1.3.0, commit cea58c2),
-package hyperdeckwire/, which has no SURFACE.md of its own. It is the
+package hyperdeckwire/, which has no SURFACE.md of its own, with what
+1.7.0's docs/API.md adds about a deck (bmdwire#53). It is the
 specification for bmdctl's hyperdeck package, as docs/SURFACE-atem.md is
 for atem. Corrections and port decisions go in docs/PORTING.md
 ("HyperDeck"); this file says what hyperdeckwire does.
@@ -55,7 +56,7 @@ Nothing is validated: a value holding a newline is sent as two lines.
 
 | method | line sent | notes |
 |---|---|---|
-| `stop()` | `stop` | stops playback or recording; under the factory `stop mode: lastframe` the deck holds the frame |
+| `stop()` | `stop` | stops playback or recording; under the factory `stop mode: lastframe` the deck holds the frame. It also clears loop and single clip, so a `play()` after it plays once (a Studio HD Mini on 9.0.2, bmdwire#53) |
 | `play(*, loop=False, single_clip=False, speed=None, clip_id=None)` | `play`, or `play: ` then `clip id: {n}`, `loop: true`, `single clip: true`, `speed: {int(speed)}` in that order, space-separated | `loop` and `single_clip` are written only when true; `speed` is a percentage, -5000 to 5000, `int()`-truncated, unchecked |
 | `pause()` | `play: speed: 0` | the protocol has no pause; the transport then reports `stopped` |
 | `clips_clear()` | `clips clear` | empties the timeline; deletes nothing on disk |
@@ -210,6 +211,13 @@ but the greeting), and multi-line commands (`authenticate:`). Also absent:
 `play option`, `play on startup`, `preview`, `uptime`, `identify`,
 `watchdog`, `dynamic range`, `slot unblock`, `clips get` version 2 and its
 `clip id`/`count` arguments.
+
+Since 1.7.0 (bmdwire#53) `docs/API.md` says what a Studio HD Mini on 9.0.2
+answers to two of them: a relative `goto: clip id: +1` or `-1` past either
+end of the timeline is refused, `109 out of range`, not held at the end;
+`record` with no video input is refused, `110 no input`, and the deck goes
+to `preview` all the same, which `stop` leaves as it is and a `goto: clip
+id:` ends.
 
 ### 5.2 Implemented, but not exposed
 
