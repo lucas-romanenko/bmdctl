@@ -61,7 +61,7 @@ func TestComplete(t *testing.T) {
 		{[]string{"completion", ""}, []string{"bash", "zsh", "fish"}},
 		{[]string{"engine", ""}, []string{"stop", "status"}},
 		{[]string{"program", "1", "x"}, nil},
-		{[]string{"hyperdeck", ""}, []string{"clips", "connect", "disconnect", "goto", "loop", "next", "play", "prev",
+		{[]string{"hyperdeck", ""}, []string{"clips", "connect", "disconnect", "goto", "loop", "next", "pause", "play", "prev",
 			"record", "slot", "state", "status", "stop", "watch"}},
 		{[]string{"hyperdeck", "play", "--s"}, []string{"--single-clip", "--speed"}},
 		{[]string{"videohub", ""}, []string{"connect", "disconnect", "input", "inputs", "output", "outputs", "route", "state", "status", "watch"}},

@@ -172,9 +172,9 @@ The session and reads: connect, disconnect, status (what is on air), show one ar
 
 ### [transport](commands/hyperdeck-transport.md)
 
-The transport: play, stop, record, loop, next and previous clip, goto a clip or a timecode, the active slot.
+The transport: play, pause, stop, record, loop, next and previous clip, goto a clip or a timecode, the active slot.
 
-[`goto`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-goto-clip) · [`loop`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-loop-on) · [`next`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-next) · [`play`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-play) · [`prev`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-prev) · [`record`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-record-name) · [`slot`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-slot-slot) · [`stop`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-stop)
+[`goto`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-goto-clip) · [`loop`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-loop-on) · [`next`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-next) · [`pause`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-pause) · [`play`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-play) · [`prev`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-prev) · [`record`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-record-name) · [`slot`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-slot-slot) · [`stop`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-stop)
 
 ### [session](commands/hyperdeck-session.md)
 

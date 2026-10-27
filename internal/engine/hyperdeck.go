@@ -258,7 +258,7 @@ func (c *call) sendDeckEntry() (any, bool, error) {
 // while stopped, play as it plays already, the active slot again.
 func (c *call) deckAlready(st hyperdeck.State) bool {
 	switch c.entry.Path {
-	case "stop":
+	case "stop", "pause": // pause is play at speed 0, which reports stopped
 		return st.Status() == "stopped"
 	case "slot":
 		id, ok := st.SlotID()

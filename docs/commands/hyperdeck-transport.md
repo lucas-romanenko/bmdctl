@@ -3,7 +3,7 @@
 Generated from the command table (`internal/table`); do not edit. After
 changing a table, run `go generate ./cmd/bmdctl`.
 
-The transport: play, stop, record, loop, next and previous clip, goto a clip or a timecode, the active slot.
+The transport: play, pause, stop, record, loop, next and previous clip, goto a clip or a timecode, the active slot.
 
 [COMMANDS.md](../COMMANDS.md) says how to read an entry, and lists the
 flags every command takes and the built-in commands.
@@ -46,6 +46,16 @@ bmdctl next
 ```
 
 **Unverified.** Echo: `200 ok`.
+
+## `bmdctl hyperdeck pause`
+
+Hold the current frame: play at speed 0, which the deck reports as stopped.
+
+```
+bmdctl pause
+```
+
+Echo: `200 ok`.
 
 ## `bmdctl hyperdeck play`
 

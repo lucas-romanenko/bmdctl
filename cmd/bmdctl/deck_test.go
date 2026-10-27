@@ -75,6 +75,9 @@ func TestDeckWrites(t *testing.T) {
 		{[]string{"slot", "2"}, "slot  1 → 2"},
 		{[]string{"record", "Take"}, "record  stopped → record"},
 		{[]string{"stop"}, "stop  record → stopped"},
+		{[]string{"play"}, "play  stopped → play"},
+		{[]string{"pause"}, "pause  play → stopped"},
+		{[]string{"pause"}, "pause  stopped"},
 	} {
 		out := strings.Join(strings.Fields(b.must(c.args...)), " ")
 		want := strings.Join(strings.Fields("Deck 1 (192.0.2.20)  "+c.want), " ")
@@ -87,7 +90,7 @@ func TestDeckWrites(t *testing.T) {
 	}
 	want := []string{"play", "play: speed: 200", "play: loop: true single clip: false speed: 200", "stop",
 		"goto: clip id: +1", "goto: clip id: -1", "goto: clip id: 3", "goto: clip id: 2", "goto: timecode: 00:00:05:00",
-		"slot select: slot id: 2", "record: name: Take", "stop"}
+		"slot select: slot id: 2", "record: name: Take", "stop", "play", "play: speed: 0"}
 	var got []string
 	for _, l := range d.Commands() {
 		switch {

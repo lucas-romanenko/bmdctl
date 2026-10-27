@@ -3302,7 +3302,9 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
 - **The table.** `hyperdeck.RegisterCommands` adds the commands that are
   one line each, built from their arguments as the ATEM's are (a
   `TableCommand`, whose bytes are the line and its newline): `play
-  [--speed N] [--loop] [--single-clip] [--clip N]`, `stop`, `record
+  [--speed N] [--loop] [--single-clip] [--clip N]`, `stop`, `pause`
+  (hyperdeckwire's `pause`: `play: speed: 0`, which the deck reports as
+  stopped, so it is `already` on a stopped deck, as `stop` is), `record
   [name]`, `next` and `prev` (`goto: clip id: +1`/`-1`), `slot <slot>`.
   The engine adds the ones that read the deck first: `goto <clip>`,
   `loop <on>`, `clips [--disk] [--slot N]`, `status`, `watch [--count

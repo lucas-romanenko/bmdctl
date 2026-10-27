@@ -26,6 +26,7 @@ Deck 1  stopped · clip 2
 `play --loop --single-clip` loops the clip it is on, as a background.
 
 `clips` lists the timeline (`--disk` the active disk's files), `stop`,
-`next`, `prev`, `record [name]` and `slot <slot>` do what they say.
+`pause` (it holds the frame, and the deck says stopped), `next`, `prev`,
+`record [name]` and `slot <slot>` do what they say.
 `record`, `next`, `prev`, `loop` and `goto` by timecode print a notice
 that they are unverified on hardware.

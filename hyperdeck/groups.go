@@ -11,12 +11,12 @@ import (
 // Groups are the HyperDeck's command groups: what bmdctl mcp makes one
 // tool of each (docs/PORTING.md, "mcp").
 var Groups = []table.Group{
-	{Name: "transport", Summary: "The transport: play, stop, record, loop, next and previous clip, goto a clip or a timecode, the active slot."},
+	{Name: "transport", Summary: "The transport: play, pause, stop, record, loop, next and previous clip, goto a clip or a timecode, the active slot."},
 	{Name: "session", Summary: "The session and reads: status (transport, timecode, clip, slots, time left), the timeline's or a disk's clips, the raw state, watch changes, connect, disconnect."},
 }
 
 var groupOf = map[string]string{
-	"play": "transport", "stop": "transport", "record": "transport", "loop": "transport", "next": "transport",
+	"play": "transport", "pause": "transport", "stop": "transport", "record": "transport", "loop": "transport", "next": "transport",
 	"prev": "transport", "goto": "transport", "slot": "transport",
 	"status": "session", "clips": "session", "state": "session", "watch": "session", "connect": "session",
 	"disconnect": "session",
