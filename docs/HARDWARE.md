@@ -13,8 +13,8 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One ATEM model so far, in eighteen sessions, then one HyperDeck and one
-Ultimatte, a session each. The ATEM's firmware was first recorded in the
+One ATEM model so far, in eighteen sessions, then one HyperDeck in two
+and one Ultimatte in one. The ATEM's firmware was first recorded in the
 tenth, 9.2.1; before that the rows give the protocol version the
 switcher's `_ver` packet reported, 2.30. No Videohub has been run: the
 owner's two are live.
@@ -40,6 +40,7 @@ owner's two are live.
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Another client's turn (bmdwire#38, #40): ATEM Software Control connecting during back-to-back downloads loads all 20 thumbnails (none with bmdwire#36's handover) | 2026-10-15 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads beside another session in the same process, as WebATEM runs them (bmdwire#42): 20 of 20, every frame exact; bmdwire 1.5.2 deadlocked after 2 | 2026-10-15 |
 | HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `connect`, `status`, `clips` (timeline and disk), `state`, `watch`; `stop`, `play` (speed, loop, single clip), `goto` by clip id, `slot`; `next`, `prev` and `record` refused as the deck refuses them | 2026-10-27 |
+| HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `pause`; `configuration show` and `configuration set` (changed and back); `remote off` and `remote on`, which the deck takes over 9993 with remote off; `timeline add` (`--before`), `remove` and `clear` on a timeline with clips | 2026-10-27 |
 | Ultimatte 12 4K | 2.3 | 1080p25 | `connect`, `status`, `prelude`, `controls`, `presets`, `network show`, `archive`; `restore` (presets and settings back byte for byte, the saved settings applied live) | 2026-10-27 |
 
 ## Unverified
@@ -50,8 +51,11 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Other devices and modes:** any ATEM but the Constellation HD, and
   any video mode but 1080p25.
 - **HyperDeck:** `record` (the deck had no input), `goto` by timecode or
-  name, a second disk, remote control off, and any deck but the Studio
-  HD Mini. The rest is checked against hyperdeckwire, not a deck.
+  name, a second disk, a setting whose change reboots the deck, and any
+  deck but the Studio HD Mini. On an empty timeline, `clips` and the
+  `timeline` commands fail (the twenty-first run: the deck answers
+  `clips get` with 107). The rest is checked against hyperdeckwire, not
+  a deck.
 - **Any Videohub command on a real router.** The protocol is checked
   against videohubwire (which routes Smart Videohub 40 x 40 and 80 x 80
   routers in production), not a router, from bmdctl.
@@ -954,3 +958,37 @@ fakes and, for the protocol, against bmdwire's own code.
   bmdctl's restore confirmation says "the saved settings become its live
   state", without "video format included", and the guide, PORTING.md and
   SURFACE-ultimatte.md say the same.
+
+## 2026-10-27: twenty-first run, the new HyperDeck commands
+
+- **Commit:** `f42e52f`, built and run as in the nineteenth, its own
+  config, state and socket; connected with `--type hyperdeck`.
+- **Deck:** the test HyperDeck Studio HD Mini at 192.168.82.192, software
+  9.0.2, protocol 1.19, 1080p25, as the nineteenth run left it: one 10 s
+  clip playing on loop, single clip; remote on; record prefix
+  `HyperDeck`.
+- **Run:** with the owner's go-ahead, and a `watch` through it: `pause`
+  twice, `play --loop --single-clip`; `stop`, `timeline add` the clip
+  `--before 1`, `clips`, `timeline remove 1`, `timeline clear` without
+  `--yes` (refused, exit 5) and with it, `timeline add` the clip, `goto
+  1`, `play --loop --single-clip`; `configuration show`, `configuration
+  set record-prefix bmdctl-test` twice, then back to `HyperDeck`;
+  `remote off`, `stop`, `remote on`.
+- **Result:** `pause` stopped the deck (`play → stopped`), and again was
+  already. `configuration show` listed all 20 settings; the record
+  prefix changed and came back, the second set was already, and the
+  deck's 511 notification carried each. `remote off` made the deck
+  refuse writes; `remote on` was taken over 9993 with remote off, so
+  bmdctl can't lock itself out. `timeline add --before 1` and `timeline
+  remove 1` worked (two clips, then one). Then `timeline clear` emptied
+  the timeline, and the deck answers `clips get` on an empty timeline
+  with `107 timeline empty`, not an empty list: `timeline add` (which
+  reads the timeline first), `clips`, `goto` and `play` all failed, and
+  `status` went on showing the session's stale `1 clip`. The deck was
+  put back (the clip on the timeline, playing on loop) with a one-off
+  build that took that 107 as an empty timeline, never committed.
+- **Changed because of it:** to bmdwire first: that `clips get` answers
+  107 on an empty timeline, which hyperdeckwire's `clips_get` raises.
+  Then bmdctl reads it as an empty timeline (`clips`, the `timeline`
+  commands, `status`). `remote` loses its unverified mark.
+- **Not yet verified on hardware:** as the list at the top says.
