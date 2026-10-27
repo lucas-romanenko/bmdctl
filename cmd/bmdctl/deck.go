@@ -27,13 +27,15 @@ func init() {
 	screenFormats["hyperdeck connect"] = screenConnect
 	screenFormats["hyperdeck disconnect"] = screenDisconnect
 	screenFormats["hyperdeck state"] = screenState_
+	screenFormats["hyperdeck configuration show"] = screenDeckConfiguration
 	humanFormats["hyperdeck status"] = formatDeckStatus
 	humanFormats["hyperdeck clips"] = formatDeckClips
 	humanFormats["hyperdeck watch"] = formatDeckWatch
 	humanFormats["hyperdeck connect"] = formatConnect
 	humanFormats["hyperdeck disconnect"] = formatDisconnect
 	humanFormats["hyperdeck state"] = formatState
-	for _, p := range []string{"status", "clips", "state"} {
+	humanFormats["hyperdeck configuration show"] = formatDeckConfiguration
+	for _, p := range []string{"status", "clips", "state", "configuration show"} {
 		reports["hyperdeck "+p] = true
 	}
 }
@@ -141,6 +143,31 @@ func screenDeckStatus(p *printer, _ engine.Response, raw json.RawMessage) view {
 		v.rows = append(v.rows, line)
 	}
 	return v
+}
+
+// deckConfigurationRows are configuration show's rows: a setting each,
+// by name, an empty value as empty says.
+func deckConfigurationRows(raw json.RawMessage, empty string) [][]string {
+	var r engine.DeckConfiguration
+	json.Unmarshal(raw, &r)
+	var rows [][]string
+	for _, k := range slices.Sorted(maps.Keys(r.Settings)) {
+		v := r.Settings[k]
+		if v == "" {
+			v = empty
+		}
+		rows = append(rows, []string{k, v})
+	}
+	return rows
+}
+
+func formatDeckConfiguration(p *printer, _ engine.Response, raw json.RawMessage) []string {
+	return p.table(deckConfigurationRows(raw, ""))
+}
+
+func screenDeckConfiguration(p *printer, _ engine.Response, raw json.RawMessage) view {
+	cells := deckConfigurationRows(raw, p.c.colour(dim, "none"))
+	return view{about: []string{count(len(cells), "setting")}, gap: true, rows: rows(cells)} // aligned to the longest name
 }
 
 func formatDeckStatus(p *printer, _ engine.Response, raw json.RawMessage) []string {

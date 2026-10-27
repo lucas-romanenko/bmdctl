@@ -5,7 +5,7 @@ every command of the command table, run through bmdctl's engine, on the
 devices hosts.yml names. There are two ways in, and they can be used
 together:
 
-- **`bmdctl mcp`**, a Model Context Protocol server: twenty-one tools,
+- **`bmdctl mcp`**, a Model Context Protocol server: twenty-two tools,
   one per command group (`atem_switching`, `atem_usk`, `atem_media`,
   `hyperdeck_transport`, `videohub_routing`, `ultimatte_profile`, ...)
   with the command as its `subcommand`, plus

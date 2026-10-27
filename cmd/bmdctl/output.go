@@ -426,9 +426,10 @@ func (p *printer) describe(e *table.Entry, vals []engine.Value, term bool) (what
 		return nil
 	}
 	// A parameter says where when the echo is keyed by it, or, for a
-	// command without one, when it is an index.
+	// command without one, when it is an index; or when it says so
+	// (Where).
 	locates := func(prm *table.Param) bool {
-		return prm != nil && (strings.Contains(e.Echo, "<"+prm.Name+">") || e.Echo == "" && prm.OneBased)
+		return prm != nil && (prm.Where || strings.Contains(e.Echo, "<"+prm.Name+">") || e.Echo == "" && prm.OneBased)
 	}
 	var words []string
 	for _, x := range e.Elems() {

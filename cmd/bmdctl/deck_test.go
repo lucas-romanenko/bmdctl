@@ -247,6 +247,10 @@ func TestTerminalDeck(t *testing.T) {
 	yes := "y\n"
 	tr.in = &yes
 	tr.run("--host", "deck 1", "timeline", "clear")
+	tr.run("--host", "deck 1", "configuration", "show")
+	tr.run("--host", "deck 1", "configuration", "set", "video-input", "HDMI")
+	tr.run("--host", "deck 1", "remote", "off")
+	tr.run("--host", "deck 1", "remote", "on")
 	tr.run("--host", "deck 1", "disconnect")
 	golden(t, "deck.golden", tr.out.String())
 }
@@ -262,9 +266,11 @@ func TestEveryDeckCommandRuns(t *testing.T) {
 		"slot":  {"slot", "2"}, // once record has stopped
 		// Outro.mov is on slot 1's disk; remove needs a clip on the
 		// timeline, whatever ran before it.
-		"timeline add":    {"timeline", "add", "Outro.mov"},
-		"timeline remove": {"timeline", "remove", "1"},
-		"timeline clear":  {"timeline", "clear", "--yes"},
+		"timeline add":      {"timeline", "add", "Outro.mov"},
+		"timeline remove":   {"timeline", "remove", "1"},
+		"timeline clear":    {"timeline", "clear", "--yes"},
+		"remote":            {"remote", "on"},
+		"configuration set": {"configuration", "set", "record prefix", "Take"},
 	}
 	setup := map[string][][]string{
 		"timeline add":    {{"slot", "1"}},
@@ -389,5 +395,58 @@ func TestDeckTimeline(t *testing.T) {
 		if code, _, errOut := b.run(c.args...); code != c.code || !strings.Contains(errOut, c.msg) {
 			t.Errorf("%v: %d %q, want %d %q", c.args, code, errOut, c.code, c.msg)
 		}
+	}
+}
+
+// The setup group: remote off makes the deck refuse writes and on gives
+// them back; configuration show lists the settings, configuration set
+// changes one by its name (- or _ for its spaces), already when it holds
+// the value, sent when the deck reboots for it.
+func TestDeckSetup(t *testing.T) {
+	b, d := deckBench(t)
+	line := func(args ...string) string {
+		t.Helper()
+		return strings.Join(strings.Fields(b.must(args...)), " ")
+	}
+	if got := line("remote", "off"); !strings.HasPrefix(got, "Deck 1 (192.0.2.20) remote on → off confirmed") {
+		t.Errorf("remote off: %q", got)
+	}
+	if code, _, errOut := b.run("play"); code != exitRejected || !strings.Contains(errOut, "remote control disabled (111)") {
+		t.Errorf("play with remote off: %d %q", code, errOut)
+	}
+	if got := line("remote", "on"); !strings.HasPrefix(got, "Deck 1 (192.0.2.20) remote off → on confirmed") {
+		t.Errorf("remote on: %q", got)
+	}
+	if got := line("configuration", "show"); !strings.Contains(got, "video input SDI") || !strings.Contains(got, "file format QuickTimeProResHQ") {
+		t.Errorf("configuration show: %q", got)
+	}
+	d.RebootOn("timecode input")
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"configuration", "set", "video_input", "HDMI"}, "configuration set video input SDI → HDMI confirmed"},
+		{[]string{"configuration", "set", "Video Input", "HDMI"}, "configuration set video input HDMI confirmed"},
+		{[]string{"configuration", "set", "record-prefix", "Take"}, "configuration set record prefix none → Take confirmed"},
+		{[]string{"configuration", "set", "timecode input", "external"}, "configuration set timecode input value internal → external, deck rebooting sent"},
+	} {
+		if got := line(c.args...); !strings.HasPrefix(got, "Deck 1 (192.0.2.20) "+c.want) {
+			t.Errorf("%v: %q, want %q", c.args, got, c.want)
+		}
+	}
+	if code, _, errOut := b.run("configuration", "set", "nope", "x"); code != exitUsage ||
+		!strings.Contains(errOut, `setting "nope": the deck has none so named; it has audio input, file format, record prefix, timecode input, video input`) {
+		t.Errorf("unknown setting: %d %q", code, errOut)
+	}
+	var sent []string
+	for _, l := range d.Commands() {
+		if strings.HasPrefix(l, "configuration:") || strings.HasPrefix(l, "remote:") {
+			sent = append(sent, l)
+		}
+	}
+	want := []string{"remote: enable: false", "remote: enable: true", "configuration: video input: HDMI",
+		"configuration: record prefix: Take", "configuration: timecode input: external"}
+	if strings.Join(sent, "|") != strings.Join(want, "|") {
+		t.Errorf("sent %q, want %q", sent, want)
 	}
 }

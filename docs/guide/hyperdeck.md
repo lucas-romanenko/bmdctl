@@ -34,5 +34,11 @@ the end or `--before` a timeline clip; `timeline remove <clip>` takes one
 off, by its number or name; `timeline clear` empties it, and asks first.
 None of them touches the disk: the files stay, and `clips --disk` lists
 them.
+
+`configuration show` lists the deck's settings (video and audio input,
+file format, record prefix, timecode), and `configuration set <setting>
+<value>` changes one, named as `show` names it (`video-input` will do
+for `video input`). `remote off` makes the deck refuse every write,
+bmdctl's included, until `remote on`.
 `record`, `next`, `prev`, `loop` and `goto` by timecode print a notice
 that they are unverified on hardware.

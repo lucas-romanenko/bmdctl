@@ -3327,6 +3327,22 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   destructive and says how many clips go, `already` on an empty
   timeline. The fake inserts before a clip, as `clips add: clip id:`
   says.
+- **The setup group:** `remote <on>` is `remote_enable`, read back after
+  (`remote info`); off, the deck refuses every write, from any client,
+  until it is on again, which the fake takes over 9993 (marked
+  unverified until a deck does). `configuration show` and `configuration
+  set <setting> <value>` are `configuration` and `set_configuration` with
+  one setting: not `configuration` alone, which would be a command and a
+  group. The setting is named as the deck names it, lower case, `-` and
+  `_` read as spaces (as `set_configuration` reads its keyword
+  arguments' underscores), and checked against the configuration read
+  afresh: an unknown one is a usage error listing the deck's. The same
+  value is `already`; an empty one shows as `none`. A `213 deck
+  rebooting` is a success the deck may close on: nothing is read back,
+  the write is `sent` and says `deck rebooting`; the fake answers it for
+  a setting `RebootOn` names. The setting says where in a result line
+  (`configuration set video input  SDI → HDMI`): `table.Param.Where`,
+  as an index does on an ATEM.
 - **The engine's sessions** are keyed by device: an address's key takes
   the device's port (9910, 9993), and a host holds an `*atem.Session` or
   a `*hyperdeck.Session` (`devSession`: Connected, Ready, Close) with its

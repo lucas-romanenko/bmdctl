@@ -61,6 +61,10 @@ type Param struct {
 	// OneBased: an Index, typed counted from 1 where the field counts
 	// from 0 (--me 1 is M/E index 0). Min and Max are the field's range.
 	OneBased bool
+	// Where: the parameter says where the command acts, as an index does
+	// (a HyperDeck's configuration set <setting>): a result line names
+	// it beside the command, and its change is the other value's.
+	Where bool
 }
 
 // Entry is one command.

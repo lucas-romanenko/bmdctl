@@ -54,6 +54,7 @@ type Deck struct {
 
 	mu       sync.Mutex
 	noInput  bool    // no video input: record is refused, 110
+	rebootOn string  // a configuration setting whose change answers 213 deck rebooting
 	slots    []*slot // index 0 is slot id 1
 	active   int     // slot id
 	timeline []Clip
@@ -188,6 +189,15 @@ func (d *Deck) SetRemote(on bool) {
 	defer d.mu.Unlock()
 	d.remote = on
 	d.broadcast("remote", d.block(510, "remote info", "enabled", strconv.FormatBool(on)))
+}
+
+// RebootOn makes a change of setting answer "213 deck rebooting", as
+// some settings do on a deck (hyperdeckwire's set_configuration takes it
+// as a success). The value is set; the connection stays open.
+func (d *Deck) RebootOn(setting string) {
+	d.mu.Lock()
+	d.rebootOn = setting
+	d.mu.Unlock()
 }
 
 // NoInput takes the deck's video input away, or gives it back: without
@@ -386,9 +396,14 @@ func (d *Deck) handle(c *conn, line string) (string, []note) {
 			return refuse(111, "remote control disabled")
 		}
 		var kv []string
+		reboot := false
 		for k, v := range p {
 			d.config[k] = v
 			kv = append(kv, k, v)
+			reboot = reboot || k == d.rebootOn
+		}
+		if reboot {
+			return "213 deck rebooting\r\n", nil
 		}
 		return ok, []note{{"configuration", d.block(511, "configuration", kv...)}}
 	case "disk list":

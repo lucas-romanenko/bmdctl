@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -63,6 +64,19 @@ func deckOperations() []operation {
 			run: opDeckClipsRemove},
 		{entry: table.Entry{Path: "timeline clear", Summary: "Empty the timeline; the files stay on the disk.", Destructive: true},
 			run: opDeckClipsClear},
+		{entry: table.Entry{Path: "remote", Summary: "Turn the deck's remote control on or off; off, it refuses every other write, bmdctl's included.",
+			Params:     []table.Param{{Name: "on", Kind: table.Bool, Required: true, Help: "on lets clients control the deck; off refuses their writes until it is on again"}},
+			Unverified: true},
+			run: opDeckRemote},
+		{entry: table.Entry{Path: "configuration show", Summary: "Show the deck's configuration: each setting as the deck names it, and its value."},
+			run: opDeckConfigurationShow},
+		{entry: table.Entry{Path: "configuration set", Summary: "Change one of the deck's configuration settings, as configuration show names it.",
+			Syntax: "configuration set <setting> <value>",
+			Params: []table.Param{
+				{Name: "setting", Kind: table.String, Required: true, Where: true,
+					Help: "a setting configuration show lists (video input, record prefix, …); - or _ will do for its spaces"},
+				{Name: "value", Kind: table.String, Required: true, Help: "its new value, as the deck spells it"}}},
+			run: opDeckConfigurationSet},
 		{entry: table.Entry{Path: "watch", Summary: "Print each change the deck reports, as it comes.", Stream: true,
 			Params: []table.Param{{Name: "count", Kind: table.Uint, Help: "stop after this many changes"}}},
 			run: opDeckWatch},
@@ -85,17 +99,20 @@ func deckOperations() []operation {
 
 // deckExamples are the HyperDeck operations' examples.
 var deckExamples = map[string][]string{
-	"status":          {"status"},
-	"goto":            {"goto 2", "goto interview", "goto 00:01:30:00"},
-	"loop":            {"loop on", "loop off"},
-	"clips":           {"clips", "clips --disk", "clips --slot 2"},
-	"timeline add":    {`timeline add "Interview.mov"`, `timeline add Outro.mov --before 2`},
-	"timeline remove": {"timeline remove 2", "timeline remove outro"},
-	"timeline clear":  {"timeline clear", "timeline clear --yes"},
-	"watch":           {"watch", "watch --count 5", "watch --json"},
-	"state":           {"state", "state --path transport.status"},
-	"connect":         {"connect 192.168.81.90", "connect", "connect --pin false"},
-	"disconnect":      {"disconnect"},
+	"status":             {"status"},
+	"goto":               {"goto 2", "goto interview", "goto 00:01:30:00"},
+	"loop":               {"loop on", "loop off"},
+	"clips":              {"clips", "clips --disk", "clips --slot 2"},
+	"timeline add":       {`timeline add "Interview.mov"`, `timeline add Outro.mov --before 2`},
+	"timeline remove":    {"timeline remove 2", "timeline remove outro"},
+	"timeline clear":     {"timeline clear", "timeline clear --yes"},
+	"remote":             {"remote on", "remote off"},
+	"configuration show": {"configuration show", "configuration show --json"},
+	"configuration set":  {`configuration set "record prefix" Interview`, "configuration set video-input HDMI"},
+	"watch":              {"watch", "watch --count 5", "watch --json"},
+	"state":              {"state", "state --path transport.status"},
+	"connect":            {"connect 192.168.81.90", "connect", "connect --pin false"},
+	"disconnect":         {"disconnect"},
 }
 
 func registerDeckOperations(r *table.Registry) error {
@@ -488,6 +505,110 @@ func (c *call) timelineEdit(cmd hyperdeck.Command, before int) (any, bool, error
 	}
 	c.note(Note{Values: []Value{{Param: "timeline", Before: ptr(timeline(before)), After: timeline(len(c.deck.State().Timeline))}}})
 	return r, true, nil
+}
+
+// opDeckRemote is remote_enable: remote control on or off, read back
+// after. Off, the deck refuses every other write (111), from any client.
+func opDeckRemote(c *call) (any, bool, error) {
+	on := c.args.Value("on").(bool)
+	onOff := map[bool]string{true: "on", false: "off"}
+	enabled := func(st hyperdeck.State) bool { return st.Remote["enabled"] == "true" }
+	before := enabled(c.dstate)
+	r := CommandResult{Args: c.displayArgs()}
+	if before == on {
+		r.Already = true
+		c.note(Note{Values: []Value{{Param: "remote", Before: ptr(onOff[on]), After: onOff[on]}}})
+		return r, true, nil
+	}
+	cmd := hyperdeck.RemoteEnable{Enable: on}
+	r.Command = cmd.Line()
+	if _, err := c.deckSend(cmd); err != nil {
+		return nil, false, err
+	}
+	if err := c.deckAsk(hyperdeck.RemoteInfo{}); err != nil {
+		return r, true, err
+	}
+	c.note(Note{Values: []Value{{Param: "remote", Before: ptr(onOff[before]), After: onOff[enabled(c.deck.State())]}}})
+	return r, true, nil
+}
+
+// DeckConfiguration is configuration show's answer: the deck's
+// configuration, each setting as the deck names it.
+type DeckConfiguration struct {
+	Settings map[string]string `json:"settings"`
+}
+
+// opDeckConfigurationShow reads the configuration afresh.
+func opDeckConfigurationShow(c *call) (any, bool, error) {
+	if err := c.deckAsk(hyperdeck.Configuration{}); err != nil {
+		return nil, false, err
+	}
+	return DeckConfiguration{Settings: c.deck.State().Configuration}, false, nil
+}
+
+// opDeckConfigurationSet is set_configuration with one setting: checked
+// against the deck's own configuration, read afresh, and read back
+// after. A "213 deck rebooting" is a success the deck may close the
+// connection on: then nothing is read back, and the write is sent, not
+// confirmed.
+func opDeckConfigurationSet(c *call) (any, bool, error) {
+	name, value := settingName(c.args.Value("setting").(string)), c.args.Value("value").(string)
+	if err := c.deckAsk(hyperdeck.Configuration{}); err != nil {
+		return nil, false, err
+	}
+	conf := c.deck.State().Configuration
+	before, known := conf[name]
+	if !known {
+		if len(conf) == 0 {
+			return nil, false, codeErr(CodeUsage, "setting %q: the deck reports no configuration", name)
+		}
+		return nil, false, codeErr(CodeUsage, "setting %q: the deck has none so named; it has %s", name,
+			strings.Join(slices.Sorted(maps.Keys(conf)), ", "))
+	}
+	// The setting says where (the entry's Where), the value what changed;
+	// an empty one, as a record prefix may be, is none.
+	orNone := func(v string) string {
+		if v == "" {
+			return "none"
+		}
+		return v
+	}
+	note := func(after string, more ...Value) {
+		c.note(Note{Values: append([]Value{{Param: "setting", After: name},
+			{Param: "value", Before: ptr(orNone(before)), After: orNone(after)}}, more...)})
+	}
+	r := CommandResult{Args: c.displayArgs()}
+	if before == value {
+		r.Already = true
+		note(value)
+		return r, true, nil
+	}
+	cmd := hyperdeck.SetConfiguration{Settings: []hyperdeck.Setting{{Name: name, Value: value}}}
+	if err := cmd.Validate(); err != nil {
+		return nil, false, usageErr(err)
+	}
+	r.Command = cmd.Line()
+	resp, err := c.deckSend(cmd)
+	if err != nil {
+		return nil, false, err
+	}
+	if resp.Code == 213 {
+		note(value, Value{Param: "deck", After: "rebooting"})
+		return r, false, nil
+	}
+	if err := c.deckAsk(hyperdeck.Configuration{}); err != nil {
+		return r, true, err
+	}
+	note(c.deck.State().Configuration[name])
+	return r, true, nil
+}
+
+// settingName is a configuration setting as the deck names it: lower
+// case, "-" and "_" read as spaces, as hyperdeckwire's set_configuration
+// reads its keyword arguments' underscores.
+func settingName(s string) string {
+	s = strings.NewReplacer("-", " ", "_", " ").Replace(strings.ToLower(s))
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func orDeck(name string) string {

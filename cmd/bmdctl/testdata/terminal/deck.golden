@@ -88,6 +88,29 @@ $ bmdctl --host deck 1 timeline clear
   clear it? [y/N] y
   timeline clear  4 clips → empty                                   <dim># ms</>
 
+$ bmdctl --host deck 1 configuration show
+<b>Deck 1</>  <dim>stopped · 5 settings</>
+
+  audio input     embedded
+  file format     QuickTimeProResHQ
+  record prefix   <dim>none</>
+  timecode input  internal
+  video input     SDI
+
+$ bmdctl --host deck 1 configuration set video-input HDMI
+<b>Deck 1</>  <dim>stopped</>
+  configuration set video input  SDI → HDMI                         <dim># ms</>
+
+$ bmdctl --host deck 1 remote off
+<b>Deck 1</>  <dim>stopped</>
+  remote      on → off                                              <dim># ms</>
+!   <dim>hyperdeck remote is unverified on hardware</>
+
+$ bmdctl --host deck 1 remote on
+<b>Deck 1</>  <dim>stopped</>
+  remote      off → on                                              <dim># ms</>
+!   <dim>hyperdeck remote is unverified on hardware</>
+
 $ bmdctl --host deck 1 disconnect
 <b>Deck 1</>  disconnected
 

@@ -176,6 +176,12 @@ The transport: play, pause, stop, record, loop, next and previous clip, goto a c
 
 [`goto`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-goto-clip) · [`loop`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-loop-on) · [`next`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-next) · [`pause`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-pause) · [`play`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-play) · [`prev`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-prev) · [`record`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-record-name) · [`slot`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-slot-slot) · [`stop`](commands/hyperdeck-transport.md#bmdctl-hyperdeck-stop)
 
+### [setup](commands/hyperdeck-setup.md)
+
+The deck's setup: remote control on or off, and its configuration (inputs, file format, record prefix, timecode): show and set.
+
+[`configuration set`](commands/hyperdeck-setup.md#bmdctl-hyperdeck-configuration-set-setting-value) · [`configuration show`](commands/hyperdeck-setup.md#bmdctl-hyperdeck-configuration-show) · [`remote`](commands/hyperdeck-setup.md#bmdctl-hyperdeck-remote-on)
+
 ### [session](commands/hyperdeck-session.md)
 
 The session and reads: status (transport, timecode, clip, slots, time left), the timeline's or a disk's clips and editing the timeline, the raw state, watch changes, connect, disconnect.

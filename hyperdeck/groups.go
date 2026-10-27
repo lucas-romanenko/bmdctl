@@ -12,6 +12,7 @@ import (
 // tool of each (docs/PORTING.md, "mcp").
 var Groups = []table.Group{
 	{Name: "transport", Summary: "The transport: play, pause, stop, record, loop, next and previous clip, goto a clip or a timecode, the active slot."},
+	{Name: "setup", Summary: "The deck's setup: remote control on or off, and its configuration (inputs, file format, record prefix, timecode): show and set."},
 	{Name: "session", Summary: "The session and reads: status (transport, timecode, clip, slots, time left), the timeline's or a disk's clips and editing the timeline, the raw state, watch changes, connect, disconnect."},
 }
 
@@ -20,6 +21,7 @@ var groupOf = map[string]string{
 	"prev": "transport", "goto": "transport", "slot": "transport",
 	"status": "session", "clips": "session", "timeline": "session", "state": "session", "watch": "session", "connect": "session",
 	"disconnect": "session",
+	"remote":     "setup", "configuration": "setup",
 }
 
 // GroupOf is the group a HyperDeck command belongs to; "" for none.
