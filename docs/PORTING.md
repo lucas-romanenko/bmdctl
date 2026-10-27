@@ -854,7 +854,7 @@ atemwire's `upload` takes RLE data with `compressed=True`),
     late, and changes nothing (`onLockReleased`). Until bmdwire#36 the
     next request waited for its release's echo (`_lock_release_pending`),
     which also waited out a client handed the store: the fifteenth
-    hardware run's pauses of 2 to 6.6 s were WebATEM on the test setup
+    hardware run's pauses of 2 to 6.6 s were a WebATEM deployment
     refreshing each new still's thumbnail. `releasing` keeps what that
     set told `LockHolder`, a release of ours not yet announced. The
     lock-exempt macro store goes on at once; with nothing queued, every

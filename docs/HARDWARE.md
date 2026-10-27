@@ -788,7 +788,8 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD, protocol
   2.30, firmware 9.2.1, 1080p25; the media pool as the sixteenth run left
   it, 20 stills of 8 pictures.
-- **Why:** the owner opened ATEM Software Control while a test setup (WebATEM 2.1.2, bmdwire 1.5.0) downloaded nine stills whose
+- **Why:** the owner opened ATEM Software Control while a WebATEM
+  deployment (WebATEM 2.1.2, bmdwire 1.5.0) downloaded nine stills whose
   hashes had changed: ASC loaded no thumbnail for the first five, and
   loaded them only after a still was cleared from WebATEM.
 - **Run:** a script downloading stills back to back for two to three
@@ -826,6 +827,7 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Not yet verified on hardware:** ASC connecting while bmdctl itself
   transfers (its port matches bmdwire's code, tested against the fake
   switcher's model of the same); otherwise as after the sixteenth run.
+- *Reworded 2026-10-27 to leave out a private deployment's details.*
 
 ## 2026-10-15: eighteenth run, the UDP thread waiting on itself
 
@@ -834,14 +836,15 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD, protocol
   2.30, firmware 9.2.1, 1080p25; the media pool as the sixteenth run left
   it.
-- **Why:** the owner's check of WebATEM 2.1.3 on a test setup: a profile restore of 20 stills, with ATEM Software Control
-  connecting partway. ASC loaded all 20 thumbnails and the page waited
-  37 s for its turn, but the restore hung at its fourth still and never
-  timed out. A stack dump of the test setup's application (py-spy from a
-  sidecar container) showed the protocol thread in `drain_queue` and
-  the UDP thread putting an ACK on its own queue, both waiting in
-  `SocketQueue.put`: the socketpair under the queue holds 278 entries,
-  an upload budget is up to 768, and the UDP thread is its only reader.
+- **Why:** the owner's check of WebATEM 2.1.3 on a WebATEM deployment:
+  a profile restore of 20 stills, with ATEM Software Control connecting
+  partway. ASC loaded all 20 thumbnails and the page waited 37 s for its
+  turn, but the restore hung at its fourth still and never timed out. A
+  stack dump of the server process showed the protocol thread in
+  `drain_queue` and the UDP thread putting an ACK on its own queue, both
+  waiting in `SocketQueue.put`: the socketpair under the queue holds 278
+  entries, an upload budget is up to 768, and the UDP thread is its only
+  reader.
 - **Run:** scripts uploading the pool's own 20 stills back. In separate
   processes, beside one or two sessions downloading macros and one
   downloading stills: 20 of 20 on 1.5.2 both times. In one process with
@@ -857,9 +860,10 @@ fakes and, for the protocol, against bmdwire's own code.
   later one's grant aborts the earlier one's upload, which goes again
   (three runs of five); with a third session downloading macros, the
   still and macro downloads retried in lockstep without end.
-- **Changed because of it:** bmdwire#42; an application's #41 waits for
-  the WebATEM release that takes it.
+- **Changed because of it:** bmdwire#42, and the WebATEM release that
+  takes it.
 - **Not yet verified on hardware:** as after the seventeenth run.
+- *Reworded 2026-10-27 to leave out a private deployment's details.*
 
 ## 2026-10-27: nineteenth run, the first HyperDeck
 
