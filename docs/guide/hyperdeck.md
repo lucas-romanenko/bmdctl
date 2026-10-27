@@ -28,5 +28,11 @@ Deck 1  stopped · clip 2
 `clips` lists the timeline (`--disk` the active disk's files), `stop`,
 `pause` (it holds the frame, and the deck says stopped), `next`, `prev`,
 `record [name]` and `slot <slot>` do what they say.
+
+`timeline add <name>` puts a file of the active disk on the timeline, at
+the end or `--before` a timeline clip; `timeline remove <clip>` takes one
+off, by its number or name; `timeline clear` empties it, and asks first.
+None of them touches the disk: the files stay, and `clips --disk` lists
+them.
 `record`, `next`, `prev`, `loop` and `goto` by timecode print a notice
 that they are unverified on hardware.

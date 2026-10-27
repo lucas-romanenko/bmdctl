@@ -3315,6 +3315,18 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   hyperdeckwire never sends them (SURFACE-hyperdeck.md §5.1), and the
   notice says so; `goto` by timecode is too, though the entry isn't
   marked, since by clip it is hyperdeckwire's own line.
+- **The timeline:** `timeline add <name> [--before N]`,
+  `timeline remove <clip>` and `timeline clear` are hyperdeckwire's
+  `clips_add`, `clips_remove` and `clips_clear`. Not `clips add`: `clips`
+  is a command (the list), and a command can't also be a group. Each
+  reads the timeline first and after (`clips get`): a deck sends no
+  notification when it changes, so what the session holds may be stale
+  (a record adds a clip, another client edits it); the change is the
+  timeline in clips, before → after. `--before` is checked against that
+  read; `remove` takes a number or a name, as `goto` does; `clear` is
+  destructive and says how many clips go, `already` on an empty
+  timeline. The fake inserts before a clip, as `clips add: clip id:`
+  says.
 - **The engine's sessions** are keyed by device: an address's key takes
   the device's port (9910, 9993), and a host holds an `*atem.Session` or
   a `*hyperdeck.Session` (`devSession`: Connected, Ready, Close) with its

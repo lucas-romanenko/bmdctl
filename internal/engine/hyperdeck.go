@@ -50,6 +50,19 @@ func deckOperations() []operation {
 				{Name: "disk", Kind: table.Bool, Default: "false", Help: "the active slot's disk, not the timeline"},
 				{Name: "slot", Kind: table.Uint, Help: "this slot's disk (implies --disk)"}}},
 			run: opDeckClips},
+		{entry: table.Entry{Path: "timeline add", Summary: "Put a file of the active disk on the timeline: at the end, or before a timeline clip.",
+			Syntax: "timeline add <name>",
+			Params: []table.Param{
+				{Name: "name", Kind: table.String, Required: true, Help: "the file's name on the active disk, as clips --disk lists it"},
+				{Name: "before", Kind: table.Uint, Help: "put it before this timeline clip (clips lists them); else at the end"}}},
+			run: opDeckClipsAdd},
+		{entry: table.Entry{Path: "timeline remove", Summary: "Take a clip off the timeline; the file stays on the disk.",
+			Syntax: "timeline remove <clip>",
+			Params: []table.Param{{Name: "clip", Kind: table.String, Required: true,
+				Help: "a timeline clip: its number, or its name or the start of it, in any case"}}},
+			run: opDeckClipsRemove},
+		{entry: table.Entry{Path: "timeline clear", Summary: "Empty the timeline; the files stay on the disk.", Destructive: true},
+			run: opDeckClipsClear},
 		{entry: table.Entry{Path: "watch", Summary: "Print each change the deck reports, as it comes.", Stream: true,
 			Params: []table.Param{{Name: "count", Kind: table.Uint, Help: "stop after this many changes"}}},
 			run: opDeckWatch},
@@ -72,14 +85,17 @@ func deckOperations() []operation {
 
 // deckExamples are the HyperDeck operations' examples.
 var deckExamples = map[string][]string{
-	"status":     {"status"},
-	"goto":       {"goto 2", "goto interview", "goto 00:01:30:00"},
-	"loop":       {"loop on", "loop off"},
-	"clips":      {"clips", "clips --disk", "clips --slot 2"},
-	"watch":      {"watch", "watch --count 5", "watch --json"},
-	"state":      {"state", "state --path transport.status"},
-	"connect":    {"connect 192.168.81.90", "connect", "connect --pin false"},
-	"disconnect": {"disconnect"},
+	"status":          {"status"},
+	"goto":            {"goto 2", "goto interview", "goto 00:01:30:00"},
+	"loop":            {"loop on", "loop off"},
+	"clips":           {"clips", "clips --disk", "clips --slot 2"},
+	"timeline add":    {`timeline add "Interview.mov"`, `timeline add Outro.mov --before 2`},
+	"timeline remove": {"timeline remove 2", "timeline remove outro"},
+	"timeline clear":  {"timeline clear", "timeline clear --yes"},
+	"watch":           {"watch", "watch --count 5", "watch --json"},
+	"state":           {"state", "state --path transport.status"},
+	"connect":         {"connect 192.168.81.90", "connect", "connect --pin false"},
+	"disconnect":      {"disconnect"},
 }
 
 func registerDeckOperations(r *table.Registry) error {
@@ -375,7 +391,7 @@ func opDeckGoto(c *call) (any, bool, error) {
 		cmd, param = hyperdeck.GotoTimecode{Timecode: to}, "timecode"
 		read = func(st hyperdeck.State) string { return st.Timecode() }
 	default:
-		id, err := c.clipNamed(to)
+		id, err := c.clipNamed(to, true)
 		if err != nil {
 			return nil, false, err
 		}
@@ -392,9 +408,99 @@ func opDeckGoto(c *call) (any, bool, error) {
 	return CommandResult{Command: cmd.Line(), Args: c.displayArgs(), State: after.Transport}, true, nil
 }
 
+// opDeckClipsAdd is timeline add, clips_add: a file of the active disk onto the
+// timeline, at the end or before a timeline clip.
+func opDeckClipsAdd(c *call) (any, bool, error) {
+	cmd := hyperdeck.ClipsAdd{Name: c.args.Value("name").(string)}
+	clips, err := c.timeline()
+	if err != nil {
+		return nil, false, err
+	}
+	if c.args.Has("before") {
+		n := len(clips)
+		b := int(c.args.Value("before").(uint64))
+		if b < 1 || b > n {
+			return nil, false, codeErr(CodeUsage, "--before %d: the timeline has %s", b, count(n, "clip"))
+		}
+		cmd.BeforeClipID = &b
+	}
+	if err := cmd.Validate(); err != nil {
+		return nil, false, usageErr(err)
+	}
+	return c.timelineEdit(cmd, len(clips))
+}
+
+// opDeckClipsRemove is timeline remove, clips_remove: a timeline clip, by its number or
+// name, off the timeline; the clips after it move up.
+func opDeckClipsRemove(c *call) (any, bool, error) {
+	id, err := c.clipNamed(strings.TrimSpace(c.args.Value("clip").(string)), false) // reads the timeline
+	if err != nil {
+		return nil, false, err
+	}
+	return c.timelineEdit(hyperdeck.ClipsRemove{ClipID: id}, len(c.deck.State().Timeline))
+}
+
+// opDeckClipsClear is timeline clear, clips_clear: the timeline emptied, nothing on disk
+// deleted. Destructive: it says how many clips go, and asks.
+func opDeckClipsClear(c *call) (any, bool, error) {
+	clips, err := c.timeline()
+	if err != nil {
+		return nil, false, err
+	}
+	n := len(clips)
+	if n == 0 {
+		c.note(Note{Values: []Value{{Param: "timeline", Before: ptr("empty"), After: "empty"}}})
+		return CommandResult{Already: true, Args: c.displayArgs()}, true, nil
+	}
+	if !c.req.Yes {
+		impact := fmt.Sprintf("%s's timeline loses its %s; the files stay on the disk", orDeck(c.dstate.Name()), count(n, "clip"))
+		return nil, false, c.refuse(impact, "clear it?", "%s %s is destructive: add --yes to run it", c.req.Device, c.req.Path)
+	}
+	return c.timelineEdit(hyperdeck.ClipsClear{}, n)
+}
+
+// timeline reads the timeline afresh: what the session holds of it is as
+// of the last read, since a deck sends no notification when it changes
+// (a record adds a clip, another client edits it).
+func (c *call) timeline() ([]hyperdeck.Clip, error) {
+	if err := c.deckAsk(hyperdeck.ClipsGet{}); err != nil {
+		return nil, err
+	}
+	return c.deck.State().Timeline, nil
+}
+
+// timelineEdit sends an edit of the timeline, then reads the timeline
+// again: a deck sends no notification for one. The note is the timeline
+// before (as just read) and after, in clips.
+func (c *call) timelineEdit(cmd hyperdeck.Command, before int) (any, bool, error) {
+	timeline := func(n int) string {
+		if n == 0 {
+			return "empty"
+		}
+		return count(n, "clip")
+	}
+	r := CommandResult{Command: cmd.Line(), Args: c.displayArgs()}
+	if _, err := c.deckSend(cmd); err != nil {
+		return nil, false, err
+	}
+	if _, err := c.deckSend(hyperdeck.ClipsGet{}); err != nil {
+		return r, true, err
+	}
+	c.note(Note{Values: []Value{{Param: "timeline", Before: ptr(timeline(before)), After: timeline(len(c.deck.State().Timeline))}}})
+	return r, true, nil
+}
+
+func orDeck(name string) string {
+	if name == "" {
+		return "the deck"
+	}
+	return name
+}
+
 // clipNamed finds a timeline clip by its number, or by its name or the
-// start of one, ignoring case.
-func (c *call) clipNamed(s string) (int, error) {
+// start of one, ignoring case. orTimecode: the command takes a timecode
+// too (goto), so the error says s isn't one either.
+func (c *call) clipNamed(s string, orTimecode bool) (int, error) {
 	if n, err := strconv.Atoi(s); err == nil && n > 0 {
 		return n, nil
 	}
@@ -417,7 +523,10 @@ func (c *call) clipNamed(s string) (int, error) {
 	case 1:
 		return hits[0].ID, nil
 	case 0:
-		return 0, codeErr(CodeUsage, "clip %q: no timeline clip is named so, and it isn't a timecode (bmdctl clips lists them)", s)
+		if orTimecode {
+			return 0, codeErr(CodeUsage, "clip %q: no timeline clip is named so, and it isn't a timecode (bmdctl clips lists them)", s)
+		}
+		return 0, codeErr(CodeUsage, "clip %q: no timeline clip is named so (bmdctl clips lists them)", s)
 	}
 	var names []string
 	for _, cl := range hits {

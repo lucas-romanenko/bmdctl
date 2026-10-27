@@ -242,6 +242,11 @@ func TestTerminalDeck(t *testing.T) {
 	tr.run("--host", "deck 1", "loop", "off")
 	tr.run("--host", "deck 1", "program", "2")
 	tr.run("--host", "deck 1", "clips", "--disk")
+	tr.run("--host", "deck 1", "timeline", "add", "Outro.mov", "--before", "1")
+	tr.run("--host", "deck 1", "timeline", "remove", "intro")
+	yes := "y\n"
+	tr.in = &yes
+	tr.run("--host", "deck 1", "timeline", "clear")
 	tr.run("--host", "deck 1", "disconnect")
 	golden(t, "deck.golden", tr.out.String())
 }
@@ -255,6 +260,15 @@ func TestEveryDeckCommandRuns(t *testing.T) {
 		"watch": {"watch", "--count", "1"},
 		"goto":  {"goto", "2"},
 		"slot":  {"slot", "2"}, // once record has stopped
+		// Outro.mov is on slot 1's disk; remove needs a clip on the
+		// timeline, whatever ran before it.
+		"timeline add":    {"timeline", "add", "Outro.mov"},
+		"timeline remove": {"timeline", "remove", "1"},
+		"timeline clear":  {"timeline", "clear", "--yes"},
+	}
+	setup := map[string][][]string{
+		"timeline add":    {{"slot", "1"}},
+		"timeline remove": {{"slot", "1"}, {"timeline", "add", "Outro.mov"}},
 	}
 	asked := func() int { return strings.Count(strings.Join(d.Commands(), "\n"), "transport info") }
 	c, _, _ := b.cli("")
@@ -268,6 +282,9 @@ func TestEveryDeckCommandRuns(t *testing.T) {
 		args := special[e.Path]
 		if args == nil {
 			args = strings.Fields(e.Path)
+		}
+		for _, s := range setup[e.Path] {
+			b.must(s...)
 		}
 		if e.Path == "watch" {
 			n := asked()
@@ -322,5 +339,55 @@ func TestDeckSpeedAndEmptySlotAsADeckSentThem(t *testing.T) {
 	}
 	if got := slot2(false); got != "empty, 0s left" {
 		t.Errorf("pipe: %q", got)
+	}
+}
+
+// The timeline: timeline add (at the end, or before a clip), timeline
+// remove (by number or name) and timeline clear (destructive), each saying the
+// timeline before and after; the deck sends no notification for them.
+func TestDeckTimeline(t *testing.T) {
+	b, d := deckBench(t)
+	if code, _, errOut := b.run("timeline", "clear"); code != exitDestructive || !strings.Contains(errOut, "destructive: add --yes") {
+		t.Errorf("clear without --yes: %d %q", code, errOut)
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"timeline", "add", "Outro.mov"}, "timeline add  3 clips → 4 clips"},
+		{[]string{"timeline", "add", "Interview.mov", "--before", "1"}, "timeline add  4 clips → 5 clips"},
+		{[]string{"timeline", "remove", "1"}, "timeline remove  5 clips → 4 clips"},
+		{[]string{"timeline", "remove", "intro"}, "timeline remove  4 clips → 3 clips"},
+		{[]string{"timeline", "clear", "--yes"}, "timeline clear  3 clips → empty"},
+		{[]string{"timeline", "clear", "--yes"}, "timeline clear  empty"},
+	} {
+		out := strings.Join(strings.Fields(b.must(c.args...)), " ")
+		if want := strings.Join(strings.Fields("Deck 1 (192.0.2.20)  "+c.want), " "); !strings.HasPrefix(out, want) {
+			t.Errorf("%v: %q, want %q", c.args, out, want)
+		}
+	}
+	var got []string
+	for _, l := range d.Commands() {
+		if strings.HasPrefix(l, "clips add") || strings.HasPrefix(l, "clips remove") || l == "clips clear" {
+			got = append(got, l)
+		}
+	}
+	want := []string{"clips add: name: Outro.mov", "clips add: clip id: 1 name: Interview.mov",
+		"clips remove: clip id: 1", "clips remove: clip id: 1", "clips clear"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("sent %q, want %q", got, want)
+	}
+	for _, c := range []struct {
+		args []string
+		code int
+		msg  string
+	}{
+		{[]string{"timeline", "add", "Nowhere.mov"}, exitRejected, "the deck refused clips add: clip not found (112)"},
+		{[]string{"timeline", "add", "Outro.mov", "--before", "9"}, exitUsage, "--before 9: the timeline has 0 clips"},
+		{[]string{"timeline", "remove", "nothing"}, exitUsage, `clip "nothing": no timeline clip is named so (bmdctl clips lists them)`},
+	} {
+		if code, _, errOut := b.run(c.args...); code != c.code || !strings.Contains(errOut, c.msg) {
+			t.Errorf("%v: %d %q, want %d %q", c.args, code, errOut, c.code, c.msg)
+		}
 	}
 }

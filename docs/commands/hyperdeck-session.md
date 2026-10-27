@@ -3,7 +3,7 @@
 Generated from the command table (`internal/table`); do not edit. After
 changing a table, run `go generate ./cmd/bmdctl`.
 
-The session and reads: status (transport, timecode, clip, slots, time left), the timeline's or a disk's clips, the raw state, watch changes, connect, disconnect.
+The session and reads: status (transport, timecode, clip, slots, time left), the timeline's or a disk's clips and editing the timeline, the raw state, watch changes, connect, disconnect.
 
 [COMMANDS.md](../COMMANDS.md) says how to read an entry, and lists the
 flags every command takes and the built-in commands.
@@ -67,6 +67,44 @@ Show the transport, timecode, clip, slots and recording time left.
 ```
 bmdctl status
 ```
+
+## `bmdctl hyperdeck timeline add <name>`
+
+Put a file of the active disk on the timeline: at the end, or before a timeline clip.
+
+```
+bmdctl timeline add "Interview.mov"
+bmdctl timeline add Outro.mov --before 2
+```
+
+| argument | value | | |
+|---|---|---|---|
+| `<name>` | string | required | the file's name on the active disk, as clips --disk lists it |
+| `--before` | uint | optional | put it before this timeline clip (clips lists them); else at the end |
+
+## `bmdctl hyperdeck timeline clear`
+
+Empty the timeline; the files stay on the disk.
+
+```
+bmdctl timeline clear
+bmdctl timeline clear --yes
+```
+
+**Destructive.**
+
+## `bmdctl hyperdeck timeline remove <clip>`
+
+Take a clip off the timeline; the file stays on the disk.
+
+```
+bmdctl timeline remove 2
+bmdctl timeline remove outro
+```
+
+| argument | value | | |
+|---|---|---|---|
+| `<clip>` | string | required | a timeline clip: its number, or its name or the start of it, in any case |
 
 ## `bmdctl hyperdeck watch`
 

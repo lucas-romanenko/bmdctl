@@ -433,7 +433,15 @@ func (d *Deck) handle(c *conn, line string) (string, []note) {
 		if i < 0 {
 			return refuse(112, "clip not found")
 		}
-		d.timeline = append(d.timeline, d.slots[d.active-1].clips[i])
+		clip := d.slots[d.active-1].clips[i]
+		if before, okn := p.int("clip id"); okn { // before this timeline clip
+			if before < 1 || before > len(d.timeline) {
+				return refuse(112, "clip not found")
+			}
+			d.timeline = slices.Insert(d.timeline, before-1, clip)
+		} else {
+			d.timeline = append(d.timeline, clip)
+		}
 		if d.clipID == 0 {
 			d.clipID = 1
 		}

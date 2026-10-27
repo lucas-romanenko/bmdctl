@@ -74,6 +74,20 @@ $ bmdctl --host deck 1 clips --disk
   <dim>3</>  Outro.mov                 <dim>QuickTimeProResHQ 1080p25</>  <dim>00:00:10:00</>
   <dim>4</>  Take 2.mov                <dim>QuickTimeProResHQ 1080p25</>  <dim>00:00:02:00</>
 
+$ bmdctl --host deck 1 timeline add Outro.mov --before 1
+<b>Deck 1</>  <dim>stopped · clip 3</>
+  timeline add  4 clips → 5 clips                                   <dim># ms</>
+
+$ bmdctl --host deck 1 timeline remove intro
+<b>Deck 1</>  <dim>stopped · clip 3</>
+  timeline remove  5 clips → 4 clips                                <dim># ms</>
+
+$ bmdctl --host deck 1 timeline clear
+<b>Deck 1</>  <dim>stopped · clip 3</>
+  Deck 1's timeline loses its 4 clips; the files stay on the disk
+  clear it? [y/N] y
+  timeline clear  4 clips → empty                                   <dim># ms</>
+
 $ bmdctl --host deck 1 disconnect
 <b>Deck 1</>  disconnected
 

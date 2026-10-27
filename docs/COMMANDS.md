@@ -178,9 +178,9 @@ The transport: play, pause, stop, record, loop, next and previous clip, goto a c
 
 ### [session](commands/hyperdeck-session.md)
 
-The session and reads: status (transport, timecode, clip, slots, time left), the timeline's or a disk's clips, the raw state, watch changes, connect, disconnect.
+The session and reads: status (transport, timecode, clip, slots, time left), the timeline's or a disk's clips and editing the timeline, the raw state, watch changes, connect, disconnect.
 
-[`clips`](commands/hyperdeck-session.md#bmdctl-hyperdeck-clips) · [`connect`](commands/hyperdeck-session.md#bmdctl-hyperdeck-connect-address) · [`disconnect`](commands/hyperdeck-session.md#bmdctl-hyperdeck-disconnect) · [`state`](commands/hyperdeck-session.md#bmdctl-hyperdeck-state) · [`status`](commands/hyperdeck-session.md#bmdctl-hyperdeck-status) · [`watch`](commands/hyperdeck-session.md#bmdctl-hyperdeck-watch)
+[`clips`](commands/hyperdeck-session.md#bmdctl-hyperdeck-clips) · [`connect`](commands/hyperdeck-session.md#bmdctl-hyperdeck-connect-address) · [`disconnect`](commands/hyperdeck-session.md#bmdctl-hyperdeck-disconnect) · [`state`](commands/hyperdeck-session.md#bmdctl-hyperdeck-state) · [`status`](commands/hyperdeck-session.md#bmdctl-hyperdeck-status) · [`timeline add`](commands/hyperdeck-session.md#bmdctl-hyperdeck-timeline-add-name) · [`timeline clear`](commands/hyperdeck-session.md#bmdctl-hyperdeck-timeline-clear) · [`timeline remove`](commands/hyperdeck-session.md#bmdctl-hyperdeck-timeline-remove-clip) · [`watch`](commands/hyperdeck-session.md#bmdctl-hyperdeck-watch)
 
 ## ultimatte
 
