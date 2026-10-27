@@ -1972,8 +1972,8 @@ whose 514 ms upload left no bar in the scrollback, as it shouldn't).
   spaces around it, no control characters, at most 100 characters. They
   match without regard to case, and go by (`Label`) `as`, else `name`;
   two hosts can't go by one name.
-- **Aliases** (#3). A device's own name is often awkward to type (`BC
-  1.2 - TEST`), so a host can have one `alias`, a short name it goes
+- **Aliases** (#3). A device's own name is often awkward to type
+  (`Block C - TEST`), so a host can have one `alias`, a short name it goes
   by as well as its name: wherever a name is taken (`--host`, the first
   word, `use`, `hosts rm`, MCP's and serve's host), exactly or by any
   unambiguous start, an alias is too. An alias is one word a command

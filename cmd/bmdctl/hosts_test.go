@@ -405,7 +405,7 @@ func TestHostsAlias(t *testing.T) {
 	if out := b.must("hosts", "alias", "Block C - TEST", "bc"); out != "alias bc: Block C - TEST (192.0.2.10)\n" {
 		t.Errorf("alias: %q", out)
 	}
-	for _, spec := range []string{"bc", "BC", "block", "192.0.2.10"} {
+	for _, spec := range []string{"bc", "BC", "block c", "192.0.2.10"} {
 		if got := b.wentTo(t, "DCut", "--host", spec, "cut"); got != "192.0.2.10:9910" {
 			t.Errorf("--host %q: %s", spec, got)
 		}
@@ -441,7 +441,7 @@ func TestHostsAlias(t *testing.T) {
 		t.Errorf("studio: %q", out)
 	}
 	if out := b.must("hosts"); out != "Block C - TEST  192.0.2.10  atem    alias bt, calls itself \"ATEM 1 M/E Constellation HD\"\n"+
-		"studio           192.0.2.11  atem    alias s, calls itself \"ATEM 1 M/E Constellation HD\"\n" {
+		"studio          192.0.2.11  atem    alias s, calls itself \"ATEM 1 M/E Constellation HD\"\n" {
 		t.Errorf("list: %q", out)
 	}
 	if out := b.must("hosts", "--json"); !strings.Contains(out, `"as":"Block C - TEST","alias":"bt","address":"192.0.2.10","device":"atem"}`) {
@@ -497,7 +497,7 @@ func TestHostWord(t *testing.T) {
 		{[]string{"bc", "cut"}, "192.0.2.10:9910"},
 		{[]string{"BC", "cut"}, "192.0.2.10:9910"},
 		{[]string{"Block C - TEST", "cut"}, "192.0.2.10:9910"},
-		{[]string{"block", "cut"}, "192.0.2.10:9910"},
+		{[]string{"block c", "cut"}, "192.0.2.10:9910"},
 		{[]string{"192.0.2.10", "cut"}, "192.0.2.10:9910"},
 		{[]string{"192.0.2.12", "cut"}, "192.0.2.12:9910"}, // an address no host has
 		{[]string{"STUD", "cut"}, "192.0.2.11:9910"},

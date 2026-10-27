@@ -232,7 +232,7 @@ func TestAlias(t *testing.T) {
 	if err := f.SetAlias(bc, "bc"); err != nil || bc.Alias != "bc" {
 		t.Fatalf("%v %+v", err, bc)
 	}
-	for spec, want := range map[string]*Host{"bc": bc, "BC": bc, "BC 1": bc, "studio": sb, "stu": sb} {
+	for spec, want := range map[string]*Host{"bc": bc, "BC": bc, "block": bc, "studio": sb, "stu": sb} {
 		if h, err := f.Match(spec); err != nil || h != want {
 			t.Errorf("match %q: %v %v", spec, h, err)
 		}
@@ -267,7 +267,7 @@ func TestAlias(t *testing.T) {
 		"-x":           `alias "-x": it can't start with a dash`,
 		"10.0.0.1":     `alias "10.0.0.1": that is an address`,
 		"bc\x00":       `alias "bc\x00": no control characters`,
-		"block c":       `alias "block c": one word, no spaces`,
+		"block c":      `alias "block c": one word, no spaces`,
 		"Block C-TEST": `alias "Block C-TEST": one word, no spaces`,
 	} {
 		if err := f.SetAlias(bc, alias); err == nil || err.Error() != want {
