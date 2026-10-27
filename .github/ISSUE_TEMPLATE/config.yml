@@ -3,3 +3,6 @@ contact_links:
   - name: Questions and ideas
     url: https://github.com/lucas-romanenko/bmdctl/discussions
     about: How do I...? Ask in Discussions.
+  - name: Report a vulnerability
+    url: https://github.com/lucas-romanenko/bmdctl/security/advisories/new
+    about: Privately, not as an issue (SECURITY.md).

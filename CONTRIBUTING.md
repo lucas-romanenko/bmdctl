@@ -10,6 +10,9 @@ it, and add to it when you make a new one.
 
 Bug reports and device-support requests are welcome as issues. For a
 change of any size, open an issue first so we can agree on the shape.
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+A security problem goes to [SECURITY.md](SECURITY.md)'s private channel,
+not an issue.
 
 ## Setup
 
