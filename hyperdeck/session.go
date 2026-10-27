@@ -196,6 +196,8 @@ func readGreeting(ctx context.Context, conn net.Conn, r *reader) (Response, erro
 	switch {
 	case err == nil && g.IsError():
 		return g, &Error{g.Code, g.Text}
+	case err == nil && g.Code != 500:
+		return g, fmt.Errorf("hyperdeck: %w: %s", ErrGreeting, g.repr())
 	case errors.Is(err, errPeerClosed):
 		return g, fmt.Errorf("%w: %w", ErrClosed, err)
 	case errors.As(err, &ne) && ne.Timeout():

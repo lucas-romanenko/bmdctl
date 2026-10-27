@@ -3,10 +3,20 @@
 
     python3 -I gen_client.py /path/to/bmdwire ../fixtures client.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.3.0. Nothing here
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.7.1. Nothing here
 opens a socket: every session runs hyperdeckwire's real ``Hyperdeck`` class
 (hyperdeckwire/client.py) over a scripted stand-in socket, the way its own
 tests do, and records what it did.
+
+The stand-in keeps a deck's timing (issue #15): the stream arrives a unit
+at a time, a unit being a response (its head and any body), with the stray
+lines before it. The greeting is there on connect; each answer (a response
+that isn't 5xx) arrives once the request it answers is sent, with the
+asynchronous messages before it; what follows the last answer arrives with
+the request after it. Since 1.4.0 hyperdeckwire reads and drops, without
+blocking, whatever has arrived before it sends a request (bmdwire#19): a
+socket that handed over the whole stream at once had it drop every answer
+ahead.
 
 A session is a byte stream the deck sends (the greeting and every response,
 in order) and a list of calls. For connect and each call it records:
@@ -16,6 +26,9 @@ in order) and a list of calls. For connect and each call it records:
   returned (bytes received less what it still holds in its buffer), so the
   Go test can hand a session that reads eagerly exactly what hyperdeckwire
   had read, call by call;
+* ``before``: how far it had read when it sent its request (what it read
+  and dropped first, as unrequested, comes before it), ``consumed`` for a
+  call that sent nothing;
 * ``result``: the return value as JSON (a dict, a list of clips as dicts, an
   int, null), or ``error``: the exception's class and message, and for a
   HyperdeckError its code and text.
@@ -35,6 +48,8 @@ import json
 import logging
 import os
 import random
+import re
+import socket
 import sys
 
 BMDWIRE, FIXTURES, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -56,32 +71,103 @@ def fixture(name):
 GREETING = fixture('greeting.bin')
 
 
-class Sock:
-    """hyperdeckwire's tests' _FakeSocket, counting what was received."""
+HEAD = re.compile(rb'^(\d{3})(?: |\r?\n|$)')
 
-    def __init__(self, chunks):
-        self._script = list(chunks)
-        self._inbox = b''
+
+def units(stream):
+    """The stream as a deck sends it: (bytes, is_answer) for each response,
+    head and body (a head ending in ':' has lines to a blank one), the
+    stray lines before it (blank, malformed) going with it. The first is
+    the greeting; a 5xx after it is asynchronous; any other is an answer.
+    Stray lines after the last response are a unit of their own."""
+    # Lines end at LF only, as hyperdeckwire reads them (a CR alone is
+    # part of the line).
+    lines = re.findall(rb'[^\n]*\n|[^\n]+$', stream)
+    out, cur, i = [], b'', 0
+    while i < len(lines):
+        m = HEAD.match(lines[i])
+        if not m:
+            cur += lines[i]
+            i += 1
+            continue
+        cur += lines[i]
+        multi = lines[i].rstrip(b'\r\n').endswith(b':')
+        i += 1
+        while multi and i < len(lines):
+            cur += lines[i]
+            i += 1
+            if lines[i - 1].strip(b'\r\n') == b'':
+                break
+        code = int(m.group(1))
+        out.append((cur, bool(out) and not 500 <= code <= 599))
+        cur = b''
+    if cur:
+        out.append((cur, False))
+    return out
+
+
+class Sock:
+    """hyperdeckwire's tests' _FakeSocket, counting what was received, with
+    a deck's timing (the module's docstring): units arrive as their requests
+    are sent, and a read finds only what has arrived, cut as chunking says.
+    The stream's end is the deck closing, which arrives as an answer does:
+    with the request after the last unit, so a read before it (the drop's,
+    without blocking) doesn't see it. Nothing arrived yet is
+    BlockingIOError without blocking, socket.timeout with; the end, once
+    arrived and everything read, is b''."""
+
+    def __init__(self, stream, chunking):
+        self._pending = units(stream)
+        self._arrived = b''
+        self._chunking = chunking
+        self._timeout = None
+        self._closing = False  # the deck's close has arrived
+        self.buffered = lambda: 0  # what the client holds unread, for marks
+        self.mark = None  # how far the client had read at the step's first send
         self.sent = b''
         self.received = 0
         self.closed = False
+        if self._pending:
+            self._arrived += self._pending.pop(0)[0]  # the greeting
+
+    def _arrive(self):
+        """One request's worth: up to and with the next answer; with the
+        stream's units all arrived, its end."""
+        if not self._pending:
+            self._closing = True
+        while self._pending:
+            data, answer = self._pending.pop(0)
+            self._arrived += data
+            if answer:
+                return
 
     def settimeout(self, t):
-        pass
+        self._timeout = t
 
     def sendall(self, data):
         if self.closed:
             raise OSError('closed')
+        if self.mark is None:
+            self.mark = self.received - self.buffered()
         self.sent += data
+        self._arrive()
 
     def recv(self, n):
         if self.closed:
             return b''
-        if not self._inbox:
-            if not self._script:
-                return b''
-            self._inbox = self._script.pop(0)
-        chunk, self._inbox = self._inbox[:n], self._inbox[n:]
+        if not self._arrived:
+            if self._timeout == 0:
+                if self._closing:
+                    return b''
+                raise BlockingIOError()
+            if not self._pending:
+                return b''  # the deck has nothing more and closes
+            raise socket.timeout()
+        if self._chunking == 'bytes':
+            n = 1
+        elif self._chunking == 'random':
+            n = min(n, random.randint(1, 9))
+        chunk, self._arrived = self._arrived[:n], self._arrived[n:]
         self.received += len(chunk)
         return chunk
 
@@ -118,23 +204,15 @@ def invoke(hd, method, args):
 
 
 def session(name, stream, calls, chunking='whole'):
-    """Run one session over stream, cut into chunks as chunking says."""
-    if chunking == 'whole':
-        chunks = [stream] if stream else []
-    elif chunking == 'bytes':
-        chunks = [stream[i:i + 1] for i in range(len(stream))]
-    else:  # random cuts
-        chunks, i = [], 0
-        while i < len(stream):
-            n = random.randint(1, 9)
-            chunks.append(stream[i:i + n])
-            i += n
-    sock = Sock(chunks)
+    """Run one session over stream, each read cut as chunking says."""
+    sock = Sock(stream, chunking)
     hd = C.Hyperdeck('192.0.2.11', socket_factory=lambda *_a, **_k: sock)
+    sock.buffered = lambda: len(hd._buf)
     rec = {'name': name, 'stream': stream.hex(), 'chunking': chunking}
 
     def step(fn):
         before = len(sock.sent)
+        sock.mark = None
         out = {}
         try:
             out['result'] = jsonable(fn())
@@ -142,6 +220,7 @@ def session(name, stream, calls, chunking='whole'):
             out['error'] = error(e)
         out['sent'] = sock.sent[before:].hex()
         out['consumed'] = sock.received - len(hd._buf)
+        out['before'] = out['consumed'] if sock.mark is None else sock.mark
         return out
 
     rec['connect'] = step(hd.connect)
@@ -394,7 +473,7 @@ for lines in [
 ]:
     PARAMS.append({'lines': lines, 'result': C.Response(code=200, text='x', lines=lines).params()})
 
-doc = {'bmdwire': 'v1.3.0', 'sessions': SESSIONS, 'parsers': PARSERS, 'params': PARAMS}
+doc = {'bmdwire': 'v1.7.1', 'sessions': SESSIONS, 'parsers': PARSERS, 'params': PARAMS}
 with open(OUT, 'w') as f:
     json.dump(doc, f, indent=1, ensure_ascii=False, sort_keys=True)
     f.write('\n')

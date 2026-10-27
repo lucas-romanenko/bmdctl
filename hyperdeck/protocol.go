@@ -63,6 +63,22 @@ func (e *Error) Error() string { return fmt.Sprintf("[%d] %s", e.Code, e.Text) }
 // hyperdeckwire's OSError("malformed response head: ...").
 var ErrMalformed = errors.New("malformed response head")
 
+// repr is the response as hyperdeckwire's Response dataclass repr()s it,
+// for the messages that quote one: Response(code=200, text='ok',
+// lines=['k: v']).
+func (r Response) repr() string {
+	lines := make([]string, len(r.Lines))
+	for i, l := range r.Lines {
+		lines[i] = pytext.Repr(l)
+	}
+	return fmt.Sprintf("Response(code=%d, text=%s, lines=[%s])", r.Code, pytext.Repr(r.Text), strings.Join(lines, ", "))
+}
+
+// ErrGreeting marks a first block that isn't the greeting (500 connection
+// info): not a deck to talk to, as hyperdeckwire's connect has it since
+// 1.4.0 (bmdwire#21).
+var ErrGreeting = errors.New("unexpected greeting")
+
 // errPeerClosed is the stream ending: hyperdeckwire's ConnectionError.
 var errPeerClosed = errors.New("peer closed connection")
 

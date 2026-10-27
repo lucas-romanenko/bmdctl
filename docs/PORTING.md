@@ -3270,23 +3270,34 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
     the clients it takes answers `120 connection rejected` and closes;
     Dial returns that `*Error` rather than a dead session.
     `TestARejectedConnectionFailsDial`; the oracle's greeting of 120
-    expects it. bmdwire#21.
+    expects it. bmdwire#21. Any other first block that isn't the 500
+    greeting fails Dial too, with `ErrGreeting` (hyperdeckwire's `OSError:
+    unexpected greeting: Response(...)`), as the oracle's greetings of 200
+    and 508 expect.
   - **After the stream has ended nothing is sent**: hyperdeckwire writes
     into a socket it found closed and reads its end again; the session has
     ended and returns `ErrClosed`. The oracle test expects that for calls
     after a `ConnectionError`.
-- **Verification.** `hyperdeck/testdata/oracle/client.json` stays at
-  v1.3.0. hyperdeckwire 1.4.0 drops an answer already buffered when it
-  sends a request (bmdwire#19, #32), and `gen_client.py`'s fake socket
-  hands the client the whole session on its first read, so at 1.4.0 it
-  records that drop in 724 of the 747 sessions instead of the client's
-  work. Regenerating needs the socket to release each answer only after
-  its request, as `TestClientMatchesHyperdeckwire`'s gated connection
-  already does; until then the 1.4.0 behaviours are pinned by bmdctl's
-  own tests (the differences above). The file (`gen_client.py`) records
-  hyperdeckwire v1.3.0's real client in 747
-  scripted sessions, 872 calls: the bytes sent, how far into the stream it
-  had read, and the result or exception. `TestClientMatchesHyperdeckwire`
+- **Verification.** `hyperdeck/testdata/oracle/client.json`
+  (`gen_client.py`) records hyperdeckwire v1.7.1's real client in 747
+  scripted sessions, 858 calls: the bytes sent, how far into the stream
+  it had read when it sent its request and when the call returned, and the
+  result or exception. Since 1.4.0 hyperdeckwire reads and drops, without
+  blocking, what has arrived before it sends a request (bmdwire#19, #32),
+  so the script's stand-in socket keeps a deck's timing (#15): it cuts
+  the stream into units, a response with the stray lines before it, and
+  hands over the greeting on connect and each answer once its request is
+  sent, with the asynchronous messages before it; the stream's end, the
+  deck closing, comes with the request after the last unit. Before (at
+  v1.3.0, whose client read only when asked) the socket handed over the
+  whole stream at once, and at 1.4.0 that recorded a drop in 724 sessions
+  instead of the client's work. The replay is gated the same way: what
+  arrived before a request (`before`) is released first and the Session
+  waits until it has read it, so a stale answer is dropped as an answer
+  to no command, then the rest when the request is written. Regenerating
+  at 1.7.1 found one gap in the port: hyperdeckwire's connect refuses a
+  first block that isn't the 500 greeting (`OSError: unexpected greeting`,
+  bmdwire#21), which `Dial` now does too (`ErrGreeting`). `TestClientMatchesHyperdeckwire`
   replays each through a `Bare` Session on a connection that gives it, call
   by call, exactly what hyperdeckwire had read (the session reads eagerly),
   and checks the bytes, results (dicts, clips, ints) and errors by class

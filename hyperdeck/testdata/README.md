@@ -26,12 +26,14 @@ hyperdeckwire on them.
 
 ## oracle/
 
-`client.json` is what hyperdeckwire v1.3.0 itself does, recorded by running
-its real `Hyperdeck` class over a scripted socket: 747 sessions (the tests'
-scripts on the fixtures; every method against every kind of answer; 19
-greetings; listings of every kind of row; desynchronising streams), 872
-calls, each with the bytes sent, how far into the stream it had read, and
-the result or the exception; 132 cases of the three line parsers and 16 of
+`client.json` is what hyperdeckwire v1.7.1 itself does, recorded by running
+its real `Hyperdeck` class over a scripted socket that keeps a deck's
+timing (each answer arrives once its request is sent; see `gen_client.py`):
+747 sessions (the tests' scripts on the fixtures; every method against
+every kind of answer; 19 greetings; listings of every kind of row;
+desynchronising streams), 858 calls, each with the bytes sent, how far into
+the stream it had read when it sent and when it returned, and the result or
+the exception; 132 cases of the three line parsers and 16 of
 `Response.params`. `TestClientMatchesHyperdeckwire` and
 `TestParsersMatchHyperdeckwire` replay them all. Regenerate against a
 bmdwire checkout at `v1.3.0` (the seed is fixed, so the file changes only

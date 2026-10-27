@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// testdata/oracle/client.json records what bmdwire v1.3.0's hyperdeckwire
+// testdata/oracle/client.json records what bmdwire v1.7.1's hyperdeckwire
 // client did in 747 sessions over scripted streams (gen_client.py). Each
 // is replayed here through a Session on a connection that gives it, call
 // by call, exactly the bytes hyperdeckwire had read: the Session reads
@@ -57,6 +57,7 @@ type oracleSession struct {
 type oracleStep struct {
 	Sent     string          `json:"sent"`
 	Consumed int             `json:"consumed"`
+	Before   int             `json:"before"` // read when it sent its request
 	Result   json.RawMessage `json:"result"`
 	Error    *oracleError    `json:"error"`
 }
@@ -97,6 +98,7 @@ type gatedConn struct {
 	cond     *sync.Cond
 	pos      int // read so far
 	released int // readable
+	waiting  int // reads blocked for more
 	eof      bool
 	closed   bool
 	armed    *window
@@ -123,6 +125,23 @@ func (g *gatedConn) release(w window) {
 	g.cond.Broadcast()
 }
 
+// preload releases the stream up to upTo before a call, as what had
+// arrived before hyperdeckwire sent its request, and waits until the
+// Session has read it all and waits for more: the reader hands each
+// answer to the owner on an unbuffered channel, so the owner has taken
+// it, as an answer to no command, before the call's request.
+func (g *gatedConn) preload(upTo int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.release(window{upTo: upTo})
+	for target := min(upTo, len(g.stream)); !g.closed && !(g.pos >= target && g.waiting > 0); {
+		if g.pos >= target && g.eof {
+			return
+		}
+		g.cond.Wait()
+	}
+}
+
 // arm sets what the next write releases.
 func (g *gatedConn) arm(w window) {
 	g.mu.Lock()
@@ -134,7 +153,10 @@ func (g *gatedConn) Read(p []byte) (int, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	for g.pos >= g.released && !(g.eof && g.pos >= len(g.stream)) && !g.closed {
+		g.waiting++
+		g.cond.Broadcast() // preload watches for a read waiting
 		g.cond.Wait()
+		g.waiting--
 	}
 	if g.closed {
 		return 0, net.ErrClosed
@@ -228,6 +250,9 @@ func TestClientMatchesHyperdeckwire(t *testing.T) {
 			ended := false // the stream has ended: the session has too
 			for i, c := range sc.Calls {
 				methods[c.Method]++
+				if !ended && c.Before > 0 {
+					conn.preload(c.Before)
+				}
 				conn.arm(c.window(stream))
 				res, err := invoke(ctx, s, c)
 				sent := conn.sent()
@@ -359,6 +384,8 @@ func sameError(t *testing.T, what string, err error, want *oracleError) bool {
 		ok = errors.Is(err, ErrClosed) && strings.Contains(err.Error(), want.Message)
 	case want.Class == "OSError" && want.Message == "not connected":
 		ok = errors.Is(err, ErrClosed)
+	case want.Class == "OSError" && strings.HasPrefix(want.Message, "unexpected greeting: "):
+		ok = errors.Is(err, ErrGreeting) && strings.TrimPrefix(err.Error(), "hyperdeck: ") == want.Message
 	case want.Class == "OSError":
 		ok = errors.Is(err, ErrMalformed) && strings.TrimPrefix(err.Error(), "hyperdeck: ") == want.Message
 	case want.Class == "ValueError":
