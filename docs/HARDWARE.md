@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One ATEM model so far, in eighteen sessions, then one HyperDeck in two
+One ATEM model so far, in eighteen sessions, then one HyperDeck in three
 and one Ultimatte in one. The ATEM's firmware was first recorded in the
 tenth, 9.2.1; before that the rows give the protocol version the
 switcher's `_ver` packet reported, 2.30. No Videohub has been run: the
@@ -52,10 +52,10 @@ fakes and, for the protocol, against bmdwire's own code.
   any video mode but 1080p25.
 - **HyperDeck:** `record` (the deck had no input), `goto` by timecode or
   name, a second disk, a setting whose change reboots the deck, and any
-  deck but the Studio HD Mini. On an empty timeline, `clips` and the
-  `timeline` commands fail (the twenty-first run: the deck answers
-  `clips get` with 107). The rest is checked against hyperdeckwire, not
-  a deck.
+  deck but the Studio HD Mini. `timeline clear`'s result reads the
+  timeline back before the deck has cleared it (the twenty-second run),
+  so it says the clips are still there. The rest is checked against
+  hyperdeckwire, not a deck.
 - **Any Videohub command on a real router.** The protocol is checked
   against videohubwire (which routes Smart Videohub 40 x 40 and 80 x 80
   routers in production), not a router, from bmdctl.
@@ -991,4 +991,27 @@ fakes and, for the protocol, against bmdwire's own code.
   107 on an empty timeline, which hyperdeckwire's `clips_get` raises.
   Then bmdctl reads it as an empty timeline (`clips`, the `timeline`
   commands, `status`). `remote` loses its unverified mark.
+- **Not yet verified on hardware:** as the list at the top says.
+
+## 2026-10-27: twenty-second run, an empty timeline after bmdwire 1.7.1
+
+- **Commit:** `9bd3f55` (bmdwire 1.7.1 ported: `clips get`'s 107 on an
+  empty timeline is no clips), built and run as in the nineteenth.
+- **Deck:** the test Studio HD Mini, as the twenty-first run left it:
+  the clip playing on loop.
+- **Run:** `stop`, `timeline clear --yes`, `clips`, `status`, `timeline
+  add` the clip, `goto 1`, `play --loop --single-clip`. Then again with
+  `clips --json` run every 0.1 s after the clear, and the clip put back.
+- **Result:** on the empty timeline `timeline add` worked (`empty → 1
+  clip`), where the twenty-first run's failed, and the deck was back
+  playing on loop both times. But the clear is applied after its `200
+  ok`: 0.01 s after it, `clips get` still listed the one clip; at 0.16 s
+  it answered 107, an empty timeline. So `timeline clear`'s read-back,
+  at once, said `1 clip`, and a `clips` and a `status` run straight
+  after it still listed the clip. The twenty-first run's `clips` after
+  its clear, put down then to the session's stale state, was this too.
+  `timeline add` and `remove` read back their changes at once.
+- **Changed because of it:** to bmdwire first: that a `clips clear` is
+  applied after its answer. Then `timeline clear` reads the timeline
+  back until it is empty, for a while, instead of once.
 - **Not yet verified on hardware:** as the list at the top says.
