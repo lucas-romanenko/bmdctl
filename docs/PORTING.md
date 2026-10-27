@@ -3725,14 +3725,16 @@ type `ultimatte`, goes to a keyer through the engine.
   ultimattewire leaves it.
 - **restore <file>** is destructive (exit 5 without `--yes`): presets
   overwrite the slots of their names, and SavedSettings replaces what the
-  keyer is doing now, video format included. The confirmation counts
-  what the zip holds (`Plan`), a line each: `Keyer A gets 3 presets and
-  the settings`, `the saved settings become its live state, video format
-  included`, and, where CURRENT FILE says `Modified`, `its unsaved
-  changes to "Studio B" are lost` (`ParseCurrentFile`, bmdwire#52). The
-  twentieth hardware run restored a 12 4K this way and lost its
-  unsaved 1080p25 state to its saved defaults in NTSC; the old line said
-  only `its live state changes`. What isn't an archive (not a zip, or none of `presets/`,
+  keyer is doing now. The confirmation counts what the zip holds
+  (`Plan`), a line each: `Keyer A gets 3 presets and the settings`, `the
+  saved settings become its live state`, and, where CURRENT FILE says
+  `Modified`, `its unsaved changes to "Studio B" are lost`
+  (`ParseCurrentFile`, bmdwire#52). The twentieth hardware run restored a
+  12 4K this way and lost its unsaved state to its saved defaults; the
+  old line said only `its live state changes`. A first version of the new
+  line said "video format included": it isn't (bmdwire#56). The unit's
+  Video Format setting stayed `auto detect`, and with no input it ran its
+  default format. What isn't an archive (not a zip, or none of `presets/`,
   GPISettings, SavedSettings in it) is a usage error before anything is
   sent. A refusal stops where ultimattewire stops: rejected (exit 4),
   naming the member, with what came before it written. The steps are

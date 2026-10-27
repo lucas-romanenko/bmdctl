@@ -67,12 +67,14 @@ info)`. The zip is read with `zipfile`; a file that isn't a zip raises
    name `{prefix}/GPISettings`.
 3. **`SavedSettings`**, if present: opcode `0x0103`, name
    `{prefix}/SavedSettings`. It overwrites the live state, so it goes
-   last. The unit runs those settings at once, video format included,
-   and what was changed on it and not saved is gone: `parse_current_file`
-   (§2.1) says `Modified` when there is something to lose. Seen on a 12
-   4K with software 2.3 (bmdwire#52): a restore of the unit's own archive,
-   whose saved settings were its defaults, left it on "Ultimatte
-   Defaults" in 525i59.94 NTSC, from unsaved settings in 1080p25.
+   last. The unit runs those settings at once, and what was changed on
+   it and not saved is gone: `parse_current_file` (§2.1) says `Modified`
+   when there is something to lose. Seen on a 12 4K with software 2.3
+   (bmdwire#52): a restore of the unit's own archive, whose saved
+   settings were its defaults, left it on "Ultimatte Defaults", from
+   unsaved settings. Its Video Format setting stayed `auto detect`; with
+   no input to detect, the format it ran fell from 1080p25 to its
+   default, 525i59.94 NTSC (bmdwire#56).
 
 `prefix` is `/private/var/folders/00/000000000000000000000000000000/T/Ultimatte Software Control-PYREST`,
 the shape of the vendor app's temporary path (the unit appears to read

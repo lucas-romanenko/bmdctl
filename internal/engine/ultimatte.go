@@ -484,8 +484,8 @@ func orKeyer(label string) string {
 
 // restoreImpact is what a restore overwrites, for the confirmation: a
 // preset replaces the slot of its name, the saved settings what the
-// keyer is doing now, video format and all, and with it whatever was
-// changed on the unit and not saved: CURRENT FILE (file, status) says
+// keyer is doing now, and with it whatever was changed on the unit and
+// not saved: CURRENT FILE (file, status) says
 // whether there is any (bmdwire#52). A line each.
 func restoreImpact(label string, plan ultimatte.RestorePlan, file, status string) string {
 	var parts []string
@@ -503,7 +503,7 @@ func restoreImpact(label string, plan ultimatte.RestorePlan, file, status string
 	s := label + " gets " + strings.Join(parts, " and ")
 	switch {
 	case plan.Saved:
-		s += "\nthe saved settings become its live state, video format included"
+		s += "\nthe saved settings become its live state"
 		if status == "Modified" {
 			s += fmt.Sprintf("\nits unsaved changes to %q are lost", file)
 		}

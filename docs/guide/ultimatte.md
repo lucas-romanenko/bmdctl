@@ -65,8 +65,8 @@ A preset or setting that can't be read is left out and named under the
 result, so a later restore never writes placeholder bytes to the keyer.
 
 `restore` pushes an archive back: each preset replaces the one of its
-name, and the saved settings become what the keyer is doing now, video
-format included. Anything changed on the unit and not saved there is
+name, and the saved settings become what the keyer is doing now.
+Anything changed on the unit and not saved there is
 lost, so it asks first, and says when there is something to lose
 (`--yes` doesn't ask). Save on the unit first if you want to keep it:
 
@@ -74,7 +74,7 @@ lost, so it asks first, and says when there is something to lose
 $ bmdctl --host keyer restore Keyer_A.zip
 Keyer A
   Keyer A gets 3 presets and the settings
-  the saved settings become its live state, video format included
+  the saved settings become its live state
   its unsaved changes to "Studio B" are lost
   restore it? [y/N] y
   ✓ presets   Blue Screen, Green Screen, Studio B                 720 ms

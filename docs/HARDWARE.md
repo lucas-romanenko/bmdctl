@@ -933,3 +933,24 @@ fakes and, for the protocol, against bmdwire's own code.
   lost (the unsaved current file, the video format), and its header names
   the model.
 - **Not yet verified on hardware:** as the list at the top says.
+
+## 2026-10-27: a correction to the twentieth run
+
+- **No hardware run:** this is read from the twentieth run's own
+  preludes, kept from just before and just after its restore.
+- **What the entry got wrong:** it says the restore left the keyer in
+  525i59.94 NTSC, and that a SavedSettings write applies the video format
+  too. The preludes say otherwise. The CONTROL section's `Video Format`,
+  the setting, was `auto detect` before the restore and after it (its
+  reference source `fg input` both times). What changed is the DEVICE
+  section's `Video Format`, the format the unit was running: 1080p25
+  before, 525i59.94 NTSC after, with no input locked either time. With
+  nothing to detect, the unit fell back from the format it had last
+  detected to its default, and a signal brings it back; the owner found
+  it on auto detect.
+- **What the restore did change**, as the entry says: the control values
+  (38 of them) and the unsaved current file, now "Ultimatte Defaults".
+- **Changed because of it:** bmdwire#56 corrects 1.7.0's restore docs.
+  bmdctl's restore confirmation says "the saved settings become its live
+  state", without "video format included", and the guide, PORTING.md and
+  SURFACE-ultimatte.md say the same.

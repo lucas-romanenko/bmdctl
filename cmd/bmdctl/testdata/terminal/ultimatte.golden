@@ -39,7 +39,7 @@ $ bmdctl archive
 $ bmdctl restore Keyer_A.zip
 <b>Keyer A</>
   Keyer A gets 3 presets and the settings
-  the saved settings become its live state, video format included
+  the saved settings become its live state
   its unsaved changes to "Studio B" are lost
   restore it? [y/N] y
   ✓ presets   Blue Screen, Green Screen, Studio B                   <dim># ms</>
