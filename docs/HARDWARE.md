@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One ATEM model so far, in eighteen sessions, then one HyperDeck in three
+One ATEM model so far, in eighteen sessions, then one HyperDeck in four
 and one Ultimatte in one. The ATEM's firmware was first recorded in the
 tenth, 9.2.1; before that the rows give the protocol version the
 switcher's `_ver` packet reported, 2.30. No Videohub has been run: the
@@ -41,6 +41,7 @@ owner's two are live.
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads beside another session in the same process, as WebATEM runs them (bmdwire#42): 20 of 20, every frame exact; bmdwire 1.5.2 deadlocked after 2 | 2026-10-15 |
 | HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `connect`, `status`, `clips` (timeline and disk), `state`, `watch`; `stop`, `play` (speed, loop, single clip), `goto` by clip id, `slot`; `next`, `prev` and `record` refused as the deck refuses them | 2026-10-27 |
 | HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `pause`; `configuration show` and `configuration set` (changed and back); `remote off` and `remote on`, which the deck takes over 9993 with remote off; `timeline add` (`--before`), `remove` and `clear` on a timeline with clips | 2026-10-27 |
+| HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `loop off` and `loop on` during a playback (the clip played out, then looped past its end); `timeline clear` empty when read at once | 2026-10-28 |
 | Ultimatte 12 4K | 2.3 | 1080p25 | `connect`, `status`, `prelude`, `controls`, `presets`, `network show`, `archive`; `restore` (presets and settings back byte for byte, the saved settings applied live) | 2026-10-27 |
 
 ## Unverified
@@ -52,9 +53,7 @@ fakes and, for the protocol, against bmdwire's own code.
   any video mode but 1080p25.
 - **HyperDeck:** `record` (the deck had no input), `goto` by timecode or
   name, a second disk, a setting whose change reboots the deck, and any
-  deck but the Studio HD Mini. `timeline clear` reading the timeline
-  back until it is empty, the fix for the twenty-second run's stale
-  `1 clip`, hasn't met a deck. The rest is checked against hyperdeckwire,
+  deck but the Studio HD Mini. The rest is checked against hyperdeckwire,
   not a deck.
 - **Any Videohub command on a real router.** The protocol is checked
   against videohubwire (which routes Smart Videohub 40 x 40 and 80 x 80
@@ -1018,4 +1017,33 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Changed because of it:** to bmdwire first: that a `clips clear` is
   applied after its answer. Then `timeline clear` reads the timeline
   back until it is empty, for a while, instead of once.
+- **Not yet verified on hardware:** as the list at the top says.
+
+## 2026-10-28: twenty-third run, loop and timeline clear
+
+- **Commit:** `92bc3c3` (bmdwire 1.8.0 ported, and `2c4a9b1`'s
+  `timeline clear` reading the timeline back until it is empty), built
+  and run as in the nineteenth.
+- **Deck:** the test Studio HD Mini, as the twenty-second run left it:
+  the clip playing on loop, single clip; remote on.
+- **Run:** read-only first (`connect`, `status`, `clips`, `state`). Then,
+  with the owner's go-ahead and a `watch` through it: `loop off` while
+  the clip looped, and 12 s to let it play out; `goto 1`, `play
+  --single-clip`, `loop on`, and 12 s past the clip's end. Then twice:
+  `stop`, `timeline clear --yes`, `clips` and `status` at once and
+  `clips` a second later, `timeline add` the clip, `goto 1`, `play
+  --loop --single-clip`.
+- **Result:** `loop off` sent `play: loop: false single clip: true
+  speed: 100`, a line no deck had been sent before (the nineteenth
+  run's `loop off` was already): the deck's notification said `loop
+  true → false`, it played on, and at the clip's end stopped, its
+  notification clearing single clip as a `stop` does. `loop on` on the
+  playback started without it: `loop false → true`, and the deck was
+  still playing 12 s later. `timeline clear` took 0.07 s each time and
+  said the timeline was empty; the `clips` and `status` right after it
+  listed none (`0 clips`), where the twenty-second run's still listed
+  the clip. The deck was left as it began, the clip playing on loop,
+  single clip.
+- **Changed because of it:** `loop` loses its unverified mark.
+  `timeline clear`'s read-back comes off the Unverified list.
 - **Not yet verified on hardware:** as the list at the top says.
