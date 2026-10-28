@@ -52,10 +52,10 @@ fakes and, for the protocol, against bmdwire's own code.
   any video mode but 1080p25.
 - **HyperDeck:** `record` (the deck had no input), `goto` by timecode or
   name, a second disk, a setting whose change reboots the deck, and any
-  deck but the Studio HD Mini. `timeline clear`'s result reads the
-  timeline back before the deck has cleared it (the twenty-second run),
-  so it says the clips are still there. The rest is checked against
-  hyperdeckwire, not a deck.
+  deck but the Studio HD Mini. `timeline clear` reading the timeline
+  back until it is empty, the fix for the twenty-second run's stale
+  `1 clip`, hasn't met a deck. The rest is checked against hyperdeckwire,
+  not a deck.
 - **Any Videohub command on a real router.** The protocol is checked
   against videohubwire (which routes Smart Videohub 40 x 40 and 80 x 80
   routers in production), not a router, from bmdctl.

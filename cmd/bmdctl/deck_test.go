@@ -353,6 +353,7 @@ func TestDeckSpeedAndEmptySlotAsADeckSentThem(t *testing.T) {
 // timeline before and after; the deck sends no notification for them.
 func TestDeckTimeline(t *testing.T) {
 	b, d := deckBench(t)
+	d.ClearLag(160 * time.Millisecond) // the deck empties the timeline after it answers clear
 	if code, _, errOut := b.run("timeline", "clear"); code != exitDestructive || !strings.Contains(errOut, "destructive: add --yes") {
 		t.Errorf("clear without --yes: %d %q", code, errOut)
 	}

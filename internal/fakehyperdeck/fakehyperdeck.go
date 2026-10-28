@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Address is what tests dial: TEST-NET-1, so nothing real answers it.
@@ -53,10 +54,11 @@ type Deck struct {
 	FPS                                              int // frames per second of its timecode
 
 	mu       sync.Mutex
-	noInput  bool    // no video input: record is refused, 110
-	rebootOn string  // a configuration setting whose change answers 213 deck rebooting
-	slots    []*slot // index 0 is slot id 1
-	active   int     // slot id
+	noInput  bool          // no video input: record is refused, 110
+	rebootOn string        // a configuration setting whose change answers 213 deck rebooting
+	clearLag time.Duration // how long after its answer a clips clear empties the timeline
+	slots    []*slot       // index 0 is slot id 1
+	active   int           // slot id
 	timeline []Clip
 	status   string // stopped, play, record, preview
 	speed    int
@@ -189,6 +191,15 @@ func (d *Deck) SetRemote(on bool) {
 	defer d.mu.Unlock()
 	d.remote = on
 	d.broadcast("remote", d.block(510, "remote info", "enabled", strconv.FormatBool(on)))
+}
+
+// ClearLag makes clips clear empty the timeline lag after it answers, as
+// a Studio HD Mini on 9.0.2 does (0.16 s, bmdwire#59, 80bd754); until then clips
+// get lists the old clips.
+func (d *Deck) ClearLag(lag time.Duration) {
+	d.mu.Lock()
+	d.clearLag = lag
+	d.mu.Unlock()
 }
 
 // RebootOn makes a change of setting answer "213 deck rebooting", as
@@ -439,6 +450,14 @@ func (d *Deck) handle(c *conn, line string) (string, []note) {
 	case "clips clear":
 		if !write() {
 			return refuse(111, "remote control disabled")
+		}
+		if d.clearLag > 0 {
+			time.AfterFunc(d.clearLag, func() {
+				d.mu.Lock()
+				d.timeline, d.clipID, d.frame = nil, 0, 0
+				d.mu.Unlock()
+			})
+			return ok, nil
 		}
 		d.timeline, d.clipID, d.frame = nil, 0, 0
 		return ok, nil

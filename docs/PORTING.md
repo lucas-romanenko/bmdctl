@@ -3366,8 +3366,12 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   timeline in clips, before → after. `--before` is checked against that
   read; `remove` takes a number or a name, as `goto` does; `clear` is
   destructive and says how many clips go, `already` on an empty
-  timeline. The fake inserts before a clip, as `clips add: clip id:`
-  says.
+  timeline. A deck answers `clips clear` before the timeline is empty
+  (bmdwire#59, `80bd754`: 0.16 s on a Studio HD Mini, the twenty-second
+  hardware run), so `clear` reads it back every 50 ms until it is, for
+  1 s at most (`clearSettle`), and says what it read last. The fake
+  inserts before a clip, as `clips add: clip id:` says, and empties the
+  timeline late with `ClearLag`, as the deck does.
 - **The setup group:** `remote <on>` is `remote_enable`, read back after
   (`remote info`); off, the deck refuses every write, from any client,
   until it is on again, over 9993 too: the twenty-first hardware run's
@@ -3485,7 +3489,8 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   (raw text to every connection), `Reject(n)` (120 to the next n), `Drop`
   (closes every connection); `Commands`, `Status`, `Slot` to look inside.
 - **Not a deck model.** The timecode moves only on goto, nothing plays
-  through to the next clip, and nothing about a deck's timing is claimed.
+  through to the next clip, and nothing about a deck's timing is
+  claimed, but for `ClearLag`, the one delay a deck was measured at.
   A goto by timecode beyond the timeline is not known from a deck; the
   fake refuses it, 109.
 

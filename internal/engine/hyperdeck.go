@@ -485,6 +485,10 @@ func (c *call) timeline() ([]hyperdeck.Clip, error) {
 	return c.deck.State().Timeline, nil
 }
 
+// clearSettle is how long timeline clear reads the timeline back for,
+// waiting for it to be empty.
+const clearSettle = time.Second
+
 // readTimeline reads the timeline into the session's state: an empty one
 // is none, not the deck's 107 (Session.ClipsGet, bmdwire#57).
 func (c *call) readTimeline() error {
@@ -510,6 +514,21 @@ func (c *call) timelineEdit(cmd hyperdeck.Command, before int) (any, bool, error
 	}
 	if err := c.readTimeline(); err != nil {
 		return r, true, err
+	}
+	// A clear is answered before the timeline is empty (bmdwire#59,
+	// 80bd754: 0.16 s on a Studio HD Mini): read it back until it is,
+	// clearSettle at most. Still not empty then, the result says so.
+	if _, clear := cmd.(hyperdeck.ClipsClear); clear {
+		for deadline := time.Now().Add(clearSettle); len(c.deck.State().Timeline) > 0 && time.Now().Before(deadline); {
+			select {
+			case <-c.ctx.Done():
+				return r, true, c.ctx.Err()
+			case <-time.After(50 * time.Millisecond):
+			}
+			if err := c.readTimeline(); err != nil {
+				return r, true, err
+			}
+		}
 	}
 	c.note(Note{Values: []Value{{Param: "timeline", Before: ptr(timeline(before)), After: timeline(len(c.deck.State().Timeline))}}})
 	return r, true, nil
