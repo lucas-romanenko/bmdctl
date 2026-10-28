@@ -120,7 +120,7 @@ The documentation is also a site, https://lucas-romanenko.github.io/bmdctl/
 - [bmdwire](https://github.com/lucas-romanenko/bmdwire), the Python
   original by the same author. bmdctl's device packages are a port of its
   libraries (atemwire, hyperdeckwire, videohubwire, ultimattewire),
-  following v1.7.1.
+  following v1.8.0.
 - [pyatem](https://git.sr.ht/~martijnbraam/pyatem) by Martijn Braam and the
   OpenAtem contributors, for the ATEM protocol groundwork. atemwire, which
   `atem/` ports, is a fork of it ([atem/NOTICE](atem/NOTICE)).

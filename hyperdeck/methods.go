@@ -2,7 +2,7 @@
 
 package hyperdeck
 
-// bmdwire v1.3.0's Hyperdeck methods (hyperdeckwire/client.py), each a
+// bmdwire v1.8.0's Hyperdeck methods (hyperdeckwire/client.py), each a
 // command sent with SendAndWait, so a refusal is an *Error as
 // HyperdeckError is raised, and its answer read as the method reads it.
 
@@ -112,22 +112,23 @@ func (s *Session) ClipsGet(ctx context.Context) ([]Clip, error) {
 func (s *Session) Stop(ctx context.Context) error { return s.ok(ctx, Stop{}) }
 
 // PlayOptions are play's arguments: all optional, plain play without
-// them. Speed is a percentage, -5000 to 5000.
+// them. Speed is a percentage, -5000 to 5000. Loop and SingleClip go
+// true or false as given and nil leaves them out, as play's do since
+// bmdwire 1.8.0 (bmdwire#60).
 type PlayOptions struct {
-	Loop, SingleClip bool
+	Loop, SingleClip *bool
 	Speed, ClipID    *int
 }
 
 // Play starts playback.
 func (s *Session) Play(ctx context.Context, o PlayOptions) error {
-	c := Play{Speed: o.Speed, ClipID: o.ClipID}
-	if o.Loop {
-		c.Loop = &o.Loop
-	}
-	if o.SingleClip {
-		c.SingleClip = &o.SingleClip
-	}
-	return s.ok(ctx, c)
+	return s.ok(ctx, Play{Loop: o.Loop, SingleClip: o.SingleClip, Speed: o.Speed, ClipID: o.ClipID})
+}
+
+// Record starts recording on the active slot, into a clip named name,
+// or with "" one the deck names from its record prefix (bmdwire#60).
+func (s *Session) Record(ctx context.Context, name string) error {
+	return s.ok(ctx, Record{Name: name})
 }
 
 // Pause holds the current frame (play at speed 0).
@@ -150,6 +151,35 @@ func (s *Session) ClipsRemove(ctx context.Context, clipID int) error {
 // GotoClip moves to the start of a timeline clip, without playing.
 func (s *Session) GotoClip(ctx context.Context, clipID int) error {
 	return s.ok(ctx, GotoClip{ClipID: clipID})
+}
+
+// GotoClipBy moves offset clips along the timeline, back when negative
+// (bmdwire#60); 0 is refused unsent.
+func (s *Session) GotoClipBy(ctx context.Context, offset int) error {
+	return s.ok(ctx, GotoClipBy{Offset: offset})
+}
+
+// GotoTimecode moves to a timecode, HH:MM:SS:FF (;FF drop frame),
+// without playing (bmdwire#60); anything else is refused unsent.
+func (s *Session) GotoTimecode(ctx context.Context, timecode string) error {
+	return s.ok(ctx, GotoTimecode{Timecode: timecode})
+}
+
+// Notify returns which notifications are on for this connection, each
+// "true" or "false" (209 notify; bmdwire#60).
+func (s *Session) Notify(ctx context.Context) (map[string]string, error) {
+	return s.params(ctx, Notify{})
+}
+
+// SetNotify turns notifications on or off for this connection, in one
+// notify: line (bmdwire#60). With nothing to set it sends nothing, as
+// set_notify does. What the deck then sends comes through Subscribe,
+// where hyperdeckwire's read_notifications returns it.
+func (s *Session) SetNotify(ctx context.Context, kinds ...Setting) error {
+	if len(kinds) == 0 {
+		return nil
+	}
+	return s.ok(ctx, Notify{Settings: kinds})
 }
 
 // RemoteEnable turns remote control on or off.

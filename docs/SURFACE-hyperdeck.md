@@ -1,7 +1,10 @@
 <!--
 Written for bmdctl from bmdwire v1.3.0 (tag v1.3.0, commit cea58c2),
-package hyperdeckwire/, which has no SURFACE.md of its own, with what
-1.7.0's docs/API.md adds about a deck (bmdwire#53). It is the
+package hyperdeckwire/, which has no SURFACE.md of its own, and brought
+up to v1.8.0 (tag v1.8.0, commit 3ab4180): 1.4.0's fixes (bmdwire#18 to #21,
+§5.4), 1.7.0's notes about a deck (bmdwire#53), 1.7.1's empty timeline
+(bmdwire#57) and 1.8.0's record, goto, loop off and notifications
+(bmdwire#60) and the clear's lag (bmdwire#59). It is the
 specification for bmdctl's hyperdeck package, as docs/SURFACE-atem.md is
 for atem. Corrections and port decisions go in docs/PORTING.md
 ("HyperDeck"); this file says what hyperdeckwire does.
@@ -9,16 +12,19 @@ for atem. Corrections and port decisions go in docs/PORTING.md
 
 # hyperdeckwire: complete library surface
 
-An inventory of everything bmdwire v1.3.0's `hyperdeckwire` can do, built
+An inventory of everything bmdwire v1.8.0's `hyperdeckwire` can do, built
 for mapping to CLI commands. Every entry was read from the code
 (`client.py`, `upload.py`, `setup.py`, `__init__.py`); where its README,
 `docs/API.md` or a docstring says otherwise, the code wins and §5.3 lists
 the disagreement. What the code does with every kind of answer was also
 recorded by running it (`hyperdeck/testdata/oracle/client.json`).
 
-- **Source read:** `bmdwire` v1.3.0 (`github.com/lucas-romanenko/bmdwire`,
-  commit `cea58c2`), package `hyperdeckwire/`. Its last changes are
-  `bd9f78d` (1.2.0, `setup.py`) and `adea125` (the 1.3.0 release).
+- **Source read:** `bmdwire` v1.8.0 (`github.com/lucas-romanenko/bmdwire`),
+  package `hyperdeckwire/`, first at v1.3.0 (`cea58c2`). `client.py`'s
+  changes since: `c8ff262`, `c1b5fb6`, `74973fe` and `008ac39` (1.4.0,
+  bmdwire#18 to #21), `b26ccf5` (1.7.1, #57), `80bd754` (#59) and
+  `a0a0cec` (1.8.0, #60). `upload.py` and `setup.py` are as at 1.2.0
+  (`bd9f78d`).
 - **Three channels, one module each:** `client.py`, the HyperDeck Ethernet
   Protocol on TCP 9993 (control, clips, timeline, configuration);
   `upload.py`, clip upload over the deck's FTP server; `setup.py`, the
@@ -27,9 +33,14 @@ recorded by running it (`hyperdeck/testdata/oracle/client.json`).
   here (§3) and not ported yet.
 - **Protocol reference:** BMD's `HyperDeckEthernetProtocol.pdf` (December
   2024). hyperdeckwire wraps a subset of it (§5.1 lists what it leaves out).
-- **Verified on hardware** (its README): a HyperDeck Studio HD Mini on
-  firmware 8.1.1 through the probe, clear, upload and cue-and-loop cycle;
-  two HD Minis on 9.0.2 for the configuration API. Nothing else.
+- **Verified on hardware** (its README and `docs/API.md`, "Validated
+  against"): a HyperDeck Studio HD Mini on firmware 8.1.1 through the
+  probe, clear, upload and cue-and-loop cycle; two HD Minis on 9.0.2 for
+  the configuration API; and an HD Mini on 9.0.2, protocol 1.19, through
+  bmdctl: the reads, notifications, `stop`, `play` (loop on and off),
+  `goto_clip`, `slot_select`, and the refusals of a relative `goto` past
+  the ends (109) and of `record` with no input (110). `goto_timecode`
+  has run nowhere.
 - **Public surface** (`__init__.py`): `Hyperdeck`, `Clip`, `Response`,
   `HyperdeckError`, `upload_clip`, `UploadResult`, `HyperdeckSetup`,
   `HyperdeckSetupError`, `SetupInfo`, `NetworkInterface`, `RemoteAdmin`,
@@ -52,20 +63,25 @@ disabled`. Each method sends one line, `command` or `command: key: value
 key: value`, terminated by LF alone, encoded UTF-8, and raises
 `HyperdeckError` for a 1xx answer (`_check_ok`). Values are written with
 Python's f-strings, so ints are decimal and negative ones keep their sign.
-Nothing is validated: a value holding a newline is sent as two lines.
+A line holding a CR or LF raises `ValueError` before anything is sent
+(1.4.0, bmdwire#20); other values go as given, speeds and ids unchecked.
 
 | method | line sent | notes |
 |---|---|---|
 | `stop()` | `stop` | stops playback or recording; under the factory `stop mode: lastframe` the deck holds the frame. It also clears loop and single clip, so a `play()` after it plays once (a Studio HD Mini on 9.0.2, bmdwire#53) |
-| `play(*, loop=False, single_clip=False, speed=None, clip_id=None)` | `play`, or `play: ` then `clip id: {n}`, `loop: true`, `single clip: true`, `speed: {int(speed)}` in that order, space-separated | `loop` and `single_clip` are written only when true; `speed` is a percentage, -5000 to 5000, `int()`-truncated, unchecked |
+| `play(*, loop=None, single_clip=None, speed=None, clip_id=None)` | `play`, or `play: ` then `clip id: {n}`, `loop: true`/`false`, `single clip: true`/`false`, `speed: {int(speed)}` in that order, space-separated | `loop` and `single_clip` are written as given and left out when `None` (1.8.0, bmdwire#60; before, `False` was left out too, §5.4 item 8); `speed` is a percentage, -5000 to 5000, `int()`-truncated, unchecked |
 | `pause()` | `play: speed: 0` | the protocol has no pause; the transport then reports `stopped` |
-| `clips_clear()` | `clips clear` | empties the timeline; deletes nothing on disk |
+| `record(name=None)` | `record`, or `record: name: {name}` when `name` is truthy | 1.8.0 (bmdwire#60). With no input a Studio HD Mini on 9.0.2 refuses it, `110 no input`, and goes to preview all the same, which `stop` leaves and a `goto: clip id:` ends |
+| `clips_clear()` | `clips clear` | empties the timeline; deletes nothing on disk. The deck answers before the timeline is empty: a `clips get` 0.01 s after the `200 ok` listed the old clips, at 0.16 s none (a Studio HD Mini on 9.0.2; bmdwire#59) |
 | `clips_add(name, *, before_clip_id=None)` | `clips add: name: {name}` or `clips add: clip id: {n} name: {name}` | the name goes verbatim: the deck reads everything after `name:` to the end of the line, so spaces and folders (`folder/clip.mp4`) need no escaping |
 | `clips_remove(clip_id)` | `clips remove: clip id: {n}` | renumbers the clips after it |
 | `goto_clip(clip_id)` | `goto: clip id: {n}` | seeks to the clip's start without playing |
+| `goto_clip_by(offset)` | `goto: clip id: {offset:+d}` (`+1`, `-1`) | 1.8.0 (bmdwire#60): `int(offset)`; 0 raises `ValueError('goto_clip_by: an offset of 0 clips moves nowhere')` unsent. Past either end a deck refuses it, `109 out of range` |
+| `goto_timecode(timecode)` | `goto: timecode: {timecode}` | 1.8.0 (bmdwire#60): anything but a str that `_TIMECODE` matches whole (`HH:MM:SS:FF` or `HH:MM:SS;FF`, ASCII digits, hours under 24, minutes and seconds under 60) raises `ValueError('goto_timecode: {repr} is not a timecode, HH:MM:SS:FF')` unsent |
 | `remote_enable(enable=True)` | `remote: enable: true` / `false` | |
 | `slot_select(slot_id)` | `slot select: slot id: {n}` | |
 | `set_configuration(**params)` | `configuration: {name}: {value} ...` | one line for all, applied as a batch; each keyword's underscores become spaces, a bool is `true`/`false`, anything else `str(value)`; no keywords sends nothing. A `213 deck rebooting` is a success, and the deck may then drop the connection, which nothing reconnects |
+| `set_notify(**kinds)` | `notify: {name}: {value} ...` | 1.8.0 (bmdwire#60): stacked as `set_configuration` stacks (`_stack`); no keywords sends nothing. Kinds: `transport`, `slot`, `remote`, `configuration`, `display_timecode` (every frame) and the rest of BMD's list |
 | `ping()` | `ping` | |
 
 `set_configuration`'s docstring lists the common names: `file_format`
@@ -83,10 +99,12 @@ component, composite), `audio_input` (embedded, XLR, RCA), `audio_codec`
 | `slot_info(slot_id=None)` | `slot info` / `slot info: slot id: {n}` | `params()`: slot id, status, volume name, recording time, video format, blocked, ... |
 | `transport_info()` | `transport info` | `params()`: status, speed, slot id, clip id, single clip, display timecode, timecode, video format, loop, timeline, ... |
 | `configuration()` | `configuration` | `params()` |
+| `notify()` | `notify` | `params()` of `209 notify`: each kind, `true` or `false` (1.8.0, bmdwire#60) |
 | `disk_list(slot_id=None)` | `disk list` / `disk list: slot id: {n}` | `List[Clip]` from `_parse_disk_line` |
 | `clips_count()` | `clips count` | `int(params().get('clip count', '0'))`; a value `int()` refuses raises `ValueError` |
 | `clips_get()` | `clips get` | `List[Clip]` from `_parse_clips_v1_line` (version 1 rows); `[]` on an empty timeline, where the deck answers `107 timeline empty` (1.7.1, bmdwire#57) |
 | `model`, `protocol_version` (properties) | | the greeting's `model` and `protocol version` params, `''` without |
+| `read_notifications(timeout=0.0)` | | 1.8.0 (bmdwire#60): the asynchronous (5xx) `Response`s set aside since the last call, oldest first, forgotten once returned; see §4 |
 
 - **`Response(code, text, lines)`**, frozen: `is_ok()` 200-299,
   `is_error()` 100-199, `is_async()` 500-599. `params()` flattens the
@@ -152,12 +170,13 @@ Verified on two Studio HD Minis on 9.0.2.
   socket_factory=None)`**, a context manager. One blocking socket, one
   thread; no locking. `socket_factory` is the tests' hook.
 - **connect** closes any previous socket, opens one with `connect_timeout`,
-  sets `read_timeout`, and reads one response with `skip_async=False`: the
-  greeting, `500 connection info:` (`protocol version`, `model`). Whatever
-  the first block is becomes the greeting; no code is checked, so a deck
-  answering `120 connection rejected` (too many clients) connects, with an
-  empty model, and the next call finds the socket closed. A failure while
-  reading it closes the socket and raises.
+  sets `read_timeout`, empties the notifications set aside, and reads one
+  response with `skip_async=False`: the greeting, `500 connection info:`
+  (`protocol version`, `model`). A 1xx greeting (`120 connection
+  rejected`, too many clients) raises `HyperdeckError`, anything else but
+  500 `OSError('unexpected greeting: ...')` with the response's repr
+  (1.4.0, bmdwire#21; before, any first block was the greeting). A
+  failure while reading it closes the socket and raises.
 - **Framing** (`_recv_line`, `_read_response`): bytes up to each LF, every
   trailing CR stripped, decoded UTF-8 with `errors='replace'`. Empty head
   lines are skipped. The head is split at its first space into the code
@@ -170,19 +189,29 @@ Verified on two Studio HD Minis on 9.0.2.
   polled in 0.5 s slices; past it, `TimeoutError('no line within
   deadline')`. The stream ending (`recv` returning nothing), even in the
   middle of a line, is `ConnectionError('peer closed connection')`.
-- **`request(command, timeout=None)`** sends the line and returns the next
-  response that isn't asynchronous; it doesn't raise for 1xx.
-  Asynchronous (5xx) blocks met on the way are logged at debug and
-  dropped (`skip_async`); `_read_response(skip_async=False)` would return
-  them, which only connect does.
+- **`request(command, timeout=None)`** first reads, without blocking,
+  every complete response already arrived and drops it, logged at warning
+  (`_drop_unrequested`, 1.4.0, bmdwire#19); a partial one stays. Then it
+  sends the line and returns the next response that isn't asynchronous;
+  it doesn't raise for 1xx. A timeout closes the connection before
+  `TimeoutError` (1.4.0, bmdwire#18). Asynchronous (5xx) blocks met on the
+  way, in the drain or the read, are set aside for `read_notifications`
+  (1.8.0, bmdwire#60; before, logged at debug and dropped), at most
+  `NOTIFICATION_BACKLOG` (1000), the oldest going first.
+- **`read_notifications(timeout=0.0)`** drains as `request` does, then,
+  with none set aside and `timeout` left, reads in 0.5 s slices until one
+  arrives; a response that isn't one is dropped as unrequested. Waiting
+  out `timeout` raises nothing and closes nothing. It returns them all
+  and forgets them. Not connected, `OSError('not connected')`.
 - **Errors:** `HyperdeckError(code, text)`, `str()` `[code] text`, for a
   1xx answer (codes in §4.1); the socket's own `OSError`,
   `ConnectionError`, `TimeoutError`; `OSError('not connected')` for a call
-  after close; `ValueError` from `clips_count`.
+  after close; `ValueError` from `clips_count`, a line break,
+  `goto_clip_by(0)` and `goto_timecode`.
 - **close** sends `quit` (ignoring `OSError`), shuts the socket down and
   closes it; a second close does nothing.
 - **No state, no events, no reconnection.** Nothing is kept between calls
-  but the greeting.
+  but the greeting and the notifications not yet read.
 
 ### 4.1 Response codes (BMD's document, as `docs/API.md` lists them)
 
@@ -204,27 +233,23 @@ the fields that changed.
 ### 5.1 In the protocol, not in hyperdeckwire
 
 `docs/API.md` lists them as not exposed: the `playrange` family, `goto`
-beyond `goto_clip` (timecode, relative clips, timeline, slot), `jog`,
-`shuttle`, `record` and the recording side, `format`, `slate`, `nas`, the
-`notify` interface (it never turns notifications on, so a deck sends none
-but the greeting), and multi-line commands (`authenticate:`). Also absent:
+beyond `goto_clip`, `goto_clip_by` and `goto_timecode` (a clip's or the
+timeline's start or end, a relative timecode, a slot), `jog`, `shuttle`,
+`record` beyond `record()` (`record: spill`, to a timecode), `format`,
+`slate`, `nas`, and multi-line commands (`authenticate:`). Also absent:
 `play option`, `play on startup`, `preview`, `uptime`, `identify`,
 `watchdog`, `dynamic range`, `slot unblock`, `clips get` version 2 and its
 `clip id`/`count` arguments.
 
-Since 1.7.0 (bmdwire#53) `docs/API.md` says what a Studio HD Mini on 9.0.2
-answers to two of them: a relative `goto: clip id: +1` or `-1` past either
-end of the timeline is refused, `109 out of range`, not held at the end;
-`record` with no video input is refused, `110 no input`, and the deck goes
-to `preview` all the same, which `stop` leaves as it is and a `goto: clip
-id:` ends.
+Until 1.8.0 `record`, a relative `goto` and `goto` by timecode, and the
+`notify` interface were on this list too; bmdwire#60 added them (§1,
+§2), from lines bmdctl had sent first.
 
 ### 5.2 Implemented, but not exposed
 
-- `_read_response(skip_async=False)` is the only way to read a
-  notification; the README calls it the pattern "for a future
-  async-notifications consumer".
 - `request()` is public and doesn't raise for 1xx; `_check_ok` does.
+  Until 1.8.0 `_read_response(skip_async=False)` was the only way to read
+  a notification; `read_notifications` is it now.
 
 ### 5.3 Docs and comments that say something the code doesn't do
 
@@ -242,34 +267,42 @@ id:` ends.
 
 1. **A late answer is read as the next command's.** A response that comes
    after `read_timeout` stays in the stream; the next request reads it as
-   its own, and every answer after is one behind.
+   its own, and every answer after is one behind. *Fixed in 1.4.0
+   (bmdwire#18, `c8ff262`): a timeout closes the connection.*
 2. **A stray answer does the same:** a response nobody asked for is the
-   next request's.
+   next request's. *Fixed in 1.4.0 (bmdwire#19, `c1b5fb6`) for one that
+   has arrived before the request is sent, which is dropped; one that
+   arrives after can't be told from the answer.*
 3. **A malformed head is the current request's error**, and the block it
    heads, if any, is then read as the next request's answer.
 4. **A short block swallows what follows:** a block missing its blank line
    takes the next response's head as a body line.
 5. **No value is checked:** a newline in a clip name, a record prefix or
    any value sends a second command; speeds and ids outside the deck's
-   ranges go as given.
+   ranges go as given. *Fixed in 1.4.0 for line breaks (bmdwire#20,
+   `74973fe`), which raise `ValueError` unsent; ranges are still
+   unchecked.*
 6. **The greeting isn't checked** (§4): a deck at its client limit
-   "connects".
+   "connects". *Fixed in 1.4.0 (bmdwire#21, `008ac39`).*
 7. **`213 deck rebooting` is success**, and the deck may then drop the
    connection; the next call fails.
 8. **`play(loop=False)` sends a plain `play`:** loop and single clip can be
-   turned on, never off, through `play`.
+   turned on, never off, through `play`. *Fixed in 1.8.0 (bmdwire#60,
+   `a0a0cec`): a `False` is sent, `None` left out.*
 9. **`int()` reads codes and ids,** so `٢٠٠` and `2_00` are 200 and a clip
    row's id may be in any script's digits.
 
 ## Counts
 
-- `Hyperdeck`: 22 public methods (`connect`, `close`, `request`, 11 writes
-  in §1, 8 reads in §2) and 2 properties; `Response` (3 predicates and
-  `params`), `Clip` (6 fields), `HyperdeckError`; 3 line parsers and
-  their driver.
+- `Hyperdeck`: 28 public methods (`connect`, `close`, `request`,
+  `read_notifications`, 15 writes in §1, 9 reads in §2) and 2 properties;
+  `Response` (3 predicates and `params`), `Clip` (6 fields),
+  `HyperdeckError`; 3 line parsers and their driver; `_stack`.
 - `upload.py`: 1 function, 1 result type. `setup.py`: `HyperdeckSetup` with
   34 public methods, 4 result types, 1 error.
-- Tests at v1.3.0: 28 in `test_hyperdeckwire_client.py` (ported one for one
-  in `hyperdeck/client_test.go`, on the fixtures copied from them), 10 in
-  `test_hyperdeckwire_upload.py` and 39 in `test_hyperdeckwire_setup.py`
-  (not ported with their modules).
+- Tests at v1.8.0: 62 in `test_hyperdeckwire_client.py`: v1.3.0's 28 and
+  1.8.0's 23 ported one for one in `hyperdeck/client_test.go`, but for
+  nine of the ten on `read_notifications`, whose queue a Session hasn't
+  (the tenth is checked through Subscribe); the 11 of 1.4.0 to 1.7.1 are
+  recorded in the oracle. 10 in `test_hyperdeckwire_upload.py` and 39 in
+  `test_hyperdeckwire_setup.py` (not ported with their modules).

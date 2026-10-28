@@ -3,7 +3,7 @@
 
     python3 -I gen_client.py /path/to/bmdwire ../fixtures client.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.7.1. Nothing here
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.8.0. Nothing here
 opens a socket: every session runs hyperdeckwire's real ``Hyperdeck`` class
 (hyperdeckwire/client.py) over a scripted stand-in socket, the way its own
 tests do, and records what it did.
@@ -200,6 +200,8 @@ def error(e):
 def invoke(hd, method, args):
     if method == 'set_configuration':
         return hd.set_configuration(**dict(args['params']))
+    if method == 'set_notify':
+        return hd.set_notify(**dict(args['kinds']))
     return getattr(hd, method)(**args)
 
 
@@ -278,6 +280,36 @@ session('test_set_configuration_raises_on_protocol_error', GREETING + fixture('i
 session('test_set_configuration_accepts_213_deck_rebooting_as_success', GREETING + fixture('deck-rebooting.bin'),
         [('set_configuration', {'params': [['file_format', 'QuickTimeProResHQ']]})])
 session('test_clips_count_returns_int', GREETING + fixture('clips-count.bin'), [('clips_count', {})])
+
+# 1.8.0's (bmdwire#60), their bytes inline as theirs are. Those on
+# read_notifications aren't here: a Session gives notifications through
+# Subscribe, and client_test.go tests the one that maps.
+session('test_play_with_false_loop_and_single_clip_sends_them_false', GREETING + OK,
+        [('play', {'loop': False, 'single_clip': False})])
+session('test_play_leaves_out_what_it_is_not_given', GREETING + OK, [('play', {'single_clip': True, 'speed': 50})])
+for offset in (1, -1, 3):
+    session(f'test_goto_clip_by_sends_a_signed_offset {offset}', GREETING + OK, [('goto_clip_by', {'offset': offset})])
+session('test_goto_clip_by_zero_is_refused_unsent', GREETING + OK, [('goto_clip_by', {'offset': 0})])
+session('test_goto_clip_by_past_the_end_raises_109', GREETING + b'109 out of range\r\n',
+        [('goto_clip_by', {'offset': 1})])
+for tc in ('00:01:30:00', '23:59:59:29', '00:00:10;02'):
+    session(f'test_goto_timecode_sends_it {tc}', GREETING + OK, [('goto_timecode', {'timecode': tc})])
+for tc in ('1:00:00:00', '24:00:00:00', '00:60:00:00', '00:00:60:00', '00;00:00:00', '00:00:00:0', '00:00:00:000',
+           ' 00:00:00:00', '00:00:00:00\n', '', '\u0660\u0660:\u0660\u0660:\u0660\u0660:\u0660\u0660', "00:00:00:0'"):
+    session(f'test_goto_timecode_refuses_anything_else_unsent {tc!r}', GREETING + OK,
+            [('goto_timecode', {'timecode': tc})])
+for name in (None, '', 'Interview 2'):
+    session(f'test_record_sends_its_name_if_given {name!r}', GREETING + OK,
+            [('record', {} if name is None else {'name': name})])
+session('test_record_with_no_input_raises_110', GREETING + b'110 no input\r\n', [('record', {})])
+session('test_notify_reads_which_are_on',
+        GREETING + b'209 notify:\r\nremote: false\r\ntransport: true\r\nslot: false\r\nconfiguration: false\r\n\r\n',
+        [('notify', {})])
+session('test_set_notify_stacks_its_kinds_in_one_line', GREETING + OK,
+        [('set_notify', {'kinds': [['transport', True], ['slot', True], ['display_timecode', False]]})])
+session('test_set_notify_no_args_is_noop', GREETING, [('set_notify', {'kinds': []})])
+session('test_set_notify_raises_on_protocol_error', GREETING + b'101 unsupported parameter\r\n',
+        [('set_notify', {'kinds': [['timeline_position', True]]})])
 session('test_context_manager_connects_and_closes', GREETING, [('close', {})])
 session('test_close_is_idempotent', GREETING, [('close', {}), ('close', {})])
 
@@ -302,6 +334,8 @@ READS = {
     'clips_get': b'205 clips info:\r\nclip count: 2\r\n1: Intro Loop animation.mp4 00:00:00:00 00:01:03:17\r\n'
                  b'2: Other.mov 00:01:03:17 00:00:30:00\r\n\r\n',
     'clips_count': b'214 clips count:\r\nclip count: 2\r\n\r\n',
+    'notify': b'209 notify:\r\nremote: false\r\ntransport: true\r\nslot: true\r\nconfiguration: false\r\n'
+              b'display timecode: false\r\n\r\n',
 }
 
 METHODS = [
@@ -319,6 +353,11 @@ METHODS = [
     ('set_configuration', {'params': [['file_format', 'H.264High']]}),
     ('set_configuration', {'params': [['record prefix', 'Show 1'], ['record_cache', True], ['timecode_input', 'SDI']]}),
     ('set_configuration', {'params': [['default_standard', 25]]}),
+    ('record', {}), ('record', {'name': 'Interview 2'}), ('goto_clip_by', {'offset': 1}),
+    ('goto_clip_by', {'offset': -1}), ('goto_timecode', {'timecode': '00:01:30:00'}),
+    ('goto_timecode', {'timecode': '00:00:10;02'}), ('notify', {}),
+    ('set_notify', {'kinds': [['transport', True], ['slot', True], ['remote', True], ['configuration', True]]}),
+    ('set_notify', {'kinds': [['display_timecode', False]]}),
 ]
 
 ERRORS = [
@@ -473,7 +512,7 @@ for lines in [
 ]:
     PARAMS.append({'lines': lines, 'result': C.Response(code=200, text='x', lines=lines).params()})
 
-doc = {'bmdwire': 'v1.7.1', 'sessions': SESSIONS, 'parsers': PARSERS, 'params': PARAMS}
+doc = {'bmdwire': 'v1.8.0', 'sessions': SESSIONS, 'parsers': PARSERS, 'params': PARAMS}
 with open(OUT, 'w') as f:
     json.dump(doc, f, indent=1, ensure_ascii=False, sort_keys=True)
     f.write('\n')

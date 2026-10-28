@@ -4,7 +4,8 @@ package hyperdeck
 
 // The Session against the fake deck (internal/fakehyperdeck): what
 // bmdctl adds to hyperdeckwire (the state, notifications, timeouts that
-// end the session) and the commands it sends from BMD's document.
+// end the session) and the commands hyperdeckwire 1.8.0 added
+// (bmdwire#60), which bmdctl sent first.
 
 import (
 	"context"

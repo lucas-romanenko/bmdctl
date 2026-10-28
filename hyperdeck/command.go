@@ -2,17 +2,18 @@
 
 package hyperdeck
 
-// The commands: one type per line bmdwire v1.3.0's hyperdeckwire sends
-// (client.py, the Hyperdeck methods), written as it writes them, and the
-// ones bmdctl adds from BMD's protocol document (HyperDeckEthernetProtocol
-// .pdf), which hyperdeckwire doesn't send and nobody has yet sent from
-// bmdctl to a deck: Record, GotoClipBy, GotoTimecode, Notify, and Play's
-// loop and single clip turned off.
+// The commands: one type per line bmdwire v1.8.0's hyperdeckwire sends
+// (client.py, the Hyperdeck methods), written as it writes them. Record,
+// GotoClipBy, GotoTimecode, Notify and Play's loop and single clip turned
+// off came to hyperdeckwire in 1.8.0 (bmdwire#60), from lines bmdctl had
+// sent on its own.
 
 import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/lucas-romanenko/bmdctl/internal/pytext"
 )
 
 // Command is one line to the deck.
@@ -132,10 +133,10 @@ func (Stop) Line() string { return "stop" }
 
 // Play starts playback, or changes the one under way: play. Speed is a
 // percentage, -5000 to 5000 (100 is normal, negative plays backwards),
-// ClipID a timeline clip to start at. hyperdeckwire writes loop and single
-// clip only when true; a false here writes them false (bmdctl's loop off,
-// from BMD's document), nil leaves them out. The order is
-// hyperdeckwire's: clip id, loop, single clip, speed.
+// ClipID a timeline clip to start at. Loop and SingleClip are written as
+// given, true or false, and nil leaves them out, as hyperdeckwire 1.8.0
+// writes them (bmdwire#60; before, a false was left out too). The order
+// is hyperdeckwire's: clip id, loop, single clip, speed.
 type Play struct {
 	ClipID     *int
 	Loop       *bool
@@ -204,35 +205,35 @@ type GotoClip struct{ ClipID int }
 func (c GotoClip) Line() string { return fmt.Sprintf("goto: clip id: %d", c.ClipID) }
 
 // GotoClipBy moves the transport Offset clips along the timeline, back
-// when negative: "goto: clip id: +1" is the next clip. From BMD's
-// document; hyperdeckwire doesn't send it.
+// when negative: "goto: clip id: +1" is the next clip. goto_clip_by
+// (bmdwire#60); past either end a deck refuses it, 109.
 type GotoClipBy struct{ Offset int }
 
 func (c GotoClipBy) Line() string { return fmt.Sprintf("goto: clip id: %+d", c.Offset) }
 
 func (c GotoClipBy) Validate() error {
 	if c.Offset == 0 {
-		return errors.New("hyperdeck: goto: an offset of 0 clips moves nowhere")
+		return errors.New("hyperdeck: goto_clip_by: an offset of 0 clips moves nowhere")
 	}
 	return nil
 }
 
-// GotoTimecode moves the transport to a timecode, HH:MM:SS:FF. From BMD's
-// document; hyperdeckwire doesn't send it.
+// GotoTimecode moves the transport to a timecode, HH:MM:SS:FF:
+// goto_timecode (bmdwire#60), which refuses anything else, unsent.
 type GotoTimecode struct{ Timecode string }
 
 func (c GotoTimecode) Line() string { return "goto: timecode: " + c.Timecode }
 
 func (c GotoTimecode) Validate() error {
 	if !IsTimecode(c.Timecode) {
-		return fmt.Errorf("hyperdeck: goto: %q is not a timecode, HH:MM:SS:FF", c.Timecode)
+		return fmt.Errorf("hyperdeck: goto_timecode: %s is not a timecode, HH:MM:SS:FF", pytext.Repr(c.Timecode))
 	}
 	return nil
 }
 
 // IsTimecode reports whether s is HH:MM:SS:FF (or HH:MM:SS;FF, drop
 // frame), two digits each, hours under 24 and minutes and seconds under
-// 60.
+// 60: goto_timecode's _TIMECODE (bmdwire#60).
 func IsTimecode(s string) bool {
 	if len(s) != 11 {
 		return false
@@ -251,8 +252,8 @@ func IsTimecode(s string) bool {
 	return two(0) < 24 && two(3) < 60 && two(6) < 60
 }
 
-// Record starts recording, into a clip named Name if given. From BMD's
-// document; hyperdeckwire doesn't send it.
+// Record starts recording, into a clip named Name if given: record
+// (bmdwire#60). With no input a deck refuses it, 110.
 type Record struct{ Name string }
 
 func (c Record) Line() string {
@@ -280,8 +281,8 @@ type Ping struct{}
 func (Ping) Line() string { return "ping" }
 
 // Notify turns asynchronous notifications on or off for this connection
-// ("transport: true"), or with no settings asks which are on. From BMD's
-// document; hyperdeckwire never turns them on.
+// ("transport: true"), set_notify, or with no settings asks which are on,
+// notify (bmdwire#60).
 type Notify struct{ Settings []Setting }
 
 func (c Notify) Line() string {

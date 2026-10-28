@@ -18,8 +18,8 @@ import (
 	"time"
 )
 
-// testdata/oracle/client.json records what bmdwire v1.7.1's hyperdeckwire
-// client did in 747 sessions over scripted streams (gen_client.py). Each
+// testdata/oracle/client.json records what bmdwire v1.8.0's hyperdeckwire
+// client did in 921 sessions over scripted streams (gen_client.py). Each
 // is replayed here through a Session on a connection that gives it, call
 // by call, exactly the bytes hyperdeckwire had read: the Session reads
 // eagerly, hyperdeckwire only when asked.
@@ -213,8 +213,8 @@ func (s oracleStep) window(stream []byte) window {
 
 func TestClientMatchesHyperdeckwire(t *testing.T) {
 	o := loadOracle(t)
-	if len(o.Sessions) != 747 {
-		t.Fatalf("%d sessions, want 747: regenerate with gen_client.py?", len(o.Sessions))
+	if len(o.Sessions) != 921 {
+		t.Fatalf("%d sessions, want 921: regenerate with gen_client.py?", len(o.Sessions))
 	}
 	methods := map[string]int{}
 	for _, sc := range o.Sessions {
@@ -287,8 +287,9 @@ func TestClientMatchesHyperdeckwire(t *testing.T) {
 		})
 	}
 	for _, m := range []string{"device_info", "remote_info", "slot_info", "transport_info", "configuration",
-		"set_configuration", "disk_list", "clips_count", "clips_get", "stop", "play", "pause", "clips_clear",
-		"clips_add", "clips_remove", "goto_clip", "remote_enable", "slot_select", "ping", "close"} {
+		"set_configuration", "notify", "set_notify", "disk_list", "clips_count", "clips_get", "stop", "play",
+		"pause", "record", "clips_clear", "clips_add", "clips_remove", "goto_clip", "goto_clip_by", "goto_timecode",
+		"remote_enable", "slot_select", "ping", "close"} {
 		if methods[m] == 0 {
 			t.Errorf("no case calls %s", m)
 		}
@@ -311,6 +312,31 @@ func invoke(ctx context.Context, s *Session, c oracleCall) (any, error) {
 		json.Unmarshal(c.Args[name], &b)
 		return b
 	}
+	optBool := func(name string) *bool {
+		if _, ok := c.Args[name]; !ok {
+			return nil
+		}
+		b := boolArg(name)
+		return &b
+	}
+	strArg := func(name string) string {
+		var v string
+		json.Unmarshal(c.Args[name], &v)
+		return v
+	}
+	settings := func(name string) []Setting {
+		var pairs [][2]any
+		json.Unmarshal(c.Args[name], &pairs)
+		var ss []Setting
+		for _, p := range pairs {
+			v := p[1]
+			if f, ok := v.(float64); ok {
+				v = int(f)
+			}
+			ss = append(ss, Setting{p[0].(string), v})
+		}
+		return ss
+	}
 	switch c.Method {
 	case "device_info":
 		return s.DeviceInfo(ctx)
@@ -323,17 +349,11 @@ func invoke(ctx context.Context, s *Session, c oracleCall) (any, error) {
 	case "configuration":
 		return s.Configuration(ctx)
 	case "set_configuration":
-		var pairs [][2]any
-		json.Unmarshal(c.Args["params"], &pairs)
-		var ss []Setting
-		for _, p := range pairs {
-			v := p[1]
-			if f, ok := v.(float64); ok {
-				v = int(f)
-			}
-			ss = append(ss, Setting{p[0].(string), v})
-		}
-		return nil, s.SetConfiguration(ctx, ss...)
+		return nil, s.SetConfiguration(ctx, settings("params")...)
+	case "notify":
+		return s.Notify(ctx)
+	case "set_notify":
+		return nil, s.SetNotify(ctx, settings("kinds")...)
 	case "disk_list":
 		return s.DiskList(ctx, intArg("slot_id"))
 	case "clips_count":
@@ -343,8 +363,10 @@ func invoke(ctx context.Context, s *Session, c oracleCall) (any, error) {
 	case "stop":
 		return nil, s.Stop(ctx)
 	case "play":
-		return nil, s.Play(ctx, PlayOptions{Loop: boolArg("loop"), SingleClip: boolArg("single_clip"),
+		return nil, s.Play(ctx, PlayOptions{Loop: optBool("loop"), SingleClip: optBool("single_clip"),
 			Speed: intArg("speed"), ClipID: intArg("clip_id")})
+	case "record":
+		return nil, s.Record(ctx, strArg("name"))
 	case "pause":
 		return nil, s.Pause(ctx)
 	case "clips_clear":
@@ -357,6 +379,10 @@ func invoke(ctx context.Context, s *Session, c oracleCall) (any, error) {
 		return nil, s.ClipsRemove(ctx, *intArg("clip_id"))
 	case "goto_clip":
 		return nil, s.GotoClip(ctx, *intArg("clip_id"))
+	case "goto_clip_by":
+		return nil, s.GotoClipBy(ctx, *intArg("offset"))
+	case "goto_timecode":
+		return nil, s.GotoTimecode(ctx, strArg("timecode"))
 	case "remote_enable":
 		return nil, s.RemoteEnable(ctx, boolArg("enable"))
 	case "slot_select":

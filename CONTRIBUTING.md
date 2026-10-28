@@ -99,7 +99,7 @@ The oracle files (`internal/fixtures/oracle/*.json` and the
 what bmdwire itself does with thousands of generated inputs, and the Go
 tests replay them. They are committed, so running the tests needs no
 Python. Regenerating one needs bmdwire checked out at the tag its README
-names (from `v1.3.0` to `v1.7.1`) beside this repository, as
+names (from `v1.3.0` to `v1.8.0`) beside this repository, as
 `../bmdwire`; the scripts take its path. A change to a script, or a
 reason to think bmdwire's behaviour was recorded wrong, is the only
 reason to regenerate.

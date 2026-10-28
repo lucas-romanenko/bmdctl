@@ -501,7 +501,7 @@ func (c *cli) unverified(label string) {
 	}
 	why := "atemwire restored it from pyatem without checking it on a switcher"
 	if strings.HasPrefix(label, "hyperdeck ") {
-		why = "bmdctl sends it as BMD's protocol document describes; hyperdeckwire never sent it to a deck"
+		why = "no deck has been seen to carry it out yet (docs/HARDWARE.md)"
 	}
 	fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: %s\n", label, why)
 }

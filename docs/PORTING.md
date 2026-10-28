@@ -6,12 +6,12 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.7.1
+Tracks: bmdwire v1.8.0
 
-- The port follows **bmdwire v1.7.1** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.7.1`, commit `7f73b0c`): v1.4.0 (tag `v1.4.0`, commit
-  `e04920b`), bmdwire#36, #38, #40, #42, #46, #47, #49, #52, #53, #56
-  and #57. It was
+- The port follows **bmdwire v1.8.0** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.8.0`, commit `3ab4180`): v1.4.0 (tag `v1.4.0`, commit
+  `e04920b`), bmdwire#36, #38, #40, #42, #46, #47, #49, #52, #53, #56,
+  #57, #59 and #60. It was
   written against **v1.3.0** (tag `v1.3.0`, commit `cea58c2`), and the
   code and these notes cite that tag wherever they were checked against
   it; v1.4.0 changed only what
@@ -37,7 +37,8 @@ Tracks: bmdwire v1.7.1
   bmdwire#13), and a save's image capture stops when the session goes,
   returning the slots done so far (bmdwire#31, "Operations", group g). The
   oracles it changes are regenerated at v1.4.0; the HyperDeck client's
-  stays at v1.3.0 ("HyperDeck", Verification).
+  stayed at v1.3.0 until its script kept a deck's timing ("HyperDeck",
+  Verification).
 - **bmdwire 1.5.0** is bmdwire#36 (`bd6ae77`, merged as `32833b7`),
   uploads and the lock handover as ATEM Software Control does them, from
   a capture of its restore, and the transport's resend timer and kept
@@ -92,9 +93,18 @@ Tracks: bmdwire v1.7.1
   over 16 bytes, the second gains the new readers, helpers and 13
   scenarios and keeps every earlier case as it was. None of it has met a
   legacy switcher, here or in bmdwire.
+- **bmdwire 1.8.0** is bmdwire#60 (`a0a0cec`, merged as `6d697dd`) and
+  #59 (`80bd754`, merged as `3b0ebc8`), both hyperdeckwire. #60 adds what
+  bmdctl had sent a deck on its own, from BMD's document: `record`,
+  `goto_clip_by`, `goto_timecode`, `notify`, `set_notify`,
+  `read_notifications`, and `play`'s false loop and single clip
+  ("HyperDeck"). bmdctl now follows it instead of leading it. #59 says
+  the deck answers `clips clear` before the timeline is empty, which
+  `timeline clear` waits out ("HyperDeck commands"). The HyperDeck
+  oracle is regenerated at v1.8.0.
 - The `Tracks:` line above says the same on one line, for workflows to
   read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.7.1`. Keep it a line of its own, exactly
+  tag `v1.8.0`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
@@ -103,7 +113,8 @@ Tracks: bmdwire v1.7.1
   1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
   follows, so it describes that apart from those marks.
 - `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
-  bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md.
+  bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md,
+  and brought up to v1.8.0.
   `docs/SURFACE-videohub.md` and `docs/SURFACE-ultimatte.md` are the same
   for `videohub/` and `ultimatte/` (phase 5), written from videohubwire's
   code at v1.6.0 and ultimattewire's at v1.7.0 (`eb47e22`), which have
@@ -3166,8 +3177,8 @@ comes back. Indexes in results count from 1, as the flags do
 
 ## HyperDeck (`hyperdeck/`)
 
-Ports bmdwire v1.3.0's `hyperdeckwire/client.py`, the HyperDeck Ethernet
-Protocol on TCP 9993. hyperdeckwire has no SURFACE.md, so
+Ports bmdwire v1.8.0's `hyperdeckwire/client.py` (first v1.3.0's), the
+HyperDeck Ethernet Protocol on TCP 9993. hyperdeckwire has no SURFACE.md, so
 `docs/SURFACE-hyperdeck.md` inventories it, written from the code;
 `upload.py` (FTP) and `setup.py` (the configuration API) are in it and
 not ported yet.
@@ -3176,7 +3187,9 @@ API: `Dial(ctx, addr)`, `Dialer{DialContext, Logger, Bare}`; `Send(cmd)`,
 `Request(ctx, cmd) (Response, error)`, `SendAndWait(ctx, cmd)`, `State()`,
 `Subscribe() (<-chan Change, func())`, `Ready()`, `Connected()`, `Close()`,
 `Greeting()`, `Model()`, `ProtocolVersion()`; a method per hyperdeckwire
-method (`DeviceInfo`, `DiskList`, `Play(ctx, PlayOptions)`, ...); a command
+method (`DeviceInfo`, `DiskList`, `Play(ctx, PlayOptions)`, `Record`,
+`GotoClipBy`, `GotoTimecode`, `Notify`, `SetNotify`, ...) but
+`read_notifications`, which is `Subscribe` here (below); a command
 type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
 `ErrClosed`, `ErrTimeout`, `ErrMalformed`.
 
@@ -3253,17 +3266,28 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   (`play: clip id: N loop: true single clip: true speed: N`, in that
   order; `clips add: clip id: N name: X`, the name verbatim; a
   `Setting`'s underscores as spaces, bools `true`/`false`). `Play`'s loop
-  and single clip are pointers: nil leaves them out, false writes
-  `loop: false`, which hyperdeckwire can't (§5.4 item 8) and bmdctl's
-  `loop off` needs. `SetConfiguration` with nothing to set refuses to be a
-  command (`Validate`), where `set_configuration()` sends nothing; the
-  method sends nothing, as hyperdeckwire's does.
-- **Added from BMD's document** (`HyperDeckEthernetProtocol.pdf`,
-  December 2024), which hyperdeckwire doesn't send and nobody has yet
-  sent from bmdctl to a deck: `Record` (`record`, `record: name: X`),
-  `GotoClipBy` (`goto: clip id: +1`, `-1`), `GotoTimecode` (`goto:
-  timecode: HH:MM:SS:FF`, checked for that form), `Notify` and `Play`'s
-  false loop and single clip. The CLI marks these unverified.
+  and single clip (and `PlayOptions`') are pointers: nil leaves them out,
+  false writes `loop: false`, as `play()` does since 1.8.0 (bmdwire#60;
+  §5.4 item 8 before) and bmdctl's `loop off` needs. `SetConfiguration`
+  with nothing to set refuses to be a command (`Validate`), where
+  `set_configuration()` sends nothing; the method sends nothing, as
+  hyperdeckwire's does, and so does `SetNotify`.
+- **Sent from bmdctl first, now bmdwire's.** `Record` (`record`,
+  `record: name: X`), `GotoClipBy` (`goto: clip id: +1`, `-1`),
+  `GotoTimecode` (`goto: timecode: HH:MM:SS:FF`), `Notify` and `Play`'s
+  false loop and single clip came from BMD's document
+  (`HyperDeckEthernetProtocol.pdf`, December 2024) before hyperdeckwire
+  had them; the nineteenth to twenty-second hardware runs sent all but
+  `goto: timecode` to a deck. bmdwire 1.8.0 (bmdwire#60, `a0a0cec`) took
+  them, and the port follows it: an offset of 0 and a timecode
+  `_TIMECODE` refuses are its `ValueError`s (`goto_clip_by: an offset of
+  0 clips moves nowhere`, `goto_timecode: '...' is not a timecode,
+  HH:MM:SS:FF`, quoted with `repr()`), a `Record` with no name is plain
+  `record` (hyperdeckwire's `name` None or `''`). `read_notifications`
+  has no method: hyperdeckwire reads only inside a call and sets
+  notifications aside for the caller to ask for, where a Session reads
+  all the time and publishes each as a `Change` (`Subscribe`). The CLI
+  marks `record`, `next`, `prev` and `loop` unverified.
 - **Deliberate differences**, each a trap of SURFACE-hyperdeck.md §5.4
   fixed rather than copied, with a test; the first four were filed
   against bmdwire, and hyperdeckwire 1.4.0 fixed them the same way
@@ -3294,8 +3318,8 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
     ended and returns `ErrClosed`. The oracle test expects that for calls
     after a `ConnectionError`.
 - **Verification.** `hyperdeck/testdata/oracle/client.json`
-  (`gen_client.py`) records hyperdeckwire v1.7.1's real client in 747
-  scripted sessions, 858 calls: the bytes sent, how far into the stream
+  (`gen_client.py`) records hyperdeckwire v1.8.0's real client in 921
+  scripted sessions, 1,059 calls: the bytes sent, how far into the stream
   it had read when it sent its request and when the call returned, and the
   result or exception. Since 1.4.0 hyperdeckwire reads and drops, without
   blocking, what has arrived before it sends a request (bmdwire#19, #32),
@@ -3312,7 +3336,10 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   to no command, then the rest when the request is written. Regenerating
   at 1.7.1 found one gap in the port: hyperdeckwire's connect refuses a
   first block that isn't the 500 greeting (`OSError: unexpected greeting`,
-  bmdwire#21), which `Dial` now does too (`ErrGreeting`). `TestClientMatchesHyperdeckwire`
+  bmdwire#21), which `Dial` now does too (`ErrGreeting`). Regenerating at
+  1.8.0 added 1.8.0's tests and its new methods against every kind of
+  answer; `read_notifications` isn't called, having no method here.
+  `TestClientMatchesHyperdeckwire`
   replays each through a `Bare` Session on a connection that gives it, call
   by call, exactly what hyperdeckwire had read (the session reads eagerly),
   and checks the bytes, results (dicts, clips, ints) and errors by class
@@ -3321,10 +3348,13 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   greeting, model and protocol version, and that every method is called.
   `TestParsersMatchHyperdeckwire` checks the line parsers on 132 lines and
   `params` on 16 bodies. `client_test.go` ports
-  `test_hyperdeckwire_client.py` one for one on the fixtures copied from
-  it (`hyperdeck/testdata/fixtures`); `session_test.go` tests what bmdctl
-  adds against the fake deck, over a pipe and over loopback TCP. Nothing
-  here has run against a deck.
+  `test_hyperdeckwire_client.py` one for one, v1.3.0's on the fixtures
+  copied from it (`hyperdeck/testdata/fixtures`) and 1.8.0's on their
+  inline bytes, but for nine on `read_notifications` (its queue); the
+  tenth, notifications in order, runs through `Subscribe`.
+  `session_test.go` tests what bmdctl adds against the fake deck, over a
+  pipe and over loopback TCP. The Session has run against a Studio HD
+  Mini since the nineteenth hardware run (docs/HARDWARE.md).
 
 ## HyperDeck commands (`hyperdeck/table.go`, `internal/engine/hyperdeck.go`, `cmd/bmdctl/deck.go`)
 
@@ -3343,10 +3373,11 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   N]`, `state [--path P]`, `connect [address]` and `disconnect`. Slots
   and clips count from 1, as the deck numbers them on the wire: nothing
   is converted. `--dry-run` prints the line itself (a text protocol's
-  bytes). `record`, `next`, `prev` and `loop` are marked unverified:
-  hyperdeckwire never sends them (SURFACE-hyperdeck.md §5.1), and the
-  notice says so; `goto` by timecode is too, though the entry isn't
-  marked, since by clip it is hyperdeckwire's own line.
+  bytes). `record`, `next`, `prev` and `loop` are marked unverified, and
+  the notice says no deck has been seen to carry them out; until 1.8.0
+  (bmdwire#60) it said hyperdeckwire never sent them. `goto` by timecode
+  is too, though the entry isn't marked, since by clip it was
+  hyperdeckwire's own line from the start.
 - **An empty timeline** (bmdwire#57, after the twenty-first hardware
   run): a deck answers `clips get` on one with `107 timeline empty`, not
   an empty 205, and hyperdeckwire 1.7.1's `clips_get` returns `[]` for

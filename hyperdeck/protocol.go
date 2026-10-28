@@ -2,7 +2,7 @@
 
 package hyperdeck
 
-// The framing of bmdwire v1.3.0's hyperdeckwire/client.py: _recv_line,
+// The framing of bmdwire v1.8.0's hyperdeckwire/client.py: _recv_line,
 // _read_response, Response, and the clip-line parsers.
 
 import (

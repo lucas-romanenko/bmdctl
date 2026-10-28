@@ -26,23 +26,20 @@ hyperdeckwire on them.
 
 ## oracle/
 
-`client.json` is what hyperdeckwire v1.7.1 itself does, recorded by running
+`client.json` is what hyperdeckwire v1.8.0 itself does, recorded by running
 its real `Hyperdeck` class over a scripted socket that keeps a deck's
 timing (each answer arrives once its request is sent; see `gen_client.py`):
-747 sessions (the tests' scripts on the fixtures; every method against
-every kind of answer; 19 greetings; listings of every kind of row;
-desynchronising streams), 858 calls, each with the bytes sent, how far into
-the stream it had read when it sent and when it returned, and the result or
-the exception; 132 cases of the three line parsers and 16 of
-`Response.params`. `TestClientMatchesHyperdeckwire` and
-`TestParsersMatchHyperdeckwire` replay them all. Regenerate against a
-bmdwire checkout at `v1.3.0` (the seed is fixed, so the file changes only
-when bmdwire or the script does). It stays at v1.3.0 while the port
-follows v1.4.0: hyperdeckwire 1.4.0 drops an answer already buffered when
-it sends a request (bmdwire#19, #32), and this script's socket hands the
-client the whole session on its first read, so at 1.4.0 it would record
-that drop instead of the client's work (`docs/PORTING.md`, "HyperDeck",
-Verification):
+921 sessions (the scripts of v1.3.0's tests on the fixtures and of the
+ones 1.8.0 added; every method against every kind of answer; 19
+greetings; listings of every kind of row; desynchronising streams), 1,059
+calls, each with the bytes sent, how far into the stream it had read when
+it sent and when it returned, and the result or the exception; 132 cases
+of the three line parsers and 16 of `Response.params`.
+`TestClientMatchesHyperdeckwire` and `TestParsersMatchHyperdeckwire`
+replay them all. Regenerate against a bmdwire checkout at `v1.8.0` (the
+seed is fixed, so the file changes only when bmdwire or the script does;
+`docs/PORTING.md`, "HyperDeck", Verification, says why the socket keeps a
+deck's timing):
 
 ```
 cd hyperdeck/testdata/oracle
