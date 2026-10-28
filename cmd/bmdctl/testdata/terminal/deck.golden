@@ -27,7 +27,6 @@ $ bmdctl --host deck 1 play --speed 50
 $ bmdctl --host deck 1 loop on
 <b>Deck 1</>  <dim>play · clip 1</>
   loop        off → on                                              <dim># ms</>
-!   <dim>hyperdeck loop is unverified on hardware</>
 
 $ bmdctl --host deck 1 next
 <b>Deck 1</>  <dim>play · clip 1</>
@@ -56,7 +55,6 @@ $ bmdctl --host deck 1 stop
   stop        record → stopped                                      <dim># ms</>
 
 $ bmdctl --host deck 1 loop off
-!   <dim>hyperdeck loop is unverified on hardware</>
 ! <red>error</>  the deck is stopped: loop changes a playback under way
 !        <dim>bmdctl play --loop starts one looping</>
 [exit 1]

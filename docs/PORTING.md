@@ -3287,7 +3287,7 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   has no method: hyperdeckwire reads only inside a call and sets
   notifications aside for the caller to ask for, where a Session reads
   all the time and publishes each as a `Change` (`Subscribe`). The CLI
-  marks `record`, `next`, `prev` and `loop` unverified.
+  marks `record`, `next` and `prev` unverified.
 - **Deliberate differences**, each a trap of SURFACE-hyperdeck.md §5.4
   fixed rather than copied, with a test; the first four were filed
   against bmdwire, and hyperdeckwire 1.4.0 fixed them the same way
@@ -3373,9 +3373,12 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   N]`, `state [--path P]`, `connect [address]` and `disconnect`. Slots
   and clips count from 1, as the deck numbers them on the wire: nothing
   is converted. `--dry-run` prints the line itself (a text protocol's
-  bytes). `record`, `next`, `prev` and `loop` are marked unverified, and
-  the notice says no deck has been seen to carry them out; until 1.8.0
-  (bmdwire#60) it said hyperdeckwire never sent them. `goto` by timecode
+  bytes). `record`, `next` and `prev` are marked unverified, and the
+  notice says no deck has been seen to carry them out; until 1.8.0
+  (bmdwire#60) it said hyperdeckwire never sent them. `loop` was marked
+  too until the twenty-third hardware run, where a deck took `loop:
+  false` and `loop: true` during a playback (`remote` lost its mark the
+  same way, in the twenty-first). `goto` by timecode
   is too, though the entry isn't marked, since by clip it was
   hyperdeckwire's own line from the start.
 - **An empty timeline** (bmdwire#57, after the twenty-first hardware

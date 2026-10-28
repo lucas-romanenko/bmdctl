@@ -43,8 +43,7 @@ func deckOperations() []operation {
 				Help: "a timeline clip: its number, or its name or the start of it, in any case; or a timecode, HH:MM:SS:FF"}}},
 			run: opDeckGoto},
 		{entry: table.Entry{Path: "loop", Summary: "Turn looping on or off for the playback under way.",
-			Params:     []table.Param{{Name: "on", Kind: table.Bool, Required: true, Help: "on loops the timeline, or the clip with play --single-clip"}},
-			Unverified: true},
+			Params: []table.Param{{Name: "on", Kind: table.Bool, Required: true, Help: "on loops the timeline, or the clip with play --single-clip"}}},
 			run: opDeckLoop},
 		{entry: table.Entry{Path: "clips", Summary: "List the timeline's clips, or a disk's.",
 			Params: []table.Param{

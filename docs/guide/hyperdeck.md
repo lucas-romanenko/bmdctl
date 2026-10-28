@@ -41,5 +41,5 @@ file format, record prefix, timecode), and `configuration set <setting>
 <value>` changes one, named as `show` names it (`video-input` will do
 for `video input`). `remote off` makes the deck refuse every write,
 bmdctl's included, until `remote on`.
-`record`, `next`, `prev`, `loop` and `goto` by timecode print a notice
-that they are unverified on hardware.
+`record`, `next`, `prev` and `goto` by timecode print a notice that
+they are unverified on hardware.

@@ -31,8 +31,6 @@ bmdctl loop on
 bmdctl loop off
 ```
 
-**Unverified.**
-
 | argument | value | | |
 |---|---|---|---|
 | `<on>` | bool | required | on loops the timeline, or the clip with play --single-clip |
