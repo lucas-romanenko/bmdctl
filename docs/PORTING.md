@@ -2599,7 +2599,8 @@ builds everything into `dist/` without publishing.
   doesn't match, installs to `BMDCTL_INSTALL_DIR`, else
   `/usr/local/bin` as root and `~/.local/bin` otherwise, by rename so a
   running bmdctl keeps its file, links the aliases, says when the
-  directory isn't on PATH, and ends `next: bmdctl connect <ip>`.
+  directory isn't on PATH (naming `~/.zshrc` under zsh, macOS's shell,
+  which doesn't read `~/.profile`), and ends `next: bmdctl connect <ip>`.
   `BMDCTL_BASE_URL` points it elsewhere (a mirror, the tests).
 - **The dry run before v0.1.0** (`goreleaser release --snapshot --clean`,
   GoReleaser 2.18.3): every artifact built. `bmdctl version` ran from the

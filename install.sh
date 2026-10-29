@@ -105,9 +105,14 @@ done
 
 say "installed $dir/bmdctl, with $(echo "$ALIASES" | sed 's/ /, /g') linked to it"
 "$dir/bmdctl" version || true
+# zsh, macOS's shell, doesn't read ~/.profile.
+case ${SHELL:-} in
+*/zsh) rc='~/.zshrc' ;;
+*) rc='~/.profile' ;;
+esac
 case :${PATH}: in
 *:"$dir":*) ;;
-*) say "" && say "$dir is not on your PATH: add it, e.g. in ~/.profile:" && say "  export PATH=\"$dir:\$PATH\"" ;;
+*) say "" && say "$dir is not on your PATH: add it, e.g. in $rc:" && say "  export PATH=\"$dir:\$PATH\"" ;;
 esac
 say ""
 say "next: bmdctl connect <ip>"

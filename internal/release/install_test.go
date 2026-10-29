@@ -128,9 +128,23 @@ func TestInstallScript(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
+	if !strings.Contains(out, "add it, e.g. in ~/.profile:") {
+		t.Errorf("no ~/.profile for a shell that isn't zsh:\n%s", out)
+	}
 	// An alias runs bmdctl, as itself.
 	if b, err := exec.Command(filepath.Join(dir, "hdctl")).Output(); err != nil || !strings.HasSuffix(strings.TrimSpace(string(b)), "/hdctl)") {
 		t.Errorf("hdctl: %q %v", b, err)
+	}
+}
+
+// TestInstallScriptNamesZshrc: zsh, macOS's shell, doesn't read
+// ~/.profile, so the PATH hint names ~/.zshrc.
+func TestInstallScriptNamesZshrc(t *testing.T) {
+	srv := fakeRelease(t, "v9.9.9", false)
+	dir := filepath.Join(t.TempDir(), "bin")
+	out, errOut, err := runInstall(t, "BMDCTL_BASE_URL="+srv.URL, "BMDCTL_INSTALL_DIR="+dir, "SHELL=/bin/zsh")
+	if err != nil || !strings.Contains(out, "add it, e.g. in ~/.zshrc:\n  export PATH=\""+dir+":$PATH\"") {
+		t.Errorf("%v\n%s%s", err, out, errOut)
 	}
 }
 
