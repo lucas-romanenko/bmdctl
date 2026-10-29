@@ -13,7 +13,7 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One ATEM model so far, in eighteen sessions, then one HyperDeck in four
+One ATEM model so far, in nineteen sessions, then one HyperDeck in four
 and one Ultimatte in one. The ATEM's firmware was first recorded in the
 tenth, 9.2.1; before that the rows give the protocol version the
 switcher's `_ver` packet reported, 2.30. No Videohub has been run: the
@@ -39,6 +39,7 @@ owner's two are live.
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads as ATEM Software Control sends them (bmdwire#36): `profile restore` of 20 photographic stills in 11.2 s (ASC 12 s), every frame exact | 2026-10-15 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Another client's turn (bmdwire#38, #40): ATEM Software Control connecting during back-to-back downloads loads all 20 thumbnails (none with bmdwire#36's handover) | 2026-10-15 |
 | ATEM 1 M/E Constellation HD | 9.2.1 | 1080p25 | Uploads beside another session in the same process, as WebATEM runs them (bmdwire#42): 20 of 20, every frame exact; bmdwire 1.5.2 deadlocked after 2 | 2026-10-15 |
+| ATEM 1 M/E Constellation HD | protocol 2.30 | 1080p25 | bmdctl after bmdwire 1.5.1 to 1.8.0's ports: the connect, `status`, `state`, every `show` area, `media list`, `macro list`, `audio meters` (Fairlight), `watch`; `preview`, `cut`, `auto`, `undo` of an auto once its transition is done; a still uploaded byte for byte (the switcher's hash the frame's MD5) and downloaded; `profile save` from the still cache, the one changed picture downloaded; the terminal views | 2026-10-29 |
 | HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `connect`, `status`, `clips` (timeline and disk), `state`, `watch`; `stop`, `play` (speed, loop, single clip), `goto` by clip id, `slot`; `next`, `prev` and `record` refused as the deck refuses them | 2026-10-27 |
 | HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `pause`; `configuration show` and `configuration set` (changed and back); `remote off` and `remote on`, which the deck takes over 9993 with remote off; `timeline add` (`--before`), `remove` and `clear` on a timeline with clips | 2026-10-27 |
 | HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `loop off` and `loop on` during a playback (the clip played out, then looped past its end); `timeline clear` empty when read at once | 2026-10-28 |
@@ -66,8 +67,8 @@ fakes and, for the protocol, against bmdwire's own code.
   asking what answers), which came after the last session.
 - **Sessions:** a session that drops and reconnects (`watch`'s `session
   dropped` and `reconnected`, the connecting line on a reconnect).
-- **undo:** undo of an auto once its transition is done; undo after a
-  change from a panel, which sets each bus back instead of cutting.
+- **undo:** undo after a change from a panel, which sets each bus back
+  instead of cutting.
 - **Writes:** every command that changes the switcher other than
   `program`, `preview`, `cut`, `auto`, `undo` and the still transfers:
   keyers (among them `usk keyframe-run runToInfinite --direction` by
@@ -94,8 +95,6 @@ fakes and, for the protocol, against bmdwire's own code.
   (names, pan, the monitor as headphones), an `AMIP` from before ATEM 8.0
   firmware (20 bytes), and the `legacy-audio:` lines in the engine's log,
   which are there for a session with one to check the layouts against.
-- **Terminal layout** since the seventh session's changes: the header
-  and the column-72 statuses.
 - **Platforms:** the Windows engine and its named pipe (the executables
   ran only under Wine); the macOS amd64 binary; zsh and fish completion
   in a real shell; the Docker image against a switcher.
@@ -1046,4 +1045,64 @@ fakes and, for the protocol, against bmdwire's own code.
   single clip.
 - **Changed because of it:** `loop` loses its unverified mark.
   `timeline clear`'s read-back comes off the Unverified list.
+- **Not yet verified on hardware:** as the list at the top says.
+
+## 2026-10-29: twenty-fourth run, the ATEM before v0.2.0
+
+- **Commit:** `dd65e52`, built and run as in the nineteenth. bmdctl
+  hadn't driven the ATEM since the sixteenth run (`5d469ad`); since then
+  it ported bmdwire 1.5.1 to 1.8.0, among them another client's turn at
+  every release (bmdwire#38, #40), the UDP thread (#42) and the legacy
+  mixer's readers (#49); a transfer's last progress report reaches its
+  caller (`486515f`), and the audio mixer is picked as atemwire picks it
+  (`bd6d9e1`).
+- **Switcher:** Studio ATEM, the Constellation at 192.168.81.85,
+  protocol 2.30, 1080p25; Media Player 1 (slot 1) on program, input 3 on
+  preview; the media pool full, 20 stills of 7 pictures, slots 1 and 20
+  in the media players.
+- **Run:** read-only first: `connect`, `status`, `state`, `show` of
+  every area, `media list`, `macro list`, `audio meters`, `watch` for
+  8 s, each down a pipe and at a terminal; `profile save` (the backup)
+  and `media download 2`. Then, with the owner's go-ahead and a `watch`
+  through it: slot 2's own picture, as downloaded, uploaded back to slot
+  2 under its name; `media download 2` again; `profile save` again;
+  `preview 1`, `cut`, `auto`, `undo`; then `program` and `preview` put
+  back, and `auto`, 2 s, `undo`.
+- **Result:**
+  - Every read answered in 10 to 20 ms. `show audio` and `audio meters`
+    read the Fairlight mixer, so the mixer is picked right on a
+    Fairlight switcher. The engine logged no warnings beyond the refused
+    `undo` below.
+  - The terminal views: the switcher's name bold with program and
+    preview dim beside it, the value on program red and on preview
+    green, every status dim and ending at column 72, nothing wider.
+  - `profile save` took 14.2 s with an empty still cache (7 pictures
+    downloaded at 1.8 s each). The second, after the upload, took 2.9 s
+    and downloaded only slot 2's new picture; slot 2 got a file of its
+    own (`<name>_2.png`), and the picture that had `_2` moved to `_3`.
+  - The upload took 0.85 s. The switcher's hash for slot 2 was the MD5
+    of the frame bmdctl built from the file, and that frame, converted
+    back here, was the switcher's download pixel for pixel. A still
+    downloaded and uploaded back is not the same frame, though: against
+    the first download, 98.3% of pixels moved by 2 levels at most (8-bit
+    RGB against the switcher's 10-bit Y'CbCr), and 0.13% by more than
+    32, at colour edges, where a pixel pair's shared Cb and Cr fall
+    outside RGB and are clipped. bmdwire's `rgb_to_atem` does the same.
+  - Right after the upload the switcher reported the pool's lock taken
+    by another client for 1.88 s, a still download's length; bmdctl's
+    `media download` waited for it and then took the lock (4.2 s, against
+    2.2 s for the one before).
+  - `preview 1`, `cut` and `auto` were confirmed in 12 to 34 ms, both
+    buses shown. `undo` straight after the `auto` was refused while the
+    mix ran, as it should be. `program` and `preview`, put back while
+    the mix still ran, were undone by its end, which took preview to
+    program; set again after. Then `undo` 2 s after an `auto` set both
+    buses back in 28 ms.
+  - The switcher was left as it began: Media Player 1 on program, input 3
+    on preview, no transition running, no lock held; slot 2 holds its
+    picture as bmdctl converted it.
+- **Changed because of it:** undo of a finished auto, the terminal
+  layout and bmdctl's handling of another client's turn after its own
+  upload have now run on hardware; the first two come off the
+  Unverified list.
 - **Not yet verified on hardware:** as the list at the top says.
