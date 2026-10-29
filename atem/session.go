@@ -138,7 +138,7 @@ func (d *Dialer) Dial(ctx context.Context, addr string) (*Session, error) {
 		}
 		// 16 MiB as atemwire asks, stepping down: macOS refuses more than
 		// kern.ipc.maxsockbuf with errno 55 (ENOBUFS) instead of capping
-		// (bmdwire#46, c08f830). None taken leaves the system's default.
+		// (bmdwire#46, 968798e). None taken leaves the system's default.
 		for _, mib := range []int{16, 8, 4, 1} {
 			if uc.SetReadBuffer(mib<<20) == nil {
 				break
@@ -621,7 +621,7 @@ func (s *Session) onData(data []byte) {
 
 // logLegacyAudio logs the first legacy-audio packet of each key (AMIP per
 // source, AMMO, AMmO, AMLv) at Info, raw and decoded, as atemwire's
-// _log_legacy_audio does (bmdwire#49, 03fa389): no legacy switcher has
+// _log_legacy_audio does (bmdwire#49, 45fafa4): no legacy switcher has
 // been on the wire here, and a log from one can then confirm the layouts
 // or correct them. Only legacy switchers send these four packets.
 func (s *Session) logLegacyAudio(code string, payload []byte, c *Change) {

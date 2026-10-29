@@ -817,7 +817,7 @@ func (s *Session) yieldTimerC() <-chan time.Time {
 // others is over, and forget a turn that is over with nothing waiting.
 // A turn not yet over (someone at work moved it) is only timed again, and
 // a store another client holds waits for its release (bmdwire#42,
-// 81955c1: in bmdwire a caller's every Wakeup ran the trigger; here only
+// 8877133: in bmdwire a caller's every Wakeup ran the trigger; here only
 // the timer runs this, so the wire is the same either way).
 func (s *Session) serviceYields() {
 	l := &s.lane

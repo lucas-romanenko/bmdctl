@@ -15,7 +15,7 @@ import (
 )
 
 // Fly-key Run to Infinity locations, pinned to the capture of ATEM Software
-// Control in bmdwire#22's test_flykey_locations.py (b89fcb7): ASC 9.3.2 ran
+// Control in bmdwire#22's test_flykey_locations.py (1bee7d4): ASC 9.3.2 ran
 // USK 1 of M/E 1 on a 1 M/E Constellation HD to each of its ten locations;
 // each RFlK carried the location at payload byte 5 and KeFS echoed it.
 // atem/macro's flykey_test.go pins the same ten runs recorded as a macro.

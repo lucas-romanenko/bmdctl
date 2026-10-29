@@ -1,5 +1,5 @@
 <!--
-Written for bmdctl from bmdwire v1.6.0 (tag v1.6.0, commit 0eb73e5),
+Written for bmdctl from bmdwire v1.6.0 (tag v1.6.0, commit 4ad0799),
 package videohubwire/, which has no SURFACE.md of its own. It is the
 specification for bmdctl's videohub package, as docs/SURFACE-atem.md is
 for atem. Corrections and port decisions go in docs/PORTING.md
@@ -16,8 +16,8 @@ does with every kind of input was also recorded by running it
 (`videohub/testdata/oracle/client.json`).
 
 - **Source read:** `bmdwire` v1.6.0 (`github.com/lucas-romanenko/bmdwire`,
-  commit `0eb73e5`), package `videohubwire/`. Its code has not changed
-  since 1.0.0 (`006ac7d`); every release since has changed only the
+  commit `4ad0799`), package `videohubwire/`. Its code has not changed
+  since 1.0.0 (`7b21d0a`); every release since has changed only the
   README's version.
 - **One channel, one module:** `client.py`, the Videohub Ethernet Protocol
   on TCP 9990: a text protocol of blocks.

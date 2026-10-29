@@ -6,7 +6,7 @@ package atem
 
 // The legacy (pre-Fairlight) audio mixer's readers, units and log lines,
 // from bmdwire v1.6.0 atemwire/messages/audio_legacy.py (bmdwire#49,
-// 3e2f400 and 03fa389). The readers give the Fairlight readers' shapes,
+// bd2f4bb and 45fafa4). The readers give the Fairlight readers' shapes,
 // less what the legacy mixer doesn't have (input gain, EQ, dynamics,
 // delay). Volumes are dB by LegacyVolumeToDB, nil for silence; pan is
 // balance ÷ 100. None of it has met a legacy switcher: it is built from the
@@ -244,7 +244,7 @@ func (s State) LegacyAudioSolo() LegacyAudioSoloView {
 }
 
 // legacyAudioDiagnostic is legacy_audio_diagnostic, bmdwire v1.6.0
-// (bmdwire#49, 03fa389): one log line for a legacy-audio packet, its code
+// (bmdwire#49, 45fafa4): one log line for a legacy-audio packet, its code
 // (and source, for AMIP), the payload in hex and every attribute atemwire
 // decodes, in its order and as Python prints them, plus volume_db for a
 // volume and plug_name for a plug. AMLv levels are rounded to 0.1 dB. v is

@@ -9,20 +9,25 @@ it. When you make a new decision, add it here in the same commit.
 Tracks: bmdwire v1.8.0
 
 - The port follows **bmdwire v1.8.0** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.8.0`, commit `3ab4180`): v1.4.0 (tag `v1.4.0`, commit
-  `e04920b`), bmdwire#36, #38, #40, #42, #46, #47, #49, #52, #53, #56,
+  tag `v1.8.0`, commit `01024ad`): v1.4.0 (tag `v1.4.0`, commit
+  `394435c`), bmdwire#36, #38, #40, #42, #46, #47, #49, #52, #53, #56,
   #57, #59 and #60. It was
-  written against **v1.3.0** (tag `v1.3.0`, commit `cea58c2`), and the
+  written against **v1.3.0** (tag `v1.3.0`, commit `e5e336c`), and the
   code and these notes cite that tag wherever they were checked against
   it; v1.4.0 changed only what
   "bmdwire 1.4.0" below lists, so those citations hold for it. Cite the
   tag a claim was checked against, in comments and docs alike.
+- **Both histories were rewritten on 2026-10-29** (git filter-repo),
+  to take a deployment's device names and an email address out of
+  every commit. Every hash changed; the hashes cited in these files were
+  remapped, but a hash from before (in an old clone, an issue, a PR or
+  a v0.2.0 binary's `bmdctl version`) no longer resolves here.
 - **Fixes merged after v1.3.0** that the port takes too, each a bmdwire
   PR settled by a capture from ATEM Software Control: bmdwire#22
-  (`b89fcb7`, merged as `6ef831f`), the fly-key locations ("Commands");
-  bmdwire#23 (`d86ed31`, merged as `5404931`), dual-mono Fairlight
-  inputs in profiles ("Profiles"); bmdwire#24 (`4011dcb`, merged as
-  `785aac7`), macro floats to six significant digits ("Macro codec").
+  (`1bee7d4`, merged as `95d6f9d`), the fly-key locations ("Commands");
+  bmdwire#23 (`b682afe`, merged as `5404931`), dual-mono Fairlight
+  inputs in profiles ("Profiles"); bmdwire#24 (`c0e211e`, merged as
+  `62e97f7`), macro floats to six significant digits ("Macro codec").
   Each is ported in its own commit with bmdwire's new tests and
   fixtures, and the oracles it changes are regenerated at its merge
   (`internal/fixtures/README.md` says which file is at which commit; the
@@ -39,19 +44,19 @@ Tracks: bmdwire v1.8.0
   oracles it changes are regenerated at v1.4.0; the HyperDeck client's
   stayed at v1.3.0 until its script kept a deck's timing ("HyperDeck",
   Verification).
-- **bmdwire 1.5.0** is bmdwire#36 (`bd6ae77`, merged as `32833b7`),
+- **bmdwire 1.5.0** is bmdwire#36 (`d050c10`, merged as `725945d`),
   uploads and the lock handover as ATEM Software Control does them, from
   a capture of its restore, and the transport's resend timer and kept
-  sequence numbers ("Transport", "Transfers"), ported in `5ec2519` before
+  sequence numbers ("Transport", "Transfers"), ported in `93252b9` before
   the release. It changes no oracle; the oracles stay at v1.4.0.
 - **bmdwire 1.5.1 and 1.5.2** are bmdwire#38 (`5827626`, merged as
-  `f73356a`) and #40 (`1b30449`, merged as `4cac9ce`): another client's
+  `c2c05cc`) and #40 (`5130d64`, merged as `cfcf570`): another client's
   turn. 1.5.0's handover, the release and the next request in one packet,
   cut ATEM Software Control's turn short and left it without thumbnails
   (two captures on the ASC machine); now every release leaves the store
   until it is announced free and a frame more ("Transfers"). Ported
   together after both releases. No oracle changes.
-- **bmdwire 1.5.3** is bmdwire#42 (`81955c1`, merged as `bfce193`). Its
+- **bmdwire 1.5.3** is bmdwire#42 (`8877133`, merged as `05fd44d`). Its
   main fix has nothing to port: atemwire's UDP thread queued its own ACKs
   on a send queue only it drains, and an upload budget filling that queue
   stopped both threads for good (WebATEM's restore with ATEM Software
@@ -61,13 +66,13 @@ Tracks: bmdwire v1.8.0
   otherwise waking for it again, is mirrored in `serviceYields`; the wire
   was already the same, since only the yield timer runs it here, not a
   caller's every Wakeup. No oracle changes.
-- **bmdwire 1.5.4** is bmdwire#46 (`c08f830`, merged as `1bf98f0`):
+- **bmdwire 1.5.4** is bmdwire#46 (`968798e`, merged as `2887685`):
   macOS 12 refuses an `SO_RCVBUF` above `kern.ipc.maxsockbuf` with
   errno 55 instead of capping it, and atemwire's bare 16 MB request
   failed every connect there. Here the error was already discarded, so
   Dial went on with the system's default buffer; it now steps down 16,
   8, 4, 1 MiB as atemwire does ("Session", Dial). No oracle changes.
-- **bmdwire 1.5.5** is bmdwire#47 (`1feedbd`, merged as `6bb1c84`):
+- **bmdwire 1.5.5** is bmdwire#47 (`5a8f45a`, merged as `aa4716b`):
   `abort_transfers()` cleared the wait for another client's turn, so a
   caller that timed out and retried (WebATEM's media pool, after 15 s)
   could ask in the middle of ATEM Software Control's turn and abort its
@@ -75,15 +80,15 @@ Tracks: bmdwire v1.8.0
   `cancelTask`, which withdraws that one task and leaves the turn alone,
   and a lock it gives back goes through `releaseThenContinue`, which
   starts one. Two tests mirror bmdwire's new ones. No oracle changes.
-- **bmdwire 1.6.0** is bmdwire#49 (`02fba68`, merged as `55670cb`): the
+- **bmdwire 1.6.0** is bmdwire#49 (`37759ad`, merged as `198f9aa`): the
   legacy (pre-Fairlight) audio mixer. Ported: an `AMIP` from before ATEM
   8.0 firmware, 20 bytes, parses as the 16 of later firmware do
-  (`626c785`, "Parsers"), where it was an error that lost the rest of its
+  (`8fd3ece`, "Parsers"), where it was an error that lost the rest of its
   packet; the five readers it adds (`audio_mixer_type` and the four
   `legacy_audio_*`) and its three unit helpers (`legacy_volume_to_db`,
   `legacy_db_to_volume`, `legacy_pan_to_balance`) ("Readers"); and the
-  `legacy-audio:` log lines (`03fa389`, "Session"). Its other half,
-  `build_full_state`'s audio section on a legacy mixer (`3e2f400`), waits
+  `legacy-audio:` log lines (`45fafa4`, "Session"). Its other half,
+  `build_full_state`'s audio section on a legacy mixer (`bd2f4bb`), waits
   with `build_full_state` ("Readers", Not ported); the readers it is built
   from are here. The CLI takes two things from it: `audio master
   --volume` on the classic mixer goes through `legacy_db_to_volume`
@@ -93,8 +98,8 @@ Tracks: bmdwire v1.8.0
   over 16 bytes, the second gains the new readers, helpers and 13
   scenarios and keeps every earlier case as it was. None of it has met a
   legacy switcher, here or in bmdwire.
-- **bmdwire 1.8.0** is bmdwire#60 (`a0a0cec`, merged as `6d697dd`) and
-  #59 (`80bd754`, merged as `3b0ebc8`), both hyperdeckwire. #60 adds what
+- **bmdwire 1.8.0** is bmdwire#60 (`df00a20`, merged as `e34d0e5`) and
+  #59 (`476850d`, merged as `ddb7362`), both hyperdeckwire. #60 adds what
   bmdctl had sent a deck on its own, from BMD's document: `record`,
   `goto_clip_by`, `goto_timecode`, `notify`, `set_notify`,
   `read_notifications`, and `play`'s false loop and single clip
@@ -117,10 +122,10 @@ Tracks: bmdwire v1.8.0
   and brought up to v1.8.0.
   `docs/SURFACE-videohub.md` and `docs/SURFACE-ultimatte.md` are the same
   for `videohub/` and `ultimatte/` (phase 5), written from videohubwire's
-  code at v1.6.0 and ultimattewire's at v1.7.0 (`eb47e22`), which have
+  code at v1.6.0 and ultimattewire's at v1.7.0 (`31f9724`), which have
   none either. videohubwire's code hasn't changed since 1.0.0;
   ultimattewire's last change is 1.7.0's `extract_model` and
-  `parse_current_file` (bmdwire#52, `ac1af08`).
+  `parse_current_file` (bmdwire#52, `39dded8`).
 - **Drift is reported, not merged.** `.github/workflows/surface-drift.yml`
   compares the four copies every night, less their header comment, with the
   SURFACE.md bmdwire main has beside each package, and keeps one issue,
@@ -215,7 +220,7 @@ flagged retransmissions; in-order delivery with up to 512 packets parked
 ahead of a gap; go-back-N resends only when the switcher asks (from header
 bytes 6-7, at most 128, window 4096); the goodbye (SYN, hello `0x04`, only
 when established); 15-bit sequence arithmetic throughout. No client
-keepalive, as in atemwire. Since bmdwire#36 (`bd6ae77`) there is a client
+keepalive, as in atemwire. Since bmdwire#36 (`d050c10`) there is a client
 retransmit timer: what the switcher hasn't acknowledged in 250 ms is
 resent (below).
 
@@ -328,7 +333,7 @@ two settings `Dial` needs a struct for.
   first of 8, 4 and 1 MiB the system takes (bmdwire#46), as atemwire
   does.
 - **Connected and Ready mirror `is_connected` and `is_ready`** (bmdwire
-  v1.3.0, `edb5fa0`). `Connected` is true from Dial's return until `Close`
+  v1.3.0, `661dc4c`). `Connected` is true from Dial's return until `Close`
   or a fatal error, and stays true while the transport re-handshakes after
   a silence. `Ready` returns a channel closed at the end of each state dump;
   a disconnect swaps in a new open channel until the next dump completes.
@@ -371,7 +376,7 @@ two settings `Dial` needs a struct for.
   drops while it waits. On context cancellation the waiter is removed. An
   echo means a state packet with that key arrived after the command was
   queued; like atemwire, nothing ties it to this command in particular.
-- **Legacy audio in the log** (bmdwire#49, `03fa389`). The first `AMIP`
+- **Legacy audio in the log** (bmdwire#49, `45fafa4`). The first `AMIP`
   per source and the first `AMMO`, `AMmO` and `AMLv` a session stores are
   logged at Info as `atem: legacy-audio: ` and atemwire's own line
   (`legacyAudioDiagnostic`, `TestLegacyAudioDiagnostic` pins bmdwire's
@@ -514,7 +519,7 @@ with a store function (where `save_field_data` puts the result);
   every packet that carries one (`FASP`, `AEBP`, `AICP`, `AILP`, `AIXP`
   and also `AMIP`, so `State.Audio.Inputs` is keyed `"<source>.0"`, as
   atemwire's `mixerstate['audio-input']` is).
-- **`AMIP` reads its first 16 bytes** (bmdwire#49, `626c785`): the
+- **`AMIP` reads its first 16 bytes** (bmdwire#49, `8fd3ece`): the
   switcher sends 20 before ATEM 8.0 firmware, the first 14 the same
   (LibAtem's `AudioMixerInputGetCommand` and its `V8` twin). Until
   v1.6.0 atemwire wanted exactly 16, so an older legacy switcher's every
@@ -526,7 +531,7 @@ with a store function (where `save_field_data` puts the result);
   goes to the engine first, then is stored.
 - **The last-run latch.** Storing an `MRPr` with the running bit set and an
   index other than 0xFFFF sets `State.Macros.LastRun` (bmdwire v1.3.0
-  `a9f3646`: slot 0 counts). A disconnect empties the state but keeps the
+  `a5ac82e`: slot 0 counts). A disconnect empties the state but keeps the
   latch, as `ATEMConnection.last_run_macro_index` survives one.
 - **Floats.** Values atemwire computes in floating point are computed the
   same way (same operations, same order), so they match bit for bit,
@@ -616,7 +621,7 @@ arguments, `Validator`.
   the fly state (`KeFS`) for the two keyframes the wire format doesn't
   document; `MAct`'s depends on the action. Echo keys are a Go addition and
   unverified on hardware like everything §4.4 says about confirmation.
-- **Fly-key locations are one table** (bmdwire#22, `b89fcb7`).
+- **Fly-key locations are one table** (bmdwire#22, `1bee7d4`).
   `FlyKeyLocationNames` is `helpers.FLYKEY_LOCATION_NAMES`: 0 CentreOfKey
   and 1-9 the 3x3 grid row by row, so 5 is MiddleCentre. It is `RFlK`'s
   direction byte, `KeFS` byte 5 and macro op 0x0056's location, as ASC's
@@ -916,7 +921,7 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   goroutine, taking a report still waiting once the result has come
   (the session queues the last report before the result, and a
   `select` with both ready picks either: a `-race -count=50` run, the
-  nightly removed in f051c48, lost the last report, the end of a bar, a
+  nightly removed in f966aa7, lost the last report, the end of a bar, a
   few times in 50). As atemwire counts it: an upload, the bytes queued
   of all it sends (compressed, for a still; atemwire counts each as its UDP
   thread sends it); a still download, the bytes received of the frame's
@@ -1071,7 +1076,7 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   (`_resolve_source_id`'s docstring, `docs/PROFILE_FORMAT.md`), and the
   encoder takes the signed form too.
 - **Floats are written as ATEM Software Control writes them**
-  (bmdwire#24, `4011dcb`): `fmtScalar` is `_fmt_scalar`'s six
+  (bmdwire#24, `c0e211e`): `fmtScalar` is `_fmt_scalar`'s six
   significant digits (`%.6g`), so Q16.16 -21474836 is `-327.68` (the
   silenced fader), -5243 `-0.0800018`, 471859 `7.2`, and 1
   `1.52588e-05`. Every float in the macros of twelve ASC exports from
@@ -1098,7 +1103,7 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   messages follow CPython 3.12's wording. The per-op "decode failure"
   warning is not logged (the op's decodeError holds it).
 - **Verification.** `internal/fixtures/oracle/macro.json` (`gen_macro.py`,
-  CPython 3.12.3, bmdwire `v1.3.0-9-g785aac7`) holds 2,128 bytecode cases
+  CPython 3.12.3, bmdwire `v1.3.0-9-g62e97f7`) holds 2,128 bytecode cases
   (the 33 `macro/` samples, random/short/edge parameter blocks for every op
   code and unknown ones, multi-op streams) and 4,273 op dicts from
   attribute pools.
@@ -1132,7 +1137,7 @@ and a zero value selects nothing.
   warning is logged and the ops before it are kept. Save fails only when
   ctx ends.
 - **Fairlight strips are saved and applied per half** (bmdwire#23,
-  `d86ed31`). An `<AudioSource id>` is the strip's wire address read as a
+  `b682afe`). An `<AudioSource id>` is the strip's wire address read as a
   signed i64, as ASC's export of an input in Dual Mono showed: -65280 a
   stereo strip (channel -1), -256 split channel 0 (a dual-mono input's
   left half, and the XLR's one strip), -255 split channel 1. Save writes
@@ -1195,7 +1200,7 @@ and a zero value selects nothing.
   does ("Operations", "Images"); `_source_symbol` (unused),
   `_ProtocolAdapter`/`_resolve_connection`.
 - **Verification:** `oracle/profile.json` from `gen_profile.py` (bmdwire
-  `v1.3.0-9-g785aac7`) holds the golden's state, 46 saves, 274 applies
+  `v1.3.0-9-g62e97f7`) holds the golden's state, 46 saves, 274 applies
   (18,628 events, 30 raising) and 130 parses, all replayed byte for
   byte. The golden's state holds a TStP media player of 3010, more than
   a u8, so the golden test injects that one value through the saver's
@@ -2637,7 +2642,7 @@ builds everything into `dist/` without publishing.
   `internal/release` now installing with GNU wget alone and with BusyBox
   alone, where they are installed.
   Then every file of the release: each matched `checksums.txt`; every
-  binary is Go 1.27.3, static, stamped `bf47547`; the linux_arm64
+  binary is Go 1.27.3, static, stamped `08d6307`; the linux_arm64
   archive, the arm64 deb and the aarch64 rpm ran `version` and an alias
   under QEMU's user mode, and the image's linux/arm64 binary is that
   archive's, byte for byte; the five Windows executables ran `--help`,
@@ -2788,7 +2793,7 @@ lives until 10 minutes pass without a request, or an hour if pinned
   is `{args, command, echo, state}`: the arguments for display, the
   opcode, the key waited for and the echoed packet.
 - **A cut or an auto transition waits for what the switcher reports of
-  it** (`call.effect`, after CI failed on every push from `90f3cdd`).
+  it** (`call.effect`, after CI failed on every push from `83cc5c2`).
   Neither has an echo, so `Send` returned as soon as the packet was
   queued, and the next request (the next line of exec, an `undo`)
   could read the state from before the switcher's answer arrived: on CI's
@@ -3302,7 +3307,7 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   false loop and single clip came from BMD's document
   (`HyperDeckEthernetProtocol.pdf`, December 2024) before hyperdeckwire
   had them; the nineteenth to twenty-second hardware runs sent all but
-  `goto: timecode` to a deck. bmdwire 1.8.0 (bmdwire#60, `a0a0cec`) took
+  `goto: timecode` to a deck. bmdwire 1.8.0 (bmdwire#60, `df00a20`) took
   them, and the port follows it: an offset of 0 and a timecode
   `_TIMECODE` refuses are its `ValueError`s (`goto_clip_by: an offset of
   0 clips moves nowhere`, `goto_timecode: '...' is not a timecode,
@@ -3425,7 +3430,7 @@ Phase 4: `bmdctl hyperdeck ...`, and every command to a host of type
   read; `remove` takes a number or a name, as `goto` does; `clear` is
   destructive and says how many clips go, `already` on an empty
   timeline. A deck answers `clips clear` before the timeline is empty
-  (bmdwire#59, `80bd754`: 0.16 s on a Studio HD Mini, the twenty-second
+  (bmdwire#59, `476850d`: 0.16 s on a Studio HD Mini, the twenty-second
   hardware run), so `clear` reads it back every 50 ms until it is, for
   1 s at most (`clearSettle`), and says what it read last. The fake
   inserts before a clip, as `clips add: clip id:` says, and empties the
@@ -4085,10 +4090,10 @@ says what it does now and what difference, if any, remains.
 Where `docs/SURFACE-atem.md` and bmdwire v1.3.0's code disagree, the port
 follows the code.
 
-- **Version.** SURFACE.md says it describes 1.2.0 (`028ac26`); the port
-  follows v1.3.0 (`cea58c2`), which has every fix §5.4 marks as made after
+- **Version.** SURFACE.md says it describes 1.2.0 (`4387c7c`); the port
+  follows v1.3.0 (`e5e336c`), which has every fix §5.4 marks as made after
   1.2.0, and the fixes merged after 1.3.0 that §5.4 also marks
-  (`b89fcb7`, `d86ed31`, `4011dcb`; "Source of truth").
+  (`1bee7d4`, `b682afe`, `c0e211e`; "Source of truth").
 - **§1 conventions, source names.** The private table also maps 4030 to
   `CleanFeed1` (alongside 7001); SURFACE.md's list leaves 4030 out.
 - **§2.4 `audio-input` (`AMIP`)** was listed as indexed by source; atemwire

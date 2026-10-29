@@ -1,5 +1,5 @@
 <!--
-Written for bmdctl from bmdwire v1.7.0 (tag v1.7.0, commit eb47e22),
+Written for bmdctl from bmdwire v1.7.0 (tag v1.7.0, commit 31f9724),
 package ultimattewire/, which has no SURFACE.md of its own. It is the
 specification for bmdctl's ultimatte package, as docs/SURFACE-atem.md is
 for atem. Corrections and port decisions go in docs/PORTING.md
@@ -17,9 +17,9 @@ disagreement. What the code does with every kind of input was also
 recorded by running it (`ultimatte/testdata/oracle/`).
 
 - **Source read:** `bmdwire` v1.7.0 (`github.com/lucas-romanenko/bmdwire`,
-  commit `eb47e22`), package `ultimattewire/`. Its code changed in
+  commit `31f9724`), package `ultimattewire/`. Its code changed in
   0.2.0.dev0 (`5342705`, the network interface) and then in 1.7.0
-  (bmdwire#52, `ac1af08`: `extract_model`, `parse_current_file`, and the
+  (bmdwire#52, `39dded8`: `extract_model`, `parse_current_file`, and the
   restore's docs on what it overwrites).
 - **Two channels:** TCP 9998, a text channel (the prelude the unit sends on
   connect, then blocks), and TCP 9996, a binary channel (one request per

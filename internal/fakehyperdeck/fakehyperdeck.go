@@ -194,7 +194,7 @@ func (d *Deck) SetRemote(on bool) {
 }
 
 // ClearLag makes clips clear empty the timeline lag after it answers, as
-// a Studio HD Mini on 9.0.2 does (0.16 s, bmdwire#59, 80bd754); until then clips
+// a Studio HD Mini on 9.0.2 does (0.16 s, bmdwire#59, 476850d); until then clips
 // get lists the old clips.
 func (d *Deck) ClearLag(lag time.Duration) {
 	d.mu.Lock()

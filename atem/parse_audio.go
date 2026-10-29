@@ -313,7 +313,7 @@ func parseFDLv(b []byte) (*FairlightMasterLevelsField, error) {
 // first 14 the same in both (LibAtem's AudioMixerInputGetCommand and its
 // V8 twin), so either parses. Until bmdwire v1.6.0 atemwire wanted
 // exactly 16, so an older switcher's AMIP ended its connection there, and
-// lost the rest of its packet here (bmdwire#49, 626c785).
+// lost the rest of its packet here (bmdwire#49, 8fd3ece).
 func parseAMIP(b []byte) (*AudioInputField, error) {
 	if err := atLeast("AMIP", b, 16); err != nil {
 		return nil, err

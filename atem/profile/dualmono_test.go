@@ -20,7 +20,7 @@ import (
 )
 
 // Dual-mono Fairlight inputs in profile save and apply, ported from
-// bmdwire#23's test_profile_dual_mono.py (d86ed31) and pinned to its
+// bmdwire#23's test_profile_dual_mono.py (b682afe) and pinned to its
 // fixture, profile/profile_fairlight_dual_mono_asc.xml: the
 // <FairlightAudioMixer> of a Save Switcher State ATEM Software Control
 // 9.3.2 wrote for a 1 M/E Constellation HD (firmware 9.2.1) on 2026-10-13,

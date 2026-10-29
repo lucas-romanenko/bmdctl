@@ -25,7 +25,7 @@ state at hand to read names and rates against.
 ```
 $ bmdctl engine status
 engine   running, pid 48213, up 2h14m3s
-version  bmdctl v0.1.0 (e8eb8b9, 2026-10-11T19:11:25Z), protocol 1
+version  bmdctl v0.1.0 (9015076, 2026-10-11T19:11:25Z), protocol 1
 build    MpUkle-BHtFbJgq0fFJH/soENu7Y-5cXGVrzdwhuM/KadqYJdIUmOfOSQQGaxu…
 socket   /run/user/1000/bmdctl.sock
 log      /home/you/.local/state/bmdctl/engine.log

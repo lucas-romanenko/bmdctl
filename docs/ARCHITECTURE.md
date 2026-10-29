@@ -250,7 +250,7 @@ Two different questions, mirroring atemwire's `is_connected` and
                                    transfers fail with ErrDisconnected
 ```
 
-**The disconnect ordering rule** (3ccd09c): on a disconnect the session
+**The disconnect ordering rule** (b3a9c28): on a disconnect the session
 reopens `Ready` before it tells anyone `ErrDisconnected`. Then it
 empties the state, resets the transfer lane (failing its transfers),
 fails the waiting commands and publishes `ChangeDisconnected`. The other

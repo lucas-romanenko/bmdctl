@@ -6,7 +6,7 @@ package macro
 
 // Macro floats decode as ATEM Software Control writes them: six
 // significant digits. Ported from bmdwire#24's test_macro_float_format.py
-// (4011dcb).
+// (c0e211e).
 //
 // profile/macro_floats_asc.xml holds, verbatim, every distinct macro op
 // with a fractional value in twelve ASC Save Switcher State exports from

@@ -1,7 +1,7 @@
 <!--
-Written for bmdctl from bmdwire v1.3.0 (tag v1.3.0, commit cea58c2),
+Written for bmdctl from bmdwire v1.3.0 (tag v1.3.0, commit e5e336c),
 package hyperdeckwire/, which has no SURFACE.md of its own, and brought
-up to v1.8.0 (tag v1.8.0, commit 3ab4180): 1.4.0's fixes (bmdwire#18 to #21,
+up to v1.8.0 (tag v1.8.0, commit 01024ad): 1.4.0's fixes (bmdwire#18 to #21,
 §5.4), 1.7.0's notes about a deck (bmdwire#53), 1.7.1's empty timeline
 (bmdwire#57) and 1.8.0's record, goto, loop off and notifications
 (bmdwire#60) and the clear's lag (bmdwire#59). It is the
@@ -20,11 +20,11 @@ the disagreement. What the code does with every kind of answer was also
 recorded by running it (`hyperdeck/testdata/oracle/client.json`).
 
 - **Source read:** `bmdwire` v1.8.0 (`github.com/lucas-romanenko/bmdwire`),
-  package `hyperdeckwire/`, first at v1.3.0 (`cea58c2`). `client.py`'s
-  changes since: `c8ff262`, `c1b5fb6`, `74973fe` and `008ac39` (1.4.0,
-  bmdwire#18 to #21), `b26ccf5` (1.7.1, #57), `80bd754` (#59) and
-  `a0a0cec` (1.8.0, #60). `upload.py` and `setup.py` are as at 1.2.0
-  (`bd9f78d`).
+  package `hyperdeckwire/`, first at v1.3.0 (`e5e336c`). `client.py`'s
+  changes since: `5e0c2c9`, `c3f4071`, `ec1e029` and `d11eafd` (1.4.0,
+  bmdwire#18 to #21), `54da0e9` (1.7.1, #57), `476850d` (#59) and
+  `df00a20` (1.8.0, #60). `upload.py` and `setup.py` are as at 1.2.0
+  (`f0a861f`).
 - **Three channels, one module each:** `client.py`, the HyperDeck Ethernet
   Protocol on TCP 9993 (control, clips, timeline, configuration);
   `upload.py`, clip upload over the deck's FTP server; `setup.py`, the
@@ -268,9 +268,9 @@ Until 1.8.0 `record`, a relative `goto` and `goto` by timecode, and the
 1. **A late answer is read as the next command's.** A response that comes
    after `read_timeout` stays in the stream; the next request reads it as
    its own, and every answer after is one behind. *Fixed in 1.4.0
-   (bmdwire#18, `c8ff262`): a timeout closes the connection.*
+   (bmdwire#18, `5e0c2c9`): a timeout closes the connection.*
 2. **A stray answer does the same:** a response nobody asked for is the
-   next request's. *Fixed in 1.4.0 (bmdwire#19, `c1b5fb6`) for one that
+   next request's. *Fixed in 1.4.0 (bmdwire#19, `c3f4071`) for one that
    has arrived before the request is sent, which is dropped; one that
    arrives after can't be told from the answer.*
 3. **A malformed head is the current request's error**, and the block it
@@ -280,15 +280,15 @@ Until 1.8.0 `record`, a relative `goto` and `goto` by timecode, and the
 5. **No value is checked:** a newline in a clip name, a record prefix or
    any value sends a second command; speeds and ids outside the deck's
    ranges go as given. *Fixed in 1.4.0 for line breaks (bmdwire#20,
-   `74973fe`), which raise `ValueError` unsent; ranges are still
+   `ec1e029`), which raise `ValueError` unsent; ranges are still
    unchecked.*
 6. **The greeting isn't checked** (§4): a deck at its client limit
-   "connects". *Fixed in 1.4.0 (bmdwire#21, `008ac39`).*
+   "connects". *Fixed in 1.4.0 (bmdwire#21, `d11eafd`).*
 7. **`213 deck rebooting` is success**, and the deck may then drop the
    connection; the next call fails.
 8. **`play(loop=False)` sends a plain `play`:** loop and single clip can be
    turned on, never off, through `play`. *Fixed in 1.8.0 (bmdwire#60,
-   `a0a0cec`): a `False` is sent, `None` left out.*
+   `df00a20`): a `False` is sent, `None` left out.*
 9. **`int()` reads codes and ids,** so `٢٠٠` and `2_00` are 200 and a clip
    row's id may be in any script's digits.
 

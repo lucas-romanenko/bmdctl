@@ -4,7 +4,7 @@
 
 package atem
 
-// Transfers as ATEM Software Control sends them (bmdwire#36, bd6ae77;
+// Transfers as ATEM Software Control sends them (bmdwire#36, d050c10;
 // test_upload_like_asc.py): FTFD with the first budget, each budget whole;
 // a release announced while we hold the store changes nothing; and, since
 // bmdwire#38 and #40, another client's turn: after every release the next

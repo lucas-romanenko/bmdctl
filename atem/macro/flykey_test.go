@@ -16,7 +16,7 @@ import (
 )
 
 // Fly-key Run to Infinity locations in the codec, pinned to bmdwire#22's
-// test_flykey_locations.py (b89fcb7). macro/flykey-10.bin is
+// test_flykey_locations.py (1bee7d4). macro/flykey-10.bin is
 // FLYKEY_10_MACRO: the ten runs of the ASC capture (atem's flykey_test.go)
 // recorded into macro slot 20 and downloaded from the switcher, ten 0x0056
 // ops of M/E, keyer, location and marker 0x02. ASC's Save Switcher State

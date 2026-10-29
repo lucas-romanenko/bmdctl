@@ -103,7 +103,7 @@ func boolStr(v bool) string {
 	return "False"
 }
 
-// fmtScalar is _fmt_scalar as bmdwire#24 (4011dcb) made it: six
+// fmtScalar is _fmt_scalar as bmdwire#24 (c0e211e) made it: six
 // significant digits with trailing zeros dropped, the way ATEM Software
 // Control's XML writes every float (Python's '%.6g', C++'s default stream
 // precision), so -21474836/65536 is "-327.68" and -5243/65536
@@ -325,7 +325,7 @@ var dvePatternNames = map[int]string{
 }
 
 // flyKeyLocationNames is _FLYKEY_LOCATION_NAMES (FlyKeyRunToInfinity),
-// which since bmdwire#22 (b89fcb7) is helpers.FLYKEY_LOCATION_NAMES, the
+// which since bmdwire#22 (1bee7d4) is helpers.FLYKEY_LOCATION_NAMES, the
 // table the live RFlK uses: a copy of atem.FlyKeyLocationNames. 0 is
 // CentreOfKey and 1-9 the 3x3 grid, 5 MiddleCentre, as ATEM Software
 // Control's recorded macro holds them.

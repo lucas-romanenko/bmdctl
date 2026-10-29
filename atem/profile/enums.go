@@ -49,7 +49,7 @@ var transStyleNames = map[int]string{0: "Mix", 1: "Dip", 2: "Wipe", 3: "DVE", 4:
 // mixOptionNames is MIX_OPTION_NAMES: a Fairlight strip's mix option bit.
 var mixOptionNames = map[int]string{0x01: "Off", 0x02: "On", 0x04: "AudioFollowVideo"}
 
-// The Fairlight strip ids, from bmdwire#23 (d86ed31). An <AudioSource id>
+// The Fairlight strip ids, from bmdwire#23 (b682afe). An <AudioSource id>
 // is the strip's 8-byte wire address (the one CFSP, CEBP and FASP carry:
 // six 0xFF bytes, the split byte, the channel byte) read as a signed i64;
 // macro ops carry the same value unsigned as sourceId. Captured from an

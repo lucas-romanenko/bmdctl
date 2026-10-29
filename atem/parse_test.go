@@ -271,7 +271,7 @@ func amip(index uint16, typ, plug, state uint8, volume uint16, balance int16, pa
 
 // test_audio_legacy.py::test_amip_parses_either_length: before 8.0
 // firmware AMIP is 20 bytes, which ended the connection (bmdwire#49,
-// 626c785). Under 16 is still an error, as struct.unpack_from's is.
+// 8fd3ece). Under 16 is still an error, as struct.unpack_from's is.
 func TestAMIPEitherLength(t *testing.T) {
 	for _, pad := range []int{0, 4} {
 		s, c := storeOne(t, "AMIP", amip(3, 0, 2, 2, 65381, -10000, pad))

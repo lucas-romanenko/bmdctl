@@ -108,7 +108,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: first run
 
-- **Commit:** `21219e3`, the head of main when the run was reported (the
+- **Commit:** `9e7a3f1`, the head of main when the run was reported (the
   report didn't name the commit).
 - **Switcher:** ATEM 1 M/E Constellation HD, protocol 2.30, 1080p25.
 - **Run:** reads only, through the engine: the connect (`Dial`: the
@@ -116,7 +116,7 @@ fakes and, for the protocol, against bmdwire's own code.
   itself), `info`, `status`, `state` and `watch`. No other command was
   sent to the switcher.
 - **Result:** all of them worked.
-- **Changed because of it** (`9f3e85e`):
+- **Changed because of it** (`9b80f42`):
   - `watch` was swamped by the clock's `Time` packets: they are left out
     unless `--all`. Its human form named changes by opcode and printed
     raw JSON: it now uses atemwire's state names and gives program and
@@ -129,7 +129,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: second run, writes
 
-- **Commit:** `9144f87`.
+- **Commit:** `8517c3b`.
 - **Switcher:** the report didn't restate it; the first run's was an
   ATEM 1 M/E Constellation HD, protocol 2.30, 1080p25.
 - **Run:** the first commands that change the switcher, through the
@@ -154,7 +154,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: third run, stills
 
-- **Commit:** `7cbcb44`.
+- **Commit:** `697cde1`.
 - **Switcher:** the same ATEM 1 M/E Constellation HD as the first run
   (protocol 2.30, 1080p25; the report didn't restate them, and the
   frames were 1920×1080).
@@ -191,7 +191,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: fourth run, macros, profile save, meters
 
-- **Commit:** `45d4d40`.
+- **Commit:** `2af34ed`.
 - **Switcher:** the same Constellation as the first run: the saved
   profile names the ATEM 1 M/E Constellation HD at 1080p25. The report
   didn't restate the protocol version.
@@ -224,7 +224,7 @@ fakes and, for the protocol, against bmdwire's own code.
     `-327.679993`, where bmdwire's own docs say ATEM Software Control
     writes `-327.68`. The profile saved on this run has `-327.679993`
     in its macros.
-- **Changed because of it** (`377fff6`): a Fairlight strip op with no
+- **Changed because of it** (`5935a97`): a Fairlight strip op with no
   `sourceId` now encodes the stereo one, and a silenced Fairlight gain
   decodes as `-327.68`. Both are deliberate differences in
   `docs/PORTING.md`, to be filed against bmdwire. In the commit that
@@ -237,8 +237,8 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-10: fifth run, the UX pass
 
-- **Commit:** `7218b1e`. The engine's log gives its version as
-  `v0.0.0-20261011010118-7218b1e4e386+dirty`: Go marks a build dirty for
+- **Commit:** `d377ae8`. The engine's log gives its version as
+  `v0.0.0-20261011010118-d377ae839de8+dirty`: Go marks a build dirty for
   untracked files too, and the checkout had untracked scratch files;
   `git status` after the commit showed no changed tracked file.
 - **Switcher:** the Constellation at 192.168.81.85, named "Studio ATEM"
@@ -266,7 +266,7 @@ fakes and, for the protocol, against bmdwire's own code.
     the session had been idle and when it drops.
   - `program cam1` ended with its next step: `(bmdctl inputs lists
     them)`.
-- **Changed because of it** (`12be2b6`): a write's before → after column
+- **Changed because of it** (`11245c3`): a write's before → after column
   is as wide as a change between the switcher's two longest source names,
   not a fixed 24; `bmdctl` and `status` show the git commit the engine
   was built from, the build ID kept for the stale-engine check; `bmdctl`
@@ -285,10 +285,10 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-11: seventh run, the output rework
 
-- **Commit:** `817ee63`. The engine's log gives its version as
-  `v0.0.0-20261011052018-817ee630519b+dirty`: the checkout had untracked
+- **Commit:** `b192f4c`. The engine's log gives its version as
+  `v0.0.0-20261011052018-b192f4cc2761+dirty`: the checkout had untracked
   files (the brand handoff, a screenshot), no changed tracked file. The
-  sixth run (2026-10-10 21:45, `70a96b8` by the engine's log) has no
+  sixth run (2026-10-10 21:45, `909dff6` by the engine's log) has no
   section here.
 - **Switcher:** the Constellation at 192.168.81.85, "Studio ATEM": the
   engine's log reports an ATEM 1 M/E Constellation HD at 1080p25. The
@@ -316,14 +316,14 @@ fakes and, for the protocol, against bmdwire's own code.
     row ended in tables, so `status` and `show keys` put one keyer's
     on-air state in different columns.
   - Nothing tested that a bar is drawn for a transfer over 200 ms.
-- **Changed because of it** (`2c02b28`): a cut or an auto keeps both
+- **Changed because of it** (`19581ae`): a cut or an auto keeps both
   buses for undo, and undo cuts again (or, where the buses changed
   since, sets each back); the header shows program and preview as the
   command found them (one `on_air` note, before the command); every
   status ends at column 72, results and tables alike, and `status` and
   `show keys` share a keyer's columns; `TestUploadBar` checks, at a
   forced terminal with the real 200 ms, that an upload draws its bar at
-  least once and leaves none. Before that (`c611203`, to make CI's
+  least once and leaves none. Before that (`1bba380`, to make CI's
   goldens deterministic), a cut waits for the switcher's `PrgI` and
   `PrvI` before it answers, and an auto for its first `TrPs` or `PrgI`:
   an undo 10 ms after a cut, as in this run, could otherwise read the
@@ -344,13 +344,13 @@ fakes and, for the protocol, against bmdwire's own code.
   out of order: no report was written at the time. It is from the
   engine's log alone, which says what was sent and how long it took,
   not what the terminal showed.
-- **Commit:** `70a96b8`. The engine's log gives its version as
-  `v0.0.0-20261011014228-70a96b8c5504`, not marked dirty.
+- **Commit:** `909dff6`. The engine's log gives its version as
+  `v0.0.0-20261011014228-909dff61d51d`, not marked dirty.
 - **Switcher:** the Constellation at 192.168.81.85, "Studio ATEM": the
   engine's log reports an ATEM 1 M/E Constellation HD at 1080p25. The
   log doesn't give the protocol version (2.30 on the first run).
 - **Run:** in six seconds by the engine's log, from 21:44:57. The engine
-  of the previous build (`7218b1e`) was stopped and one of this build
+  of the previous build (`d377ae8`) was stopped and one of this build
   started. Then `preview`, whose request opened the session (connected
   in about 320 ms); `program` (32 ms); `status`; `bmdctl engine
   status`; `inputs`; `state`; `program cam1`, refused before sending (no
@@ -364,7 +364,7 @@ fakes and, for the protocol, against bmdwire's own code.
   for the source already on preview, a switcher doesn't report a value
   that didn't change, and the engine waited its whole timeout for an
   echo that never came. Everything else answered at once.
-- **Changed because of it** (`d1ca2cf`): a write the switcher already
+- **Changed because of it** (`a248e27`): a write the switcher already
   holds sends nothing. The engine reads the value through the
   command's reader first and answers confirmed with `"already": true`,
   and a terminal says `already` where the time goes. The seventh run
@@ -373,8 +373,8 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-11: eighth run, cut and auto confirmation, undo
 
-- **Commit:** `72419ea`. The engine's log gives its version as
-  `v0.0.0-20261011153407-72419eaf4a05+dirty`: the checkout's untracked
+- **Commit:** `61a22cc`. The engine's log gives its version as
+  `v0.0.0-20261011153407-61a22cc3621c+dirty`: the checkout's untracked
   files, as in the seventh run.
 - **Switcher:** the Constellation at 192.168.81.85, "Studio ATEM": the
   engine's log reports an ATEM 1 M/E Constellation HD at 1080p25. The
@@ -413,7 +413,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-12: ninth run, the macOS release and MCP
 
-- **Commit:** `98cf772`, tagged `v0.1.1`: the release's darwin_arm64
+- **Commit:** `5865707`, tagged `v0.1.1`: the release's darwin_arm64
   binary, not a build from a checkout.
 - **Switcher:** "Studio ATEM", the Constellation of the earlier runs,
   from a second machine: a Mac reaching it over a VPN. The report didn't
@@ -482,7 +482,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-13: eleventh run, a dual-mono profile restore
 
-- **Commit:** `dc06dbf`, the head of main.
+- **Commit:** `8b7f175`, the head of main.
 - **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD on firmware
   9.2.1, 1080p25.
 - **Run:** with input 1 in Dual Mono in ATEM Software Control:
@@ -523,8 +523,8 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-14: twelfth run, a full media pool, and ASC's save captured
 
-- **Commit:** `10e1944`, the installed binary (`v0.1.3-0.20261014141245-10e19441589c`);
-  the profile and transfer code is the same at `683d5a5`, the head of
+- **Commit:** `721a45c`, the installed binary (`v0.1.3-0.20261014141245-721a45cada63`);
+  the profile and transfer code is the same at `6037496`, the head of
   main.
 - **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD (model 18),
   protocol 2.30, firmware 9.2.1 as recorded in the tenth run, 1080p25.
@@ -577,7 +577,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-14: thirteenth run, profile saves from the still cache
 
-- **Commit:** `797a3dc`, built from the working tree before it was
+- **Commit:** `9fad14c`, built from the working tree before it was
   committed, run as an engine of its own (its own socket and config,
   state and cache directories) beside the installed one.
 - **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD, protocol
@@ -603,9 +603,9 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-14: fourteenth run, renamed and unnamed stills, upload speed
 
-- **Commit:** `1dc23d1`, built and run as an engine of its own (its own
+- **Commit:** `a4f3de6`, built and run as an engine of its own (its own
   socket and config, state and cache directories), for everything up to
-  the restore; then the working tree that became `ece244b`, the same
+  the restore; then the working tree that became `18cb04b`, the same
   code, for the last upload.
 - **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD, protocol
   2.30, firmware 9.2.1, 1080p25; the media pool as the twelfth run left
@@ -661,7 +661,7 @@ fakes and, for the protocol, against bmdwire's own code.
     must upload few stills or none.
   - With aggressive drain the upload took 1826 ms, the data 0.96 s, and
     the switcher reported the MD5 of the frame sent.
-- **Changed because of it:** `ece244b`: the engine dials with aggressive
+- **Changed because of it:** `18cb04b`: the engine dials with aggressive
   drain (bmdwire's `aggressive_drain`, which WebATEM's uploader runs
   on), a 20-still restore about 40 s instead of 8 minutes.
   docs/PORTING.md, "Aggressive drain". Not yet: a restore that skips a
@@ -674,7 +674,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-14: fifteenth run, a whole media pool restored
 
-- **Commit:** `9bcd58d` (the code of `ece244b`, aggressive drain),
+- **Commit:** `3ee9c7e` (the code of `18cb04b`, aggressive drain),
   built and run as an engine of its own, as in the fourteenth run.
 - **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD, protocol
   2.30, firmware 9.2.1, 1080p25; the media pool as the owner's ATEM
@@ -716,7 +716,7 @@ fakes and, for the protocol, against bmdwire's own code.
     than at 23 s each) can't be told from the log.
   - Afterwards every slot's name was as before the run.
 - **Changed because of it:** nothing yet. A restore is about 73 s for
-  a whole pool of photographs, 8 minutes before `ece244b`, against
+  a whole pool of photographs, 8 minutes before `18cb04b`, against
   about 2 s a still (40 s) for ATEM Software Control by the owner's
   stopwatch. What would close the gap: decoding the next still while
   one uploads (about 10 s), and whatever ASC does between stills,
@@ -727,10 +727,10 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-15: sixteenth run, uploads as ATEM Software Control sends them
 
-- **Commits:** `5ec2519` (bmdwire#36 ported) and `5d469ad` (the restore
+- **Commits:** `93252b9` (bmdwire#36 ported) and `c861b11` (the restore
   prepares each picture ahead), built from the working tree before each
   was committed and run as an engine of its own, as in the fourteenth
-  run. And bmdwire's branch for #36 (`e2b0ced`), run from a script.
+  run. And bmdwire's branch for #36 (`a153d07`), run from a script.
 - **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD, protocol
   2.30, firmware 9.2.1, 1080p25; the media pool as the owner's ATEM
   Software Control restore left it, 20 stills of 8 pictures. Nothing from
@@ -748,7 +748,7 @@ fakes and, for the protocol, against bmdwire's own code.
   - bmdwire#36's `AtemProtocol` re-uploading those 20 stills to their
     slots, queued at once, from a script.
   - `profile restore --macros-only --macros false --media-pool-images
-    true --yes` of that save, at `5ec2519`, then at `5d469ad`.
+    true --yes` of that save, at `93252b9`, then at `c861b11`.
   - After each, every slot's name against the profile's and its hash
     against the MD5 of the frame its file converts to.
   - `profile save` with the still cache off (`BMDCTL_STILL_CACHE_MB=0`,
@@ -757,12 +757,12 @@ fakes and, for the protocol, against bmdwire's own code.
 - **Result:**
   - bmdwire: all 20 in 12.72 s, 0.60 to 0.64 s a still; every hash the
     MD5 of the frame sent; no resends.
-  - bmdctl at `5ec2519`: 14.7 s from the first upload request to the
+  - bmdctl at `93252b9`: 14.7 s from the first upload request to the
     answer (16.7 s for the command, with the engine's start and the
     connect). Each still's transfer 0.53 to 0.56 s, as ASC's; between
     one still's FTDC and the next FTSD, 0.03 to 0.30 s (median 0.22),
     the engine decoding, converting and RLE-encoding the next PNG.
-  - bmdctl at `5d469ad`: 11.2 s from the first upload request to the
+  - bmdctl at `c861b11`: 11.2 s from the first upload request to the
     answer (12.75 s for the command): transfers 0.56 s (median), 1 ms
     between one FTDC and the next FTSD.
   - The save: 16.0 s, 8 downloads at 1.84 to 1.85 s from one request to
@@ -772,10 +772,10 @@ fakes and, for the protocol, against bmdwire's own code.
   - Every slot had its name and exactly its frame after each run; no
     warnings, no resends. The pool's pictures were unchanged; only the
     hashes moved to bmdctl's frames.
-- **Changed because of it:** bmdwire#36, bd6ae77 (the lock handover in
+- **Changed because of it:** bmdwire#36, d050c10 (the lock handover in
   one packet, FTFD with the first budget, whole budgets, the resend timer,
-  refused sends kept for retransmission) and its port, `5ec2519`; the
-  restore preparing pictures ahead, `5d469ad`. A 20-still restore went
+  refused sends kept for retransmission) and its port, `93252b9`; the
+  restore preparing pictures ahead, `c861b11`. A 20-still restore went
   from 8 minutes (the fourteenth run) to 73 s (the fifteenth) to 11.2 s.
 - **Not yet verified on hardware:** a macro upload since bmdwire#36, and
   an upload over a slower link; otherwise as after the fifteenth run.
@@ -834,7 +834,7 @@ fakes and, for the protocol, against bmdwire's own code.
 ## 2026-10-15: eighteenth run, the UDP thread waiting on itself
 
 - **Commits:** none of bmdctl's. bmdwire run from scripts: v1.5.2
-  (`65b9ee0`) and bmdwire#42's branch (`81955c1`).
+  (`2ab5dd1`) and bmdwire#42's branch (`8877133`).
 - **Switcher:** Studio ATEM, an ATEM 1 M/E Constellation HD, protocol
   2.30, firmware 9.2.1, 1080p25; the media pool as the sixteenth run left
   it.
@@ -869,7 +869,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-27: nineteenth run, the first HyperDeck
 
-- **Commit:** `c0d5593`, built as its own binary and run with its own
+- **Commit:** `44a6b0d`, built as its own binary and run with its own
   config, state and socket, so the owner's hosts.yml was never touched.
   Every connect named its device (`--type`), so the probe knocked on no
   other port.
@@ -909,7 +909,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-27: twentieth run, the first Ultimatte
 
-- **Commit:** `c0d5593`, run as in the nineteenth.
+- **Commit:** `44a6b0d`, run as in the nineteenth.
 - **Keyer:** the owner's test Ultimatte, an Ultimatte 12 4K at
   192.168.81.42, software release 2.3, protocol 2.3, 1080p25, no input
   locked. Label "Studio Keyer", presets "1" and "2", its current file
@@ -967,7 +967,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-27: twenty-first run, the new HyperDeck commands
 
-- **Commit:** `f42e52f`, built and run as in the nineteenth, its own
+- **Commit:** `772b132`, built and run as in the nineteenth, its own
   config, state and socket; connected with `--type hyperdeck`.
 - **Deck:** the test HyperDeck Studio HD Mini at 192.168.82.192, software
   9.0.2, protocol 1.19, 1080p25, as the nineteenth run left it: one 10 s
@@ -1001,7 +1001,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-27: twenty-second run, an empty timeline after bmdwire 1.7.1
 
-- **Commit:** `9bd3f55` (bmdwire 1.7.1 ported: `clips get`'s 107 on an
+- **Commit:** `af2a116` (bmdwire 1.7.1 ported: `clips get`'s 107 on an
   empty timeline is no clips), built and run as in the nineteenth.
 - **Deck:** the test Studio HD Mini, as the twenty-first run left it:
   the clip playing on loop.
@@ -1024,7 +1024,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-28: twenty-third run, loop and timeline clear
 
-- **Commit:** `92bc3c3` (bmdwire 1.8.0 ported, and `2c4a9b1`'s
+- **Commit:** `5e7ac09` (bmdwire 1.8.0 ported, and `05f7c39`'s
   `timeline clear` reading the timeline back until it is empty), built
   and run as in the nineteenth.
 - **Deck:** the test Studio HD Mini, as the twenty-second run left it:
@@ -1053,13 +1053,13 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-29: twenty-fourth run, the ATEM before v0.2.0
 
-- **Commit:** `dd65e52`, built and run as in the nineteenth. bmdctl
-  hadn't driven the ATEM since the sixteenth run (`5d469ad`); since then
+- **Commit:** `bc5e44e`, built and run as in the nineteenth. bmdctl
+  hadn't driven the ATEM since the sixteenth run (`c861b11`); since then
   it ported bmdwire 1.5.1 to 1.8.0, among them another client's turn at
   every release (bmdwire#38, #40), the UDP thread (#42) and the legacy
   mixer's readers (#49); a transfer's last progress report reaches its
-  caller (`486515f`), and the audio mixer is picked as atemwire picks it
-  (`bd6d9e1`).
+  caller (`82e98ef`), and the audio mixer is picked as atemwire picks it
+  (`8b70c69`).
 - **Switcher:** Studio ATEM, the Constellation at 192.168.81.85,
   protocol 2.30, 1080p25; Media Player 1 (slot 1) on program, input 3 on
   preview; the media pool full, 20 stills of 7 pictures, slots 1 and 20
@@ -1113,7 +1113,7 @@ fakes and, for the protocol, against bmdwire's own code.
 
 ## 2026-10-29: twenty-fifth run, the first Videohub
 
-- **Commit:** `bf47547`, the v0.2.0 release binary, installed on the
+- **Commit:** `08d6307`, the v0.2.0 release binary, installed on the
   development machine with install.sh from main.
 - **Router:** a Blackmagic Videohub 40x40 12G, protocol 2.8, one of the
   owner's two live routers; its name and address are left out, as a

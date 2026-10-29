@@ -679,7 +679,7 @@ func dialedLogging(t *testing.T, cmds ...[]byte) (*Session, *switcher, *logRecor
 
 // test_audio_legacy.py::test_first_of_each_legacy_packet_is_logged_raw_and_decoded:
 // the first AMIP per source and the first AMMO, AMmO and AMLv, at Info
-// (bmdwire#49, 03fa389).
+// (bmdwire#49, 45fafa4).
 func TestFirstOfEachLegacyPacketIsLogged(t *testing.T) {
 	s, sw, logs := dialedLogging(t)
 	ammo := []byte{0x80, 0, 0, 0, 1, 0, 0, 0}

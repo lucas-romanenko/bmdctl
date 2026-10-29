@@ -29,7 +29,7 @@ const (
 )
 
 // FlyKeyLocationNames is helpers.FLYKEY_LOCATION_NAMES (bmdwire#22,
-// b89fcb7): where KeyframeRunToInfinite flies the key
+// 1bee7d4): where KeyframeRunToInfinite flies the key
 // (KeyerKeyframeRun.Direction), by ATEM Software Control's name. 1-9 are
 // the 3x3 grid row by row from the top left, so 5 is MiddleCentre; 0 is
 // CentreOfKey, a tenth location. A capture of ASC settled it: its RFlK for

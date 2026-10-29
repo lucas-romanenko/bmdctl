@@ -1,7 +1,7 @@
 bmdctl/atem (a Go port of atemwire)
 
 This package is a Go port of atemwire from bmdwire v1.3.0
-(https://github.com/lucas-romanenko/bmdwire, tag v1.3.0, commit cea58c2).
+(https://github.com/lucas-romanenko/bmdwire, tag v1.3.0, commit e5e336c).
 atemwire is itself a fork of pyatem by Martijn Braam and the OpenAtem
 contributors, https://git.sr.ht/~martijnbraam/pyatem, licensed under the
 GNU Lesser General Public License version 3 only (LGPL-3.0-only).

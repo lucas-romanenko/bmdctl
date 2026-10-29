@@ -79,7 +79,7 @@ const (
 )
 
 // Resending what the switcher hasn't acknowledged, and sends the kernel
-// refuses for a moment (bmdwire#36, bd6ae77).
+// refuses for a moment (bmdwire#36, d050c10).
 const (
 	// resendAfter is RESEND_AFTER: our reliable packets the switcher
 	// hasn't acknowledged for this long are sent again, from the first

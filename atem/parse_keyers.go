@@ -90,7 +90,7 @@ var keyerParsers = []parser{
 	}),
 	entry("MRPr", "macro-play-status", parseMRPr, func(s *State, f *MacroPlayStatusField) string {
 		s.Macros.PlayStatus = f
-		// ATEMConnection's last-run latch (bmdwire v1.3.0, a9f3646): any
+		// ATEMConnection's last-run latch (bmdwire v1.3.0, a5ac82e): any
 		// running slot but the idle 0xFFFF, slot 0 included.
 		if f.Running && f.Index != 0xFFFF {
 			s.Macros.LastRun = int(f.Index)

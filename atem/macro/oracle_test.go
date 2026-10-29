@@ -19,7 +19,7 @@ import (
 )
 
 // The oracle, internal/fixtures/oracle/macro.json, records what bmdwire
-// v1.3.0's codec does with bmdwire#22 to #24 merged (v1.3.0-9-g785aac7);
+// v1.3.0's codec does with bmdwire#22 to #24 merged (v1.3.0-9-g62e97f7);
 // gen_macro.py beside it says how.
 
 type oracleResult struct {

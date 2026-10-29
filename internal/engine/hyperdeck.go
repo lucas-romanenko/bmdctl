@@ -515,7 +515,7 @@ func (c *call) timelineEdit(cmd hyperdeck.Command, before int) (any, bool, error
 		return r, true, err
 	}
 	// A clear is answered before the timeline is empty (bmdwire#59,
-	// 80bd754: 0.16 s on a Studio HD Mini): read it back until it is,
+	// 476850d: 0.16 s on a Studio HD Mini): read it back until it is,
 	// clearSettle at most. Still not empty then, the result says so.
 	if _, clear := cmd.(hyperdeck.ClipsClear); clear {
 		for deadline := time.Now().Add(clearSettle); len(c.deck.State().Timeline) > 0 && time.Now().Before(deadline); {
