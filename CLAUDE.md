@@ -180,7 +180,8 @@ bmdctl follows bmdwire; it never leads it.
   `docs/commands/` the generated reference's.
 - `.github/banner.gif` (`banner.png` is its still), `.github/mark/`: the
   README banner and the mark. `docs/brand/social-preview.png` is the
-  repository's social preview (uploaded in Settings by hand).
+  repository's social preview (uploaded in Settings by hand), and
+  `docs/brand/launch/` the launch post's images, with `launch.py`.
   `docs/BRAND.md` is their spec; follow it for anything branded.
 
 ## Terminal output
