@@ -194,6 +194,9 @@ type NoCommand struct {
 }
 
 func (e *NoCommand) Error() string {
+	if e.Partial && len(e.Prefix) == 0 {
+		return "missing a command"
+	}
 	if e.Partial {
 		return fmt.Sprintf("%s: missing a subcommand", strings.Join(e.Prefix, " "))
 	}

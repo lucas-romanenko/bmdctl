@@ -255,6 +255,9 @@ func TestDryRunWarnsAndRefuses(t *testing.T) {
 		{[]string{"--dry-run", "nonsense"}, 1, `no command or host named "nonsense"`},
 		{[]string{"atem", "--dry-run", "nonsense"}, 1, "unknown command"},
 		{[]string{"--dry-run", "transition"}, 1, "missing a subcommand"},
+		{[]string{"--dry-run", "atem"}, 1, "bmdctl atem: missing a command\n"},
+		{[]string{"--dry-run", "--type", "atem", "status"}, 1, "bmdctl atem: --type isn't a global flag; a command's own flags go after it"},
+		{[]string{"--dry-run", "hyperdeck", "--bogus", "play"}, 1, "bmdctl hyperdeck: --bogus isn't a global flag"},
 		{[]string{"--fps", "0", "cut"}, 1, "--fps"},
 		{[]string{"--json=yes", "cut"}, 1, "takes no value"},
 	} {

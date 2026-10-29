@@ -34,6 +34,10 @@ func (c *cli) runDevice(g globals, device string, words, tokens []string) int {
 			return exitOK
 		}
 		msg := fmt.Sprintf("bmdctl %s: %v", device, nc)
+		if len(words) == 0 && len(tokens) > 0 {
+			// A flag before any command, which only a global one can be.
+			msg = fmt.Sprintf("bmdctl %s: %s isn't a global flag; a command's own flags go after it", device, tokens[0])
+		}
 		if c.json {
 			return c.fail(exitUsage, "%s", msg)
 		}
