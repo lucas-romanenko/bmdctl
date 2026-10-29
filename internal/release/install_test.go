@@ -53,21 +53,64 @@ func fakeRelease(t *testing.T, tag string, corrupt bool) *httptest.Server {
 
 func runInstall(t *testing.T, env ...string) (string, string, error) {
 	t.Helper()
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		t.Skip("install.sh is for macOS and Linux")
-	}
+	unixOnly(t)
 	for _, tool := range []string{"sh", "curl", "tar"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("no %s", tool)
 		}
 	}
+	return runInstallWith(t, "sh", os.Getenv("PATH"), env...)
+}
+
+// runInstallWith runs install.sh under sh with PATH set to path.
+func runInstallWith(t *testing.T, sh, path string, env ...string) (string, string, error) {
+	t.Helper()
 	home := t.TempDir()
-	cmd := exec.Command("sh", "../../install.sh")
-	cmd.Env = append([]string{"HOME=" + home, "PATH=" + os.Getenv("PATH")}, env...)
+	cmd := exec.Command(sh, "../../install.sh")
+	cmd.Env = append([]string{"HOME=" + home, "PATH=" + path}, env...)
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	err := cmd.Run()
 	return out.String(), errOut.String(), err
+}
+
+func unixOnly(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("install.sh is for macOS and Linux")
+	}
+}
+
+// installTools are the commands install.sh runs besides curl or wget.
+var installTools = []string{"sh", "uname", "tar", "gzip", "mktemp", "sha256sum", "shasum",
+	"cut", "sed", "tr", "head", "awk", "rm", "mkdir", "id", "cp", "chmod", "mv", "ln"}
+
+// toolDir is a directory to be the whole PATH: each of tools linked to
+// to(tool), or left out where to gives "".
+func toolDir(t *testing.T, tools []string, to func(string) string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, tool := range tools {
+		if target := to(tool); target != "" {
+			if err := os.Symlink(target, filepath.Join(dir, tool)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return dir
+}
+
+// checkInstalled checks bmdctl and its aliases are in dir.
+func checkInstalled(t *testing.T, dir string) {
+	t.Helper()
+	if fi, err := os.Stat(filepath.Join(dir, "bmdctl")); err != nil || fi.Mode()&0o111 == 0 {
+		t.Errorf("bmdctl: %v %v", fi, err)
+	}
+	for _, a := range []string{"atemctl", "hdctl", "vhctl", "ultctl"} {
+		if target, err := os.Readlink(filepath.Join(dir, a)); err != nil || target != "bmdctl" {
+			t.Errorf("%s: %q %v", a, target, err)
+		}
+	}
 }
 
 func TestInstallScript(t *testing.T) {
@@ -77,14 +120,7 @@ func TestInstallScript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s%s", err, out, errOut)
 	}
-	if fi, err := os.Stat(filepath.Join(dir, "bmdctl")); err != nil || fi.Mode()&0o111 == 0 {
-		t.Errorf("bmdctl: %v %v", fi, err)
-	}
-	for _, a := range []string{"atemctl", "hdctl", "vhctl", "ultctl"} {
-		if target, err := os.Readlink(filepath.Join(dir, a)); err != nil || target != "bmdctl" {
-			t.Errorf("%s: %q %v", a, target, err)
-		}
-	}
+	checkInstalled(t, dir)
 	for _, want := range []string{"downloading bmdctl v9.9.9 for " + runtime.GOOS + "/" + runtime.GOARCH,
 		"installed " + dir + "/bmdctl, with atemctl, hdctl, vhctl, ultctl linked to it", "bmdctl 9.9.9",
 		"is not on your PATH", "next: bmdctl connect <ip>"} {
@@ -108,6 +144,52 @@ func TestInstallScriptRefusesABadDownload(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "bmdctl")); err == nil {
 		t.Error("installed anyway")
 	}
+}
+
+// TestInstallScriptWithWget installs with GNU wget and no curl.
+func TestInstallScriptWithWget(t *testing.T) {
+	unixOnly(t)
+	wget, err := exec.LookPath("wget")
+	if err != nil {
+		t.Skip("no wget")
+	}
+	if v, _ := exec.Command(wget, "--version").Output(); !bytes.Contains(v, []byte("GNU Wget")) {
+		t.Skip("wget isn't GNU's")
+	}
+	path := toolDir(t, append(installTools, "wget"), func(tool string) string {
+		p, _ := exec.LookPath(tool)
+		return p
+	})
+	srv := fakeRelease(t, "v9.9.9", false)
+	dir := filepath.Join(t.TempDir(), "bin")
+	out, errOut, err := runInstallWith(t, filepath.Join(path, "sh"), path, "BMDCTL_BASE_URL="+srv.URL, "BMDCTL_INSTALL_DIR="+dir)
+	if err != nil || !strings.Contains(out, "downloading bmdctl v9.9.9") {
+		t.Fatalf("%v\n%s%s", err, out, errOut)
+	}
+	checkInstalled(t, dir)
+}
+
+// TestInstallScriptOnBusyBox installs with nothing but BusyBox, as on
+// Alpine: its sh, its wget (which has no --max-redirect) and its tools.
+func TestInstallScriptOnBusyBox(t *testing.T) {
+	unixOnly(t)
+	busybox, err := exec.LookPath("busybox")
+	if err != nil {
+		t.Skip("no busybox")
+	}
+	path := toolDir(t, append(installTools, "wget"), func(tool string) string {
+		if tool == "shasum" || tool == "gzip" {
+			return "" // sha256sum, and tar's own gzip
+		}
+		return busybox
+	})
+	srv := fakeRelease(t, "v9.9.9", false)
+	dir := filepath.Join(t.TempDir(), "bin")
+	out, errOut, err := runInstallWith(t, filepath.Join(path, "sh"), path, "BMDCTL_BASE_URL="+srv.URL, "BMDCTL_INSTALL_DIR="+dir)
+	if err != nil || !strings.Contains(out, "downloading bmdctl v9.9.9") {
+		t.Fatalf("%v\n%s%s", err, out, errOut)
+	}
+	checkInstalled(t, dir)
 }
 
 func TestInstallScriptTakesAVersion(t *testing.T) {

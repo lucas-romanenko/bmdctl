@@ -35,7 +35,8 @@ if command -v curl >/dev/null 2>&1; then
 	location() { curl -fsSI -o /dev/null -w '%{redirect_url}' "$1"; }
 elif command -v wget >/dev/null 2>&1; then
 	fetch() { wget -q -O "$2" "$1"; }
-	location() { wget -q -S --max-redirect=0 -O /dev/null "$1" 2>&1 | sed -n 's/^ *[Ll]ocation: *//p' | tr -d '\r' | tail -n 1; }
+	# The first hop's Location: BusyBox's wget has no --max-redirect.
+	location() { wget -q -S -O /dev/null "$1" 2>&1 | sed -n 's/^ *[Ll]ocation: *//p' | tr -d '\r' | head -n 1; }
 else
 	die "this needs curl or wget"
 fi

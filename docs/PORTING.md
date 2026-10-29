@@ -2594,7 +2594,8 @@ builds everything into `dist/` without publishing.
   `BMDCTL_VERSION`, downloads the archive and `checksums.txt` from that
   tag's release (not `latest/download`, so a release published between
   the two downloads can't pair one's archive with the other's checksums) with curl
-  or wget, refuses an archive whose SHA-256 (sha256sum or shasum)
+  or wget (GNU's or BusyBox's: the tag is the first `Location` wget
+  prints, since BusyBox's has no `--max-redirect`), refuses an archive whose SHA-256 (sha256sum or shasum)
   doesn't match, installs to `BMDCTL_INSTALL_DIR`, else
   `/usr/local/bin` as root and `~/.local/bin` otherwise, by rename so a
   running bmdctl keeps its file, links the aliases, says when the
@@ -2622,6 +2623,18 @@ builds everything into `dist/` without publishing.
   binary ran `version`, `connect`, `status`, `inputs`, `watch` and `mcp`
   against the Constellation over a VPN. The darwin_amd64 binary hasn't
   been run.
+- **v0.2.0 on clean machines** (fresh containers, from the published
+  release): install.sh with curl as a user on Debian, with GNU wget and
+  no curl on Debian, and as root on Alpine; the amd64 deb on Debian (its
+  man page is in the package, though Debian's slim image drops it) and
+  the amd64 rpm on Fedora, each with `version`, the aliases and `doctor`;
+  the image's `0.2.0` and `latest` (one digest), pulled without a login;
+  and the Scoop manifest's `latest/download` URL. Alpine found the one
+  bug: BusyBox's wget has no `--max-redirect`, so install.sh couldn't
+  find the latest release (`BMDCTL_VERSION` still worked). Fixed on main
+  the same day, which is where the script is fetched from, with
+  `internal/release` now installing with GNU wget alone and with BusyBox
+  alone, where they are installed.
 
 ## Engine (`internal/engine`)
 
