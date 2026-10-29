@@ -27,8 +27,8 @@ The documentation site's are in `docs/brand/`:
   from `docs/brand/`, writes all four (fontTools; the fonts are Google
   Fonts' `ofl/ibmplexmono`).
 - `bmdctl-mark-32-dark.png`: a copy of the mark's, the site's favicon.
-- `launch/`: the launch post's images and `launch.py`, which makes them
-  (below, "Launch images").
+- `launch/`: the launch post's image and `launch.py`, which makes it
+  (below, "Launch image").
 
 Two other marks were studied and rejected: a typeset `>_`, where one glyph
 can't carry two tally colours and the strokes are too thin at 16px, and a
@@ -151,34 +151,35 @@ repository's Settings, under Social preview.
   social-preview.html`, from `docs/brand/`, renders it (it loads IBM Plex
   Mono from Google Fonts).
 
-## Launch images
+## Launch image
 
-`docs/brand/launch/launch-{1,2,3}.png`, the images for the launch post,
-in the order they are attached: LinkedIn shows three images as the first
-large and the other two side by side below it.
+`docs/brand/launch/launch.png`, the one image attached to the launch
+post: 1200×1500, 4:5, the tallest ratio LinkedIn shows a single image
+at, so it is shown whole rather than cropped.
 
-- `launch-1.png`, 2400×1880: the 168px dark mark and the title at 120px
-  with its tagline at 40px, as in the banner; below the tagline two chips
-  in `#141618` with a `#34383C` border, `ATEM · HyperDeck · Videohub ·
-  Ultimatte` and `Mac · Windows · Linux · Docker`; then a terminal with
-  `bmdctl status` and a cut. The header starts at the terminal's left
-  edge.
-- `launch-2.png` and `launch-3.png`, 2400×1560: a caption written as a
-  shell comment, in `#7E8386`, over a terminal, centred on the image:
-  four kinds of device (a route, a play, a keyer's presets, a cut), and
-  a cue file run with `exec`.
+- `#0A0B0C` ground. Everything else sits at least 80px inside the frame
+  on every side: nothing runs to an edge, so there is no tally line along
+  the bottom.
+- One column, centred on the frame, its left edge the terminal's. From
+  the top: the 84px dark mark, then a 30px gap and the title at 64px; the
+  tagline under the title at 22px, `#7E8386`; two chips, one above the
+  other and aligned with the title, in `#141618` with a `#34383C` border
+  and 19px `#9A9E9F` text: `ATEM · HyperDeck · Videohub · Ultimatte` and
+  `Mac · Windows · Linux`; then, 40px below, the terminal.
 - The terminal is a `#141618` window with a `#34383C` border and a bar of
   three `#34383C` dots, never a desktop's coloured buttons. Its text is
-  Plex Mono at 40px, coloured as the CLI colours it: `--pgm` and `--pvw`
-  for program and preview, bold for names, `#7E8386` for what is dim, the
-  `$` in `--pvw`.
-- A 12px line runs along the bottom edge, its left half `--pgm` and its
-  right half `--pvw`, as webATEM's images have it.
-- The terminal text is the CLI's own output, from its terminal goldens
-  and the exec guide, with the goldens' `#` timings filled in and each
-  status ending at column 72. Every name in it is a stand-in.
-- `python3 launch.py`, from `docs/brand/launch/`, writes all three
-  (google-chrome and Pillow; Plex Mono from Google Fonts).
+  Plex Mono at 22px, the largest at which 72 columns fit inside the
+  insets, coloured as the CLI colours it: `--pgm` and `--pvw` for
+  program and preview, bold for names, `#7E8386` for what is dim, the `$`
+  in `--pvw`.
+- It runs `bmdctl studio status` and `bmdctl studio cut` on a switcher,
+  `bmdctl router route 5 7` on a Videohub and `bmdctl deck play --speed
+  50` on a HyperDeck: the CLI's own output, from its terminal goldens,
+  with the goldens' `#` timings filled in and each status ending at
+  column 72. Every name in it is a stand-in.
+- `python3 launch.py`, from `docs/brand/launch/`, writes it (google-chrome
+  and Pillow; Plex Mono from Google Fonts) and fails if anything comes
+  within 80px of an edge.
 
 ## Legal
 
