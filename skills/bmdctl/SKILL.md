@@ -138,9 +138,9 @@ Ultimatte's `archive` saves its presets and settings to a zip for `restore`.
 
 ## Cautions
 
-- **Untested models.** bmdctl has been run on an ATEM 1 M/E Constellation
-  HD; other ATEMs are untested, and the HyperDeck, Videohub and Ultimatte
-  commands have not met a device yet. `record`, `next`, `prev`, `loop`,
+- **Untested models.** bmdctl has run on an ATEM 1 M/E Constellation HD,
+  a HyperDeck Studio HD Mini, an Ultimatte 12 4K and a Videohub 40x40 12G
+  (its routing); other models are untested. `record`, `next`, `prev`,
   `goto` by timecode and some ATEM commands are marked unverified (help
   says so). On an unfamiliar device, read `status` after each change.
 - `undo` puts back the last program, preview, cut, auto, aux or keyer

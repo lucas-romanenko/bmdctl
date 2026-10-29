@@ -3,8 +3,9 @@
 A Videohub router is a host like a switcher: commands go to it with
 `--host`, or through `vhctl`, which is `bmdctl videohub`. The engine
 keeps a session open to it, as it does to a switcher, so a route made at
-a panel or in Videohub Control is in what bmdctl shows. Nothing here has
-run on a real router yet ([HARDWARE.md](../HARDWARE.md#unverified)).
+a panel or in Videohub Control is in what bmdctl shows. `connect`,
+`status` and `route` have run on a Videohub 40x40 12G; the rest hasn't
+yet ([HARDWARE.md](../HARDWARE.md#unverified)).
 
 ```
 $ bmdctl hosts add 192.168.1.60

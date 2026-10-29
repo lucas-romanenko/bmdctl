@@ -109,7 +109,8 @@ The documentation is also a site, https://lucas-romanenko.github.io/bmdctl/
   from the command table (`bmdctl man` prints the same).
 - [docs/AGENTS.md](docs/AGENTS.md): the MCP server and the Claude skill.
 - [docs/HARDWARE.md](docs/HARDWARE.md): what has run on real hardware (an
-  ATEM, a HyperDeck and an Ultimatte; no Videohub yet) and what hasn't.
+  ATEM, a HyperDeck, an Ultimatte and a Videohub's routing) and what
+  hasn't.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the packages, the
   engine and the tests fit together.
 - [CONTRIBUTING.md](CONTRIBUTING.md): building, testing and adding a

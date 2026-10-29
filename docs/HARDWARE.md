@@ -13,11 +13,12 @@ session, add what it verified to "Tested on" and take it off
 
 ## Tested on
 
-One ATEM model so far, in nineteen sessions, then one HyperDeck in four
-and one Ultimatte in one. The ATEM's firmware was first recorded in the
-tenth, 9.2.1; before that the rows give the protocol version the
-switcher's `_ver` packet reported, 2.30. No Videohub has been run: the
-owner's two are live.
+One ATEM model so far, in nineteen sessions, then one HyperDeck in four,
+one Ultimatte in one and one Videohub in one. The ATEM's firmware was
+first recorded in the tenth, 9.2.1; before that the rows give the
+protocol version the switcher's `_ver` packet reported, 2.30. The
+Videohub is one of the owner's two live routers, run by the owner by
+hand; no script or test touches them.
 
 | Device | Firmware | Video mode | Verified | Date |
 |---|---|---|---|---|
@@ -44,6 +45,7 @@ owner's two are live.
 | HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `pause`; `configuration show` and `configuration set` (changed and back); `remote off` and `remote on`, which the deck takes over 9993 with remote off; `timeline add` (`--before`), `remove` and `clear` on a timeline with clips | 2026-10-27 |
 | HyperDeck Studio HD Mini | 9.0.2, protocol 1.19 | 1080p25 | `loop off` and `loop on` during a playback (the clip played out, then looped past its end); `timeline clear` empty when read at once | 2026-10-28 |
 | Ultimatte 12 4K | 2.3 | 1080p25 | `connect`, `status`, `prelude`, `controls`, `presets`, `network show`, `archive`; `restore` (presets and settings back byte for byte, the saved settings applied live) | 2026-10-27 |
+| Videohub 40x40 12G | protocol 2.8 | | `connect ADDRESS` (the probe found a Videohub), `status`, `route` and a route back, from the v0.2.0 release | 2026-10-29 |
 
 ## Unverified
 
@@ -56,15 +58,17 @@ fakes and, for the protocol, against bmdwire's own code.
   name, a second disk, a setting whose change reboots the deck, and any
   deck but the Studio HD Mini. The rest is checked against hyperdeckwire,
   not a deck.
-- **Any Videohub command on a real router.** The protocol is checked
-  against videohubwire (which routes Smart Videohub 40 x 40 and 80 x 80
-  routers in production), not a router, from bmdctl.
+- **Videohub:** `inputs`, `outputs`, `watch`, `input rename`, `output
+  rename`, a route to a locked output, and any router but the Videohub
+  40x40 12G. The rest is checked against videohubwire (which routes
+  Smart Videohub 40 x 40 and 80 x 80 routers in production), not a
+  router.
 - **Ultimatte:** `network set` (not run: a wrong value takes the unit off
   the network), a restore of another unit's archive or of Smart Remote
   4's Archive All, and any keyer but the 12 4K.
 - **Hosts:** `hosts discover`; `hosts add --as`; a rename made in ATEM
   Setup while bmdctl is in use; the device probe (`connect ADDRESS`
-  asking what answers), which came after the last session.
+  asking what answers) on anything but a Videohub.
 - **Sessions:** a session that drops and reconnects (`watch`'s `session
   dropped` and `reconnected`, the connecting line on a reconnect).
 - **undo:** undo after a change from a panel, which sets each bus back
@@ -1105,4 +1109,27 @@ fakes and, for the protocol, against bmdwire's own code.
   layout and bmdctl's handling of another client's turn after its own
   upload have now run on hardware; the first two come off the
   Unverified list.
+- **Not yet verified on hardware:** as the list at the top says.
+
+## 2026-10-29: twenty-fifth run, the first Videohub
+
+- **Commit:** `bf47547`, the v0.2.0 release binary, installed on the
+  development machine with install.sh from main.
+- **Router:** a Blackmagic Videohub 40x40 12G, protocol 2.8, one of the
+  owner's two live routers; its name and address are left out, as a
+  private deployment's.
+- **Run:** by the owner, by hand: `connect ADDRESS`, `status`, a
+  `route`, and a `route` putting the output back.
+- **Result:**
+  - `connect` asked the address what it is: the probe found a Videohub
+    in 6 ms, the session opened and was pinned at 7 ms, and the router
+    was saved to hosts.yml as the default host.
+  - `status` answered from the session; each `route` was answered in
+    under a millisecond by the engine's log (`took_ms` 0). The owner
+    reported both routes working; their result lines weren't kept, so
+    whether either was `already` isn't recorded.
+  - The engine logged no warnings.
+- **Changed because of it:** `connect`, `status` and `route` have run on
+  a Videohub, and the probe on one; the Unverified list, the Videohub
+  guide, the README and the Claude skill say so.
 - **Not yet verified on hardware:** as the list at the top says.
