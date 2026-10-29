@@ -2636,6 +2636,16 @@ builds everything into `dist/` without publishing.
   the same day, which is where the script is fetched from, with
   `internal/release` now installing with GNU wget alone and with BusyBox
   alone, where they are installed.
+  Then every file of the release: each matched `checksums.txt`; every
+  binary is Go 1.27.3, static, stamped `bf47547`; the linux_arm64
+  archive, the arm64 deb and the aarch64 rpm ran `version` and an alias
+  under QEMU's user mode, and the image's linux/arm64 binary is that
+  archive's, byte for byte; the five Windows executables ran `--help`,
+  `version` and `doctor` (the named pipe, `%LocalAppData%`) under wine
+  10; the darwin_arm64 binary carries the ad hoc signature Apple silicon
+  needs, and both darwin binaries declare macOS 13 or later
+  (docs/INSTALL.md says so now). None of it ran on a Mac or on Windows
+  itself.
 
 ## Engine (`internal/engine`)
 

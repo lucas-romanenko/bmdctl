@@ -19,6 +19,10 @@ is always the latest. Each archive holds `bmdctl`, the four alias
 commands (below), `README.md` and the licences. There is no 32-bit
 build.
 
+They run on what the Go release that builds them supports: with Go
+1.27, macOS 13 (Ventura) or later, Windows 10 or later, and Linux 3.2
+or later.
+
 ## macOS and Linux: install.sh
 
 ```sh
