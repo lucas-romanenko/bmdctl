@@ -1403,6 +1403,10 @@ func (s *Session) queueChunks() {
 		return
 	}
 	size := int(l.budget.Size)
+	if m := s.t.maxChunk; m > 0 && m < size {
+		// Datagrams that big do not reach this switcher (chunkSteps).
+		size = m
+	}
 	for range int(l.budget.Count) {
 		rest := t.data[min(t.offset, len(t.data)):]
 		if len(rest) == 0 {
@@ -1443,6 +1447,33 @@ func isRLEHeader(b []byte) bool {
 		}
 	}
 	return true
+}
+
+// chunksTakenBack is _chunks_taken_back (bmdwire#CHUNKPR): data chunks of
+// our upload that did not reach the switcher, taken back by the
+// transport. The switcher has none of them and still owes us that many of
+// its budget. They go again from where they started, in smaller chunks.
+func (s *Session) chunksTakenBack(tb *takenBack) {
+	l := &s.lane
+	t := l.transfer
+	if t == nil || t.kind != taskUpload || t.tid != tb.transfer {
+		s.log.Warn("atem: data chunks taken back of a transfer no longer in flight, dropped", "transfer", tb.transfer, "chunks", len(tb.sizes))
+		return
+	}
+	back := 0
+	for _, n := range tb.sizes {
+		back += n
+	}
+	// The offset runs past the end after a last, short chunk.
+	t.offset = min(t.offset, len(t.data)) - back
+	n := uint16(len(tb.sizes))
+	if l.budget == nil {
+		l.budget = &FileTransferContinueDataField{Transfer: t.tid, Size: uint16(tb.limit), Count: n}
+	} else {
+		l.budget.Count += n
+	}
+	s.log.Info("atem: upload chunks go again smaller", "transfer", t.tid, "chunks", n, "bytes", back, "size", tb.limit)
+	s.queueChunks()
 }
 
 // queueFlushed is _queue_flushed: the bulk queue has drained. Queue more of
