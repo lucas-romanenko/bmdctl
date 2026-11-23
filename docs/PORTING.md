@@ -449,7 +449,9 @@ the switcher's that went missing is asked for (below).
   through the receive queue between its threads; here the owner goroutine
   gets it as `resendUnacked`'s result. atemwire also takes back chunks
   still waiting for its UDP thread; the bulk queue here is always drained
-  at once by `queueChunks`, so there is nothing to take. Tests:
+  at once by `queueChunks`, so there is nothing to take there. Since
+  bmdwire#105 the packets waiting for room in the congestion window
+  (`held`) are taken back with the rest, as atemwire's `_held` is. Tests:
   `chunks_too_big_test.go`, `test_chunks_too_big.py`'s counterparts.
 - **Only resends the switcher was heard after count** (bmdwire#100,
   `4ba9d8c`; replaces bmdwire#97's rule). A resend of the stuck chunk
@@ -499,6 +501,35 @@ the switcher's that went missing is asked for (below).
   `ChunksTakenBack` on its receive queue and the UDP thread acts on
   `_reconnect_asked`. Tests: `chunks_too_big_test.go`, whose test of the
   other packets going again at once became the new session's.
+- **A congestion window for an upload's chunks** (bmdwire#105,
+  `d1b4cbe`). An upload's data chunks (FTDa) go out as a window lets
+  them (`cwnd`, atemwire's `CWND_*`): `cwndStart` (768, one budget, so
+  a good link sends the first budget back to back as before) grows by
+  each packet acknowledged below the slow-start threshold and by one a
+  round trip above it, up to `cwndMax` (1024). On a loss it is halved
+  (the duplicate ACKs) or cut to `cwndMin` (16, the timer) only while
+  the round trip is over the shortest seen by `cwndQueueMin` (10 ms)
+  or a quarter (`queueing`: packets are queueing on the way); random
+  loss keeps it, and a timeout without a queue halves it. A lost packet
+  goes again with everything after it as the ACKs open the window
+  (`onLoss`, `sendWindow`, `sentThrough`: go-back-N paced by the ACKs),
+  where the fast resend and the timer each sent `maxBurst` (128) and the
+  timer waited for the next lot. A chunk with no room waits in `held`,
+  unnumbered, and every reliable packet after it waits behind it in
+  order (an FTFD never overtakes its data); anything else (commands, a
+  download's FTUAs) goes at once when nothing waits. ACKs and hellos
+  never wait. The teardown's lock releases go straight to the socket
+  (`sendReliableNow`), as atemwire writes them with `_send_packet_low`.
+  `connect` forgets the window and what waited. The resend timer keeps
+  `resendMargin` (25 ms) over the smoothed round trip in place of a
+  smaller `4 rttvar`. atemwire's window sits on its UDP thread between
+  `thread_queue` and the socket; here `sendReliable` is that point, on
+  the owner goroutine, and `queueChunks` still hands it each budget
+  whole (`drainQueue`), so the bulk queue drains at once as before and
+  the chunks wait in `held` instead of `thread_queue`. A held packet
+  the socket refuses for good stays first in line, logged; the next
+  send meets the same error. Tests: `upload_window_test.go`, from
+  `test_upload_window.py`, one for one.
 - **Logging.** `ATEMWIRE_PACKET_TRACE` is not read. The transport logs to a
   `*slog.Logger` (discarded by default): per-packet detail at debug,
   recoveries at warn, timeouts and dropped packets at error.
@@ -1251,7 +1282,8 @@ atemwire's `upload` takes RLE data with `compressed=True`),
     granted (`drainQueue`), and chunks are cut at an offset reset on each
     attempt, so a retried upload starts from the beginning. ASC's restore
     of 20 1080p stills took 12 s; bmdwire's code after the change, 12.7 s
-    on the same switcher.
+    on the same switcher. Since bmdwire#105 the transport's congestion
+    window paces the chunks after the first budget ("Transport").
 - **Results go to the task, not to events.** atemwire raises
   `download-done`, `upload-done`, `clear-dispatched` and
   `file-transfer-error`; its callers filter by store and slot, attribute any

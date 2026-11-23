@@ -176,6 +176,11 @@ const (
 	resendAfter = 250 * time.Millisecond
 	resendMin   = 50 * time.Millisecond // RESEND_MIN
 	resendMax   = time.Second           // RESEND_MAX
+	// resendMargin is RESEND_MARGIN (bmdwire#105): the least the timer
+	// waits over the smoothed round trip. srtt + 4 rttvar alone came to
+	// 80.0 ms on a steady 80 ms link, and every ACK a little late was a
+	// resend nobody needed.
+	resendMargin = 25 * time.Millisecond
 	// dupACKs is DUP_ACKS: the switcher's same ACK this many times more,
 	// on packets carrying nothing else, and the first packet it lacks is
 	// resent at once (TCP's fast retransmit): it has had later ones since
@@ -206,6 +211,38 @@ const (
 	// (macOS, a full buffer) or EAGAIN is tried again, 1 ms apart, this
 	// many times before the packet counts as lost on the wire.
 	sendRetries = 20
+)
+
+// The congestion window for an upload's data chunks (bmdwire#105,
+// d1b4cbe; atemwire's CWND_*): how many of our reliable packets may be
+// out unacknowledged while an FTDa waits to go, as TCP's congestion
+// window. cwndStart at first, one more for each packet acknowledged (so
+// about twice as many each round trip) up to cwndMax, one more per round
+// trip past the slow-start threshold; on a loss with packets queueing on
+// the way (the round trip grown over the shortest seen by cwndQueueMin or
+// a quarter), halved when the duplicate ACKs show it and cwndMin after
+// the resend timer fires; on a loss without (random loss) kept, or halved
+// on a timeout. The chunks wait their turn (held), and anything sent
+// behind them waits too, in order. A packet found lost is sent again
+// with everything after it as the window lets them go: go-back-N, paced
+// by the ACKs. Other packets (commands, a download's FTUAs) go at once
+// when nothing is waiting.
+//
+// An upload budget used to go out whole, back to back (768 chunks, about
+// 1 MB, in 35 ms, as ATEM Software Control sends it on a LAN). Where the
+// path is narrower, a short queue on the way dropped most of each burst;
+// the switcher drops every chunk after one it lacks, and the resend sent
+// at most maxBurst of them and waited out the whole timer for each next
+// lot: 1 Mbit/s never finished a 1080p still, 5 Mbit/s took 52 s.
+// cwndStart is one budget, so the first goes as it always did and a good
+// link never waits for the window to open.
+const (
+	cwndStart      = 768.0
+	cwndMin        = 16.0
+	cwndMax        = 1024.0
+	cwndBeta       = 0.5
+	cwndQueueMin   = 10 * time.Millisecond
+	cwndDelayBased = true
 )
 
 type transportState uint8
@@ -466,6 +503,19 @@ type transport struct {
 	// after each receive and each resend (Session.transportAsks).
 	takenBackQueue  []*takenBack
 	newSessionAsked string
+
+	// The congestion window (bmdwire#105, cwnd*): its size and the
+	// slow-start threshold; our reliable packets waiting for room in it
+	// (held, not yet numbered); the highest sequence sent in the current
+	// pass (sentThrough, behind localSeq while lost ones go again, -1
+	// before the first); the last sequence out when a loss was last
+	// answered (recover, -1 for none), before which another loss is the
+	// same one; and the shortest round trip seen.
+	cwnd, ssthresh float64
+	held           []*packet
+	sentThrough    int
+	recover        int
+	minRTT         time.Duration
 }
 
 func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *transport {
@@ -494,6 +544,10 @@ func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *tra
 		lastACK:          -1,
 		maxChunk:         chunkLimit(addr),
 		stuckSeq:         -1,
+		cwnd:             cwndStart,
+		ssthresh:         cwndMax,
+		sentThrough:      -1,
+		recover:          -1,
 	}
 }
 
@@ -528,6 +582,9 @@ func (t *transport) connect() error {
 	t.ackedThrough, t.resendDue = -1, time.Time{}
 	clear(t.sentAt)
 	t.backoff, t.dupACKCount = 1, 0
+	t.cwnd, t.ssthresh = cwndStart, cwndMax
+	t.held = nil
+	t.sentThrough, t.recover = -1, -1
 	t.lastACK, t.ackRepeat, t.acksOwed = -1, false, 0
 	t.received.clear()
 	t.hadTraffic = false
@@ -625,9 +682,148 @@ func (t *transport) reconnect(why string) error {
 	return t.connect()
 }
 
-// sendReliable sends data in a reliable, sequenced packet (send_raw).
+// sendReliable sends data in a reliable, sequenced packet (send_raw), as
+// the congestion window lets it go.
 func (t *transport) sendReliable(data []byte) error {
+	return t.send(&packet{flags: flagReliable, data: data})
+}
+
+// sendReliableNow sends data in a reliable packet straight away, ahead of
+// any waiting for the window: the teardown's lock releases, which atemwire
+// writes with _send_packet_low as the goodbye.
+func (t *transport) sendReliableNow(data []byte) error {
 	return t.sendLow(&packet{flags: flagReliable, data: data})
+}
+
+// send is _send_on_udp_thread: p goes now, or waits its turn for room in
+// the congestion window (windowFull).
+func (t *transport) send(p *packet) error {
+	if t.windowFull(p) {
+		t.held = append(t.held, p)
+		return nil
+	}
+	return t.sendLow(p)
+}
+
+// windowFull is _window_full: whether a reliable packet of ours must wait
+// for room in the congestion window. Others are waiting before it (it
+// goes in turn behind them), or it is an upload data chunk and lost ones
+// are being sent again or the window is full. Anything else goes at once:
+// a download's acknowledgements (FTUA) held behind a loss held the
+// switcher's own send window shut (a slow site's still download, 46 s,
+// took 54 s). Sent during a go-back-N pass, it goes again in its turn if
+// the switcher dropped it.
+func (t *transport) windowFull(p *packet) bool {
+	if t.state != stateEstablished || t.ackedThrough < 0 {
+		return false
+	}
+	if p.flags&(flagSYN|flagACK) != 0 {
+		return false
+	}
+	if len(t.held) > 0 {
+		return true
+	}
+	if _, _, ok := ftdaChunk(p.data); !ok {
+		return false
+	}
+	if t.sentThrough != t.localSeq {
+		return true
+	}
+	return t.inFlight() >= int(t.cwnd)
+}
+
+// inFlight is _in_flight: our reliable packets sent in this pass and not
+// yet acknowledged.
+func (t *transport) inFlight() int {
+	if t.ackedThrough < 0 || t.sentThrough < 0 {
+		return 0
+	}
+	n := (t.sentThrough - t.ackedThrough) & seqMask
+	if n >= t.retransmitWindow {
+		return 0
+	}
+	return n
+}
+
+// sendWindow is _send_window: send what the congestion window has room
+// for, lost packets again first, in order, then those waiting. A packet
+// waiting that the socket refuses for good stays first in line; the
+// session's next send meets the same error.
+func (t *transport) sendWindow() int {
+	sent := 0
+	for t.state == stateEstablished && t.inFlight() < int(t.cwnd) {
+		switch {
+		case t.sentThrough >= 0 && t.sentThrough != t.localSeq:
+			seq := uint16((t.sentThrough + 1) & seqMask)
+			t.sentThrough = int(seq)
+			p := t.retransmitBuf[seq]
+			if p == nil {
+				continue
+			}
+			p.flags |= flagRetransmission
+			delete(t.sentAt, seq) // Karn: its ACK may answer either copy
+			if err := t.write(p.marshal()); err != nil {
+				t.log.Error("atem: resend failed", "seq", seq, "err", err)
+				return sent
+			}
+		case len(t.held) > 0:
+			p := t.held[0]
+			if err := t.sendLow(p); err != nil {
+				t.log.Error("atem: send failed", "err", err)
+				return sent
+			}
+			t.held = t.held[1:]
+		default:
+			return sent
+		}
+		sent++
+	}
+	return sent
+}
+
+// onLoss is _on_loss: a packet of ours was lost, as the switcher's
+// repeated ACK says (timeout false) or the resend timer (true). It goes
+// again with everything after it, as the window lets them go; the window
+// is halved, or cut to cwndMin on a timeout, when packets are queueing on
+// the way, and halved on a timeout without; once per loss (recover).
+func (t *transport) onLoss(timeout bool) {
+	if t.ackedThrough < 0 {
+		return
+	}
+	inRecovery := false
+	if t.recover >= 0 {
+		d := (t.recover - t.ackedThrough) & seqMask
+		inRecovery = d > 0 && d < t.retransmitWindow
+	}
+	if !inRecovery || timeout {
+		flight := float64(max(t.inFlight(), int(t.cwnd)))
+		switch {
+		case t.queueing() && timeout:
+			t.ssthresh = max(cwndMin, flight/2)
+			t.cwnd = cwndMin
+		case t.queueing():
+			t.cwnd = max(cwndMin, flight*cwndBeta)
+			t.ssthresh = t.cwnd
+		case timeout:
+			t.cwnd = max(cwndMin, t.cwnd/2)
+		}
+		t.recover = t.localSeq
+	}
+	t.sentThrough = t.ackedThrough
+	t.sendWindow()
+}
+
+// queueing is _queueing: whether our packets are waiting in a queue on the
+// way, the smoothed round trip over the shortest seen by more than
+// cwndQueueMin, or a quarter of it.
+func (t *transport) queueing() bool {
+	if !cwndDelayBased {
+		return true
+	}
+	if !t.rttKnown {
+		return false
+	}
+	return t.srtt > t.minRTT+max(cwndQueueMin, t.minRTT/4)
 }
 
 // sendLow is _send_packet_low. A non-nil error is fatal to the session: it
@@ -672,6 +868,7 @@ func (t *transport) sendLow(p *packet) error {
 		delete(t.retransmitBuf, uint16(mod(t.localSeq-t.retransmitWindow, 0x8000)))
 		now := t.now()
 		t.sentAt[seq] = now
+		t.sentThrough = t.localSeq
 		if t.resendDue.IsZero() {
 			t.resendDue = now.Add(t.resendWait())
 		}
@@ -719,7 +916,7 @@ func (t *transport) onACK(n uint16, ackOnly bool) {
 		out := (t.localSeq - int(n)) & seqMask
 		if t.dupACKCount == dupACKs && out > 0 && out < t.retransmitWindow && t.state == stateEstablished {
 			t.fastResends++
-			t.retransmitFrom((n+1)&seqMask, true)
+			t.onLoss(false)
 			t.resendDue = t.now().Add(t.resendWait())
 		}
 		return
@@ -750,7 +947,25 @@ func (t *transport) onACK(n uint16, ackOnly bool) {
 		}
 	}
 	t.backoff = 1
-	if out == 0 {
+	if prev >= 0 {
+		// The window grows by what was acknowledged: by each packet below
+		// the slow-start threshold, by one a round trip above it.
+		if newly := (int(n) - prev) & seqMask; newly < t.retransmitWindow {
+			if t.cwnd < t.ssthresh {
+				t.cwnd += float64(newly)
+			} else {
+				t.cwnd += float64(newly) / t.cwnd
+			}
+			t.cwnd = min(t.cwnd, cwndMax)
+		}
+	}
+	if t.sentThrough < 0 || (t.sentThrough-int(n))&seqMask >= t.retransmitWindow {
+		// The switcher has more than this pass has sent again: a resend
+		// it did not need.
+		t.sentThrough = int(n)
+	}
+	t.sendWindow()
+	if out = (t.localSeq - int(n)) & seqMask; out == 0 {
 		t.resendDue = time.Time{}
 	} else {
 		t.resendDue = now.Add(t.resendWait())
@@ -760,6 +975,9 @@ func (t *transport) onACK(n uint16, ackOnly bool) {
 // sampleRTT is _sample_rtt: one round trip measured, smoothed as RFC 6298
 // smooths it (1/8, 1/4).
 func (t *transport) sampleRTT(r time.Duration) {
+	if !t.rttKnown || r < t.minRTT {
+		t.minRTT = r
+	}
 	if !t.rttKnown {
 		t.srtt, t.rttvar, t.rttKnown = r, r/2, true
 		return
@@ -780,7 +998,7 @@ func absDuration(d time.Duration) time.Duration {
 func (t *transport) resendWait() time.Duration {
 	base := resendAfter
 	if t.rttKnown {
-		base = t.srtt + 4*t.rttvar
+		base = t.srtt + max(4*t.rttvar, resendMargin)
 	}
 	base = min(resendMax, max(resendMin, base))
 	return min(resendMax, base*time.Duration(t.backoff))
@@ -821,7 +1039,7 @@ func (t *transport) resendUnacked() *takenBack {
 	waited := t.resendWait()
 	t.log.Debug("atem: no ACK, resending", "from", first, "through", t.localSeq, "after", waited)
 	t.resends++
-	t.retransmitFrom(first, true)
+	t.onLoss(true)
 	if now := t.now(); now.Sub(t.resendLogged) >= resendLogEvery {
 		t.log.Warn("atem: resent packets the switcher had not acknowledged", "resends", t.resends-t.resendsLogged, "timer", waited)
 		t.resendsLogged, t.resendLogged = t.resends, now
@@ -932,7 +1150,12 @@ func (t *transport) takeBackChunks(first uint16) (tb *takenBack, ok bool) {
 			break
 		}
 	}
+	// Ours not sent yet go after them, as they would have: those waiting
+	// for room in the congestion window (bmdwire#105).
+	taken = append(taken, t.held...)
+	t.held = nil
 	t.localSeq = t.ackedThrough
+	t.sentThrough, t.recover = t.ackedThrough, -1
 	t.resendDue = time.Time{}
 	t.backoff = 1
 	t.stuckSeq, t.stuckCount = -1, 0
@@ -945,7 +1168,7 @@ func (t *transport) takeBackChunks(first uint16) (tb *takenBack, ok bool) {
 			continue
 		}
 		q.flags &^= flagRetransmission
-		if err := t.sendLow(q); err != nil {
+		if err := t.send(q); err != nil {
 			t.log.Error("atem: send failed", "err", err)
 		}
 	}
