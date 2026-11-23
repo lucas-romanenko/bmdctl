@@ -80,6 +80,27 @@ func TestStillRoundTrip(t *testing.T) {
 	}
 }
 
+// At a video mode the table doesn't have there is no frame to fit an image
+// to (bmdwire#71): UploadStill refuses before it asks for the lock.
+func TestUploadStillRefusesAnUnknownVideoMode(t *testing.T) {
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	sw.Send(fakeatem.Command("VidM", []byte{31, 0, 0, 0}))
+	waitState(t, s, 2*time.Second, func(st atem.State) bool {
+		return st.VideoMode.Mode != nil && !st.VideoMode.Mode.Known
+	})
+	img := image.NewNRGBA(image.Rect(0, 0, 16, 9))
+	err := s.UploadStill(ctxFor(t, 2*time.Second), 0, img, atem.StillOptions{Name: "card"})
+	if err == nil || !strings.Contains(err.Error(), "mode-31") {
+		t.Fatalf("err %v", err)
+	}
+	for _, c := range sw.Commands() {
+		if string(c[4:8]) == "PLCK" || string(c[4:8]) == "LOCK" {
+			t.Fatalf("asked for the lock: %q", c[4:8])
+		}
+	}
+}
+
 // UploadStill fits the image into the video mode's frame and converts it,
 // as WebATEM's uploader does; the switcher gets exactly that frame.
 func TestUploadStillFitsAndConverts(t *testing.T) {

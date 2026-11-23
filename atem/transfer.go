@@ -489,6 +489,11 @@ func (s *Session) UploadStill(ctx context.Context, slot int, img image.Image, op
 		return err
 	}
 	w, h := mode.FrameSize()
+	if w == 0 {
+		// A mode the table doesn't have has no frame size (bmdwire#71,
+		// 9e52191), so there is nothing to fit the image to.
+		return fmt.Errorf("atem: no frame size for video mode %s, so no still can be sized for it", mode.Label())
+	}
 	frame, err := RGBAToYCbCrA(FitFrame(img, w, h), opts.Premultiply)
 	if err != nil {
 		return err
