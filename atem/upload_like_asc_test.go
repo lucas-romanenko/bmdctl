@@ -350,6 +350,9 @@ func TestGivingUpHoldingTheLockLeavesTheStoreItsTurn(t *testing.T) {
 	if err := s.cancelTask(tk, context.DeadlineExceeded); err == nil {
 		t.Fatal("no error for the abandoned download")
 	}
+	// Nothing came of the request: kept drainStall for the switcher to
+	// start or refuse it, then released (bmdwire#80).
+	after(s, clock, drainStall)
 	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
 		t.Fatalf("%v, want the release", p)
 	}

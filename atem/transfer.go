@@ -46,6 +46,27 @@ const (
 	tryAgainFirst    = 50 * time.Millisecond
 	tryAgainMax      = time.Second
 	tryAgainAttempts = 20
+	// A download its caller stops waiting for is not abandoned mid-stream:
+	// the switcher's transfer engine stays busy with a transfer neither
+	// acknowledged nor finished, and answers every later request, from
+	// every session, with FTDE 1 (a 4K Plus did it for good after a lock
+	// release 15 s into a still, 2026-11-04). The abandoned transfer is
+	// acknowledged to its end and its data dropped, and the store lock goes
+	// back at its FTDC (or FTDE), or once nothing of it has come for
+	// drainStall, or after drainCap in all (DRAIN_STALL, protocol.py's DRAIN_MAX,
+	// bmdwire#73, 588a389, v1.11.0). Since bmdwire#80 (v1.13.0) that holds
+	// for a request with nothing come of it yet, too: the switcher takes
+	// up to 2.5 s to a still's first chunk on a LAN (2026-11-06).
+	drainStall = 5 * time.Second
+	drainCap   = 120 * time.Second
+	// orphanIDs is ORPHAN_IDS: the ids of the session's last 64 transfers
+	// are kept, and a chunk of one it no longer follows (its caller gave
+	// up, a drain ended before the switcher started it) is acknowledged
+	// all the same and dropped: a chunk left unacknowledged holds the
+	// switcher's transfer engine, and every later request is refused with
+	// FTDE 1 while it lasts (bmdwire#80, v1.13.0). Another session's
+	// chunks are left alone.
+	orphanIDs = 64
 	// macroUploadMode is FTSD's mode for the macro store: write
 	// uncompressed and pre-erase (0x0300). The still store takes
 	// UploadWriteRLE.
@@ -264,6 +285,16 @@ type lane struct {
 	// tryAgainDue is when the transfer refused with FTDE 1 is asked again
 	// (_try_again_due), zero when none waits.
 	tryAgainDue time.Time
+	// draining is the abandoned download being acknowledged to its end
+	// (_draining), nil if none; lastData, when the transfer in flight last
+	// had a chunk (_transfer_last_data), zero before its first.
+	draining *drainState
+	lastData time.Time
+	// asked holds the ids of the last orphanIDs transfers asked for,
+	// newest last (_asked_tids); orphans, those whose chunks came after we
+	// stopped following them.
+	asked   []uint16
+	orphans map[uint16]bool
 
 	// The paced bulk queue's triggers (see bulkTrigger).
 	bulkPending int
@@ -311,6 +342,13 @@ const (
 	lockEchoWindow = 250 * time.Millisecond // LOCK_ECHO_WINDOW
 )
 
+// drainState is an abandoned download being drained: its transfer id and
+// store, when it was abandoned and when it last had a chunk.
+type drainState struct {
+	tid, store  uint16
+	since, last time.Time
+}
+
 // yieldState is a store's turn for other clients: since, when we released
 // it or last saw anyone at work; announced, when it was announced free
 // (zero until then).
@@ -352,6 +390,7 @@ func newLane() lane {
 		foreignHeld:   make(map[uint16]bool),
 		ownRelease:    make(map[uint16]time.Time),
 		lastGrant:     make(map[uint16]time.Time),
+		orphans:       make(map[uint16]bool),
 	}
 }
 
@@ -688,12 +727,27 @@ func (s *Session) cancelTask(t *transferTask, cause error) error {
 	notGranted := t.store != StoreMacros && !l.locks[t.store]
 	t.finished = true
 	if l.transfer == t {
+		// A still download the switcher is sending, or may be about to
+		// start, is drained to its end, its lock kept until then
+		// (drainStall); one that has gone quiet for drainStall is given up
+		// on with its lock, as before.
+		now := s.t.now()
+		drain := t.kind == taskDownload && t.store != StoreMacros && l.requested &&
+			l.locks[t.store] && (l.lastData.IsZero() || now.Sub(l.lastData) < drainStall) &&
+			l.draining == nil
 		l.tryAgainDue = time.Time{}
 		l.popHead(t)
 		l.transfer = nil
 		l.requested = false
 		l.buffer, l.bufferBytes = nil, 0
-		s.releaseThenContinue(t.store, true)
+		if drain {
+			l.draining = &drainState{tid: t.tid, store: t.store, since: now, last: now}
+			s.log.Info("atem: download abandoned by its caller: acknowledging it to its end before giving the lock back",
+				"task", t.describe(), "transfer", t.tid)
+			s.armYieldTimer(now.Add(drainStall))
+		} else {
+			s.releaseThenContinue(t.store, true)
+		}
 	} else {
 		l.remove(t)
 		s.transferTrigger(t.store, false)
@@ -745,6 +799,12 @@ func (s *Session) sendCommands(cmds ...Command) {
 // lock held.
 func (s *Session) transferTrigger(store uint16, retry bool) {
 	l := &s.lane
+	if l.draining != nil {
+		// The store lock is ours until the abandoned download ends; a
+		// request now would meet its busy engine (FTDE 1).
+		s.log.Debug("atem: an abandoned download is still finishing; the next transfer waits for it")
+		return
+	}
 	if !l.tryAgainDue.IsZero() {
 		// A transfer the switcher answered busy is asked again only after
 		// its pause; the yield timer asks then.
@@ -843,6 +903,14 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 		s.log.Info("atem: requesting download", "store", next.store, "slot", next.slot, "transfer", next.tid)
 	}
 	l.requested = true
+	l.lastData = time.Time{}
+	if n := len(l.asked); n == 0 || l.asked[n-1] != next.tid {
+		l.asked = append(l.asked, next.tid)
+		if len(l.asked) > orphanIDs {
+			l.asked = l.asked[len(l.asked)-orphanIDs:]
+		}
+	}
+	delete(l.orphans, next.tid)
 	if next.kind == taskUpload {
 		// Each attempt sends its metadata and its data from the start.
 		next.offset, next.metadataSent = 0, false
@@ -919,6 +987,7 @@ func (s *Session) serviceYields() {
 	l := &s.lane
 	l.yieldDue = time.Time{}
 	now := s.t.now()
+	s.serviceDrain()
 	if due := l.tryAgainDue; !due.IsZero() {
 		switch {
 		case l.transfer == nil:
@@ -944,6 +1013,61 @@ func (s *Session) serviceYields() {
 			s.transferTrigger(store, false)
 		}
 	}
+}
+
+// serviceDrain is _service_drain: give the abandoned download's lock back
+// once nothing of it has come for drainStall, or it has run drainCap.
+func (s *Session) serviceDrain() {
+	d := s.lane.draining
+	if d == nil {
+		return
+	}
+	now := s.t.now()
+	switch {
+	case now.Sub(d.last) >= drainStall:
+		s.log.Warn("atem: abandoned download stopped (nothing for a while): giving its lock back",
+			"transfer", d.tid, "quiet", now.Sub(d.last).Round(time.Second))
+		s.endDrain()
+	case now.Sub(d.since) >= drainCap:
+		s.log.Warn("atem: abandoned download stopped (over the cap): giving its lock back",
+			"transfer", d.tid, "cap", drainCap)
+		s.endDrain()
+	default:
+		s.armYieldTimer(minTime(d.last.Add(drainStall), d.since.Add(drainCap)))
+	}
+}
+
+// endDrain is _end_drain: the abandoned download is over; give its store
+// lock back and carry on with the queue.
+func (s *Session) endDrain() {
+	d := s.lane.draining
+	s.lane.draining = nil
+	if d != nil {
+		s.releaseThenContinue(d.store, true)
+	}
+}
+
+// ackOrphan is _ack_orphan: acknowledge a chunk of a transfer we asked for
+// and no longer follow; anything else is not ours to answer.
+func (s *Session) ackOrphan(tid uint16) {
+	l := &s.lane
+	if !slices.Contains(l.asked, tid) {
+		s.log.Debug("atem: FTDa for a transfer not ours; ignoring", "transfer", tid)
+		return
+	}
+	if !l.orphans[tid] {
+		l.orphans[tid] = true
+		s.log.Warn("atem: chunks of a download we no longer follow: acknowledging it to its end so the switcher can take the next request",
+			"transfer", tid)
+	}
+	s.sendCommands(TransferAck{Transfer: tid})
+}
+
+func minTime(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
 }
 
 // someoneAtWork is _someone_at_work: another session's transfer ended, so
@@ -1064,15 +1188,19 @@ func (s *Session) onBudget(f FileTransferContinueDataField) {
 // acknowledged.
 func (s *Session) onChunk(f *FileTransferDataField) {
 	l := &s.lane
-	if l.transfer == nil {
-		// A straggler after the transfer ended or was abandoned.
-		s.log.Debug("atem: FTDa with no transfer in flight")
+	if d := l.draining; d != nil && f.Transfer == d.tid {
+		// The abandoned download: acknowledged, its data dropped.
+		d.last = s.t.now()
+		s.sendCommands(TransferAck{Transfer: d.tid})
 		return
 	}
-	if f.Transfer != l.transfer.tid {
-		s.log.Error("atem: file transfer data for the wrong transfer id", "got", f.Transfer, "want", l.transfer.tid)
+	if l.transfer == nil || f.Transfer != l.transfer.tid {
+		// A chunk of a transfer we no longer follow (orphanIDs), or not
+		// ours at all.
+		s.ackOrphan(f.Transfer)
 		return
 	}
+	l.lastData = s.t.now()
 	l.buffer = append(l.buffer, f.Data)
 	l.bufferBytes += len(f.Data)
 	// transfer-progress: a still's, of its frame's uncompressed size.
@@ -1090,6 +1218,16 @@ func (s *Session) onTransferError(f *FileTransferErrorField) {
 		s.log.Debug("atem: file transfer error", "transfer", f.Transfer, "status", transferStatus(f.Status))
 	} else {
 		s.log.Error("atem: file transfer error", "transfer", f.Transfer, "status", transferStatus(f.Status))
+	}
+	if d := l.draining; d != nil && f.Transfer == d.tid {
+		s.log.Info("atem: abandoned download ended", "transfer", d.tid, "status", transferStatus(f.Status))
+		s.endDrain()
+		return
+	}
+	if l.orphans[f.Transfer] {
+		delete(l.orphans, f.Transfer)
+		s.log.Info("atem: a download we no longer followed ended", "transfer", f.Transfer, "status", transferStatus(f.Status))
+		return
 	}
 	if l.transfer == nil {
 		s.log.Debug("atem: FTDE with no transfer in flight")
@@ -1153,6 +1291,16 @@ func (s *Session) failTransfer(t *transferTask, f *FileTransferErrorField) {
 // released before the (slow) RLE decode and the delivery.
 func (s *Session) onTransferComplete(f *FileTransferDataCompleteField) {
 	l := &s.lane
+	if d := l.draining; d != nil && f.Transfer == d.tid {
+		s.log.Info("atem: abandoned download finished; its data dropped", "transfer", d.tid)
+		s.endDrain()
+		return
+	}
+	if l.orphans[f.Transfer] {
+		delete(l.orphans, f.Transfer)
+		s.log.Info("atem: a download we no longer followed finished; its data dropped", "transfer", f.Transfer)
+		return
+	}
 	if l.transfer == nil {
 		// The switcher announces every session's completions.
 		s.log.Debug("atem: FTDC for another session's transfer")
