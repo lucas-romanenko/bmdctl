@@ -426,6 +426,21 @@ timer that follows the round trip (below).
   it, so it is described under "Transfers". `Wakeup` has no counterpart:
   the session's owner goroutine
   wakes on channels.
+- **Upload chunks too big for the path** (bmdwire#95, `6067211`).
+  An upload data chunk that is the first packet the switcher has not
+  acknowledged, sent `tooBigAfter` (3) times more while the switcher goes
+  on sending, is taken back with every packet after it
+  (`takeBackChunks`); the other packets among them go again at once, and
+  `resendUnacked` hands the chunks to the session (`chunksTakenBack`),
+  which sends them again in chunks of the next `chunkSteps` size, never
+  more than the budget. The size is kept per switcher address for the
+  process (`chunkLimits`, under a mutex: sessions to one switcher run on
+  their own goroutines). atemwire's `ChunksTakenBack` sentinel goes
+  through the receive queue between its threads; here the owner goroutine
+  gets it as `resendUnacked`'s result. atemwire also takes back chunks
+  still waiting for its UDP thread; the bulk queue here is always drained
+  at once by `queueChunks`, so there is nothing to take. Tests:
+  `chunks_too_big_test.go`, `test_chunks_too_big.py`'s counterparts.
 - **Logging.** `ATEMWIRE_PACKET_TRACE` is not read. The transport logs to a
   `*slog.Logger` (discarded by default): per-packet detail at debug,
   recoveries at warn, timeouts and dropped packets at error.
