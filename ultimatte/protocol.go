@@ -48,7 +48,8 @@ const ackLen = 6
 
 // Client reaches Ultimatte units. ultimattewire keeps nothing between
 // calls, and neither does a Client: every method opens its own
-// connections and closes them. The zero value is ready to use.
+// connections and closes them, but for Open, which opens a Session that
+// lasts until it is closed. The zero value is ready to use.
 type Client struct {
 	// DialContext opens a TCP connection; nil means a net.Dialer's.
 	// Tests point it at internal/fakeultimatte.
@@ -56,6 +57,9 @@ type Client struct {
 	// The timings; zero means ultimattewire's (the Default constants).
 	ConnectTimeout, ReadTimeout, PreludeQuiet, ReplyQuiet, PreludeDrain time.Duration
 	ReadbackTimeout, ReadbackPoll, RetryDelay                           time.Duration
+	// IdleTimeout and FunctionIdleTimeout are a Session's no-progress
+	// waits; zero means DefaultIdleTimeout and DefaultFunctionIdleTimeout.
+	IdleTimeout, FunctionIdleTimeout time.Duration
 
 	// now and sleep are set_network's clock; tests replace them.
 	now   func() time.Time
