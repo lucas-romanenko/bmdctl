@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -100,6 +101,58 @@ const (
 	ackEvery = 32
 )
 
+// chunkSteps is CHUNK_STEPS (bmdwire#CHUNKPR): the data sizes an upload
+// chunk goes down to when chunks of the switcher's own size (1,392 bytes,
+// 1,416-byte datagrams) do not reach it. An ATEM Mini Pro over a VPN at
+// 80 ms got the lock request, FTSD and FTFD and not one chunk in 90 s and
+// some 70 resends (WebATEM #63); it takes our packets in order only, so
+// nothing after the first chunk counted either. 1,224 bytes fit a
+// 1,280-byte path.
+var chunkSteps = []int{1224, 952, 504}
+
+// chunkLimits is _CHUNK_LIMITS: the chunk size each switcher was last
+// found to need, by address, for every session of the process.
+var (
+	chunkLimitsMu sync.Mutex
+	chunkLimits   = map[string]int{}
+)
+
+func chunkLimit(addr *net.UDPAddr) int {
+	if addr == nil {
+		return 0
+	}
+	chunkLimitsMu.Lock()
+	defer chunkLimitsMu.Unlock()
+	return chunkLimits[addr.IP.String()]
+}
+
+func setChunkLimit(addr *net.UDPAddr, n int) {
+	if addr == nil {
+		return
+	}
+	chunkLimitsMu.Lock()
+	defer chunkLimitsMu.Unlock()
+	chunkLimits[addr.IP.String()] = n
+}
+
+// takenBack is ChunksTakenBack: data chunks of an upload that did not
+// reach the switcher, taken back to go again in chunks of limit bytes.
+// sizes are their data lengths, in the order they were sent.
+type takenBack struct {
+	transfer uint16
+	sizes    []int
+	limit    int
+}
+
+// ftdaChunk is _ftda: the transfer id and data length of a packet that
+// carries exactly one upload data chunk, as queueChunks sends them.
+func ftdaChunk(data []byte) (transfer uint16, size int, ok bool) {
+	if len(data) < 12 || string(data[4:8]) != "FTDa" || int(binary.BigEndian.Uint16(data[0:2])) != len(data) {
+		return 0, 0, false
+	}
+	return binary.BigEndian.Uint16(data[8:10]), int(binary.BigEndian.Uint16(data[10:12])), true
+}
+
 // Resending what the switcher hasn't acknowledged, and sends the kernel
 // refuses for a moment (bmdwire#36, d050c10).
 const (
@@ -131,6 +184,12 @@ const (
 	// resendLogEvery is how often the routine resends are summed up in a
 	// warning; each is logged at debug.
 	resendLogEvery = 5 * time.Second
+	// tooBigAfter is TOO_BIG_AFTER (bmdwire#CHUNKPR): an upload data chunk
+	// (FTDa) that is the first packet the switcher has not acknowledged,
+	// sent this many times more while the switcher goes on sending, is
+	// taken back with every chunk after it and goes again smaller
+	// (chunkSteps).
+	tooBigAfter = 3
 	// sendRetries is SEND_RETRIES: a send the kernel refuses with ENOBUFS
 	// (macOS, a full buffer) or EAGAIN is tried again, 1 ms apart, this
 	// many times before the packet counts as lost on the wire.
@@ -367,6 +426,14 @@ type transport struct {
 	fastResends   int
 	resendsLogged int
 	resendLogged  time.Time
+
+	// maxChunk is the data chunk size this switcher needs (chunkSteps;
+	// 0: the switcher's own). stuckSeq is the first unacknowledged packet
+	// the resend timer last fired for, -1 for none, and stuckCount how
+	// many times in a row (bmdwire#CHUNKPR).
+	maxChunk   int
+	stuckSeq   int
+	stuckCount int
 }
 
 func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *transport {
@@ -393,6 +460,8 @@ func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *tra
 		sentAt:           make(map[uint16]time.Time),
 		backoff:          1,
 		lastACK:          -1,
+		maxChunk:         chunkLimit(addr),
+		stuckSeq:         -1,
 	}
 }
 
@@ -678,20 +747,32 @@ func (t *transport) resendWait() time.Duration {
 // what the switcher hasn't acknowledged, from the first unacknowledged
 // packet (go back N, maxBurst at most), double the wait, and wait again.
 // On a lossy link this happens many times a second, so each is logged at
-// debug and a warning sums them up every resendLogEvery.
-func (t *transport) resendUnacked() {
+// debug and a warning sums them up every resendLogEvery. Upload chunks
+// that do not reach the switcher come back instead, for the session to
+// send again smaller (takeBackChunks).
+func (t *transport) resendUnacked() *takenBack {
 	if t.resendDue.IsZero() || t.now().Before(t.resendDue) {
-		return
+		return nil
 	}
 	t.resendDue = time.Time{}
 	if t.state != stateEstablished || t.ackedThrough < 0 {
-		return
+		return nil
 	}
 	out := (t.localSeq - t.ackedThrough) & seqMask
 	if out == 0 || out >= t.retransmitWindow {
-		return
+		return nil
 	}
 	first := uint16((t.ackedThrough + 1) & seqMask)
+	if int(first) == t.stuckSeq {
+		t.stuckCount++
+	} else {
+		t.stuckSeq, t.stuckCount = int(first), 1
+	}
+	if t.stuckCount > tooBigAfter {
+		if tb := t.takeBackChunks(first); tb != nil {
+			return tb
+		}
+	}
 	waited := t.resendWait()
 	t.log.Debug("atem: no ACK, resending", "from", first, "through", t.localSeq, "after", waited)
 	t.resends++
@@ -702,6 +783,70 @@ func (t *transport) resendUnacked() {
 	}
 	t.backoff = min(t.backoff*2, 64)
 	t.resendDue = t.now().Add(t.resendWait())
+	return nil
+}
+
+// takeBackChunks is _take_back_chunks (bmdwire#CHUNKPR): the data chunk at
+// first was sent tooBigAfter times more and never acknowledged while the
+// switcher goes on sending. It and everything after it are taken back:
+// their sequence numbers are free, as the switcher takes nothing after a
+// packet it lacks. Other packets among them go again now; the chunks
+// come back for the session. nil if this is not the case.
+func (t *transport) takeBackChunks(first uint16) *takenBack {
+	p := t.retransmitBuf[first]
+	if p == nil {
+		return nil
+	}
+	transfer, size, ok := ftdaChunk(p.data)
+	if !ok {
+		return nil
+	}
+	limit := 0
+	for _, s := range chunkSteps {
+		if s < size {
+			limit = s
+			break
+		}
+	}
+	if limit == 0 {
+		return nil
+	}
+	if t.now().Sub(t.lastHeard) > resendMax {
+		// The switcher has gone quiet too: the link, not the size.
+		return nil
+	}
+	last := uint16(t.localSeq)
+	var taken []*packet
+	for seq := first; ; seq = (seq + 1) & seqMask {
+		if q := t.retransmitBuf[seq]; q != nil {
+			taken = append(taken, q)
+		}
+		delete(t.retransmitBuf, seq)
+		delete(t.sentAt, seq)
+		if seq == last {
+			break
+		}
+	}
+	t.localSeq = t.ackedThrough
+	t.resendDue = time.Time{}
+	t.backoff = 1
+	t.stuckSeq, t.stuckCount = -1, 0
+	t.maxChunk = limit
+	setChunkLimit(t.addr, limit)
+	tb := &takenBack{transfer: transfer, limit: limit}
+	for _, q := range taken {
+		if id, n, ok := ftdaChunk(q.data); ok && id == transfer {
+			tb.sizes = append(tb.sizes, n)
+			continue
+		}
+		q.flags &^= flagRetransmission
+		if err := t.sendLow(q); err != nil {
+			t.log.Error("atem: send failed", "err", err)
+		}
+	}
+	t.log.Warn("atem: no data chunk got through, datagrams that big are not reaching the switcher; sending smaller chunks from now on",
+		"addr", t.addr, "size", size, "sent", tooBigAfter+1, "chunks", len(tb.sizes), "limit", limit)
+	return tb
 }
 
 // ackOwed is _ack_owed: a received packet wants acknowledging, now or at

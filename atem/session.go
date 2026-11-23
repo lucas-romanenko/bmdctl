@@ -518,7 +518,9 @@ func (s *Session) loop() error {
 				s.onSilence()
 			}
 		case <-resend.C:
-			s.t.resendUnacked()
+			if tb := s.t.resendUnacked(); tb != nil {
+				s.chunksTakenBack(tb)
+			}
 		case <-stalled.C:
 			s.checkDialStall()
 		}
