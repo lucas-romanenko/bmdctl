@@ -422,6 +422,12 @@ func TestFTDE6StillLeavesTheRequestToTheReleaseBroadcast(t *testing.T) {
 	}
 	feedLockState(t, s, 0, false)
 	after(s, clock, lockCourtesy)
+	// The session we collided with waits for this store too: the turn
+	// after our release is its (lockHandover, bmdwire#68).
+	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
+		t.Fatalf("%v: asked with the waiter", p)
+	}
+	after(s, clock, lockHandover)
 	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
 		t.Fatalf("the release broadcast didn't re-request: %v", p)
 	}

@@ -170,7 +170,9 @@ func TestFTDE6ReleasesKeepsTheTaskAndReRequestsOnRelease(t *testing.T) { // test
 	// for anyone to take it again (bmdwire#38), then re-request.
 	clock := moveClock(s)
 	feedCmd(t, s, "LKST", []byte{0, 0, 0, 0})
-	*clock = clock.Add(lockCourtesy)
+	// The session we collided with is waiting too: it has the turn after
+	// our release first (lockHandover, bmdwire#68).
+	*clock = clock.Add(lockCourtesy + lockHandover)
 	s.serviceYields()
 	if count(c, "PLCK") != 2 {
 		t.Fatal("no re-request on the release")

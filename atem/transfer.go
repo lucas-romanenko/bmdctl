@@ -236,6 +236,15 @@ type lane struct {
 	foreignHeld map[uint16]bool
 	yieldTimer  *time.Timer
 	yieldDue    time.Time
+	// ownRelease holds, for a store whose yield a release of ours
+	// started, when we released it: the turn after it goes to a waiter
+	// first (_own_release, lockHandover). othersSeen is when another
+	// client was last seen at the stores (its LKST, its FTDC, an FTDE 6
+	// to us), zero if never; lastGrant, when our last LKOB for each
+	// store came (_last_grant).
+	ownRelease map[uint16]time.Time
+	othersSeen time.Time
+	lastGrant  map[uint16]time.Time
 
 	budget *FileTransferContinueDataField // transfer_budget: nil when exhausted
 
@@ -260,16 +269,59 @@ const (
 	lockQuiet    = 10 * time.Second      // LOCK_QUIET
 )
 
+// The turn after our own release goes to whoever was waiting for it
+// (bmdwire#63, #68, 6876ba2, v1.9.0). They ask lockCourtesy after the
+// release is announced; so did we, and two requests that close together
+// are both granted, or one is aborted (FTDE 6 to a download; to an upload,
+// a refusal of every chunk of its budget). Measured on a Constellation HD,
+// 2026-10-30: an uploader and a downloader in one process asked 0.3 ms
+// apart after each upload's release. So after a release of ours, our next
+// request waits lockHandover more: time for a waiter's request, its grant,
+// and the LKST that announces it to reach us, after which the store is
+// another client's and we ask once they let go. Only while another client
+// has been seen within lockQuiet: alone, nothing is waiting, and a restore
+// of 20 stills would pay it 20 times for nobody.
+//
+// Our release's own LKST comes at the switcher's next frame tick, about
+// 40 ms later. A release announced later than lockEchoWindow is another
+// client's: the store was handed to a request waiting at the switcher,
+// unannounced, and that client has now let go; we ask as its waiter. And
+// an LKST "taken" within lockEchoWindow of our own LKOB is the late
+// announcement of our own grant (a transfer or a clear shorter than a
+// frame, released before it was announced; c7a8788), not another client.
+const (
+	lockHandover   = 100 * time.Millisecond // LOCK_HANDOVER
+	lockEchoWindow = 250 * time.Millisecond // LOCK_ECHO_WINDOW
+)
+
 // yieldState is a store's turn for other clients: since, when we released
 // it or last saw anyone at work; announced, when it was announced free
 // (zero until then).
 type yieldState struct{ since, announced time.Time }
 
-func (y *yieldState) due() time.Time {
+// yieldDue is _yield_due: when a store we are leaving free may be asked
+// for again.
+func (s *Session) yieldDue(store uint16, y *yieldState) time.Time {
 	if !y.announced.IsZero() {
+		if _, own := s.lane.ownRelease[store]; own && s.othersRecently() {
+			return y.announced.Add(lockCourtesy + lockHandover)
+		}
 		return y.announced.Add(lockCourtesy)
 	}
 	return y.since.Add(lockQuiet)
+}
+
+// othersRecently is _others_recently: another client was seen within
+// lockQuiet.
+func (s *Session) othersRecently() bool {
+	o := s.lane.othersSeen
+	return !o.IsZero() && s.t.now().Sub(o) < lockQuiet
+}
+
+// endYield is _end_yield: the store's turn for others is over.
+func (s *Session) endYield(store uint16) {
+	delete(s.lane.yielding, store)
+	delete(s.lane.ownRelease, store)
 }
 
 func newLane() lane {
@@ -281,6 +333,8 @@ func newLane() lane {
 		releasing:     make(map[uint16]bool),
 		yielding:      make(map[uint16]*yieldState),
 		foreignHeld:   make(map[uint16]bool),
+		ownRelease:    make(map[uint16]time.Time),
+		lastGrant:     make(map[uint16]time.Time),
 	}
 }
 
@@ -703,12 +757,12 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 			return
 		}
 		if y := l.yielding[next.store]; y != nil {
-			if due := y.due(); s.t.now().Before(due) {
+			if due := s.yieldDue(next.store, y); s.t.now().Before(due) {
 				s.log.Debug("atem: leaving the store free a moment for other clients", "store", next.store)
 				s.armYieldTimer(due)
 				return
 			}
-			delete(l.yielding, next.store)
+			s.endYield(next.store)
 		}
 		if at, ok := l.lockRequested[next.store]; ok && s.t.now().Sub(at) < lockRerequest {
 			s.log.Debug("atem: lock request already on the wire", "store", next.store)
@@ -796,6 +850,7 @@ func (s *Session) releaseThenContinue(store uint16, requestNext bool) {
 		l.releasing[store] = true
 		s.sendCommands(Lock{Store: store})
 		l.yielding[store] = &yieldState{since: s.t.now()}
+		l.ownRelease[store] = s.t.now()
 		if !requestNext {
 			return
 		}
@@ -837,11 +892,11 @@ func (s *Session) serviceYields() {
 	l.yieldDue = time.Time{}
 	now := s.t.now()
 	for store, y := range l.yielding {
-		due := y.due()
+		due := s.yieldDue(store, y)
 		switch {
 		case len(l.queues[store]) == 0:
 			if !now.Before(due) {
-				delete(l.yielding, store)
+				s.endYield(store)
 			}
 		case l.requested || l.locks[store] || l.foreignHeld[store]:
 		case now.Before(due):
@@ -854,8 +909,9 @@ func (s *Session) serviceYields() {
 
 // someoneAtWork is _someone_at_work: another session's transfer ended, so
 // a store we wait for, not yet announced free, is busy: lockQuiet starts
-// again.
+// again, and another client has been seen.
 func (s *Session) someoneAtWork() {
+	s.lane.othersSeen = s.t.now()
 	for _, y := range s.lane.yielding {
 		if y.announced.IsZero() {
 			y.since = s.t.now()
@@ -876,6 +932,7 @@ func (s *Session) onTransferPacket(code string, payload []byte) error {
 	case *LockObtainedField:
 		s.log.Info("atem: got store lock", "store", f.Store)
 		s.lane.locks[f.Store] = true
+		s.lane.lastGrant[f.Store] = s.t.now()
 		delete(s.lane.lockRequested, f.Store)
 		delete(s.lane.releasing, f.Store)
 		s.transferTrigger(f.Store, false)
@@ -909,8 +966,13 @@ func (s *Session) onLockReleased(store uint16) {
 	now := s.t.now()
 	if y := l.yielding[store]; y == nil {
 		l.yielding[store] = &yieldState{since: now, announced: now}
+		delete(l.ownRelease, store)
 	} else if y.announced.IsZero() {
 		y.announced = now
+		if released, ok := l.ownRelease[store]; ok && now.Sub(released) > lockEchoWindow {
+			// Not our release's echo: another client's (lockEchoWindow).
+			delete(l.ownRelease, store)
+		}
 	}
 	delete(l.lockRequested, store)
 	if len(l.queues[store]) > 0 && !l.requested {
@@ -929,8 +991,16 @@ func (s *Session) onLockTaken(store uint16) {
 		return
 	}
 	l.foreignHeld[store] = true
+	now := s.t.now()
+	if granted, ok := l.lastGrant[store]; !ok || now.Sub(granted) > lockEchoWindow {
+		// Not the late announcement of a grant of ours: another client.
+		l.othersSeen = now
+	}
 	if y := l.yielding[store]; y != nil {
-		*y = yieldState{since: s.t.now()}
+		*y = yieldState{since: now}
+		// Theirs now: the next turn after their release is ours as a
+		// waiter, not as the releaser.
+		delete(l.ownRelease, store)
 	}
 }
 
@@ -1003,6 +1073,7 @@ func (s *Session) onTransferError(f *FileTransferErrorField) {
 		// the switcher aborted our request but we still hold the lock. Give
 		// it back, keep the task, and ask again on the next release.
 		delete(l.lockRequested, t.store)
+		l.othersSeen = s.t.now()
 		s.releaseThenContinue(t.store, false)
 	default:
 		// Fatal for this transfer: drop it, release the lock, carry on.
@@ -1226,10 +1297,10 @@ func (s *Session) resetLane(err error) {
 	if l.transfer != nil {
 		s.finish(l.transfer, transferResult{err: err})
 	}
-	id := l.nextID
+	id, others := l.nextID, l.othersSeen
 	timer, ytimer := l.bulkTimer, l.yieldTimer
 	*l = newLane()
-	l.nextID = id
+	l.nextID, l.othersSeen = id, others
 	if timer != nil {
 		timer.Stop()
 		l.bulkTimer = timer
@@ -1257,6 +1328,7 @@ func (s *Session) releaseLocksNow() {
 	clear(l.releasing)
 	clear(l.lockRequested)
 	clear(l.yielding)
+	clear(l.ownRelease)
 }
 
 func sortedStores(m map[uint16]bool) []uint16 {
