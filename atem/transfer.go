@@ -21,6 +21,7 @@ import (
 	"image"
 	"math/rand/v2"
 	"slices"
+	"sync/atomic"
 	"time"
 )
 
@@ -187,6 +188,9 @@ type transferTask struct {
 	// tryAgain counts the switcher's FTDE 1 refusals of this transfer
 	// (TransferTask.try_again).
 	tryAgain int
+	// heard is when a chunk of this download last arrived (UnixNano),
+	// for WithStallTimeout; the owner writes it, the caller reads it.
+	heard atomic.Int64
 
 	// size is the upload's length as sent (compressed, if it is), for
 	// its progress; progress, if not nil, takes the latest Progress
@@ -206,6 +210,20 @@ type Progress struct {
 }
 
 type progressKey struct{}
+
+type stallKey struct{}
+
+// WithStallTimeout returns a context under which a download gives up once
+// d passes with no data arriving (waiting for the lock counts as no data),
+// while the context's deadline, or the transfer's default timeout, caps
+// the whole download: download_still's stall_timeout (bmdwire#73,
+// 588a389, v1.11.0). A 4K still is 12 MB or more on the wire and an 8K
+// one four times that, so one fixed timeout is either too short for them
+// or far too long to notice a transfer that stopped. The error of a
+// stalled download says "stalled" and wraps context.DeadlineExceeded.
+func WithStallTimeout(ctx context.Context, d time.Duration) context.Context {
+	return context.WithValue(ctx, stallKey{}, d)
+}
 
 // WithProgress returns a context under which a transfer reports its
 // progress to f, from the goroutine that called the transfer (not the
@@ -644,6 +662,15 @@ func (s *Session) runTransfer(ctx context.Context, t *transferTask, timeout time
 		t.progress = make(chan Progress, 1)
 	}
 	t.size = len(t.data)
+	// The stall clock, when asked for: a download gives up once nothing
+	// has arrived for stall.
+	stall, _ := ctx.Value(stallKey{}).(time.Duration)
+	var stallC <-chan time.Time // nil, and never ready, without it
+	if stall > 0 && t.kind == taskDownload {
+		t.heard.Store(time.Now().UnixNano())
+		stallC = time.After(stall)
+	}
+	var cause error
 	errc := make(chan error, 1)
 	if err := s.do(func() {
 		if !s.initialized {
@@ -673,12 +700,20 @@ wait:
 			return r.data, r.err
 		case p := <-t.progress: // nil, and never ready, without WithProgress
 			progress(p)
+		case <-stallC:
+			quiet := time.Since(time.Unix(0, t.heard.Load()))
+			if quiet >= stall {
+				cause = fmt.Errorf("stalled (no data for %v): %w", stall, context.DeadlineExceeded)
+				break wait
+			}
+			stallC = time.After(stall - quiet)
 		case <-ctx.Done():
+			cause = ctx.Err()
 			break wait
 		}
 	}
 	ch := make(chan error, 1)
-	if err := s.do(func() { ch <- s.cancelTask(t, ctx.Err()) }); err != nil {
+	if err := s.do(func() { ch <- s.cancelTask(t, cause) }); err != nil {
 		// The session ended, and with it the task.
 		select {
 		case r := <-t.done:
@@ -753,8 +788,14 @@ func (s *Session) cancelTask(t *transferTask, cause error) error {
 		s.transferTrigger(t.store, false)
 	}
 	err := fmt.Errorf("atem: %s: %w", t.describe(), cause)
-	if notGranted {
+	switch {
+	case notGranted:
 		err = fmt.Errorf("%w (%w)", err, ErrLockNotGranted)
+	case t.tryAgain > 0:
+		// The switcher answering "try again" (FTDE 1) all along is not
+		// silence: its transfer engine is busy, with another client's
+		// transfer or one nobody is taking (bmdwire#80).
+		err = fmt.Errorf("%w: the switcher answered busy (try again) %d times; its transfer engine is taken", err, t.tryAgain)
 	}
 	return err
 }
@@ -1201,6 +1242,7 @@ func (s *Session) onChunk(f *FileTransferDataField) {
 		return
 	}
 	l.lastData = s.t.now()
+	l.transfer.heard.Store(time.Now().UnixNano())
 	l.buffer = append(l.buffer, f.Data)
 	l.bufferBytes += len(f.Data)
 	// transfer-progress: a still's, of its frame's uncompressed size.

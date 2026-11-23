@@ -87,8 +87,11 @@ type Switcher struct {
 	dropAlways     map[uint16]bool
 	dropFromClient int
 	ackDelay       time.Duration
-	silent         bool
-	stale          int // packets of the old session to send around the next handshake
+	// downloadPace, if set, holds each refill of a download's chunks
+	// this long after the FTUA that allows it (PaceDownloads).
+	downloadPace time.Duration
+	silent       bool
+	stale        int // packets of the old session to send around the next handshake
 
 	locks      map[uint16]holder // store locks that are held
 	lockQueued map[uint16]bool   // the session's PLCK waits for another client's release
@@ -188,6 +191,11 @@ func (sw *Switcher) DropFromClient(n int) { sw.mu.Lock(); sw.dropFromClient += n
 
 // DelayACKs makes the switcher ACK the session's packets d late.
 func (sw *Switcher) DelayACKs(d time.Duration) { sw.mu.Lock(); sw.ackDelay = d; sw.mu.Unlock() }
+
+// PaceDownloads sends a download's chunks d after the acknowledgement
+// that makes room for them, instead of at once: a long download whose
+// data keeps arriving, never more than d apart.
+func (sw *Switcher) PaceDownloads(d time.Duration) { sw.mu.Lock(); sw.downloadPace = d; sw.mu.Unlock() }
 
 // QueueOther has another client ask for store with a whole-store LOCK
 // while the session holds it: at the session's release the switcher hands
