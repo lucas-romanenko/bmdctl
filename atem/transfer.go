@@ -1449,7 +1449,7 @@ func isRLEHeader(b []byte) bool {
 	return true
 }
 
-// chunksTakenBack is _chunks_taken_back (bmdwire#CHUNKPR): data chunks of
+// chunksTakenBack is _chunks_taken_back (bmdwire#95): data chunks of
 // our upload that did not reach the switcher, taken back by the
 // transport. The switcher has none of them and still owes us that many of
 // its budget. They go again from where they started, in smaller chunks.

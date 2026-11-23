@@ -101,7 +101,7 @@ const (
 	ackEvery = 32
 )
 
-// chunkSteps is CHUNK_STEPS (bmdwire#CHUNKPR): the data sizes an upload
+// chunkSteps is CHUNK_STEPS (bmdwire#95): the data sizes an upload
 // chunk goes down to when chunks of the switcher's own size (1,392 bytes,
 // 1,416-byte datagrams) do not reach it. An ATEM Mini Pro over a VPN at
 // 80 ms got the lock request, FTSD and FTFD and not one chunk in 90 s and
@@ -184,12 +184,21 @@ const (
 	// resendLogEvery is how often the routine resends are summed up in a
 	// warning; each is logged at debug.
 	resendLogEvery = 5 * time.Second
-	// tooBigAfter is TOO_BIG_AFTER (bmdwire#CHUNKPR): an upload data chunk
+	// tooBigAfter is TOO_BIG_AFTER (bmdwire#95): an upload data chunk
 	// (FTDa) that is the first packet the switcher has not acknowledged,
 	// sent this many times more while the switcher goes on sending, is
 	// taken back with every chunk after it and goes again smaller
 	// (chunkSteps).
 	tooBigAfter = 3
+	// heardGap is HEARD_GAP (bmdwire#97): the switcher sends a Time
+	// packet every 40 ms, so a gap of more than this in what we receive
+	// means the link was down. A chunk stuck across such a gap may have got
+	// through with its ACK lost in it, and taking it back would send other
+	// data under sequence numbers the switcher already has (a cable out
+	// for 3 s mid-upload on a LAN: the still arrived with chunks twice and
+	// the wrong MD5). takeBackChunks needs the switcher heard without one
+	// since the chunk got stuck.
+	heardGap = 250 * time.Millisecond
 	// sendRetries is SEND_RETRIES: a send the kernel refuses with ENOBUFS
 	// (macOS, a full buffer) or EAGAIN is tried again, 1 ms apart, this
 	// many times before the packet counts as lost on the wire.
@@ -430,10 +439,16 @@ type transport struct {
 	// maxChunk is the data chunk size this switcher needs (chunkSteps;
 	// 0: the switcher's own). stuckSeq is the first unacknowledged packet
 	// the resend timer last fired for, -1 for none, and stuckCount how
-	// many times in a row (bmdwire#CHUNKPR).
+	// many times in a row (bmdwire#95).
 	maxChunk   int
 	stuckSeq   int
 	stuckCount int
+	// stuckSince is when the packet at stuckSeq was last acknowledged
+	// or sent, as far as the timer knows (one wait before it first
+	// fired), and heardAgainAt when the switcher was last heard after a
+	// silence of more than heardGap (bmdwire#97).
+	stuckSince   time.Time
+	heardAgainAt time.Time
 }
 
 func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *transport {
@@ -767,6 +782,8 @@ func (t *transport) resendUnacked() *takenBack {
 		t.stuckCount++
 	} else {
 		t.stuckSeq, t.stuckCount = int(first), 1
+		// Unacknowledged for one timer's length by now.
+		t.stuckSince = t.now().Add(-t.resendWait())
 	}
 	if t.stuckCount > tooBigAfter {
 		if tb := t.takeBackChunks(first); tb != nil {
@@ -786,7 +803,7 @@ func (t *transport) resendUnacked() *takenBack {
 	return nil
 }
 
-// takeBackChunks is _take_back_chunks (bmdwire#CHUNKPR): the data chunk at
+// takeBackChunks is _take_back_chunks (bmdwire#95): the data chunk at
 // first was sent tooBigAfter times more and never acknowledged while the
 // switcher goes on sending. It and everything after it are taken back:
 // their sequence numbers are free, as the switcher takes nothing after a
@@ -811,8 +828,9 @@ func (t *transport) takeBackChunks(first uint16) *takenBack {
 	if limit == 0 {
 		return nil
 	}
-	if t.now().Sub(t.lastHeard) > resendMax {
-		// The switcher has gone quiet too: the link, not the size.
+	if t.now().Sub(t.lastHeard) > heardGap || !t.heardAgainAt.Before(t.stuckSince) {
+		// The switcher has gone quiet too, now or since the chunk got
+		// stuck: the link, not the size (heardGap).
 		return nil
 	}
 	last := uint16(t.localSeq)
@@ -915,6 +933,9 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 		return nil, nil
 	}
 	t.lastRX = t.now()
+	if t.lastRX.Sub(t.lastHeard) > heardGap {
+		t.heardAgainAt = t.lastRX
+	}
 	t.lastHeard = t.lastRX
 	if p.flags&flagACK != 0 {
 		t.onACK(p.ack, p.flags&flagReliable == 0)
