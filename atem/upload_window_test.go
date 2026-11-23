@@ -338,3 +338,38 @@ func TestACommandWaitsBehindChunksThatWait(t *testing.T) { // test_a_command_wai
 		t.Fatal("the FTUA overtook the chunks waiting")
 	}
 }
+
+// Not an upload's chunk: no paced pass. A download's FTUAs resent in one
+// had the pass cut short by the next FTUA sent fresh, the rest never
+// resent, and the switcher held its window shut (a busy host's still
+// download, 14 s instead of 10). The window down to 16 by the timeouts
+// before, 40 FTUAs out.
+func TestALostAcknowledgementGoesAgainAtOnceWithAllAfterIt(t *testing.T) { // test_a_lost_acknowledgement_goes_again_at_once_with_all_after_it
+	tr, c, now := windowTransport(t)
+	tr.cwnd = 16
+	for n := range 40 {
+		sendReliable(t, tr, ftuaPacket(uint16(n)))
+	}
+	first := uint16(tr.ackedThrough + 1)
+	c.reset()
+	*now = tr.resendDue
+	tr.resendUnacked() // the timer: all 40 again
+	again := c.sent()
+	var want []uint16
+	for s := first; s < first+40; s++ {
+		want = append(want, s)
+	}
+	if got := seqsOf(again); !slices.Equal(got, want) {
+		t.Fatalf("resent %v", got)
+	}
+	for _, p := range again {
+		if p.flags&flagRetransmission == 0 {
+			t.Fatalf("seq %d not flagged a retransmission", p.seq)
+		}
+	}
+	sendReliable(t, tr, ftuaPacket(99)) // the next FTUA, fresh
+	sent := c.sent()
+	if last := sent[len(sent)-1]; last.seq != first+40 {
+		t.Fatalf("the fresh FTUA went as %d", last.seq)
+	}
+}

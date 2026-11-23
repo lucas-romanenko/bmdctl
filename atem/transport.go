@@ -732,6 +732,11 @@ func (t *transport) windowFull(p *packet) bool {
 	return t.inFlight() >= int(t.cwnd)
 }
 
+func isFTDa(p *packet) bool {
+	_, _, ok := ftdaChunk(p.data)
+	return ok
+}
+
 // inFlight is _in_flight: our reliable packets sent in this pass and not
 // yet acknowledged.
 func (t *transport) inFlight() int {
@@ -788,6 +793,17 @@ func (t *transport) sendWindow() int {
 // the way, and halved on a timeout without; once per loss (recover).
 func (t *transport) onLoss(timeout bool) {
 	if t.ackedThrough < 0 {
+		return
+	}
+	first := uint16((t.ackedThrough + 1) & seqMask)
+	if p := t.retransmitBuf[first]; len(t.held) == 0 && (p == nil || !isFTDa(p)) {
+		// Not an upload's chunk: everything from it goes again at once,
+		// as before the window (bmdwire 258a37f). A download's
+		// acknowledgements (FTUA) resent in a paced pass had the pass cut
+		// short by the next FTUA sent fresh, the rest never resent; the
+		// switcher, missing one, held its window shut (a busy host's still
+		// download: 30 timer resends instead of 5, 14 s instead of 10).
+		t.retransmitFrom(first, true)
 		return
 	}
 	inRecovery := false

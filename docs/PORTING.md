@@ -528,8 +528,17 @@ the switcher's that went missing is asked for (below).
   whole (`drainQueue`), so the bulk queue drains at once as before and
   the chunks wait in `held` instead of `thread_queue`. A held packet
   the socket refuses for good stays first in line, logged; the next
-  send meets the same error. Tests: `upload_window_test.go`, from
-  `test_upload_window.py`, one for one.
+  send meets the same error. A loss whose first unacknowledged packet is
+  not an upload's chunk, with nothing held, is not a paced pass: it and
+  everything after it go again at once (`retransmitFrom`, `maxBurst` at
+  most), as before the window, the window untouched (bmdwire `258a37f`,
+  on bmdwire#105's branch). A download's FTUAs resent in a paced pass
+  had the pass cut short by the next FTUA sent fresh, the rest never
+  resent, and the switcher, missing one, held its window shut: a busy
+  host's still download took 14 s instead of 10. Tests:
+  `upload_window_test.go`, from `test_upload_window.py`, one for one
+  (`TestALostAcknowledgementGoesAgainAtOnceWithAllAfterIt` for
+  `258a37f`).
 - **Logging.** `ATEMWIRE_PACKET_TRACE` is not read. The transport logs to a
   `*slog.Logger` (discarded by default): per-packet detail at debug,
   recoveries at warn, timeouts and dropped packets at error.
