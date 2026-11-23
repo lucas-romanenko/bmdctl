@@ -35,6 +35,9 @@ func laneSession(t *testing.T) (*Session, *fakeConn) {
 	s.t.enableACK = true
 	s.initialized = true
 	s.protoConnected = true
+	// The first transfer is 43, as before bmdwire#64 drew it at random,
+	// so the bytes below stay readable.
+	s.lane.nextID = 42
 	return s, c
 }
 

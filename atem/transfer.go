@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"math/rand/v2"
 	"slices"
 	"time"
 )
@@ -36,9 +37,6 @@ const (
 	// lockRerequest is LOCK_REREQUEST_SECONDS: a lock request with no
 	// LKOB back is not repeated sooner than this.
 	lockRerequest = time.Second
-	// firstTransferID is atemwire's initial transfer_id; it is incremented
-	// before each new transfer, so the first is 43.
-	firstTransferID = 42
 	// macroUploadMode is FTSD's mode for the macro store: write
 	// uncompressed and pre-erase (0x0300). The still store takes
 	// UploadWriteRLE.
@@ -52,6 +50,21 @@ var (
 	// holding it. atemwire's download_still says the same.
 	ErrLockNotGranted = errors.New("atem: the store lock was never granted; another client is holding it")
 )
+
+// firstTransferID is _first_transfer_id: a session's transfer ids start
+// at random in 1..0xFFFF (bmdwire#64, #68, 6876ba2, v1.9.0). The switcher
+// broadcasts FTDC to every session with the owner's transfer id, and a
+// session matches it against its own; every session used to start at 43
+// (42, incremented before use), so two sessions on one switcher, this
+// port's or bmdwire's, used the same ids. One took the other's FTDC for
+// its own and stopped acknowledging the transfer the switcher was still
+// sending, and the switcher refused every later request from both with
+// FTDE 1, for good. It is a variable so that tests can pin it.
+var firstTransferID = func() uint16 { return uint16(rand.IntN(0xFFFF) + 1) }
+
+// nextTransferID is the id after id: a u16 on the wire, wrapping without
+// 0 (6876ba2).
+func nextTransferID(id uint16) uint16 { return id%0xFFFF + 1 }
 
 // TransferError is a transfer the switcher refused: an FTDE whose status
 // is not one of the three the engine recovers from (1 try again, 5 no
@@ -262,7 +275,7 @@ func (y *yieldState) due() time.Time {
 func newLane() lane {
 	return lane{
 		queues:        make(map[uint16][]*transferTask),
-		nextID:        firstTransferID,
+		nextID:        firstTransferID(),
 		locks:         make(map[uint16]bool),
 		lockRequested: make(map[uint16]time.Time),
 		releasing:     make(map[uint16]bool),
@@ -726,7 +739,7 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 		return
 	}
 	if !retry {
-		l.nextID++
+		l.nextID = nextTransferID(l.nextID)
 	}
 	l.transfer = next
 	next.tid = l.nextID
