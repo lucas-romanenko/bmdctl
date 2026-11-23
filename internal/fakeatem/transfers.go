@@ -43,6 +43,9 @@ type xfer struct {
 	// Downloads.
 	data     []byte // what is left to send
 	inFlight int    // chunks sent and not yet acknowledged
+	// refillDue: a paced refill is waiting (PaceDownloads), one at a
+	// time, so the chunks come ChunkCount per pace at most.
+	refillDue bool
 
 	// Uploads.
 	length     int // the uncompressed length FTSD announced
@@ -223,9 +226,14 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 		}
 		x.inFlight--
 		if d := sw.downloadPace; d > 0 {
+			if x.refillDue {
+				return nil // the refill already waiting sends for this one too
+			}
+			x.refillDue = true
 			time.AfterFunc(d, func() {
 				sw.mu.Lock()
 				defer sw.mu.Unlock()
+				x.refillDue = false
 				if sw.xfers[tid] != x {
 					return // finished meanwhile
 				}
