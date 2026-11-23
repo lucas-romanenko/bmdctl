@@ -1498,7 +1498,7 @@ and a zero value selects nothing.
   `_ProtocolAdapter`/`_resolve_connection`.
 - **Verification:** `oracle/profile.json` from `gen_profile.py` (bmdwire
   `v1.14.5`) holds the golden's state, 50 saves, 309 applies
-  (18,674 events) and 130 parses, all replayed byte for
+  (18,674 events, 30 raising) and 130 parses, all replayed byte for
   byte. The golden's state holds a TStP media player of 3010, more than
   a u8, so the golden test injects that one value through the saver's
   `stingerSource` hook. `profile_test.go` ports bmdwire's profile tests

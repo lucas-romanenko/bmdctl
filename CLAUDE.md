@@ -1,9 +1,9 @@
 # bmdctl: notes for future sessions
 
 bmdctl is a Go port of bmdwire (`../bmdwire`), written against v1.3.0
-(tag `v1.3.0`, commit `e5e336c`) and following v1.8.0 (tag `v1.8.0`,
-commit `01024ad`), as `docs/PORTING.md` ("Source of truth") says, plus
-one CLI binary. Read `docs/PORTING.md`
+(tag `v1.3.0`, commit `e5e336c`) and following v1.14.5 (tag `v1.14.5`,
+commit `41b57e7`) with bmdwire#93 ahead of its release, as
+`docs/PORTING.md` ("Source of truth") says, plus one CLI binary. Read `docs/PORTING.md`
 before changing anything in `atem/`: it records every decision already
 made, so you follow it instead of re-deriving it. Add to it whenever you
 make a new one.
@@ -41,10 +41,12 @@ shows (colour, the prompt, the spinner) is snapshot-tested in
 `internal/fixtures/oracle/` and the `testdata/oracle/` of `hyperdeck/`,
 `videohub/` and `ultimatte/` are regenerated with the scripts beside
 them (see the README there) against `../bmdwire` at the version each
-file records (`recv.json`, `readers.json` and the Videohub oracle at
-`v1.6.0`, the Ultimatte one at `v1.7.0`, the rest at `v1.4.0`;
-`imaging.json` at `v1.3.0`, the README says why; the HyperDeck
-`client.json` at `v1.8.0`).
+file records (`recv.json`, `send.json` and `readers.json` at bmdwire#93's
+head `v1.14.5-2-g27b8ba9` until a release carries it, `macro.json` and
+`profile.json` at `v1.14.5`, the Videohub oracle at `v1.6.0`, the
+Ultimatte one at `v1.7.0` (the same at `v1.14.5`); `imaging.json` at
+`v1.3.0`, the README says why; the HyperDeck `client.json` at
+`v1.8.0`). Run the scripts with CPython 3.12.3.
 
 The documentation site (`mkdocs.yml`) is built from `docs/` as it is:
 `pip install -r docsite/requirements.txt`, then `mkdocs serve` to read
@@ -91,10 +93,11 @@ bmdctl follows bmdwire; it never leads it.
   quirk or a fix, wherever it was found (on hardware, in a capture,
   while porting), is a bmdwire PR with its tests before bmdctl has it.
 - bmdwire's SURFACE.md is the source of truth. `docs/SURFACE-atem.md` is
-  a copy of `atemwire/docs/SURFACE.md`, never edited ahead of it.
-  hyperdeckwire, videohubwire and ultimattewire have none yet, so
-  `docs/SURFACE-hyperdeck.md`, `docs/SURFACE-videohub.md` and
-  `docs/SURFACE-ultimatte.md` were written here; anything new about those
+  a copy of `atemwire/docs/SURFACE.md`, and `docs/SURFACE-ultimatte.md`
+  of `ultimattewire/docs/SURFACE.md` (since bmdwire 1.14.0), never edited
+  ahead of them. hyperdeckwire and videohubwire have none yet, so
+  `docs/SURFACE-hyperdeck.md` and `docs/SURFACE-videohub.md` were
+  written here; anything new about those
   protocols still goes to bmdwire first, and into a `docs/SURFACE.md`
   beside the package there.
 - bmdctl ports from it and cites the bmdwire PR (`bmdwire#N` and the
