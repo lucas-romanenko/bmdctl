@@ -441,6 +441,16 @@ timer that follows the round trip (below).
   still waiting for its UDP thread; the bulk queue here is always drained
   at once by `queueChunks`, so there is nothing to take. Tests:
   `chunks_too_big_test.go`, `test_chunks_too_big.py`'s counterparts.
+- **Only when the switcher was heard all along** (bmdwire#97, `ea4452a`).
+  `takeBackChunks` needs the switcher heard with no gap over `heardGap`
+  (250 ms; its Time packets come every 40 ms) since the chunk got stuck
+  (`stuckSince`, one timer's wait before the timer first fired for it;
+  `heardAgainAt`, set in `receive` after such a gap), not only within
+  `resendMax` of the decision. A cable out for 3 s mid-upload on a LAN
+  had the chunks taken back after 0.75 s of resends; their sequence
+  numbers went again with other data the switcher may have had, and the
+  still arrived with the wrong MD5. Tests: the three at the end of
+  `chunks_too_big_test.go`, from `test_chunks_too_big.py`.
 - **Logging.** `ATEMWIRE_PACKET_TRACE` is not read. The transport logs to a
   `*slog.Logger` (discarded by default): per-packet detail at debug,
   recoveries at warn, timeouts and dropped packets at error.

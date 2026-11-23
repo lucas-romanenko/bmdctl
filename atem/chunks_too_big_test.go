@@ -3,7 +3,7 @@
 
 package atem
 
-// Upload chunks too big for the path go again smaller (bmdwire#CHUNKPR,
+// Upload chunks too big for the path go again smaller (bmdwire#95,
 // test_chunks_too_big.py; WebATEM #63). An ATEM Mini Pro over a VPN at
 // 80 ms got the lock request, FTSD and FTFD and not one data chunk in
 // 90 s; it takes our packets in order only, so nothing after the first
@@ -267,5 +267,112 @@ func TestAnUploadOverAPathThatDropsBigDatagrams(t *testing.T) {
 	}
 	if !bytes.Equal(got, tk.data) {
 		t.Fatalf("%d of %d bytes reached the switcher", len(got), len(tk.data))
+	}
+}
+
+// A link down for a moment is not a path too small (bmdwire#97,
+// test_chunks_too_big.py).
+
+var rxSeq uint16
+
+// timePacket is one of the switcher's Time packets (every 40 ms), through
+// the receive path.
+func timePacket(t *testing.T, tr *transport) {
+	t.Helper()
+	rxSeq++
+	data := append([]byte("\x00\x10\x00\x00Time"), make([]byte, 8)...)
+	if _, err := tr.receive(rawDatagram(tr.sessionID, rxSeq, flagReliable, data), switcherAddr); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// heardUntil is the switcher's Time packets, 40 ms apart, up to until.
+func heardUntil(t *testing.T, tr *transport, now *time.Time, until time.Time) {
+	t.Helper()
+	for !now.Add(40 * time.Millisecond).After(until) {
+		*now = now.Add(40 * time.Millisecond)
+		timePacket(t, tr)
+	}
+	*now = until
+}
+
+func timerFiresHeard(t *testing.T, tr *transport, now *time.Time, times int, heard bool) *takenBack {
+	t.Helper()
+	var tb *takenBack
+	for range times {
+		due := now.Add(time.Second)
+		if !tr.resendDue.IsZero() {
+			due = tr.resendDue
+		}
+		if heard {
+			heardUntil(t, tr, now, due)
+		}
+		*now = due
+		if got := tr.resendUnacked(); got != nil {
+			tb = got
+		}
+	}
+	return tb
+}
+
+// stuckUploadOnALAN is stuckUpload on a LAN: the ACK in 2 ms, so the
+// resend timer runs at its minimum and doubles (50, 100, 200, 400 ms).
+func stuckUploadOnALAN(t *testing.T, chunks int) (*transport, *time.Time) {
+	t.Helper()
+	tr, _ := established(t)
+	tr.sessionID = 0x8001
+	now := time.Unix(1000, 0)
+	tr.now = func() time.Time { return now }
+	timePacket(t, tr)
+	sendReliable(t, tr, append([]byte("\x00\xdcFTFD"), make([]byte, 212)...))
+	now = now.Add(2 * time.Millisecond)
+	tr.onACK(1, true)
+	for n := range chunks {
+		sendReliable(t, tr, ftda(byte(n), 1392))
+	}
+	return tr, &now
+}
+
+func TestChunksStuckWhileTheCableIsOutAreNotTakenBack(t *testing.T) {
+	// The cable out for 3 s mid-upload: four resends take 0.75 s on a LAN,
+	// under resendMax, and v0.3.1 took the chunks back as too big; their
+	// sequence numbers went again with other data the switcher may have
+	// had already, and the still arrived with the wrong MD5.
+	clearChunkLimits(t)
+	tr, now := stuckUploadOnALAN(t, 10)
+	out := *now
+	if tb := timerFiresHeard(t, tr, now, tooBigAfter+1, false); tb != nil {
+		t.Fatalf("taken back %+v with the cable out", tb)
+	}
+	if now.Sub(out) >= resendMax {
+		t.Fatalf("%v: not the case v0.3.1 got wrong", now.Sub(out))
+	}
+	// The cable back in: heard again at once, and the chunks stuck across
+	// the silence are resent, not taken back.
+	heardUntil(t, tr, now, out.Add(3*time.Second))
+	if tb := timerFiresHeard(t, tr, now, tooBigAfter+2, true); tb != nil {
+		t.Fatalf("taken back %+v after the cable came back", tb)
+	}
+	if tr.maxChunk != 0 || tr.localSeq != 11 {
+		t.Fatalf("maxChunk %d, localSeq %d: no sequence number used twice", tr.maxChunk, tr.localSeq)
+	}
+}
+
+func TestAShortGapInWhatTheSwitcherSendsIsALinkDown(t *testing.T) {
+	clearChunkLimits(t)
+	tr, now := stuckUploadOnALAN(t, 10)
+	timerFiresHeard(t, tr, now, 1, true)
+	*now = now.Add(heardGap + 50*time.Millisecond) // quiet, then heard again
+	timePacket(t, tr)
+	if tb := timerFiresHeard(t, tr, now, tooBigAfter+1, true); tb != nil {
+		t.Fatalf("taken back %+v across a gap", tb)
+	}
+}
+
+func TestChunksTooBigOnALANAreStillTakenBack(t *testing.T) {
+	clearChunkLimits(t)
+	tr, now := stuckUploadOnALAN(t, 10)
+	if tb := timerFiresHeard(t, tr, now, tooBigAfter+1, true); tb == nil || tb.limit != 1224 {
+		t.Fatalf("taken back %+v, want limit 1224", tb)
 	}
 }
