@@ -475,7 +475,7 @@ func TestAPacketTheNetworkKeepsRefusingKeepsItsNumber(t *testing.T) {
 		t.Fatalf("localSeq %d, buffered %v", tr.localSeq, tr.retransmitBuf[1] != nil)
 	}
 	sendReliable(t, tr, []byte("\x00\x08NEXT"))
-	tr.retransmitFrom(1) // the switcher asks for the gap
+	tr.retransmitFrom(1, false) // the switcher asks for the gap
 	var seqs []uint16
 	for _, p := range resent(c) {
 		seqs = append(seqs, p.seq)
@@ -500,7 +500,7 @@ func TestWhatTheSwitcherHasNotAcknowledgedIsResent(t *testing.T) {
 	if tr.resendDue.IsZero() {
 		t.Fatal("no resend timer")
 	}
-	tr.onACK(1) // it has 1, not 2 and 3
+	tr.onACK(1, false) // it has 1, not 2 and 3
 	tr.resendUnacked()
 	if len(resent(c)) != 0 {
 		t.Fatal("resent before resendAfter")
@@ -520,7 +520,7 @@ func TestAnACKForEverythingStopsTheTimer(t *testing.T) {
 	tr, c := established(t)
 	sendReliable(t, tr, []byte("\x00\x08TEST"))
 	sendReliable(t, tr, []byte("\x00\x08TEST"))
-	tr.onACK(2)
+	tr.onACK(2, false)
 	if !tr.resendDue.IsZero() {
 		t.Fatal("timer still set")
 	}

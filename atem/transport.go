@@ -12,6 +12,7 @@ package atem
 // the socket itself: the session hands it each datagram.
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -41,6 +42,7 @@ const (
 	helloSession  = 0x1337
 	helloConnect  = 0x01
 	helloAccepted = 0x02
+	helloNoRoom   = 0x03 // every client slot is taken (bmdwire#75)
 	helloClosing  = 0x04
 
 	// ackMagic goes in header bytes 8-9 of every ACK atemwire sends.
@@ -50,9 +52,11 @@ const (
 	seqMask = 0x7FFF
 	seqHalf = 0x4000
 
-	// receivedHistory is the length of atemwire's received_packets deque,
-	// which drives both the retransmission dedup and the contiguous ACK.
-	receivedHistory = 1024
+	// receivedHistory is the length of atemwire's received_packets window,
+	// which drives both the retransmission dedup and the contiguous ACK:
+	// twice the park window, so parked packets are still known when the
+	// ACK walk reaches them (bmdwire#80, 1.13.0; 1024 before).
+	receivedHistory = 2 * defaultDeliveryParkWindow
 
 	// silenceTimeout is the select() timeout of atemwire's UDP thread:
 	// this long without a datagram accepted from the switcher, and the
@@ -73,9 +77,27 @@ const (
 // The defaults for the three tunables atemwire keeps as class attributes
 // (and its tests monkeypatch).
 const (
-	defaultRetransmitWindow   = 4096 // RETRANSMIT_WINDOW
-	defaultDeliveryParkWindow = 512  // DELIVERY_PARK_WINDOW
-	defaultRetransmitMaxBurst = 128  // RETRANSMIT_MAX_BURST
+	defaultRetransmitWindow = 4096 // RETRANSMIT_WINDOW
+	// defaultDeliveryParkWindow is DELIVERY_PARK_WINDOW, the
+	// retransmission window's 4096 since bmdwire#80 (1.13.0). At 512, a
+	// gap a lossy link took long to fill dropped every packet parked
+	// behind it, packets the switcher had had ACKed and would not send
+	// again; a download's FTDa among them never got its FTUA and the
+	// download stalled. The switcher keeps a packet until it is
+	// acknowledged, so a gap fills in the end.
+	defaultDeliveryParkWindow = 4096
+	defaultRetransmitMaxBurst = 128 // RETRANSMIT_MAX_BURST
+)
+
+// Reading what is waiting, and acknowledging it (bmdwire#73, 1.11.0).
+const (
+	// drainMax is DRAIN_MAX: datagrams the session takes from its read
+	// goroutine in one go, acknowledged together after them.
+	drainMax = 512
+	// ackEvery is ACK_EVERY: within a long run, a cumulative ACK goes
+	// every this many packets, so the switcher's window keeps moving. It
+	// ACKs our uploads the same way, one per 16 packets.
+	ackEvery = 32
 )
 
 // Resending what the switcher hasn't acknowledged, and sends the kernel
@@ -87,7 +109,28 @@ const (
 	// only when a later one arrives; nothing follows the last chunk of an
 	// upload budget until the next budget, which it grants only once it
 	// has that chunk. It acknowledges ours within milliseconds.
+	//
+	// Since bmdwire#80 (1.13.0) it is the timer's start only. How long
+	// "not acknowledged" is follows the link, as TCP's timer does (RFC
+	// 6298): the smoothed time from sending a packet to its ACK plus
+	// four times its variation, measured on packets sent once (Karn),
+	// never below resendMin nor above resendMax, doubled for each resend
+	// nobody acknowledges. The switcher takes our packets in order only
+	// and never asks for one it missed, so the FTUA after a lost one, and
+	// the rest of a download with it, waited the whole timer: a fixed
+	// 250 ms per lost packet, where the ACK comes back in 2 ms (p50) to
+	// 28 ms (p99) on a LAN (2026-11-06).
 	resendAfter = 250 * time.Millisecond
+	resendMin   = 50 * time.Millisecond // RESEND_MIN
+	resendMax   = time.Second           // RESEND_MAX
+	// dupACKs is DUP_ACKS: the switcher's same ACK this many times more,
+	// on packets carrying nothing else, and the first packet it lacks is
+	// resent at once (TCP's fast retransmit): it has had later ones since
+	// and dropped them.
+	dupACKs = 2
+	// resendLogEvery is how often the routine resends are summed up in a
+	// warning; each is logged at debug.
+	resendLogEvery = 5 * time.Second
 	// sendRetries is SEND_RETRIES: a send the kernel refuses with ENOBUFS
 	// (macOS, a full buffer) or EAGAIN is tried again, 1 ms apart, this
 	// many times before the packet counts as lost on the wire.
@@ -183,8 +226,9 @@ func (p *packet) marshal() []byte {
 	return b
 }
 
-// seqHistory is atemwire's received_packets: a deque of the last 1024
-// sequence numbers seen, with O(1) membership.
+// seqHistory is atemwire's received_packets: the last receivedHistory
+// sequence numbers received, with O(1) membership (atemwire's _SeenWindow
+// since bmdwire#73).
 type seqHistory struct {
 	ring  [receivedHistory]uint16
 	head  int // index of the oldest entry
@@ -243,6 +287,21 @@ type transport struct {
 
 	enableACK  bool
 	hadTraffic bool
+	// refused: the switcher answered the hello 0x03, "no room"
+	// (bmdwire#75). The answer is not ACKed; connect clears it.
+	refused bool
+
+	// The ACKs received packets are owed (bmdwire#73): while the session
+	// drains the datagrams waiting (batching), one cumulative ACK goes
+	// after them, and one every ackEvery of a long run; otherwise at
+	// once. lastACK is the number last sent this session, -1 for none;
+	// an ACK that would say it again goes only for a resend of a packet
+	// we have (ackRepeat), whose ACK the switcher evidently missed
+	// (bmdwire#80).
+	batching  bool
+	acksOwed  int
+	lastACK   int
+	ackRepeat bool
 
 	// markNextConnected is set when InCm (end of the state dump) is stored;
 	// the next packet through handle reports ready before it is handled.
@@ -271,6 +330,10 @@ type transport struct {
 	// counts.
 	lastRX  time.Time
 	silence time.Duration // silenceTimeout; tests shorten it
+	// lastHeard is when a datagram was last accepted from the switcher,
+	// zero before the first; connect does not reset it (atemwire's
+	// last_rx_monotonic). Dial's stall limits count from it.
+	lastHeard time.Time
 
 	// firstRX is the sequence of the first reliable packet of the session,
 	// the one that set the receive baseline (rxEstablished). A packet the
@@ -288,6 +351,22 @@ type transport struct {
 	// while nothing is outstanding (_acked_through, _resend_due).
 	ackedThrough int
 	resendDue    time.Time
+
+	// The resend timer (bmdwire#80): when each of our reliable packets
+	// sent once went (sentAt), the smoothed round trip and its variation
+	// (rttKnown once measured), and the doubling for resends nobody
+	// acknowledged. dupACKCount counts the same ACK again on packets that
+	// carry nothing else. resends and fastResends count both kinds of
+	// resend for the session's life, as atemwire's counters do.
+	sentAt        map[uint16]time.Time
+	srtt, rttvar  time.Duration
+	rttKnown      bool
+	backoff       int
+	dupACKCount   int
+	resends       int
+	fastResends   int
+	resendsLogged int
+	resendLogged  time.Time
 }
 
 func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *transport {
@@ -311,6 +390,9 @@ func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *tra
 		batch:            bulkBatch,
 		delay:            bulkDelay,
 		ackedThrough:     -1,
+		sentAt:           make(map[uint16]time.Time),
+		backoff:          1,
+		lastACK:          -1,
 	}
 }
 
@@ -342,8 +424,12 @@ func (t *transport) connect() error {
 	t.enableACK = false
 	clear(t.retransmitBuf)
 	t.ackedThrough, t.resendDue = -1, time.Time{}
+	clear(t.sentAt)
+	t.backoff, t.dupACKCount = 1, 0
+	t.lastACK, t.ackRepeat, t.acksOwed = -1, false, 0
 	t.received.clear()
 	t.hadTraffic = false
+	t.refused = false
 	// markNextConnected is not reset, as in atemwire.
 
 	syn := &packet{flags: flagSYN, data: []byte{helloConnect, 0, 0, 0, 0, 0, 0, 0}}
@@ -415,8 +501,14 @@ func (t *transport) silent() bool {
 
 // timeout is the UDP thread's select() timeout: drop the session and
 // handshake again at once. The caller reports a disconnect.
+//
+// The session being replaced is said goodbye first (bmdwire#80, 1.13.0):
+// if the link is back, the switcher ends it at once, its store lock and
+// any transfer of it with it, instead of holding them until it reaps the
+// session (about 5 s), the new session's lock request queued behind them.
 func (t *transport) timeout() error {
 	t.log.Error("atem: timeout reading from switcher", "addr", t.addr)
+	t.closeSession()
 	t.state = stateClosed
 	return t.connect()
 }
@@ -466,8 +558,10 @@ func (t *transport) sendLow(p *packet) error {
 		seq := uint16(t.localSeq)
 		t.retransmitBuf[seq] = p
 		delete(t.retransmitBuf, uint16(mod(t.localSeq-t.retransmitWindow, 0x8000)))
+		now := t.now()
+		t.sentAt[seq] = now
 		if t.resendDue.IsZero() {
-			t.resendDue = t.now().Add(resendAfter)
+			t.resendDue = now.Add(t.resendWait())
 		}
 	}
 	if p.handshake {
@@ -497,22 +591,94 @@ func (t *transport) write(raw []byte) error {
 
 // onACK is _on_ack: the switcher has our reliable packets through n, so
 // the resend timer starts again while some remain unacknowledged.
-func (t *transport) onACK(n uint16) {
+// ackOnly: the packet carried nothing else (no reliable data), so the same
+// number again is the switcher saying it has dropped what came after a
+// lost packet (bmdwire#80).
+func (t *transport) onACK(n uint16, ackOnly bool) {
 	if t.ackedThrough == int(n) {
+		if !ackOnly {
+			return // a data packet repeating it says nothing
+		}
+		// The switcher, which takes our packets in order only, has had
+		// later ones since and dropped them. Twice more and the first one
+		// it lacks is resent now, instead of waiting out the timer: once
+		// per ACK, and only while something is outstanding.
+		t.dupACKCount++
+		out := (t.localSeq - int(n)) & seqMask
+		if t.dupACKCount == dupACKs && out > 0 && out < t.retransmitWindow && t.state == stateEstablished {
+			t.fastResends++
+			t.retransmitFrom((n+1)&seqMask, true)
+			t.resendDue = t.now().Add(t.resendWait())
+		}
 		return
 	}
+	t.dupACKCount = 0
+	prev := t.ackedThrough
 	t.ackedThrough = int(n)
-	if out := (t.localSeq - int(n)) & seqMask; out == 0 || out >= t.retransmitWindow {
-		// All acknowledged (or an ACK from before a wrap or a reconnect).
+	out := (t.localSeq - int(n)) & seqMask
+	if out >= t.retransmitWindow {
+		// An ACK from before a wrap or a reconnect.
 		t.resendDue = time.Time{}
 		return
 	}
-	t.resendDue = t.now().Add(resendAfter)
+	now := t.now()
+	if sent, ok := t.sentAt[n]; ok {
+		t.sampleRTT(now.Sub(sent))
+	}
+	if prev < 0 || (int(n)-prev)&seqMask >= t.retransmitWindow {
+		for q := range t.sentAt {
+			if d := int(q-n) & seqMask; d == 0 || d >= t.retransmitWindow {
+				delete(t.sentAt, q)
+			}
+		}
+	} else {
+		for q := uint16(prev); q != n; {
+			q = (q + 1) & seqMask
+			delete(t.sentAt, q)
+		}
+	}
+	t.backoff = 1
+	if out == 0 {
+		t.resendDue = time.Time{}
+	} else {
+		t.resendDue = now.Add(t.resendWait())
+	}
+}
+
+// sampleRTT is _sample_rtt: one round trip measured, smoothed as RFC 6298
+// smooths it (1/8, 1/4).
+func (t *transport) sampleRTT(r time.Duration) {
+	if !t.rttKnown {
+		t.srtt, t.rttvar, t.rttKnown = r, r/2, true
+		return
+	}
+	t.rttvar += (absDuration(t.srtt-r) - t.rttvar) / 4
+	t.srtt += (r - t.srtt) / 8
+}
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
+// resendWait is resend_after(): how long a reliable packet of ours waits
+// for its ACK before it is sent again.
+func (t *transport) resendWait() time.Duration {
+	base := resendAfter
+	if t.rttKnown {
+		base = t.srtt + 4*t.rttvar
+	}
+	base = min(resendMax, max(resendMin, base))
+	return min(resendMax, base*time.Duration(t.backoff))
 }
 
 // resendUnacked is _resend_unacked: once resendDue has passed, send again
 // what the switcher hasn't acknowledged, from the first unacknowledged
-// packet (go back N, maxBurst at most), and wait resendAfter again.
+// packet (go back N, maxBurst at most), double the wait, and wait again.
+// On a lossy link this happens many times a second, so each is logged at
+// debug and a warning sums them up every resendLogEvery.
 func (t *transport) resendUnacked() {
 	if t.resendDue.IsZero() || t.now().Before(t.resendDue) {
 		return
@@ -526,9 +692,48 @@ func (t *transport) resendUnacked() {
 		return
 	}
 	first := uint16((t.ackedThrough + 1) & seqMask)
-	t.log.Warn("atem: no ACK, resending", "from", first, "through", t.localSeq, "after", resendAfter)
-	t.retransmitFrom(first)
-	t.resendDue = t.now().Add(resendAfter)
+	waited := t.resendWait()
+	t.log.Debug("atem: no ACK, resending", "from", first, "through", t.localSeq, "after", waited)
+	t.resends++
+	t.retransmitFrom(first, true)
+	if now := t.now(); now.Sub(t.resendLogged) >= resendLogEvery {
+		t.log.Warn("atem: resent packets the switcher had not acknowledged", "resends", t.resends-t.resendsLogged, "timer", waited)
+		t.resendsLogged, t.resendLogged = t.resends, now
+	}
+	t.backoff = min(t.backoff*2, 64)
+	t.resendDue = t.now().Add(t.resendWait())
+}
+
+// ackOwed is _ack_owed: a received packet wants acknowledging, now or at
+// the end of the drain in progress. repeat: a resend of a packet we have,
+// so the switcher missed our ACK and must hear it again even if it says
+// nothing new.
+func (t *transport) ackOwed(repeat bool) error {
+	t.acksOwed++
+	if repeat {
+		t.ackRepeat = true
+	}
+	if t.batching {
+		return nil
+	}
+	return t.flushACK()
+}
+
+// flushACK is _flush_ack: send the ACK owed, unless it would say what the
+// last one said (packets parked behind a gap) and nothing asks for it
+// again. A switcher that took the same ACK as a sign of life to hold off
+// its resend would never send the packet the gap waits for (bmdwire#80).
+func (t *transport) flushACK() error {
+	if t.acksOwed == 0 {
+		return nil
+	}
+	t.acksOwed = 0
+	if int(t.ackNumber) == t.lastACK && !t.ackRepeat {
+		return nil
+	}
+	t.ackRepeat = false
+	t.lastACK = int(t.ackNumber)
+	return t.sendLow(&packet{flags: flagACK, ack: t.ackNumber, remoteSeq: ackMagic})
 }
 
 // transientSendError is atemwire's TRANSIENT_SEND_ERRNOS: momentary network
@@ -565,22 +770,39 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 		return nil, nil
 	}
 	t.lastRX = t.now()
+	t.lastHeard = t.lastRX
 	if p.flags&flagACK != 0 {
-		t.onACK(p.ack)
+		t.onACK(p.ack, p.flags&flagReliable == 0)
 	}
 	if p.flags&flagRequestRetransmission != 0 {
 		// The switcher missed one of ours: go back N from the sequence in
 		// header bytes 6-7.
-		t.retransmitFrom(p.retransmitFrom)
+		t.retransmitFrom(p.retransmitFrom, false)
 	}
 	t.remoteSeq = p.seq
 	if !t.sessionKnown {
 		t.sessionID, t.sessionKnown = p.session, true
 	}
 	if p.flags&flagRetransmission != 0 && t.received.contains(t.remoteSeq) {
+		// A resend of something we have: our ACK for it hasn't reached
+		// the switcher, so say it again (bmdwire#73). Dropped silently,
+		// the switcher resent its whole window every ~80 ms until the
+		// next new packet happened to carry an ACK (2026-11-04).
+		if p.flags&flagReliable != 0 && (t.enableACK || t.state == stateEstablished) {
+			if err := t.ackOwed(true); err != nil {
+				return nil, err
+			}
+		}
 		return nil, nil
 	}
-	t.received.add(t.remoteSeq)
+	if p.flags&flagReliable != 0 {
+		// Reliable packets only (bmdwire#80). The switcher's ACK-only
+		// packets carry sequence number 0, and recorded here they made 0
+		// look received for good: when its real packet 0, once per
+		// 32,768, was lost, the ACK walked over it and its resend was
+		// dropped as a duplicate (2026-11-06).
+		t.received.add(t.remoteSeq)
+	}
 	t.updateACK(p)
 
 	// ACK every reliable packet once established (or once ACKing has
@@ -588,8 +810,7 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 	if (p.flags&flagReliable != 0 && (t.enableACK || t.state == stateEstablished)) ||
 		(!t.enableACK && len(p.data) == 0) {
 		t.enableACK = true
-		ack := &packet{flags: flagACK, ack: t.ackNumber, remoteSeq: ackMagic}
-		if err := t.sendLow(ack); err != nil {
+		if err := t.ackOwed(false); err != nil {
 			return nil, err
 		}
 	}
@@ -683,8 +904,9 @@ func (t *transport) updateACK(p packet) {
 // requestSeq through the latest sent, in order, flagged as
 // retransmissions, with their original sequence numbers. It writes to the
 // socket directly, so resends don't take new sequence numbers. It returns
-// the number resent.
-func (t *transport) retransmitFrom(requestSeq uint16) int {
+// the number resent. quiet logs it at debug: the resend timer's and the
+// fast resend's, which are routine on a lossy link.
+func (t *transport) retransmitFrom(requestSeq uint16, quiet bool) int {
 	last := t.localSeq
 	span := (last - int(requestSeq)) & seqMask
 	if span >= t.retransmitWindow {
@@ -699,13 +921,18 @@ func (t *transport) retransmitFrom(requestSeq uint16) int {
 			continue
 		}
 		p.flags |= flagRetransmission
+		delete(t.sentAt, seq) // Karn: its ACK may answer either copy
 		if err := t.write(p.marshal()); err != nil {
 			t.log.Error("atem: retransmit failed", "seq", seq, "err", err)
 			break
 		}
 		resent++
 	}
-	t.log.Warn("atem: retransmission requested", "from", requestSeq, "resent", resent, "through", last)
+	level := slog.LevelWarn
+	if quiet {
+		level = slog.LevelDebug
+	}
+	t.log.Log(context.Background(), level, "atem: retransmission requested", "from", requestSeq, "resent", resent, "through", last)
 	return resent
 }
 
@@ -756,7 +983,10 @@ func (t *transport) handle(p packet) (handled, error) {
 
 // handshake is _handshake: answer the switcher's SYN with the ACK that
 // completes the handshake. Only hello 0x02 (accepted) establishes the
-// session; atemwire ACKs any other answer too and stays in SYN_SENT.
+// session. Hello 0x03, "no room", sets refused and is not ACKed
+// (bmdwire#75): the switcher's session table is full, and asking again at
+// once gets the same answer. atemwire ACKs any other answer and stays in
+// SYN_SENT.
 func (t *transport) handshake(p packet) error {
 	if p.flags&flagSYN == 0 {
 		return nil
@@ -767,6 +997,11 @@ func (t *transport) handshake(p packet) error {
 	if len(p.data) == 0 {
 		// atemwire raises IndexError here; the packet is lost.
 		t.log.Warn("atem: SYN without a hello opcode")
+		return nil
+	}
+	if p.data[0] == helloNoRoom {
+		t.refused = true
+		t.log.Warn("atem: "+noFreeConnectionMessage, "addr", t.addr)
 		return nil
 	}
 	if p.data[0] == helloAccepted {
