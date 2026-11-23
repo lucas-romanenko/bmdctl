@@ -749,7 +749,8 @@ func (t *transferTask) describe() string {
 // the caller reports; nil if t had already finished. A queued task is
 // dequeued (atemwire's dequeue_clear, for every kind of task) and the lane
 // carries on; the transfer in flight is abandoned the way a fatal FTDE
-// abandons it, its lock released per frame. atemwire's callers instead
+// abandons it, its lock released per frame, except a still download with
+// its request out, which is drained first (drainStall, bmdwire#73, #80). atemwire's callers instead
 // call abort_transfers, which empties the whole lane: that is safe there
 // only because its transfers are serialised per connection.
 func (s *Session) cancelTask(t *transferTask, cause error) error {
