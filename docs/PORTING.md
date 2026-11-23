@@ -220,10 +220,11 @@ Tracks: bmdwire v1.14.5
   SURFACE.md bmdwire main has beside each package, and keeps one issue,
   "SURFACE drift from bmdwire", open while they differ: rewritten each
   night, closed once they match. It never edits a SURFACE file; catching
-  up is a port. Until hyperdeckwire, videohubwire and ultimattewire have
+  up is a port. Until hyperdeckwire and videohubwire have
   `docs/SURFACE.md`, their copies have nothing to compare and the issue
   says so; once one has, make its comparison required in
-  `.github/scripts/surface-drift.sh`, as the atemwire one is. Separately, bmdwire's publish workflow opens "Port
+  `.github/scripts/surface-drift.sh`, as the atemwire and (since bmdwire
+  1.14.0) ultimattewire ones are. Separately, bmdwire's publish workflow opens "Port
   bmdwire v<version>" here, labelled `port`, once a release is on PyPI.
 - Where SURFACE.md and the Python code disagree, the code at v1.3.0 wins,
   as SURFACE.md itself says. Each disagreement found during the port is

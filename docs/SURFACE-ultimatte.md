@@ -1,51 +1,70 @@
 <!--
-Written for bmdctl from bmdwire v1.7.0 (tag v1.7.0, commit 31f9724),
-package ultimattewire/, which has no SURFACE.md of its own. It is the
-specification for bmdctl's ultimatte package, as docs/SURFACE-atem.md is
-for atem. Corrections and port decisions go in docs/PORTING.md
-("Ultimatte"); this file says what ultimattewire does.
+A copy of bmdwire's ultimattewire/docs/SURFACE.md at v1.14.5 (tag v1.14.5,
+commit 41b57e7), below this comment, as docs/SURFACE-atem.md is of
+atemwire's. It is the specification for bmdctl's ultimatte package.
+Corrections and port decisions go in docs/PORTING.md ("Ultimatte");
+this file says what ultimattewire does, and is never edited ahead of
+bmdwire's.
 -->
 
 # ultimattewire: complete library surface
 
-An inventory of everything bmdwire v1.7.0's `ultimattewire` can do, built
-for mapping to CLI commands. Every entry was read from the code
-(`_protocol.py`, `_preamble.py`, `network.py`, `profile/archive.py`,
-`profile/restore.py`, `profile/_ranges.py`, the two `__init__.py`); where
-its README or a docstring says otherwise, the code wins and §5.3 lists the
-disagreement. What the code does with every kind of input was also
-recorded by running it (`ultimatte/testdata/oracle/`).
+An inventory of everything `ultimattewire` can do, built for mapping to
+CLI commands. Every entry was read from the code; where its README or a
+docstring says otherwise, the code wins and §5.3 lists the disagreement.
+§1-§5 outside §1.3, §2.6 and §3.3 were first written for bmdctl from
+bmdwire v1.7.0 (commit `31f9724`), where it recorded what the code does
+with every kind of input by running it (bmdctl
+`ultimatte/testdata/oracle/`); that code is unchanged since.
 
-- **Source read:** `bmdwire` v1.7.0 (`github.com/lucas-romanenko/bmdwire`,
-  commit `31f9724`), package `ultimattewire/`. Its code changed in
-  0.2.0.dev0 (`5342705`, the network interface) and then in 1.7.0
-  (bmdwire#52, `39dded8`: `extract_model`, `parse_current_file`, and the
-  restore's docs on what it overwrites).
+- **Source read:** `bmdwire` branch `ultimatte/text-protocol` (after
+  v1.12.0), package `ultimattewire/`. Its code changed in 0.2.0.dev0
+  (`5342705`, the network interface), in 1.7.0 (bmdwire#52, `39dded8`:
+  `extract_model`, `parse_current_file`, the restore's docs) and on this
+  branch: the documented 9998 protocol in full (`client.py`,
+  `controls.py`, `smoke.py`; §1.3, §2.6, §3.3), `parse_interface` reading
+  `DynamicIP` too, and `UltimatteNetworkError` under the new
+  `UltimatteError`; then media pool images (`media.py`), and what three
+  Wireshark captures of Software Control on a 12 4K (2026-11-12) showed:
+  functions that end without `yes`, the cursor lock MESSAGE, the cursor
+  colour stream, JPG uploads, streamed uploads.
 - **Two channels:** TCP 9998, a text channel (the prelude the unit sends on
   connect, then blocks), and TCP 9996, a binary channel (one request per
   connection: preset slots and two named resources).
-- **No reference document.** Blackmagic doesn't document the protocol. The
-  wire format was recovered from packet captures of Smart Remote 4 /
-  Ultimatte Software Control archiving and restoring an Ultimatte 12 4K,
-  and validated by round-tripping archives through the vendor app; the
-  network interface from an Ultimatte 12 4K on protocol 2.1, software 2.1
-  (2026-09).
-- **Verified on hardware** (its README): an Ultimatte 12 4K. The
-  Ultimatte 12 (HD) speaks the same protocol by the vendor's own
-  docstrings; the HD Mini and other models were not tested.
+- **9998 is documented, 9996 is not.** Blackmagic publishes "Ultimatte 12
+  Ethernet Protocol v2.0" (September 2022) for the text channel; §1.3,
+  §2.6 and §3.3 follow it, and say where an Ultimatte 12 4K was seen to
+  differ. The binary channel's wire format was recovered from packet
+  captures of Smart Remote 4 / Ultimatte Software Control archiving and
+  restoring an Ultimatte 12 4K, and validated by round-tripping archives
+  through the vendor app; the network interface from an Ultimatte 12 4K
+  on protocol 2.1, software 2.1 (2026-09).
+- **Verified on hardware:** archive, restore, the prelude reads and
+  `read_network` on an Ultimatte 12 4K (software 2.3, 2026-10-27).
+  **`Ultimatte` (§1.3, §2.6) has not met a unit yet**: it is tested
+  against a fake built from the document (`tests/fake_ultimatte.py`),
+  and `python -m ultimattewire.smoke` is the check to run on one. The
+  HD, HD Mini and 8K were never tested.
 - **Public surface** (`__init__.py`): `archive_unit_to_bytes`,
   `restore_unit_from_bytes`, `read_network`, `set_network`,
-  `NetworkInterface`, `UltimatteNetworkError`. `network.exchange`,
-  `build_block` and `parse_interface` are public in their module, and the
-  README names them as the way to drive any other section.
-- **Stateless.** Nothing is kept between calls: every function opens its
-  own connections and closes them.
+  `NetworkInterface`, `UltimatteNetworkError`; and `Ultimatte`,
+  `UltimatteState`, `Update`, `Identity`, `VersionInfo`, `DeviceInfo`,
+  `CurrentFile`, `GpiList`, `FrameBuffer`, `FrameBufferState`,
+  `UltimatteError`, `UltimatteConnectionError`, `UltimatteTimeout`,
+  `UltimatteNak`, `UltimatteMessageError`, `ControlValueError`,
+  `UnsupportedError`. `network.exchange`, `build_block` and
+  `parse_interface` are public in their module, and `controls` (the
+  document's table, §2.6) is a public module.
+- **Two styles.** The archive, restore and network functions are
+  stateless: each opens its own connections and closes them. `Ultimatte`
+  is one session that keeps the unit's state, opened and closed by the
+  caller, with no thread or timer of its own.
 
 | § | contents |
 |---|---|
-| 1 | Commands (writes): restore over 9996, network set over 9998 |
-| 2 | Reads: the prelude and its parsers, binary reads, archive, network read, display ranges |
-| 3 | The channels' framing: 9996 frames, 9998 prelude and blocks |
+| 1 | Commands (writes): restore over 9996, network set over 9998, every documented 9998 command (`Ultimatte`) |
+| 2 | Reads: the prelude and its parsers, binary reads, archive, network read, display ranges, `Ultimatte`'s state and updates |
+| 3 | The channels' framing: 9996 frames, 9998 prelude and blocks, `Ultimatte`'s session |
 | 4 | Connections: ports, timeouts, retry, errors |
 | 5 | Gaps: protocol not wrapped, docs and code, traps |
 | — | Counts |
@@ -120,6 +139,72 @@ returns the interface read back once it has settled.
 - `**kw` goes to every `exchange` (`connect_timeout`, `quiet_timeout`,
   `prelude_timeout`).
 
+### 1.3 `Ultimatte` (`client.py`): every documented 9998 command
+
+One session: `Ultimatte(host, port=9998, *, connect_timeout=5.0,
+idle_timeout=3.0, function_idle_timeout=10.0, socket_factory=None,
+settings_port=9996)`,
+`connect()` / `close()` or a `with` block (§3.3). Every command below
+sends one block, waits for `ACK` (a `NAK` raises `UltimatteNak`), then
+for the unit's update, applying every other block on the way, and
+returns what the unit reported, not what was asked. Values are checked
+before anything is sent (`ControlValueError`, `UnsupportedError`); none of
+it has run against a unit yet.
+
+| method | block sent | waits for | returns |
+|---|---|---|---|
+| `set_control(name, value, *, validate=True, wait=True)` | `CONTROL:` `<name>: <value>` | a CONTROL update holding the name (a 12 4K echoes a value the control already has too: captured), or a MESSAGE (raises `UltimatteMessageError`: `Control Locked - Enable 'Cursor' function` for a cursor with its cursor off) | the value as the unit reports it, typed |
+| `set_controls({name: value}, *, validate=True, wait=True)` | one `CONTROL:` with every line; one bad value sends nothing | every name in CONTROL updates, or a MESSAGE (raises) | `{name: value}` |
+| `offset_control(name, delta, *, validate=True, wait=True)` | `CONTROL:` `Offset <name>: <delta>` (range controls only) | the name (absolute value), or a MESSAGE (raises) | the new value |
+| `run_function(name, *, idle_timeout=None)` | `CONTROL:` `<name>: yes` (the 20 function controls) | `<name>: yes` back ("the function is complete", the document) **or** a `CONTROL DEFAULT:` block (a 12 4K ends Sample Wall / Sample Floor that way, never `yes`: captured), or a MESSAGE (raises); `function_idle_timeout` (10 s) of silence at most, the unit having said nothing for 4.0 s after a sample | `None` |
+| `refresh(header)` | `<HEADER>:` and the blank line (a status dump request); `Frame Buffer:`, `Image List:`, `File List:`, `Current File:` as Software Control spells them (captured: ACK, then the block in capitals) | the block | its lines |
+| `load_file(name)` | `FILE:` `Load: <name>` | CURRENT FILE, or a MESSAGE (raises `UltimatteMessageError`) | `state.current_file` |
+| `save_file(name)`, `delete_file(name)`, `rename_file(name, new_name)` | `FILE:` `Save:` / `Delete:` / `Rename:` + `To:` | FILE LIST, or a MESSAGE (raises) | `state.file_list` |
+| `gpi_insert(gpi, filename, at=-1)` | `GPI:` `ID:`, `Insert:`, `At:` (-1 the end) | that GPI's GPI LIST, or a MESSAGE (raises) | its `GpiList` |
+| `gpi_remove(gpi, index)` | `GPI:` `ID:`, `Remove:` (0 all) | as above | as above |
+| `gpi_set_index(gpi, index)` | `GPI:` `ID:`, `Index:` | as above | as above |
+| `set_frame_buffer(buffer, *, index=None, enable=None)` | `FRAME BUFFER:` `<buffer> Frame Buffer Index:` then `... Enable: on/off` | both keys in FRAME BUFFER updates | the `FrameBuffer` |
+| `assign_image(buffer, image, enable=True)` | a unit that names images per buffer (12 4K, `state.frame_buffer.assigned` filled, or the image only in IMAGE LIST): `Frame Buffer:` `Background 1: <image>` (the long names `Background 1/2`, `Layer 1/2`, `Garbage Matte`, `Holdout Matte`, or the short `BG 1`, `GM`, `HM`; header spelled as Software Control sends it; `enable` unused; PNG and JPG alike). After a background, GM or HM the unit itself sets `BM`/`GM`/`HM Input Offset: 10000` and `Input Level: 6878` and pushes DEVICE and CONTROL DEFAULT twice; it doesn't send `GM`/`HM Enable` (captured; applied when the session next reads; layers not captured). Otherwise as above, the index of the `Frame Buffer n:` line naming the image | named: FRAME BUFFER holding that key, or a MESSAGE (raises; the unit ACKs and then refuses: `Mismatched formats: ...`, `Invalid operation - No Foreground source present`); the key showing another image raises `UltimatteError` | named: `FrameBuffer(short name)`; otherwise as above |
+| `assigned_image(buffer)` | nothing (state) | | the image name on the buffer, `""` none, `None` not reported |
+| `upload_image(name, data, *, size=None, progress=None, check_format=True, idle_timeout=None)` | not 9998: `media.upload_image` on 9996 (§3.1, opcode `0x0101`; a PNG or JPG as bytes, a path, a binary file or chunks) | IMAGE LIST holding the name, `function_idle_timeout` of silence at most | `state.image_list` |
+| `delete_image(name)` | `Image:` `Delete: <name>` (not in the document; Software Control's spelling) | IMAGE LIST without the name, or a MESSAGE (raises); the unit also pushes FRAME BUFFER with the image cleared | `state.image_list` |
+| `flush_settings(quiet=0.5)` | `CONTROL:` `FLUSH SETTINGS: YES` (not in the document; Software Control sends it before an Archive: live state into SavedSettings) | ACK, then reads until `quiet` seconds of silence; a MESSAGE raises (no FG locked: `Invalid operation - No Foreground source present`) | `None` |
+| `set_frame_buffer_mix(layer, value)` | `FRAME BUFFER:` `BG`/`LY Frame Buffer Mix:` | the key | the mix |
+| `set_transition_duration(layer, ms)` | `FRAME BUFFER:` `BG`/`LY Transition Duration:` (ms) | the key | the duration |
+| `set_camera_id(n)` | `CAMERACONTROL:` `Camera Id:` (HD Mini only) | the key | `state.camera_id` |
+| `send_block(header, lines=(), *, expect=None)` | anything | ACK (and the block `expect` names) | its lines, or `None` |
+
+Checks before sending, from the document's table (`controls.py`, §2.6):
+a range control takes an integer in its range (Window Position: 0 to the
+running format's height for Top/Bottom, width for Left/Right; any value
+when the format is unknown); On/Off takes a bool or `on`/`off`/`true`/
+`false`/`yes`/`no`/`1`/`0`; a choice one of the document's (Video Format:
+the unit's own VIDEO FORMATS list when it sent one); a function only
+`yes`; Tally Active nothing. A control a footnote says the model lacks
+(`*` the HD Mini, `**` the HD and HD Mini) or the protocol is too old for
+(Output Range, 2.0) raises `UnsupportedError`; so do GPI commands on the
+HD Mini and CAMERACONTROL anywhere else. A control in neither the
+document nor the unit's CONTROL block raises `ControlValueError`;
+`validate=False` sends any value as given (bools as `on`/`off`). Values go
+out in lower case, as a 12 4K reports them. Names, file names and values
+with a line break are refused. Frame buffers are `BG 1`, `LY 1`, `BG 2`,
+`LY 2`, `GM`, `HM` or any the unit reported; an index is 0 to `Number Of
+Frame Buffers`; mix and duration any integer from 0 (the document gives
+no range); GPI IDs from 1, `At` from -1, `Remove` and `Index` from 0;
+a camera id from 0.
+
+Monitor Out's choices are the document's 16; the unit reports and takes
+them by full name in lower case (`combined matte`, `internal matte`; `fg`
+as the document writes FG), and there is no `matte` alias. Software
+Control offers only 6 (Program, Foreground Input, Background Input,
+Combined Matte, Internal Matte, Fill Out), even with GM on and a mask
+assigned, so the other 10 (Layer In, the matte inputs, the processed
+mattes, Screen Correction) are the document's only, never seen on a unit.
+
+`wait=False` returns at the ACK. A MESSAGE before the ACK is applied,
+not raised. A timeout during a command closes the session (a late ACK
+would be taken as the next command's).
+
 ## 2. Reads
 
 ### 2.1 The prelude (`_preamble.py`)
@@ -187,7 +272,7 @@ Blobs are opaque: moved verbatim, never parsed.
 | `name` | `Name` | |
 | `mac` | `MAC Address` | |
 | `priority` | `Priority` | `int()` when `isdigit()`, else `None` |
-| `dynamic` | `Dynamic IP` | `True` for `true`, `False` for `false` (any case), else `None` |
+| `dynamic` | `Dynamic IP`, else `DynamicIP` (the document's spelling) | `True` for `true`, `False` for `false` (any case), else `None` |
 | `address`, `netmask` | `Current Addresses` | the first of a comma- or space-separated list, split at `/` into address and dotted mask, each stripped; no `/` gives an empty mask |
 | `gateway` | `Current Gateway` | |
 | `dns` | `Current DNS Servers` | comma- or space-separated, as a list |
@@ -252,6 +337,8 @@ seconds. Returns `(zip_bytes, info)`:
 - **`to_display(name, raw_value)`**: `(None, None)` for a name not in
   the table or a value `float()` refuses; `(raw, unit)` for an as-is one;
   else `dmin + (raw - rmin) / (rmax - rmin) * (dmax - dmin)`, unclamped.
+  `Matte Density` 2500 (the unit's default) is 0%, as Software Control
+  shows it (captured 2026-11-12; a test pins it).
 - **`annotate_preamble(preamble)`**: the prelude's lines (`splitlines()`,
   each `rstrip('\r')`), with each `Name: value` line under `CONTROL:` or
   `CONTROL DEFAULT:` (a header is a line ending in `:` and not starting
@@ -259,6 +346,65 @@ seconds. Returns `(zip_bytes, info)`:
   padded to 40 characters, then ` (` the display value `int()`-ed
   (towards zero), the unit (no space before `%`) and `)`. A name starting
   `Offset ` is looked up without it. The result ends with a newline.
+
+### 2.6 `Ultimatte`'s state (`client.py`, `controls.py`)
+
+`connect()` reads the status dump to `END PRELUDE:` into `state`
+(`UltimatteState`), and every block read afterwards keeps it current.
+
+| field | block | form |
+|---|---|---|
+| `protocol_version`, `protocol` | PROTOCOL PREAMBLE `Version` | string; `(major, minor)` |
+| `identity` | IDENTITY | `Identity(model, label, unique_id)`; `family` maps the model to `controls.MODEL_*` (`""` for a model the document doesn't name) |
+| `network` | NETWORK | `{key: value}`, merged |
+| `interfaces` | NETWORK INTERFACE n | `{n: NetworkInterface}` (`parse_interface`, §2.3), a push merged into the lines before |
+| `version` | VERSION | `VersionInfo(product_id, hardware_version, software_version, software_release)` |
+| `device` | DEVICE | `DeviceInfo(video_format, reference_source, inputs={line: state})`; `locked("FG")` / `input_status("REF In")` match `REFIn` and `REF In` alike |
+| `video_formats` | VIDEO FORMATS | list, replaced |
+| `controls`, `control_defaults` | CONTROL, CONTROL DEFAULT | `{name: value}` merged; typed by the table: range `int`, On/Off, Tally and functions `bool`, choices the string sent; anything that doesn't parse, and controls the document lacks, the string |
+| `current_file` | CURRENT FILE | `CurrentFile(name, status)`: `Name:`/`Status:` lines (a 12 4K), else the first bare line (the document); `modified` |
+| `file_list`, `image_list` | FILE LIST, IMAGE LIST | lists, replaced |
+| `gpi_lists` | GPI LIST | `{id: GpiList(id, index, events)}`, each block replacing its GPI's events |
+| `frame_buffer` | FRAME BUFFER | `FrameBufferState(count, buffers={name: FrameBuffer(name, enable, index)}, mix={BG, LY}, duration={BG, LY} ms, images={n: name}, other)`, merged; `image_number(name)` |
+| `camera_id` | CAMERACONTROL `Camera Id` | int |
+| `messages` | MESSAGE | list of `{key: value}` (a bare line under `""`), the last 50 |
+| `other` | any block the document doesn't have | `{header: lines}` |
+| `prelude_complete` | END PRELUDE | bool |
+| `tally` | CONTROL `Tally Active` | bool or `None` |
+
+`to_dict()` gives the lot as plain data (JSON-ready). Unknown lines in a
+known block are ignored, unknown blocks kept raw, as the document asks.
+
+- **`subscribe(callback, headers=None)`** calls `callback(Update)` for
+  every block read from then on (only those headers, without the colon,
+  if given) and returns the function that unsubscribes. `Update(header,
+  changes, lines, state)`: `changes` is the block's items, typed (a dict;
+  a list for the list blocks; a `GpiList`). Callbacks run in the caller's
+  thread inside whichever method is reading; an exception in one is
+  logged (`ultimattewire.client`) and not raised.
+- **`poll(timeout=0.0)`** waits up to `timeout` of silence for a block,
+  then takes what else is already waiting; returns the `Update`s.
+- **`wait_for(predicate, idle_timeout=None)`** reads until
+  `predicate(state)`; silence raises `UltimatteTimeout`.
+- **`get_control(name)`** reads state; **`context()`** is what the checks
+  know (model, protocol, running format, VIDEO FORMATS).
+
+**`controls`**: `CONTROLS`, the document's 289 rows in its order (176
+range, 79 On/Off, 1 read-only, 13 choices, 20 functions), each a
+`Control(name, kind, minimum, maximum, choices, limit, min_protocol, note,
+window)`; `lookup(name)` (any case and spacing); `model_family`,
+`model_inputs`, `has_gpi`, `has_camera_control`; `parse_value`,
+`format_value`, `format_offset`, `frame_size`, `maximum_for`,
+`video_formats_for`.
+
+**`python -m ultimattewire.smoke HOST [--port] [--idle-timeout] [--watch
+SECONDS] [--write [--control NAME] [--force]] [--json FILE]`** prints
+every block read, lists where the unit differs from the document, sends
+a status dump request for each documented block (ACK/NAK), optionally
+prints pushes, and with `--write` (refused while Tally Active is on,
+unless `--force`) nudges one range control a step and puts it back,
+restoring even when the first write fails. Exit 0, 1 (a write or restore
+not confirmed), 2 (no session).
 
 ## 3. The channels' framing
 
@@ -290,7 +436,31 @@ One request per connection; the unit closes it after replying.
 | `0x0000` | read | a preset slot |
 | `0x0003` | read | a named resource |
 | `0x0100` | write | a preset slot (`.../presets/<slot>`) |
+| `0x0101` | write | a media pool image: name = the file name, data = the PNG or JPG file as is (captured 2026-11-11 and -12: the frame doesn't say the format; the unit answered one zero byte) |
 | `0x0103` | write | a named resource (`.../GPISettings`, `.../SavedSettings`) |
+
+`upload_one` takes `port=9996` too. **`upload_stream(host, opcode, name,
+size, chunks, progress=None, connect_timeout=5.0, read_timeout=30.0,
+port=9996)`** is the same frame with the data sent chunk by chunk:
+`size` (1 byte to 4 GiB) goes in the header, `progress(sent, size)` is
+called after each chunk, and chunks adding up to more or less than
+`size` raise `IOError` without the trailing zero, so the unit never takes
+a short file. The ACK is read as `upload_one`'s.
+
+**`media.upload_image(host, name, data, *, size=None, progress=None,
+chunk_size=262144, video_format=None, connect_timeout=5.0,
+read_timeout=30.0, port=9996)`** (`media.py`): `data` is bytes, a path,
+a binary file (sent from where it stands) or an iterable of chunks; a
+file that can't tell its length and an iterable need `size`. It checks
+the name (no `/`, `\`, line break), reads the first chunks (up to 1 MiB)
+for the format and size (`media.image_size`: a PNG's IHDR, a JPEG's
+SOF, walking its APPn segments; anything else is refused, since only PNG
+and JPG were seen going in), and with `video_format` that the size is
+the format's (`media.format_size`: 720/1080/2160/4320 lines), raising
+`media.UltimatteImageError` before sending; an `IOError` from
+`upload_stream` is raised as `UltimatteImageError` too, and an exception
+from `progress` abandons the upload. Returns (width, height).
+`media.png_size` and `media.jpeg_size` read one format each.
 
 ### 3.2 TCP 9998, text (`_preamble.py`, `network.py`)
 
@@ -320,6 +490,39 @@ One request per connection; the unit closes it after replying.
   from {host} (got {reply[:80]!r})')`; otherwise it returns what follows
   `ACK`, leading newlines dropped.
 
+### 3.3 TCP 9998, `Ultimatte`'s session (`client.py`)
+
+- **Connect:** `socket_factory((host, port), timeout=connect_timeout)`,
+  once more after 0.25 s on any `OSError`; then the dump, block by block,
+  until `END PRELUDE:` (with or without its blank line).
+- **Blocks:** split at a blank line (`\n\n` or `\r\n\r\n`; CR stripped
+  from each line); blank lines between blocks skipped; UTF-8, errors
+  replaced. `ACK` and `NAK` are blocks of their own.
+- **No-progress waits.** Every wait (the dump, an ACK, an update, a
+  function's end) ends after `idle_timeout` (`function_idle_timeout`)
+  seconds with nothing received, counted from the last byte, so a long
+  dump that keeps coming never times out. One exception: while a cursor
+  is on, a 12 4K pushes the colour under it (`Wall Color Red/Green/Blue`
+  for the wall cursor, `Floor Color ...` for the floor one, one block per
+  component) about every 40 ms (captured 2026-11-12). Those blocks
+  (`client.CURSOR_COLOR_KEYS`, nothing else in the block) are applied
+  but don't restart the clock, so a wait for an answer that never comes
+  still ends; the timeout says "but the cursor colour stream". Without
+  this a wait could last as long as the cursor stayed on. No thread, no
+  timer, no keep-alive: nothing is read or sent unless a method is
+  called.
+- **Errors:** `UltimatteConnectionError` (also a `ConnectionError`):
+  refused ("nothing listening on the Ultimatte text port"), no answer to
+  the connect, closed before a word ("no free connection on the unit, or
+  not an Ultimatte"), closed mid dump, closed or lost later, not
+  connected. `UltimatteTimeout` (also a `TimeoutError`): dump stalled,
+  silence from the start, no ACK, no update; a command's timeout closes
+  the session. `UltimatteNak` (`.block`), `UltimatteMessageError`
+  (`.message`, `.block`): a MESSAGE after the ACK of a CONTROL, FILE,
+  GPI, FRAME BUFFER assignment, `Image:` or FLUSH SETTINGS; the session
+  stays open. All are `UltimatteError`, as is
+  `UltimatteNetworkError`.
+
 ## 4. Connections
 
 - Ports: `CONTROL_PORT` 9998, `SETTINGS_PORT` 9996.
@@ -343,13 +546,26 @@ One request per connection; the unit closes it after replying.
 
 ### 5.1 In the protocol, not in ultimattewire
 
-Every opcode but the four (the README notes the gaps between `0x0000` and
-`0x0003`, and between `0x0100` and `0x0103`); `images/` and `quickfiles/`
-(always written empty: a unit holding images or quick files would not
-have them archived); the vendor app's interactive greeting on 9998; any
-section but `NETWORK INTERFACE n` through the block protocol (the README
-says `exchange` and `build_block` would drive them); the live control
-values as anything but text to annotate.
+- **Media pool images**: loading (9996 `0x0101`, PNG and JPG) and
+  removing (`Image:` `Delete:`) are implemented from 2026-11-11 and -12
+  captures of Software Control, not yet run from ultimattewire against a
+  unit. Reading an image back (for `images/` in an archive) is still not
+  captured; nor are other image formats.
+- **Unverified on a unit** (the document's only, or not captured):
+  functions other than Sample Wall / Sample Floor (whether a 12 4K
+  answers `yes` for Auto Screen Sample, Matte Reset, ... is not known;
+  either ending is taken); the 10 Monitor Out choices Software Control
+  doesn't offer; which cursor `Cursor 2 X/Y` needs (the floor one, by
+  the capture's order) and whether absolute cursor writes are locked
+  like `Offset` ones; what drives the colour stream (with the
+  cursor on it paused for up to 5 s at a time, so it seems to follow the
+  colour, not a clock).
+- On 9996: every opcode but the four (the README notes the gaps between
+  `0x0000` and `0x0003`, and between `0x0100` and `0x0103`); `images/`
+  and `quickfiles/` (always written empty: a unit holding images or quick
+  files would not have them archived).
+- On 9998, nothing the document lists. Blocks a unit sends that the
+  document doesn't have land in `state.other`; `send_block` sends any.
 
 ### 5.2 Implemented, but not exposed
 
@@ -360,6 +576,10 @@ the package.
 
 ### 5.3 Docs and comments that say something the code doesn't do
 
+- `_preamble.py`'s and the README's "may close the connection partway
+  through" without the vendor's greeting: nothing in the protocol
+  document has a greeting, and `Ultimatte` keeps its session open
+  without one (unverified on hardware).
 - `network.py`'s module docstring says a write's echo is "the unit telling
   you what it now holds, and callers should believe the echo"; the README
   and `set_network`'s own docstring say the echo carries only the fields
@@ -404,9 +624,12 @@ the package.
 
 | | |
 |---|---|
-| Public names | 6 in the package (`archive_unit_to_bytes`, `restore_unit_from_bytes`, `read_network`, `set_network`, `NetworkInterface`, `UltimatteNetworkError`) |
-| Opcodes (9996) | 4: read slot, read resource, write slot, write resource |
-| Blocks (9998) | 1 section, `NETWORK INTERFACE n`: query and set |
+| Public names | 24 in the package: 6 before (`archive_unit_to_bytes`, `restore_unit_from_bytes`, `read_network`, `set_network`, `NetworkInterface`, `UltimatteNetworkError`) , 17 for the text protocol and `UltimatteImageError` (media pool) |
+| Opcodes (9996) | 5: read slot, read resource, write slot, write image, write resource |
+| Blocks (9998) | 19 read (the 16 of the dump, END PRELUDE among them; MESSAGE, `ACK`, `NAK`), 6 sent (CONTROL, FILE, GPI, FRAME BUFFER, CAMERACONTROL, `NETWORK INTERFACE n`) and the status dump request of any |
+| Controls (the document's table) | 289: 176 range, 79 On/Off, 1 read only, 13 choices, 20 functions |
+| `Ultimatte` commands | 21 methods that send (§1.3) |
+| Image formats (9996 `0x0101`) | 2 sent: PNG, JPG (both captured) |
 | `NetworkInterface` fields | 14 |
 | Display ranges | 176 |
 | Archive members | 5 fixed (3 directories, 2 resources), one per preset, the readable dump |
