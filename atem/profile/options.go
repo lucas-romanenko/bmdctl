@@ -103,9 +103,10 @@ type SaveOptions struct {
 	HyperDecks bool
 	Macros     bool // <MacroPool> and <MacroControl>
 
-	// MacroTimeout bounds each macro's download; zero means atemwire's
-	// 10 s. Not in atemwire's SaveOptions: its timeout is download_macro's
-	// default.
+	// MacroTimeout is how long each macro's download may go with nothing
+	// arriving (bmdwire#101: it was the whole download's); zero means
+	// atemwire's 10 s. Not in atemwire's SaveOptions: its timeout is
+	// download_macro's default.
 	MacroTimeout time.Duration
 	// Logger receives what atemwire logs (a failed macro download);
 	// nil discards it.
@@ -170,7 +171,9 @@ type ApplyOptions struct {
 	// the profile goes out: zero means atemwire's 3 s, a negative value no
 	// pause. Not in atemwire's ApplyOptions (its pause is fixed).
 	ResyncWait time.Duration
-	// MacroTimeout bounds each macro's upload; zero means atemwire's 10 s.
+	// MacroTimeout is how long each macro's upload may go without
+	// progress (bmdwire#101: it was the whole upload's); zero means
+	// atemwire's 10 s.
 	MacroTimeout time.Duration
 	// Logger receives what atemwire logs (the video mode warnings, dropped
 	// macro ops, failed uploads); nil discards it.

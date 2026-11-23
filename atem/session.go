@@ -650,10 +650,17 @@ func (s *Session) checkDialStall() {
 }
 
 func (s *Session) onDatagram(d datagram) {
+	acked := s.t.ackedThrough
 	pkts, err := s.t.receive(d.b, d.from)
 	if err != nil {
 		s.fatal = err
 		return
+	}
+	if t := s.uploadInHand(); t != nil && s.t.ackedThrough != acked {
+		// The switcher took more of our packets: the upload is moving
+		// (bmdwire#101's progress mark, _acked_through, which counts
+		// for the upload whatever its phase, a new session's too).
+		t.moved()
 	}
 	if s.transportAsks(); s.fatal != nil {
 		return

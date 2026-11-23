@@ -115,6 +115,11 @@ func (sw *Switcher) HoldUpload(release <-chan struct{}) {
 	sw.uploadHeld = release
 }
 
+// PaceUploads holds each budget (FTCD) of an upload after its first this
+// long after the chunk that used up the last: a slow link's upload, which
+// keeps moving.
+func (sw *Switcher) PaceUploads(d time.Duration) { sw.mu.Lock(); sw.uploadPace = d; sw.mu.Unlock() }
+
 // LockedBySession reports whether the session holds store's lock.
 func (sw *Switcher) LockedBySession(store uint16) bool {
 	sw.mu.Lock()
@@ -245,10 +250,17 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 		}
 		x := &xfer{store: store, slot: slot, upload: true, length: length}
 		sw.xfers[tid] = x
-		if length == 0 {
-			return nil // no budget: FTFD follows at once
+		var out [][]byte
+		if store == storeMacros {
+			// The slot becomes a nameless macro as the upload starts
+			// (pre-erase, mode 0x0300), as a switcher's does (bmdwire#101).
+			sw.macros[slot] = &item{}
+			out = append(out, macroProperties(slot, sw.macros[slot]))
 		}
-		return [][]byte{sw.budget(tid, x)}
+		if length == 0 {
+			return out // no budget: FTFD follows at once
+		}
+		return append(out, sw.budget(tid, x))
 	case "FTDa":
 		if len(c) < 4 {
 			return nil
@@ -274,6 +286,16 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 					sw.mu.Unlock()
 					sw.Send(b)
 				}()
+				return nil
+			}
+			if d := sw.uploadPace; d > 0 {
+				time.AfterFunc(d, func() {
+					sw.mu.Lock()
+					defer sw.mu.Unlock()
+					if sw.xfers[tid] == x {
+						sw.broadcast(sw.budget(tid, x))
+					}
+				})
 				return nil
 			}
 			return [][]byte{sw.budget(tid, x)}

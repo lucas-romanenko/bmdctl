@@ -4,7 +4,10 @@
 
 package atem
 
-import "time"
+import (
+	"testing"
+	"time"
+)
 
 // SetSilence shortens a Dialer's 5 s silence timeout, for the tests in
 // package atem_test.
@@ -29,4 +32,12 @@ func QueuedTransfers(s *Session) int {
 		return 0
 	}
 	return <-ch
+}
+
+// SetMacroTimeout shortens MacroTimeout, the macro transfers' default
+// timeout, for one test.
+func SetMacroTimeout(t testing.TB, d time.Duration) {
+	old := macroTimeout
+	macroTimeout = d
+	t.Cleanup(func() { macroTimeout = old })
 }

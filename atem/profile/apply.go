@@ -27,7 +27,8 @@ const (
 	// resyncWait is the pause after a video mode change (apply.py's
 	// time.sleep(3.0)).
 	resyncWait = 3 * time.Second
-	// macroUploadTimeout is upload_macro_bytecode's timeout.
+	// macroUploadTimeout is upload_macro_bytecode's timeout: time without
+	// progress since bmdwire#101.
 	macroUploadTimeout = 10 * time.Second
 )
 
@@ -43,7 +44,8 @@ const (
 // atemwire's connection drops it. There is no model or version guard.
 //
 // Like atemwire, Apply blocks only for the pause after a video mode change
-// (ResyncWait, 3 s) and for macro uploads (MacroTimeout, 10 s each).
+// (ResyncWait, 3 s) and for macro uploads (each until MacroTimeout, 10 s,
+// passes without progress).
 //
 // It returns an error, with the result so far, where atemwire's apply
 // raises instead of returning: an _int of an infinite attribute
@@ -1368,9 +1370,9 @@ func (a *applier) macros() error {
 			if bytecode == nil {
 				bytecode = []byte{}
 			}
-			ctx, cancel := context.WithTimeout(a.ctx, timeout)
-			upErr = a.t.UploadMacro(ctx, int(slot), name, desc, bytecode)
-			cancel()
+			// Seconds without progress, not the whole upload's
+			// (bmdwire#101, 85d2f58).
+			upErr = a.t.UploadMacro(atem.WithStallTimeout(a.ctx, timeout), int(slot), name, desc, bytecode)
 		}
 		if upErr != nil {
 			failures = append(failures, macroFailure{slot, name, "upload error: " + upErr.Error()})
