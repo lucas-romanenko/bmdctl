@@ -441,15 +441,15 @@ timer that follows the round trip (below).
   still waiting for its UDP thread; the bulk queue here is always drained
   at once by `queueChunks`, so there is nothing to take. Tests:
   `chunks_too_big_test.go`, `test_chunks_too_big.py`'s counterparts.
-- **Only when the switcher was heard all along** (bmdwire#97, `ea4452a`).
-  `takeBackChunks` needs the switcher heard with no gap over `heardGap`
-  (250 ms; its Time packets come every 40 ms) since the chunk got stuck
-  (`stuckSince`, one timer's wait before the timer first fired for it;
-  `heardAgainAt`, set in `receive` after such a gap), not only within
-  `resendMax` of the decision. A cable out for 3 s mid-upload on a LAN
-  had the chunks taken back after 0.75 s of resends; their sequence
-  numbers went again with other data the switcher may have had, and the
-  still arrived with the wrong MD5. Tests: the three at the end of
+- **Only resends the switcher was heard after count** (bmdwire#100,
+  `4ba9d8c`; replaces bmdwire#97's rule). A resend of the stuck chunk
+  counts towards `tooBigAfter` only if `lastHeard` is after the previous
+  resend (`stuckResentAt`), and `takeBackChunks` needs the switcher heard
+  within `resendMax`. bmdwire#97 (v0.3.2) wanted no gap over 250 ms since
+  the chunk got stuck, a Constellation's every-40-ms Time packet taken for
+  every switcher's; one that sends less often (WebATEM #63's Mini Pro over
+  ZeroTier) never passed and its uploads hung. A cable out still never
+  counts: nothing is heard after those resends. Tests: the last four in
   `chunks_too_big_test.go`, from `test_chunks_too_big.py`.
 - **Logging.** `ATEMWIRE_PACKET_TRACE` is not read. The transport logs to a
   `*slog.Logger` (discarded by default): per-packet detail at debug,

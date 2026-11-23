@@ -341,31 +341,57 @@ func TestChunksStuckWhileTheCableIsOutAreNotTakenBack(t *testing.T) {
 	clearChunkLimits(t)
 	tr, now := stuckUploadOnALAN(t, 10)
 	out := *now
-	if tb := timerFiresHeard(t, tr, now, tooBigAfter+1, false); tb != nil {
-		t.Fatalf("taken back %+v with the cable out", tb)
+	if tb := timerFiresHeard(t, tr, now, tooBigAfter+3, false); tb != nil {
+		t.Fatalf("taken back %+v with the cable out: resends nobody answered do not count", tb)
 	}
-	if now.Sub(out) >= resendMax {
+	if now.Sub(out) >= 3*time.Second {
 		t.Fatalf("%v: not the case v0.3.1 got wrong", now.Sub(out))
 	}
-	// The cable back in: heard again at once, and the chunks stuck across
-	// the silence are resent, not taken back.
+	// The cable back in: heard again, and the next resend reaches the
+	// switcher, which acknowledges it.
 	heardUntil(t, tr, now, out.Add(3*time.Second))
-	if tb := timerFiresHeard(t, tr, now, tooBigAfter+2, true); tb != nil {
+	if tb := timerFiresHeard(t, tr, now, 1, true); tb != nil {
 		t.Fatalf("taken back %+v after the cable came back", tb)
 	}
+	tr.onACK(11, true)
 	if tr.maxChunk != 0 || tr.localSeq != 11 {
 		t.Fatalf("maxChunk %d, localSeq %d: no sequence number used twice", tr.maxChunk, tr.localSeq)
 	}
 }
 
-func TestAShortGapInWhatTheSwitcherSendsIsALinkDown(t *testing.T) {
+func TestResendsIntoSilenceDoNotCountTowardsTooBig(t *testing.T) {
 	clearChunkLimits(t)
 	tr, now := stuckUploadOnALAN(t, 10)
-	timerFiresHeard(t, tr, now, 1, true)
-	*now = now.Add(heardGap + 50*time.Millisecond) // quiet, then heard again
-	timePacket(t, tr)
-	if tb := timerFiresHeard(t, tr, now, tooBigAfter+1, true); tb != nil {
-		t.Fatalf("taken back %+v across a gap", tb)
+	timerFiresHeard(t, tr, now, 6, false)
+	if tb := timerFiresHeard(t, tr, now, tooBigAfter-1, true); tb != nil {
+		t.Fatalf("taken back %+v counting resends into silence", tb)
+	}
+	if tb := timerFiresHeard(t, tr, now, 1, true); tb == nil || tb.limit != 1224 {
+		t.Fatalf("taken back %+v, want limit 1224", tb)
+	}
+}
+
+func TestASwitcherThatSendsEveryHalfSecondIsHeard(t *testing.T) {
+	// WebATEM #63 on v0.3.2's rule (bmdwire 1.14.8): a switcher that sends
+	// less often than a Constellation's every 40 ms never passed "no gap
+	// over 250 ms", and its uploads hung (bmdwire#100).
+	clearChunkLimits(t)
+	tr, _, now := stuckUpload(t, 10)
+	var tb *takenBack
+	for range tooBigAfter + 1 {
+		due := tr.resendDue
+		for !now.Add(500 * time.Millisecond).After(due) {
+			*now = now.Add(500 * time.Millisecond)
+			timePacket(t, tr)
+		}
+		*now = due.Add(500 * time.Millisecond) // heard just after each resend
+		timePacket(t, tr)
+		if got := tr.resendUnacked(); got != nil {
+			tb = got
+		}
+	}
+	if tb == nil || tb.limit != 1224 {
+		t.Fatalf("taken back %+v, want limit 1224", tb)
 	}
 }
 
