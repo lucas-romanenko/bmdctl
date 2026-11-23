@@ -66,6 +66,7 @@ var mirrors = map[string]mirror{
 	"TiRq": m("Time", none, none, 8),
 	// the classic audio mixer
 	"CAMI": m("AMIP", at23, at01, 16), "CAMM": m("AMMO", none, none, 8), "CAMm": m("AMmO", none, none, 12),
+	"CAMH": m("AMHP", none, none, 8),
 }
 
 var (

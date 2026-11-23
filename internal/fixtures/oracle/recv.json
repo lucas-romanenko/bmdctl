@@ -1,5 +1,5 @@
 {
-"bmdwire": "v1.14.5",
+"bmdwire": "v1.14.5-2-g27b8ba9",
 "cases": [
 {
 "code": "*XFC",
@@ -16673,6 +16673,142 @@ true
 "key": "Zzzz",
 "payload": "88bf6bb47f121a87732f47783b415fb6e6",
 "result": "raw"
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "25cfad76a4815876",
+"result": "stored",
+"value": {
+"gain": 9679,
+"program_out_gain": 44406,
+"sidetone_gain": 22646,
+"talkback_gain": 42113
+}
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "810310d81696473d",
+"result": "stored",
+"value": {
+"gain": 33027,
+"program_out_gain": 4312,
+"sidetone_gain": 18237,
+"talkback_gain": 5782
+}
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "affdfb3fac7ef881",
+"result": "stored",
+"value": {
+"gain": 45053,
+"program_out_gain": 64319,
+"sidetone_gain": 63617,
+"talkback_gain": 44158
+}
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "143554b50675996c",
+"result": "stored",
+"value": {
+"gain": 5173,
+"program_out_gain": 21685,
+"sidetone_gain": 39276,
+"talkback_gain": 1653
+}
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "f4a62d712cc5bdb6",
+"result": "stored",
+"value": {
+"gain": 62630,
+"program_out_gain": 11633,
+"sidetone_gain": 48566,
+"talkback_gain": 11461
+}
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "14f36bbb682609fa",
+"result": "stored",
+"value": {
+"gain": 5363,
+"program_out_gain": 27579,
+"sidetone_gain": 2554,
+"talkback_gain": 26662
+}
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "260f3d68e25f25c968",
+"result": "stored",
+"value": {
+"gain": 9743,
+"program_out_gain": 15720,
+"sidetone_gain": 9673,
+"talkback_gain": 57951
+}
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "447075bf749ebd46f21f1b3a5c94d6",
+"result": "stored",
+"value": {
+"gain": 17520,
+"program_out_gain": 30143,
+"sidetone_gain": 48454,
+"talkback_gain": 29854
+}
+},
+{
+"code": "AMHP",
+"error": "error",
+"payload": "c17cd24d563264",
+"result": "error"
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "ffffffffffffffff",
+"result": "stored",
+"value": {
+"gain": 65535,
+"program_out_gain": 65535,
+"sidetone_gain": 65535,
+"talkback_gain": 65535
+}
+},
+{
+"code": "AMHP",
+"key": "AMHP",
+"name": "audio-mixer-headphone-properties",
+"payload": "0000000000000000",
+"result": "stored",
+"value": {
+"gain": 0,
+"program_out_gain": 0,
+"sidetone_gain": 0,
+"talkback_gain": 0
+}
 }
 ],
 "generator": "internal/fixtures/oracle/gen_recv.py"

@@ -229,6 +229,24 @@ Give at least one flag. Echo: `FASP:<source>.<channel>`.
 | `--volume` | float, dB, clamped to -100-10; -inf is -100 | optional | fader level |
 | `--mix` | enum, 0-255: Off=1 On=2 AudioFollowVideo=4 | optional | mix option |
 
+## `bmdctl atem classic-audio headphones`
+
+Set the classic audio mixer's headphone output, on a switcher that has one.
+
+```
+bmdctl classic-audio headphones --gain 32768
+bmdctl classic-audio headphones --program-out 23197 --talkback 32768
+```
+
+**Unverified.** Give at least one flag. Echo: `AMHP`.
+
+| argument | value | | |
+|---|---|---|---|
+| `--gain` | uint, 0-65535, 0-65381 | optional | headphone gain |
+| `--program-out` | uint, 0-65535, 0-65381 | optional | program out in the mix |
+| `--talkback` | uint, 0-65535, 0-65381 | optional | talkback in the mix |
+| `--sidetone` | uint, 0-65535, 0-65381 | optional | sidetone in the mix |
+
 ## `bmdctl atem classic-audio input <source>`
 
 Set a classic audio mixer input.

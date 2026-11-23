@@ -182,8 +182,11 @@ type Audio struct {
 	Inputs  map[string]*AudioInputField       `atem:"AMIP" json:"inputs"`
 	Master  *AudioMixerMasterPropertiesField  `atem:"AMMO" json:"master"`
 	Monitor *AudioMixerMonitorPropertiesField `atem:"AMmO" json:"monitor"`
-	Tally   *AudioMixerTallyField             `atem:"AMTl" json:"tally"`
-	Levels  *AudioMeterLevelsField            `atem:"AMLv" json:"levels"`
+	// Headphones is the headphone output of a unit that has one
+	// (bmdwire#93).
+	Headphones *AudioMixerHeadphonePropertiesField `atem:"AMHP" json:"headphones"`
+	Tally      *AudioMixerTallyField               `atem:"AMTl" json:"tally"`
+	Levels     *AudioMeterLevelsField              `atem:"AMLv" json:"levels"`
 }
 
 // Multiviewer is multiviewer-properties and, per window,
@@ -960,6 +963,18 @@ type AudioMixerMonitorPropertiesField struct {
 	SoloSource uint16 `json:"solo_source"`
 	Dim        bool   `json:"dim"`
 	DimVolume  uint16 `json:"dim_volume"`
+}
+
+// AudioMixerHeadphonePropertiesField is AMHP,
+// mixerstate['audio-mixer-headphone-properties'], bare (bmdwire#93): the
+// headphone output on a legacy audio unit that has one, each gain a legacy
+// volume (32768 is 0 dB). The layout is LibAtem's
+// AudioMixerHeadphoneGetCommand; no switcher has checked it.
+type AudioMixerHeadphonePropertiesField struct {
+	Gain           uint16 `json:"gain"`
+	ProgramOutGain uint16 `json:"program_out_gain"`
+	TalkbackGain   uint16 `json:"talkback_gain"`
+	SidetoneGain   uint16 `json:"sidetone_gain"`
 }
 
 // AudioMixerTallyField is AMTl, mixerstate['audio-mixer-tally'], bare.

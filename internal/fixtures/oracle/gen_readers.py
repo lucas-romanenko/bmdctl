@@ -4,7 +4,8 @@
 
     python3 -I gen_readers.py /path/to/bmdwire readers.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.14.5. The C
+/path/to/bmdwire must be a checkout of bmdwire at the version internal/fixtures/README.md
+names (v1.14.5 with bmdwire#93, 27b8ba9). The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 The readers are the functions in atemwire.messages.* whose first parameter
@@ -39,10 +40,15 @@ import pkgutil
 import random
 import socket
 import struct
+import subprocess
 import sys
 import types
 
 BMDWIRE, OUT = sys.argv[1], sys.argv[2]
+# The version the file records: the bmdwire checkout's git describe, a tag
+# (v1.14.5) or a commit past one (v1.14.5-2-g7ac3b4c).
+BMDWIRE_VERSION = subprocess.run(['git', '-C', BMDWIRE, 'describe', '--tags', '--always'],
+                                 capture_output=True, text=True, check=True).stdout.strip()
 sys.path.insert(0, BMDWIRE)
 stub = types.ModuleType('atemwire.mediaconvert')
 stub.rgb_to_atem = stub.atem_to_rgb = stub.rle_encode = None
@@ -876,6 +882,23 @@ for major, minor in ((2, 30), (2, 31), (2, 29), (2, 22), (2, 21), (3, 0), (1, 40
 scenarios.append(s)
 
 
+# bmdwire#93: the headphone output (AMHP). The headphones read the monitor
+# bus until an AMHP arrives, then the headphone output, with the monitor's
+# own keys still the monitor's; AMHP alone, and at its anchors.
+if 'audio-mixer-headphone-properties' in {getattr(c, 'PRETTY', None) for c in M.RECV_BY_CODE.values()}:
+    s = Scenario('legacy-headphones')
+    s.call('legacy_audio_headphones')
+    s.feed('AMHP', struct.pack('>4H', 32768, 32768, 32768, 32768))
+    s.call('legacy_audio_headphones')
+    s.feed('AMMO', struct.pack('>H2x?3x', 32768, True))
+    s.feed('AMmO', struct.pack('>?xH??H?xH', True, 16384, True, True, 2, True, 5000))
+    for g in ((16384, 65381, 0, 32768), (0, 0, 0, 0), (65535, 1, 100, 65380), (32767, 32769, 4096, 50000)):
+        s.feed('AMHP', struct.pack('>4H', *g))
+        for r in LEGACY_READERS:
+            s.call(r)
+    scenarios.append(s)
+
+
 # legacy_volume_to_db of every u16, as the SHA-256 of its results (each
 # float's IEEE 754 bits big-endian, None as eight 0xFF bytes): the one
 # reader helper that goes through log10, which the Go test checks bit for
@@ -890,7 +913,7 @@ if missing:
     raise SystemExit(f'no cases for {sorted(missing)}')
 
 with open(OUT, 'w') as f:
-    f.write('{"bmdwire":"v1.14.5","generator":"internal/fixtures/oracle/gen_readers.py",\n')
+    f.write('{"bmdwire":"' + BMDWIRE_VERSION + '","generator":"internal/fixtures/oracle/gen_readers.py",\n')
     f.write('"legacy_volume_to_db_every_u16":' + json.dumps(VOLUME_DIGEST) + ',\n')
     f.write('"readers":' + json.dumps(sorted(READERS)) + ',\n')
     f.write('"helpers":' + json.dumps(sorted(HELPERS)) + ',\n')

@@ -651,6 +651,12 @@ func commandSpecs() []spec {
 				opt("mute", "Mute", table.Bool, "", "mute"), opt("solo", "Solo", table.Bool, "", "solo"),
 				opt("solo-source", "SoloSource", table.Source, "", "solo source"), opt("dim", "Dim", table.Bool, "", "dim"),
 				opt("dim-volume", "DimVolume", table.Uint, "", "dim volume")}},
+		{path: "classic-audio headphones", summary: "Set the classic audio mixer's headphone output, on a switcher that has one.",
+			cmd: AudioHeadphoneProperties{}, echo: "AMHP",
+			params: []fp{opt("gain", "Gain", table.Uint, "0-65381", "headphone gain"),
+				opt("program-out", "ProgramOutGain", table.Uint, "0-65381", "program out in the mix"),
+				opt("talkback", "TalkbackGain", table.Uint, "0-65381", "talkback in the mix"),
+				opt("sidetone", "SidetoneGain", table.Uint, "0-65381", "sidetone in the mix")}},
 		{path: "classic-audio levels", summary: "Start or stop the classic mixer's meter stream.", cmd: SendAudioLevels{},
 			params: []fp{req("enable", "Enable", table.Bool, "", "stream meters")}},
 

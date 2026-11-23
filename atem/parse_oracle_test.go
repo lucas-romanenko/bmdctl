@@ -40,7 +40,7 @@ func TestParsersMatchAtemwire(t *testing.T) {
 	if err := json.Unmarshal(fixtures.Bytes(t, "oracle/recv.json"), &oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.Bmdwire != "v1.14.5" {
+	if oracle.Bmdwire != "v1.14.5-2-g27b8ba9" {
 		t.Fatalf("oracle generated from bmdwire %s", oracle.Bmdwire)
 	}
 	codes := map[string]bool{}

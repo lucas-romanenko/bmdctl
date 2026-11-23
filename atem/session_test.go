@@ -824,3 +824,18 @@ func TestTopologyIsLoggedAtConnect(t *testing.T) {
 		t.Errorf("logged %+v", got)
 	}
 }
+
+// test_audio_legacy.py::test_first_amhp_is_logged_raw_and_decoded
+// (bmdwire#93): the first AMHP, with <field>_db for each gain; the second
+// not.
+func TestFirstAMHPIsLogged(t *testing.T) {
+	s, sw, logs := dialedLogging(t)
+	amhp := []byte{0x80, 0, 0x40, 0, 0, 0, 0xff, 0x65}
+	sw.reliable(cmdBytes("AMHP", amhp), cmdBytes("AMHP", []byte{0x80, 0, 0x80, 0, 0x80, 0, 0x80, 0}))
+	waitState(t, s, func(st State) bool { return st.Audio.Headphones != nil && st.Audio.Headphones.ProgramOutGain == 0x8000 })
+	want := "atem: legacy-audio: AMHP, 8 bytes: " + hex.EncodeToString(amhp) + " -> gain=32768 program_out_gain=16384 talkback_gain=0 " +
+		"sidetone_gain=65381 gain_db=0.0 program_out_gain_db=-6.02 talkback_gain_db=None sidetone_gain_db=6.0"
+	if got := logs.matching("legacy-audio: AMHP"); !slices.Equal(got, []logRecord{{slog.LevelInfo, want}}) {
+		t.Errorf("logged %+v", got)
+	}
+}

@@ -34,7 +34,7 @@ var allCommands = func() map[string]Command {
 		FairlightMasterEQBandProperties{}, FairlightCompressorProperties{}, FairlightLimiterProperties{},
 		FairlightExpanderProperties{}, FairlightMasterCompressorProperties{}, FairlightMasterLimiterProperties{},
 		SendFairlightLevels{},
-		AudioInput{}, AudioMasterProperties{}, AudioMonitorProperties{}, SendAudioLevels{},
+		AudioInput{}, AudioMasterProperties{}, AudioMonitorProperties{}, AudioHeadphoneProperties{}, SendAudioLevels{},
 		CameraControl{}, HyperdeckSettings{}, MultiviewInput{}, MultiviewProperties{},
 		SupersourceBoxProperties{}, SupersourceProperties{}, RecordingSettingsSet{}, RecorderStatus{},
 		StreamingServiceSet{}, StreamingAudioBitrate{}, StreamingStatusSet{},
@@ -69,7 +69,7 @@ func TestCommandsMatchAtemwire(t *testing.T) {
 	if err := dec.Decode(&oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.Bmdwire != "v1.14.5" {
+	if oracle.Bmdwire != "v1.14.5-2-g27b8ba9" {
 		t.Fatalf("oracle generated from bmdwire %s", oracle.Bmdwire)
 	}
 	types := map[string]int{}
@@ -109,8 +109,8 @@ func TestCommandsMatchAtemwire(t *testing.T) {
 			t.Errorf("%s: no oracle cases", name)
 		}
 	}
-	if len(allCommands) != 82 {
-		t.Errorf("%d command types, want 82", len(allCommands))
+	if len(allCommands) != 83 {
+		t.Errorf("%d command types, want 83", len(allCommands))
 	}
 	t.Logf("%d cases over %d command types", len(oracle.Cases), len(types))
 }

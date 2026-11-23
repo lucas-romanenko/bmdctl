@@ -83,6 +83,41 @@ func (c AudioMasterProperties) build() *wire {
 	return w
 }
 
+// AudioHeadphoneProperties is CAMH (AudioHeadphonePropertiesCommand, op
+// set_audio_headphones, bmdwire#93): the headphone output of a legacy unit
+// that sends AMHP, in wire units (a legacy volume, 0-65381). The layout
+// is LibAtem's AudioMixerHeadphoneSetCommand: mask at 0, bits 0-3 for the
+// four gains at 2, 4, 6 and 8. Not checked on a switcher.
+type AudioHeadphoneProperties struct {
+	Gain           *uint16
+	ProgramOutGain *uint16
+	TalkbackGain   *uint16
+	SidetoneGain   *uint16
+}
+
+func (c AudioHeadphoneProperties) Opcode() string    { return "CAMH" }
+func (c AudioHeadphoneProperties) Encode() []byte    { return c.build().encode() }
+func (c AudioHeadphoneProperties) Validate() error   { return c.build().err }
+func (c AudioHeadphoneProperties) EchoKey() string   { return "AMHP" }
+func (c AudioHeadphoneProperties) Unverified() bool  { return true }
+func (c AudioHeadphoneProperties) Destructive() bool { return false }
+
+func (c AudioHeadphoneProperties) build() *wire {
+	w := newWire("CAMH", 12)
+	var mask int64
+	for i, f := range []struct {
+		v    *uint16
+		name string
+	}{{c.Gain, "gain"}, {c.ProgramOutGain, "program_out_gain"}, {c.TalkbackGain, "talkback_gain"}, {c.SidetoneGain, "sidetone_gain"}} {
+		if f.v != nil {
+			mask |= 1 << i
+			w.u16(2+2*i, f.name, int64(*f.v))
+		}
+	}
+	w.u8(0, "mask", mask)
+	return w
+}
+
 // AudioMonitorProperties is CAMm (AudioMonitorPropertiesCommand, op
 // set_audio_monitor).
 type AudioMonitorProperties struct {

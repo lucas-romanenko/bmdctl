@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"reflect"
 	"slices"
@@ -266,7 +267,7 @@ func TestReadersMatchAtemwire(t *testing.T) {
 	if err := dec.Decode(&oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.Bmdwire != "v1.14.5" {
+	if oracle.Bmdwire != "v1.14.5-2-g27b8ba9" {
 		t.Fatalf("oracle generated from bmdwire %s", oracle.Bmdwire)
 	}
 	if len(oracle.Readers) != 95 {
@@ -418,6 +419,14 @@ func readerValue(v reflect.Value) any {
 	case reflect.Struct:
 		out := map[string]any{}
 		for i := range v.NumField() {
+			if v.Type().Field(i).Anonymous {
+				// An embedded view's keys are the dict's own, as
+				// encoding/json inlines them; nil leaves them out.
+				if m, ok := readerValue(v.Field(i)).(map[string]any); ok {
+					maps.Copy(out, m)
+				}
+				continue
+			}
 			out[v.Type().Field(i).Tag.Get("json")] = readerValue(v.Field(i))
 		}
 		return out

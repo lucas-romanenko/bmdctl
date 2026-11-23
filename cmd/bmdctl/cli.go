@@ -500,8 +500,11 @@ func (c *cli) unverified(label string) {
 		return
 	}
 	why := "atemwire restored it from pyatem without checking it on a switcher"
-	if strings.HasPrefix(label, "hyperdeck ") {
+	switch {
+	case strings.HasPrefix(label, "hyperdeck "):
 		why = "no deck has been seen to carry it out yet (docs/HARDWARE.md)"
+	case strings.HasSuffix(label, "classic-audio headphones"):
+		why = "its layout is LibAtem's, and no switcher has checked it (bmdwire#93)"
 	}
 	fmt.Fprintf(c.stderr, "bmdctl: %s is unverified on hardware: %s\n", label, why)
 }

@@ -4,7 +4,8 @@
 
     python3 -I gen_send.py /path/to/bmdwire send.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.14.5; its C
+/path/to/bmdwire must be a checkout of bmdwire at the version internal/fixtures/README.md
+names (v1.14.5 with bmdwire#93, 27b8ba9); its C
 extension is stubbed. Each case calls one atemwire operation (or, for the
 fields no operation sets, the Send class itself) on a fake connection and
 records what went out: the command's bytes, an error (atemwire raised, in
@@ -22,10 +23,15 @@ import datetime
 import json
 import math
 import random
+import subprocess
 import sys
 import types
 
 BMDWIRE, OUT = sys.argv[1], sys.argv[2]
+# The version the file records: the bmdwire checkout's git describe, a tag
+# (v1.14.5) or a commit past one (v1.14.5-2-g7ac3b4c).
+BMDWIRE_VERSION = subprocess.run(['git', '-C', BMDWIRE, 'describe', '--tags', '--always'],
+                                 capture_output=True, text=True, check=True).stdout.strip()
 sys.path.insert(0, BMDWIRE)
 stub = types.ModuleType('atemwire.mediaconvert')
 stub.rgb_to_atem = stub.atem_to_rgb = stub.rle_encode = None
@@ -639,8 +645,21 @@ for tid, h, name, desc in ((43, '00' * 16, None, None), (44, '0123456789abcdef' 
 for tid, slot in ((43, 0), (65535, 65535)):
     record('TransferAck', {'Transfer': tid, 'Slot': slot}, f'TransferAckCommand({tid}, {slot})', lambda c, t=tid, s=slot: c.send(FT.TransferAckCommand(t, s)))
 
+# bmdwire#93: the headphone output, CAMH / set_audio_headphones. Last, with
+# its own seed, so every case before it is drawn as it was.
+if hasattr(A, 'set_audio_headphones'):
+    hp_rng = random.Random(93)
+    for _ in range(16):
+        kw, f = {}, {}
+        for p, gf, pool in (('gain', 'Gain', U16), ('program_out_gain', 'ProgramOutGain', U16),
+                            ('talkback_gain', 'TalkbackGain', U16), ('sidetone_gain', 'SidetoneGain', U16)):
+            if hp_rng.random() < .5:
+                kw[p] = f[gf] = hp_rng.choice(pool)
+        record('AudioHeadphoneProperties', f, f'set_audio_headphones({kw})',
+               lambda c, kw=kw: A.set_audio_headphones(c, **kw))
+
 with open(OUT, 'w') as f:
-    json.dump({'bmdwire': 'v1.14.5', 'generator': 'internal/fixtures/oracle/gen_send.py', 'cases': cases},
+    json.dump({'bmdwire': BMDWIRE_VERSION, 'generator': 'internal/fixtures/oracle/gen_send.py', 'cases': cases},
               f, indent=0, sort_keys=True, ensure_ascii=False)
     f.write('\n')
 counts = {}

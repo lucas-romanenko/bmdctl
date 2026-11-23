@@ -155,7 +155,7 @@ func TestComplete(t *testing.T) {
 		{[]string{"supersource", "box", ""}, []string{"1", "2", "3", "4"}},
 		{[]string{"audio", "master-eq", ""}, []string{"1", "2", "3", "4", "5", "6"}},
 		{[]string{"audio", "eq", "cam1", ""}, []string{"1", "2", "3", "4", "5", "6"}},
-		{[]string{"classic-audio", ""}, []string{"input", "levels", "master", "meters", "monitor"}},
+		{[]string{"classic-audio", ""}, []string{"headphones", "input", "levels", "master", "meters", "monitor"}},
 		// fairlight completes as audio, and isn't offered itself.
 		{[]string{"fairlight", "master-"}, []string{"master-compressor", "master-eq", "master-limiter"}},
 		{[]string{"fa"}, nil},

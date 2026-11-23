@@ -1122,29 +1122,6 @@ func TestReadAudioLegacy(t *testing.T) {
 		}
 	}
 
-	// test_audio_legacy.py::_legacy_mx: a Production Studio 4K-shaped
-	// mixer, two cameras (one renamed), a media player, the XLR input; an
-	// AFV master and the monitor soloing camera 2. 2001's InPr is the
-	// video side's, not MP1's name.
-	legacyMX := func() State {
-		s := newState()
-		s.Inputs[1] = &InputPropertiesField{Name: "Camera 1\x00", ShortName: "CAM1\x00"}
-		s.Inputs[2] = &InputPropertiesField{Name: "Pulpit\x00", ShortName: "PULP\x00"}
-		s.Inputs[2001] = &InputPropertiesField{Name: "Color 1\x00", ShortName: "COL1\x00"}
-		s.Audio.Master = &AudioMixerMasterPropertiesField{Volume: 32768, AFV: true}
-		s.Audio.Monitor = &AudioMixerMonitorPropertiesField{Enabled: true, Volume: 16384, Mute: true, Solo: true, SoloSource: 2, Dim: true, DimVolume: 5000}
-		for _, in := range []AudioInputField{
-			{Index: 1001, Type: 2, Plug: 32, State: 1, Volume: 65381},
-			{Index: 2001, Type: 1, Plug: 0, State: 0, Volume: 0},
-			{Index: 2, Type: 0, Plug: 2, State: 2, Volume: 23197, Balance: 5000},
-			{Index: 1, Type: 0, Plug: 1, State: 1, Volume: 32768, Balance: -10000},
-		} {
-			in.StripID = strconv.Itoa(int(in.Index)) + ".0"
-			s.Audio.Inputs[in.StripID] = &in
-		}
-		return s
-	}
-
 	// test_audio_legacy.py::test_legacy_build_full_state_shape, the readers
 	// build_full_state's legacy section is made of (it adds each strip's
 	// soloed; build_full_state is not ported, docs/PORTING.md "Readers").
@@ -1156,7 +1133,7 @@ func TestReadAudioLegacy(t *testing.T) {
 		t.Errorf("legacy_audio_master %+v", m)
 	}
 	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, LegacyAudioHeadphonesView{Present: true, VolumeDB: f(-6.02),
-		Unmuted: false, Enabled: true, Dim: true, DimLevel: 50.0, Solo: true, SoloSource: new(2)}) {
+		Unmuted: false, Enabled: true, Dim: true, DimLevel: 50.0, Solo: true, SoloSource: new(2), Bus: "monitor"}) {
 		t.Errorf("legacy_audio_headphones %+v", h)
 	}
 	if so := s.LegacyAudioSolo(); !so.AnySoloed || so.StripID == nil || *so.StripID != "2.0" {
@@ -1212,7 +1189,7 @@ func TestReadAudioLegacy(t *testing.T) {
 	// test_audio_legacy.py::test_legacy_monitor_absent_and_nothing_soloed
 	s = legacyMX()
 	s.Audio.Monitor = nil
-	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, LegacyAudioHeadphonesView{VolumeDB: f(0.0), Unmuted: true}) {
+	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, LegacyAudioHeadphonesView{VolumeDB: f(0.0), Unmuted: true, Bus: "monitor"}) {
 		t.Errorf("legacy_audio_headphones without AMmO %+v", h)
 	}
 	if so := s.LegacyAudioSolo(); so.AnySoloed || so.StripID != nil {
@@ -1406,4 +1383,57 @@ func TestTopologyBlockCounts(t *testing.T) {
 			t.Error("the layout table is not newest first")
 		}
 	}
+}
+
+// test_audio_legacy.py's headphone tests (bmdwire#93): the headphones read
+// AMHP when the unit sends it, with the monitor bus's own keys still the
+// monitor's; AMHP alone; the monitor bus without AMHP, with no mix keys.
+func TestLegacyHeadphonesReadAMHP(t *testing.T) {
+	f := func(x float64) *float64 { return &x }
+	s := legacyMX()
+	s.Audio.Headphones = &AudioMixerHeadphonePropertiesField{Gain: 16384, ProgramOutGain: 65381, TalkbackGain: 0, SidetoneGain: 32768}
+	want := LegacyAudioHeadphonesView{Present: true, VolumeDB: f(-6.02), Unmuted: true, Enabled: true, Dim: true,
+		DimLevel: 50.0, Solo: true, SoloSource: new(2), Bus: "headphones",
+		LegacyHeadphonesMixView: &LegacyHeadphonesMixView{ProgramOutDB: f(6.0), TalkbackDB: nil, SidetoneDB: f(0.0)}}
+	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, want) {
+		t.Errorf("with AMHP %+v %+v", h, h.LegacyHeadphonesMixView)
+	}
+	b, _ := json.Marshal(s.LegacyAudioHeadphones())
+	if !strings.Contains(string(b), `"bus":"headphones","program_out_db":6,"talkback_db":null,"sidetone_db":0`) {
+		t.Errorf("JSON %s", b)
+	}
+	s.Audio.Monitor = nil
+	s.Audio.Headphones = &AudioMixerHeadphonePropertiesField{Gain: 32768, ProgramOutGain: 32768, TalkbackGain: 32768, SidetoneGain: 32768}
+	if h := s.LegacyAudioHeadphones(); !h.Present || h.Bus != "headphones" || !reflect.DeepEqual(h.VolumeDB, f(0.0)) || h.Solo {
+		t.Errorf("AMHP alone %+v", h)
+	}
+	s = legacyMX()
+	h := s.LegacyAudioHeadphones()
+	b, _ = json.Marshal(h)
+	if h.Bus != "monitor" || !reflect.DeepEqual(h.VolumeDB, f(-6.02)) || h.Unmuted || strings.Contains(string(b), "program_out_db") {
+		t.Errorf("without AMHP %+v %s", h, b)
+	}
+}
+
+// test_audio_legacy.py::_legacy_mx: a Production Studio 4K-shaped
+// mixer, two cameras (one renamed), a media player, the XLR input; an
+// AFV master and the monitor soloing camera 2. 2001's InPr is the
+// video side's, not MP1's name.
+func legacyMX() State {
+	s := newState()
+	s.Inputs[1] = &InputPropertiesField{Name: "Camera 1\x00", ShortName: "CAM1\x00"}
+	s.Inputs[2] = &InputPropertiesField{Name: "Pulpit\x00", ShortName: "PULP\x00"}
+	s.Inputs[2001] = &InputPropertiesField{Name: "Color 1\x00", ShortName: "COL1\x00"}
+	s.Audio.Master = &AudioMixerMasterPropertiesField{Volume: 32768, AFV: true}
+	s.Audio.Monitor = &AudioMixerMonitorPropertiesField{Enabled: true, Volume: 16384, Mute: true, Solo: true, SoloSource: 2, Dim: true, DimVolume: 5000}
+	for _, in := range []AudioInputField{
+		{Index: 1001, Type: 2, Plug: 32, State: 1, Volume: 65381},
+		{Index: 2001, Type: 1, Plug: 0, State: 0, Volume: 0},
+		{Index: 2, Type: 0, Plug: 2, State: 2, Volume: 23197, Balance: 5000},
+		{Index: 1, Type: 0, Plug: 1, State: 1, Volume: 32768, Balance: -10000},
+	} {
+		in.StripID = strconv.Itoa(int(in.Index)) + ".0"
+		s.Audio.Inputs[in.StripID] = &in
+	}
+	return s
 }

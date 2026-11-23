@@ -468,3 +468,15 @@ func TestAMLv(t *testing.T) {
 		}
 	}
 }
+
+// test_audio_legacy.py::test_amhp_parses_and_is_stored_by_name (bmdwire#93):
+// AMHP is parsed, no longer stored raw.
+func TestAMHPParses(t *testing.T) {
+	st, ch := storeOne(t, "AMHP", []byte{0x40, 0, 0xff, 0x65, 0, 0, 0x5a, 0x9d})
+	if _, raw := st.Raw["AMHP"]; raw || ch.Key != "AMHP" {
+		t.Fatalf("stored raw: %v, key %q", raw, ch.Key)
+	}
+	if h := st.Audio.Headphones; h == nil || *h != (AudioMixerHeadphonePropertiesField{16384, 65381, 0, 23197}) {
+		t.Errorf("%+v", h)
+	}
+}

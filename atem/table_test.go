@@ -105,8 +105,8 @@ func TestCommandTable(t *testing.T) {
 			t.Errorf("%s has %d entries", name, byType[name])
 		}
 	}
-	if len(entries) != 75 {
-		t.Errorf("%d entries, want 75", len(entries))
+	if len(entries) != 76 {
+		t.Errorf("%d entries, want 76", len(entries))
 	}
 }
 

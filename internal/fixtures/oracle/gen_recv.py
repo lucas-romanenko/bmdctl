@@ -4,7 +4,8 @@
 
     python3 -I gen_recv.py /path/to/bmdwire recv.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.14.5. The C
+/path/to/bmdwire must be a checkout of bmdwire at the version internal/fixtures/README.md
+names (v1.14.5 with bmdwire#93, 27b8ba9). The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 For every opcode atemwire registers a Recv class for, plus a few it stores
@@ -19,10 +20,15 @@ in atem/ checks the port does the same for every case.
 import json
 import random
 import struct
+import subprocess
 import sys
 import types
 
 BMDWIRE, OUT = sys.argv[1], sys.argv[2]
+# The version the file records: the bmdwire checkout's git describe, a tag
+# (v1.14.5) or a commit past one (v1.14.5-2-g7ac3b4c).
+BMDWIRE_VERSION = subprocess.run(['git', '-C', BMDWIRE, 'describe', '--tags', '--always'],
+                                 capture_output=True, text=True, check=True).stdout.strip()
 sys.path.insert(0, BMDWIRE)
 stub = types.ModuleType('atemwire.mediaconvert')
 stub.rgb_to_atem = stub.atem_to_rgb = stub.rle_encode = None
@@ -223,8 +229,14 @@ def run(code, payload):
     return {'result': 'stored', 'name': path[0], 'key': k, 'value': attrs(contents)}
 
 
+# Codes added after the file's cases were first drawn go last, so the
+# fixed seed gives every earlier code the payloads it gave it before:
+# AMHP, the legacy mixer's headphone output (bmdwire#93).
+LATE = ('AMHP',)
 cases = []
 for code, cls in sorted(M.RECV_BY_CODE.items()):
+    if code in LATE:
+        continue
     for b in payloads(code, cls):
         c = {'code': code, 'payload': b.hex()}
         c.update(run(code, b))
@@ -234,9 +246,15 @@ for code in ('InCm', 'RCPS', 'MPCS', '_MAC', 'Zzzz'):
         c = {'code': code, 'payload': b.hex()}
         c.update(run(code, b))
         cases.append(c)
+for code in LATE:
+    if code in M.RECV_BY_CODE:
+        for b in payloads(code, M.RECV_BY_CODE[code]):
+            c = {'code': code, 'payload': b.hex()}
+            c.update(run(code, b))
+            cases.append(c)
 
 with open(OUT, 'w') as f:
-    json.dump({'bmdwire': 'v1.14.5', 'generator': 'internal/fixtures/oracle/gen_recv.py',
+    json.dump({'bmdwire': BMDWIRE_VERSION, 'generator': 'internal/fixtures/oracle/gen_recv.py',
                'cases': cases}, f, indent=0, sort_keys=True)
     f.write('\n')
 counts = {}

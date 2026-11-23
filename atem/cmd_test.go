@@ -100,6 +100,10 @@ func TestRestoredUpstreamPayloads(t *testing.T) {
 		{AudioMonitorProperties{Enabled: Set(true), Volume: Set[uint16](30000), Mute: Set(false), Solo: Set(true),
 			SoloSource: Set[uint16](1002), Dim: Set(true), DimVolume: Set[uint16](5000)}, "7f017530000103ea01001388"},
 		{AudioMonitorProperties{Volume: Set[uint16](100)}, "020000640000000000000000"},
+		// test_audio_legacy.py::test_camh_bytes (bmdwire#93).
+		{AudioHeadphoneProperties{Gain: Set[uint16](32768)}, "010080000000000000000000"},
+		{AudioHeadphoneProperties{ProgramOutGain: Set[uint16](65381), SidetoneGain: Set[uint16](1)}, "0a000000ff65000000010000"},
+		{AudioHeadphoneProperties{Gain: Set[uint16](1), ProgramOutGain: Set[uint16](2), TalkbackGain: Set[uint16](3), SidetoneGain: Set[uint16](4)}, "0f0000010002000300040000"},
 		{SendAudioLevels{Enable: true}, "01000000"},
 		{MultiviewInput{Multiviewer: 1, Window: 7, Source: 3010}, "01070bc2"},
 		{MultiviewProperties{Multiviewer: 0, Layout: Set[uint8](3), Swap: Set(true)}, "03000301"},
