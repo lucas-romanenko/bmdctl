@@ -501,6 +501,23 @@ the switcher's that went missing is asked for (below).
   `ChunksTakenBack` on its receive queue and the UDP thread acts on
   `_reconnect_asked`. Tests: `chunks_too_big_test.go`, whose test of the
   other packets going again at once became the new session's.
+- **Command packets too big for the path** (bmdwire#102, `3a65748`).
+  The first packet the switcher has not acknowledged may also be a
+  packet of two or more commands (`commandsOf`): `sendCommands` and the
+  outbox put several in one, up to 1,300 bytes of them (a profile
+  restore, 20 labels). If it is bigger than the next `chunkSteps` size
+  down (and that size is not over a limit already found), it is taken
+  back as a chunk is, on the same conditions (`tooBigAfter` resends the
+  switcher was heard after, heard within `resendMax`), and its commands
+  go again split into packets that fit, from the sequence it had, in
+  order; chunks of an upload among the packets taken back go back to
+  their upload, and `takeBackChunks` now says apart "not the case" and
+  "taken back, no chunks among them". From then on `send` splits every
+  command packet over `maxChunk` + `commandRoom` (12) bytes of data
+  (`splitCommands`), between commands only, before the window sees it;
+  a single command, however big, is never split nor taken back. Tests:
+  `commands_too_big_test.go`, from `test_commands_too_big.py`, one for
+  one.
 - **A congestion window for an upload's chunks** (bmdwire#105,
   `d1b4cbe`). An upload's data chunks (FTDa) go out as a window lets
   them (`cwnd`, atemwire's `CWND_*`): `cwndStart` (768, one budget, so

@@ -135,6 +135,61 @@ func setChunkLimit(addr *net.UDPAddr, n int) {
 	chunkLimits[addr.IP.String()] = n
 }
 
+// commandRoom is COMMAND_ROOM (bmdwire#102): a packet of commands to a
+// switcher that needs smaller datagrams carries at most maxChunk +
+// commandRoom bytes of them, a datagram no bigger than a data chunk's.
+// Command packets carry several commands, up to 1,300 bytes of them (a
+// profile restore, 20 labels at once): over a path MTU of 1,200 or 576
+// such a packet never got through, and every packet after it waited
+// behind it.
+const commandRoom = 12
+
+// commandsOf is _commands: the commands data carries, each with its
+// 8-byte header, or nil if it does not split into whole commands.
+func commandsOf(data []byte) [][]byte {
+	var out [][]byte
+	for i := 0; i < len(data); {
+		if i+8 > len(data) {
+			return nil
+		}
+		n := int(binary.BigEndian.Uint16(data[i:]))
+		if n < 8 || i+n > len(data) {
+			return nil
+		}
+		out = append(out, data[i:i+n])
+		i += n
+	}
+	return out
+}
+
+// splitCommands is _split_commands: p's commands in packets of at most
+// room bytes of data, in order; a command bigger than room goes alone.
+// [p] when there is nothing to split.
+func splitCommands(p *packet, room int) []*packet {
+	cmds := commandsOf(p.data)
+	if len(cmds) < 2 {
+		return []*packet{p}
+	}
+	var datas [][]byte
+	var cur []byte
+	for _, c := range cmds {
+		if len(cur) > 0 && len(cur)+len(c) > room {
+			datas = append(datas, cur)
+			cur = nil
+		}
+		cur = append(cur, c...)
+	}
+	datas = append(datas, cur)
+	if len(datas) == 1 {
+		return []*packet{p}
+	}
+	out := make([]*packet, len(datas))
+	for i, d := range datas {
+		out[i] = &packet{flags: p.flags &^ flagRetransmission, data: d}
+	}
+	return out
+}
+
 // takenBack is ChunksTakenBack: data chunks of an upload that did not
 // reach the switcher, taken back to go again in chunks of limit bytes.
 // sizes are their data lengths, in the order they were sent.
@@ -696,8 +751,20 @@ func (t *transport) sendReliableNow(data []byte) error {
 }
 
 // send is _send_on_udp_thread: p goes now, or waits its turn for room in
-// the congestion window (windowFull).
+// the congestion window (windowFull). Once this switcher is known to need
+// smaller datagrams (maxChunk), a packet of commands bigger than a chunk's
+// datagram goes as several that fit, in order (bmdwire#102).
 func (t *transport) send(p *packet) error {
+	if room := t.maxChunk + commandRoom; t.maxChunk > 0 && p.flags&(flagSYN|flagACK) == 0 && len(p.data) > room {
+		if pieces := splitCommands(p, room); len(pieces) > 1 {
+			for _, q := range pieces {
+				if err := t.send(q); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
 	if t.windowFull(p) {
 		t.held = append(t.held, p)
 		return nil
@@ -1106,12 +1173,14 @@ func (t *transport) askedAgainForStuck(asked uint16) bool {
 	return ok
 }
 
-// takeBackChunks is _take_back_chunks (bmdwire#95): the data chunk at
-// first was sent tooBigAfter times more and never acknowledged while the
-// switcher goes on sending. It and everything after it are taken back:
+// takeBackChunks is _take_back_chunks (bmdwire#95): the packet at first,
+// an upload data chunk or, since bmdwire#102, a packet of two or more
+// commands, was sent tooBigAfter times more and never acknowledged while
+// the switcher goes on sending. It and everything after it are taken back:
 // their sequence numbers are free, as the switcher takes nothing after a
-// packet it lacks. Other packets among them go again now; the chunks
-// come back for the session. ok is false if this is not the case.
+// packet it lacks. The other packets among them go again now, commands
+// split to fit; the chunks come back for the session (tb, nil if there
+// are none). ok is false if this is not the case.
 //
 // Since bmdwire#100 (e4119f7) a packet after the stuck one small enough
 // to have got through means a new session instead (newSessionAsked, tb
@@ -1125,13 +1194,17 @@ func (t *transport) takeBackChunks(first uint16) (tb *takenBack, ok bool) {
 	if p == nil {
 		return nil, false
 	}
-	transfer, size, ok := ftdaChunk(p.data)
-	if !ok {
-		return nil, false
+	transfer, size, isChunk := ftdaChunk(p.data)
+	if !isChunk {
+		// A command packet: too big only if it can go again smaller.
+		if cmds := commandsOf(p.data); len(cmds) < 2 {
+			return nil, false
+		}
+		size = len(p.data) - commandRoom
 	}
 	limit := 0
 	for _, s := range chunkSteps {
-		if s < size {
+		if s < size && (t.maxChunk == 0 || s <= t.maxChunk) {
 			limit = s
 			break
 		}
@@ -1177,19 +1250,34 @@ func (t *transport) takeBackChunks(first uint16) (tb *takenBack, ok bool) {
 	t.stuckSeq, t.stuckCount = -1, 0
 	t.maxChunk = limit
 	setChunkLimit(t.addr, limit)
-	tb = &takenBack{transfer: transfer, limit: limit}
+	if !isChunk {
+		// The chunks of an upload among them, if any, go back to it.
+		for _, q := range taken {
+			if id, _, ok := ftdaChunk(q.data); ok {
+				transfer, isChunk = id, true
+				break
+			}
+		}
+	}
+	if isChunk {
+		tb = &takenBack{transfer: transfer, limit: limit}
+	}
 	for _, q := range taken {
-		if id, n, ok := ftdaChunk(q.data); ok && id == transfer {
+		if id, n, ok := ftdaChunk(q.data); ok && tb != nil && id == transfer {
 			tb.sizes = append(tb.sizes, n)
 			continue
 		}
 		q.flags &^= flagRetransmission
-		if err := t.send(q); err != nil {
+		if err := t.send(q); err != nil { // split to fit, if it must be
 			t.log.Error("atem: send failed", "err", err)
 		}
 	}
-	t.log.Warn("atem: no data chunk got through, datagrams that big are not reaching the switcher; sending smaller chunks from now on",
-		"addr", t.addr, "size", size, "sent", tooBigAfter+1, "chunks", len(tb.sizes), "limit", limit)
+	what := "no data chunk got through"
+	if _, _, ok := ftdaChunk(p.data); !ok {
+		what = "no command packet got through"
+	}
+	t.log.Warn("atem: "+what+", datagrams that big are not reaching the switcher; smaller data chunks, and commands split to fit, from now on",
+		"addr", t.addr, "bytes", len(p.data)+headerLen, "sent", tooBigAfter+1, "limit", limit)
 	return tb, true
 }
 
