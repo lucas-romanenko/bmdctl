@@ -180,17 +180,18 @@ func TestASlowUploadThatKeepsMovingIsNotCutOff(t *testing.T) { // test_a_slow_up
 func TestAMacroDownloadIsNoProgressToo(t *testing.T) { // test_a_macro_download_is_no_progress_too
 	sw := newFake(t)
 	s := dialFake(t, sw, 0)
-	atem.SetMacroTimeout(t, 300*time.Millisecond)
+	const timeout = 150 * time.Millisecond
+	atem.SetMacroTimeout(t, timeout)
 	slot := emptyMacroSlot(t, s)
-	data := bytes.Repeat([]byte{8, 0, 2, 0, 0, 0, 5, 0}, 40*fakeatem.ChunkSize*fakeatem.ChunkCount/8)
+	data := bytes.Repeat([]byte{8, 0, 2, 0, 0, 0, 5, 0}, 10*fakeatem.ChunkSize*fakeatem.ChunkCount/8)
 	sw.PutMacro(uint16(slot), data, "big", "")
-	sw.PaceDownloads(20 * time.Millisecond)
+	sw.PaceDownloads(50 * time.Millisecond) // chunks never 150 ms apart; about 0.5 s in all
 	start := time.Now()
 	got, err := s.DownloadMacro(context.Background(), slot)
 	if err != nil || !bytes.Equal(got, data) {
 		t.Fatalf("%d bytes, %v", len(got), err)
 	}
-	if took := time.Since(start); took < 400*time.Millisecond {
+	if took := time.Since(start); took <= timeout {
 		t.Fatalf("took %v: not long enough to outlive the timeout", took)
 	}
 }
