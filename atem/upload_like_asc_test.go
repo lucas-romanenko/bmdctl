@@ -435,12 +435,14 @@ func TestFTDE6StillLeavesTheRequestToTheReleaseBroadcast(t *testing.T) {
 
 func TestARetriedUploadStartsAgainWithItsMetadata(t *testing.T) {
 	s, c := laneSession(t)
+	clock := moveClock(s)
 	tk := uploadTask(3)
 	s.enqueueTask(tk)
 	grant(t, s, 0)
 	tid := s.lane.transfer.tid
 	feedBudget(t, s, 4)
 	feedCmd(t, s, "FTDE", append(u16be(tid), 1, 0)) // try again
+	after(s, clock, tryAgainFirst)                  // asked again after a pause
 	if p := lastPacket(c); !slices.Equal(p, []string{"FTSD"}) {
 		t.Fatalf("retry %v", p)
 	}

@@ -194,14 +194,18 @@ func TestFTDE6IsNotRaisedAsAFatalError(t *testing.T) { // test_ftde_6_is_not_rai
 }
 
 // Statuses 1 (try again) and 5 (no lock) are recovered too: 1 resends the
-// request with the same transfer id, 5 asks for the lock again.
+// request with the same transfer id, after tryAgainFirst (bmdwire#73), 5
+// asks for the lock again.
 func TestFTDE1And5AreRecovered(t *testing.T) {
 	s, c := laneSession(t)
+	clock := moveClock(s)
 	tk := task(taskDownload, 0, 4)
 	s.enqueueTask(tk)
 	grant(t, s, 0)
 	tid := s.lane.transfer.tid
 	feedCmd(t, s, "FTDE", append(u16be(tid), 1, 0))
+	*clock = clock.Add(tryAgainFirst)
+	s.serviceYields()
 	if ftsu := commands(c, "FTSU"); len(ftsu) != 2 || binary.BigEndian.Uint16(ftsu[1]) != tid {
 		t.Fatalf("FTSU %x", ftsu)
 	}
@@ -702,5 +706,76 @@ func TestEmptyUploadSendsFTFDInline(t *testing.T) {
 	}
 	if d := commands(c, "FTSD")[0]; binary.BigEndian.Uint16(d[12:]) != 0x0300 || binary.BigEndian.Uint32(d[8:]) != 0 {
 		t.Fatalf("FTSD %x", d)
+	}
+}
+
+// --- test_transfer_engine_kept_free.py (bmdwire#73, v1.11.0) -----------------
+
+// started is the Python tests' helper: a still download granted and
+// requested, FTSU on the wire.
+func started(t *testing.T, s *Session, c *fakeConn, slot uint16) (*transferTask, uint16) {
+	t.Helper()
+	tk := task(taskDownload, 0, slot)
+	s.enqueueTask(tk)
+	grant(t, s, 0)
+	if !lastIs(c, "FTSU") {
+		t.Fatalf("sent %v, not the request", lastCodes(c))
+	}
+	return tk, s.lane.transfer.tid
+}
+
+func ftde(t *testing.T, s *Session, tid uint16, status byte) {
+	t.Helper()
+	feedCmd(t, s, "FTDE", append(u16be(tid), status, 0))
+}
+
+func TestTryAgainIsAskedAgainAfterADoublingPause(t *testing.T) { // test_try_again_is_asked_again_after_a_doubling_pause
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	_, tid := started(t, s, c, 1)
+	var pauses []time.Duration
+	for range 7 {
+		before := packets(c)
+		ftde(t, s, tid, 1)
+		s.serviceYields()
+		if packets(c) != before {
+			t.Fatal("asked again at once")
+		}
+		due := s.lane.tryAgainDue
+		pauses = append(pauses, due.Sub(*clock))
+		*clock = due
+		s.serviceYields()
+		if !lastIs(c, "FTSU") {
+			t.Fatalf("sent %v, not the request again", lastCodes(c))
+		}
+		tid = s.lane.transfer.tid
+	}
+	var want []time.Duration
+	for i := range 7 {
+		want = append(want, min(tryAgainMax, tryAgainFirst<<i))
+	}
+	if !slices.Equal(pauses, want) {
+		t.Fatalf("pauses %v, want %v", pauses, want)
+	}
+}
+
+func TestTryAgainGivesUpAndFreesTheStore(t *testing.T) { // test_try_again_gives_up_and_frees_the_store
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	tk, tid := started(t, s, c, 1)
+	for range tryAgainAttempts {
+		ftde(t, s, tid, 1)
+		*clock = s.lane.tryAgainDue
+		s.serviceYields()
+		tid = s.lane.transfer.tid
+	}
+	noResult(t, tk)
+	ftde(t, s, tid, 1) // one refusal too many
+	var te *TransferError
+	if r := result(t, tk); !errors.As(r.err, &te) || te.Status != 1 {
+		t.Fatalf("result %+v", r)
+	}
+	if s.lane.transfer != nil || len(s.lane.queues[0]) != 0 || !lastIs(c, "LOCK") || s.lane.locks[0] {
+		t.Fatalf("lane %+v, sent %v", s.lane, lastCodes(c))
 	}
 }

@@ -37,6 +37,15 @@ const (
 	// lockRerequest is LOCK_REREQUEST_SECONDS: a lock request with no
 	// LKOB back is not repeated sooner than this.
 	lockRerequest = time.Second
+	// FTDE 1 (try again) is asked again after a pause that doubles from
+	// tryAgainFirst to tryAgainMax, and after tryAgainAttempts refusals in
+	// a row the transfer fails like a fatal status, its lock given back
+	// (TRY_AGAIN_*, bmdwire#73, 588a389, v1.11.0). It used to be asked
+	// again at once, with no end: ~900 requests in 13 s on a 4K Plus whose
+	// transfer engine was held by a download nobody drained (2026-11-04).
+	tryAgainFirst    = 50 * time.Millisecond
+	tryAgainMax      = time.Second
+	tryAgainAttempts = 20
 	// macroUploadMode is FTSD's mode for the macro store: write
 	// uncompressed and pre-erase (0x0300). The still store takes
 	// UploadWriteRLE.
@@ -154,6 +163,10 @@ type transferTask struct {
 	done     chan transferResult // buffered 1; written once
 	finished bool
 
+	// tryAgain counts the switcher's FTDE 1 refusals of this transfer
+	// (TransferTask.try_again).
+	tryAgain int
+
 	// size is the upload's length as sent (compressed, if it is), for
 	// its progress; progress, if not nil, takes the latest Progress
 	// (buffered 1): the owner never waits on it.
@@ -247,6 +260,10 @@ type lane struct {
 	lastGrant  map[uint16]time.Time
 
 	budget *FileTransferContinueDataField // transfer_budget: nil when exhausted
+
+	// tryAgainDue is when the transfer refused with FTDE 1 is asked again
+	// (_try_again_due), zero when none waits.
+	tryAgainDue time.Time
 
 	// The paced bulk queue's triggers (see bulkTrigger).
 	bulkPending int
@@ -671,6 +688,7 @@ func (s *Session) cancelTask(t *transferTask, cause error) error {
 	notGranted := t.store != StoreMacros && !l.locks[t.store]
 	t.finished = true
 	if l.transfer == t {
+		l.tryAgainDue = time.Time{}
 		l.popHead(t)
 		l.transfer = nil
 		l.requested = false
@@ -727,6 +745,16 @@ func (s *Session) sendCommands(cmds ...Command) {
 // lock held.
 func (s *Session) transferTrigger(store uint16, retry bool) {
 	l := &s.lane
+	if !l.tryAgainDue.IsZero() {
+		// A transfer the switcher answered busy is asked again only after
+		// its pause; the yield timer asks then.
+		if s.t.now().Before(l.tryAgainDue) {
+			s.armYieldTimer(l.tryAgainDue)
+			return
+		}
+		l.tryAgainDue = time.Time{}
+		retry = true
+	}
 	var next *transferTask
 	if q := l.queues[store]; len(q) > 0 {
 		next = q[0]
@@ -891,6 +919,17 @@ func (s *Session) serviceYields() {
 	l := &s.lane
 	l.yieldDue = time.Time{}
 	now := s.t.now()
+	if due := l.tryAgainDue; !due.IsZero() {
+		switch {
+		case l.transfer == nil:
+			l.tryAgainDue = time.Time{}
+		case now.Before(due):
+			s.armYieldTimer(due)
+		default:
+			l.tryAgainDue = time.Time{}
+			s.transferTrigger(l.transfer.store, true)
+		}
+	}
 	for store, y := range l.yielding {
 		due := s.yieldDue(store, y)
 		switch {
@@ -1063,8 +1102,25 @@ func (s *Session) onTransferError(f *FileTransferErrorField) {
 	t := l.transfer
 	l.requested = false
 	switch f.Status {
-	case 1: // try again, same transfer id
-		s.transferTrigger(t.store, true)
+	case 1:
+		// Try again, with the same transfer id, after a pause that
+		// doubles each time; give up after tryAgainAttempts.
+		t.tryAgain++
+		if t.tryAgain == 1 {
+			// Once per transfer: a busy switcher was invisible in the
+			// logs, and read as "no data" at the caller.
+			s.log.Info("atem: the switcher is busy (FTDE 1, try again); asking again", "task", t.describe())
+		}
+		if t.tryAgain > tryAgainAttempts {
+			s.log.Error("atem: transfer refused too often (FTDE 1, try again): giving up; the switcher's transfer engine is busy",
+				"task", t.describe(), "refusals", tryAgainAttempts)
+			s.failTransfer(t, f)
+			return
+		}
+		pause := min(tryAgainMax, tryAgainFirst<<(t.tryAgain-1))
+		s.log.Debug("atem: retrying transfer", "in", pause, "try_again", t.tryAgain)
+		l.tryAgainDue = s.t.now().Add(pause)
+		s.armYieldTimer(l.tryAgainDue)
 	case 5: // no lock: ask for it again
 		l.locks[t.store] = false
 		s.transferTrigger(t.store, true)
@@ -1076,13 +1132,21 @@ func (s *Session) onTransferError(f *FileTransferErrorField) {
 		l.othersSeen = s.t.now()
 		s.releaseThenContinue(t.store, false)
 	default:
-		// Fatal for this transfer: drop it, release the lock, carry on.
-		l.popHead(t)
-		l.transfer = nil
-		l.buffer, l.bufferBytes = nil, 0
-		s.releaseThenContinue(t.store, true)
-		s.finish(t, transferResult{err: &TransferError{Store: t.store, Slot: t.slot, Transfer: f.Transfer, Status: f.Status}})
+		s.failTransfer(t, f)
 	}
+}
+
+// failTransfer is _fail_transfer: fatal for this transfer (a status other
+// than 1, 5 and 6, or tryAgainAttempts refusals): drop it, release the
+// lock, carry on.
+func (s *Session) failTransfer(t *transferTask, f *FileTransferErrorField) {
+	l := &s.lane
+	l.tryAgainDue = time.Time{}
+	l.popHead(t)
+	l.transfer = nil
+	l.buffer, l.bufferBytes = nil, 0
+	s.releaseThenContinue(t.store, true)
+	s.finish(t, transferResult{err: &TransferError{Store: t.store, Slot: t.slot, Transfer: f.Transfer, Status: f.Status}})
 }
 
 // onTransferComplete is the file-transfer-data-complete branch: the lock is
