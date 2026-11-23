@@ -174,6 +174,9 @@ func TestToDisplay(t *testing.T) {
 		ok        bool
 	}{
 		{"Matte Density", "5000", 100, "%", true}, // -100..300, the midpoint
+		// 2500, the unit's default, shows as 0 in Software Control
+		// (captured 2026-11-12; bmdwire v1.14.0), not 25 as raw/100 would
+		{"Matte Density", "2500", 0, "%", true},
 		{"Black Balance", "2500", -50, "%", true}, // -100..100, a quarter
 		{"Transition Rate", "30", 30, "frames", true},
 		{"Matte Density", "abc", 0, "", false},
@@ -339,6 +342,65 @@ func TestUploadOneNonzeroACKRaises(t *testing.T) {
 	wantIOError(t, err, "non-zero ACK")
 	if !errors.Is(err, ErrRefused) {
 		t.Errorf("%v is not ErrRefused", err)
+	}
+}
+
+// ---- upload_stream (bmdwire v1.14.0) ---------------------------------------
+
+func TestUploadStreamIsUploadOnesFrame(t *testing.T) {
+	data := bytes.Repeat([]byte("image bytes "), 50000) // 600 KB: three chunks
+	s := newScript([]byte{0})                           // one zero byte, as an image's ACK
+	c, _ := client(s)
+	var calls []int64
+	err := c.UploadStream(ctx, host, 0x0101, "Studio.png", int64(len(data)), bytes.NewReader(data),
+		func(sent, size int64) error { calls = append(calls, sent); return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(s.written(), expectedFrame(0x0101, "Studio.png", data)) || !s.isClosed() {
+		t.Fatalf("sent %d bytes", len(s.written()))
+	}
+	if want := []int64{StreamChunk, 2 * StreamChunk, int64(len(data))}; !slices.Equal(calls, want) {
+		t.Errorf("progress %v, want %v", calls, want)
+	}
+}
+
+// Data short of, or past, the size announced never gets the trailing
+// zero, so the unit can't take a short or long file.
+func TestUploadStreamRefusesTheWrongLength(t *testing.T) {
+	for _, c := range []struct {
+		data string
+		size int64
+		msg  string
+	}{{"abc", 5, "ended after 3 of the 5"}, {"abcdef", 5, "longer than the 5"}} {
+		s := newScript([]byte{0})
+		cl, _ := client(s)
+		err := cl.UploadStream(ctx, host, 0x0101, "a.png", c.size, strings.NewReader(c.data), nil)
+		if err == nil || !strings.Contains(err.Error(), c.msg) {
+			t.Errorf("%q in %d: %v", c.data, c.size, err)
+		}
+		if w := s.written(); len(w) == 0 || w[len(w)-1] == 0 {
+			t.Errorf("%q: trailing zero sent (%x)", c.data, w)
+		}
+	}
+	for _, size := range []int64{0, 1 << 32} {
+		cl, d := client()
+		if err := cl.UploadStream(ctx, host, 0x0101, "a.png", size, strings.NewReader(""), nil); !errors.Is(err, ErrValue) || len(d.addrs) != 0 {
+			t.Errorf("size %d: %v", size, err)
+		}
+	}
+}
+
+func TestUploadStreamProgressErrorAbandons(t *testing.T) {
+	stop := errors.New("stop")
+	s := newScript([]byte{0})
+	c, _ := client(s)
+	err := c.UploadStream(ctx, host, 0x0101, "a.png", 3, strings.NewReader("abc"), func(int64, int64) error { return stop })
+	if !errors.Is(err, stop) || !s.isClosed() {
+		t.Fatal(err)
+	}
+	if w := s.written(); w[len(w)-1] != 'c' {
+		t.Errorf("trailing zero sent: %x", w)
 	}
 }
 
@@ -642,6 +704,14 @@ func TestParseReadsTheRestOfTheSection(t *testing.T) {
 // test_dynamic_ip_true_is_read_as_dhcp
 func TestDynamicIPTrueIsReadAsDHCP(t *testing.T) {
 	if i := parse(t, strings.Replace(echo(t), "Dynamic IP: false", "Dynamic IP: true", 1)); i.Dynamic == nil || !*i.Dynamic {
+		t.Fatal(i.Dynamic)
+	}
+}
+
+// "DynamicIP", as the protocol document's example spells it, is read when
+// "Dynamic IP" (a 12 4K's) isn't there (bmdwire v1.14.0).
+func TestTheDocumentsDynamicIPSpellingIsRead(t *testing.T) {
+	if i := parse(t, strings.Replace(echo(t), "Dynamic IP: false", "DynamicIP: true", 1)); i.Dynamic == nil || !*i.Dynamic {
 		t.Fatal(i.Dynamic)
 	}
 }
