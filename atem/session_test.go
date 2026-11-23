@@ -511,19 +511,74 @@ func TestTruncatedPacketKeepsWhatCameBefore(t *testing.T) {
 	}
 }
 
-// A packet a parser rejects loses the rest of its packet, as an exception
-// out of an atemwire Recv constructor does, and the session carries on.
-// Here a 4-byte PrvI (it needs 5) takes the AuxS after it down with it.
-func TestParseErrorLosesTheRestOfThePacket(t *testing.T) {
-	s, sw := dialed(t, 0)
+// test_unknown_video_modes.py::test_a_field_that_fails_to_parse_costs_only_itself
+// (bmdwire#71, 564593d): a field a parser rejects is dropped on its own,
+// logged at Error once per code and at Debug after that, and the fields
+// after it in the packet still land. Here a 4-byte PrvI (it needs 5) sits
+// ahead of an AuxS. Until bmdwire v1.10.0 it took the AuxS down with it.
+func TestAFieldThatFailsToParseCostsOnlyItself(t *testing.T) {
+	s, sw, logs := dialedLogging(t)
 	sw.reliable(cmdBytes("PrvI", []byte{0, 0, 0, 2}), cmdBytes("AuxS", []byte{0, 0, 0, 3}))
-	sw.reliable(cmdBytes("Bbbb", []byte{2}))
-	st := waitState(t, s, func(st State) bool { _, ok := st.Raw["Bbbb"]; return ok })
-	if st.MEs[0].Preview != nil || st.Aux != nil {
-		t.Fatalf("stored past the parse error: %+v %+v", st.MEs[0].Preview, st.Aux)
+	st := waitState(t, s, func(st State) bool { return len(st.Aux) > 0 && st.Aux[0] != nil })
+	if len(st.MEs) != 0 || st.Aux[0].Source != 3 {
+		t.Fatalf("M/Es %+v, AuxS %+v", st.MEs, st.Aux[0])
+	}
+	sw.reliable(cmdBytes("PrvI", []byte{0, 0, 0, 2}), cmdBytes("Bbbb", []byte{2}))
+	waitState(t, s, func(st State) bool { _, ok := st.Raw["Bbbb"]; return ok })
+	var got []logRecord
+	for _, r := range logs.matching("could not be parsed") {
+		if r.level >= slog.LevelError {
+			got = append(got, r)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("logged at Error %+v", got)
 	}
 	if !s.Connected() {
-		t.Fatal("a bad packet ended the session")
+		t.Fatal("a bad field ended the session")
+	}
+}
+
+// test_unknown_video_modes.py::test_a_uhd_capability_list_ahead_of_vidm_completes_the_dump
+// and test_an_unknown_running_mode_completes_the_dump (bmdwire#71): a _VMC
+// listing modes past the table, ahead of VidM in the same packet, and a
+// running mode past the table, both complete the dump.
+func TestUnknownVideoModesCompleteTheDump(t *testing.T) {
+	bits := uint32(1<<12 | 1<<30 | 1<<31)
+	var blocks [][4]uint32
+	for _, m := range uhdList {
+		blocks = append(blocks, [4]uint32{uint32(m), bits, 1 << 31, b2u(m >= 14)})
+	}
+	for _, c := range []struct {
+		name  string
+		mode  byte
+		label string
+	}{{"uhd list", 10, "1080p25"}, {"unknown running mode", 31, "mode-31"}} {
+		t.Run(c.name, func(t *testing.T) {
+			conn := newFakeConn()
+			res := startDial(context.Background(), conn, 0)
+			sw := newSwitcher(t, conn)
+			sw.handshake()
+			sw.reliable(cmdBytes("_ver", []byte{0, 2, 0, 30}), cmdBytes("_VMC", vmcPayload(blocks, true)),
+				cmdBytes("VidM", []byte{c.mode, 0, 0, 0}), cmdBytes("InCm", []byte{1, 0, 0, 0}))
+			sw.ping()
+			r := <-res
+			if r.err != nil {
+				t.Fatal(r.err)
+			}
+			defer r.s.Close()
+			st := r.s.State()
+			if got := st.CurrentVideoMode().Format; got != c.label {
+				t.Errorf("video mode %q", got)
+			}
+			var ids []int
+			for _, m := range st.AvailableVideoModes() {
+				ids = append(ids, m.ID)
+			}
+			if !slices.Equal(ids, uhdList) {
+				t.Errorf("modes %v", ids)
+			}
+		})
 	}
 }
 

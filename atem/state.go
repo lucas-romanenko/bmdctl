@@ -1166,17 +1166,24 @@ type TallySourceField struct {
 
 // VideoModeField is VidM, mixerstate['video-mode'], bare. Resolution,
 // Interlaced, Rate (the field rate) and Widescreen come from atemwire's
-// mode table.
+// mode table. A mode number the table lacks (newer firmware lists modes
+// it doesn't have) is kept, not refused (bmdwire#71, 9e52191): Known is
+// false, and the four table values, None in atemwire, are zero here.
 type VideoModeField struct {
 	Mode       uint8   `json:"mode"`
 	Resolution int     `json:"resolution"`
 	Interlaced bool    `json:"interlaced"`
 	Rate       float64 `json:"rate"`
 	Widescreen bool    `json:"widescreen"`
+	Known      bool    `json:"known"`
 }
 
-// Label is atemwire's get_label: "1080p59.94", "625i50 16:9".
+// Label is atemwire's get_label: "1080p59.94", "625i50 16:9", and
+// "mode-<n>" for a mode the table lacks (bmdwire#71).
 func (f *VideoModeField) Label() string {
+	if !f.Known {
+		return UnknownVideoModePrefix + strconv.Itoa(int(f.Mode))
+	}
 	pi := "p"
 	if f.Interlaced {
 		pi = "i"
@@ -1192,7 +1199,8 @@ func (f *VideoModeField) Label() string {
 }
 
 // FrameSize is atemwire's get_resolution: the frame in pixels. It returns
-// 0, 0 for a resolution atemwire's table lacks (atemwire raises KeyError).
+// 0, 0 where atemwire returns None: for a mode the table lacks
+// (bmdwire#71), whose frame size is unknown.
 func (f *VideoModeField) FrameSize() (width, height int) {
 	switch f.Resolution {
 	case 525:
@@ -1211,7 +1219,8 @@ func (f *VideoModeField) FrameSize() (width, height int) {
 	return 0, 0
 }
 
-// Pixels is atemwire's get_pixels.
+// Pixels is atemwire's get_pixels: 0 where atemwire returns None, for a
+// mode the table lacks.
 func (f *VideoModeField) Pixels() int {
 	w, h := f.FrameSize()
 	return w * h

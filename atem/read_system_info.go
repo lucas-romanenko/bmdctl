@@ -51,8 +51,8 @@ func (s State) AvailableVideoModes() []AvailableVideoModeView {
 
 // VideoResolution is video_resolution (messages/system_info.py), bmdwire
 // v1.3.0: the frame size in pixels, width then height, or def before VidM
-// (atemwire's default is (1920, 1080)) and for a resolution atemwire's
-// table lacks.
+// (atemwire's default is (1920, 1080)) and for a mode atemwire's table
+// lacks, whose frame size is unknown (bmdwire#71).
 func (s State) VideoResolution(def [2]int) [2]int {
 	m := s.VideoMode.Mode
 	if m == nil {
@@ -60,7 +60,7 @@ func (s State) VideoResolution(def [2]int) [2]int {
 	}
 	w, h := m.FrameSize()
 	if w == 0 && h == 0 {
-		return def // atemwire's get_resolution raises KeyError
+		return def // atemwire's get_resolution returns None
 	}
 	return [2]int{w, h}
 }

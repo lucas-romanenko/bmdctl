@@ -1,5 +1,5 @@
 {
-"bmdwire": "v1.6.0",
+"bmdwire": "v1.14.5",
 "cases": [
 {
 "code": "*XFC",
@@ -12785,6 +12785,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": true,
+"known": true,
 "mode": 0,
 "rate": 59.94,
 "resolution": 525,
@@ -12799,6 +12800,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": true,
+"known": true,
 "mode": 1,
 "rate": 50,
 "resolution": 625,
@@ -12813,6 +12815,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": true,
+"known": true,
 "mode": 2,
 "rate": 59.94,
 "resolution": 525,
@@ -12827,6 +12830,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": true,
+"known": true,
 "mode": 3,
 "rate": 50,
 "resolution": 625,
@@ -12841,6 +12845,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 4,
 "rate": 50,
 "resolution": 720,
@@ -12855,6 +12860,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 5,
 "rate": 59.94,
 "resolution": 720,
@@ -12869,6 +12875,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": true,
+"known": true,
 "mode": 6,
 "rate": 50,
 "resolution": 1080,
@@ -12883,6 +12890,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": true,
+"known": true,
 "mode": 7,
 "rate": 59.94,
 "resolution": 1080,
@@ -12897,6 +12905,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 8,
 "rate": 23.98,
 "resolution": 1080,
@@ -12911,6 +12920,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 9,
 "rate": 24,
 "resolution": 1080,
@@ -12925,6 +12935,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 10,
 "rate": 25,
 "resolution": 1080,
@@ -12939,6 +12950,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -12953,6 +12965,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 12,
 "rate": 50,
 "resolution": 1080,
@@ -12967,6 +12980,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -12981,6 +12995,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 14,
 "rate": 23.98,
 "resolution": 2160,
@@ -12995,6 +13010,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 15,
 "rate": 24,
 "resolution": 2160,
@@ -13009,6 +13025,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 16,
 "rate": 25,
 "resolution": 2160,
@@ -13023,6 +13040,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 17,
 "rate": 29.97,
 "resolution": 2160,
@@ -13037,6 +13055,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 18,
 "rate": 50,
 "resolution": 2160,
@@ -13051,6 +13070,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 19,
 "rate": 59.94,
 "resolution": 2160,
@@ -13065,6 +13085,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 20,
 "rate": 23.98,
 "resolution": 4320,
@@ -13079,6 +13100,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 21,
 "rate": 24,
 "resolution": 4320,
@@ -13093,6 +13115,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 22,
 "rate": 25,
 "resolution": 4320,
@@ -13107,6 +13130,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 23,
 "rate": 29.97,
 "resolution": 4320,
@@ -13121,6 +13145,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 24,
 "rate": 50,
 "resolution": 4320,
@@ -13135,6 +13160,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 25,
 "rate": 59.94,
 "resolution": 4320,
@@ -13149,6 +13175,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 26,
 "rate": 30,
 "resolution": 1080,
@@ -13163,6 +13190,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 27,
 "rate": 60,
 "resolution": 1080,
@@ -13177,6 +13205,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 28,
 "rate": 60,
 "resolution": 720,
@@ -13191,6 +13220,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": true,
+"known": true,
 "mode": 29,
 "rate": 60,
 "resolution": 1080,
@@ -13199,21 +13229,48 @@ true
 },
 {
 "code": "VidM",
-"error": "ValueError",
+"key": "VidM",
+"name": "video-mode",
 "payload": "1e000000",
-"result": "error"
+"result": "stored",
+"value": {
+"interlaced": null,
+"known": false,
+"mode": 30,
+"rate": null,
+"resolution": null,
+"widescreen": null
+}
 },
 {
 "code": "VidM",
-"error": "ValueError",
+"key": "VidM",
+"name": "video-mode",
 "payload": "1f000000",
-"result": "error"
+"result": "stored",
+"value": {
+"interlaced": null,
+"known": false,
+"mode": 31,
+"rate": null,
+"resolution": null,
+"widescreen": null
+}
 },
 {
 "code": "VidM",
-"error": "ValueError",
+"key": "VidM",
+"name": "video-mode",
 "payload": "ff000000",
-"result": "error"
+"result": "stored",
+"value": {
+"interlaced": null,
+"known": false,
+"mode": 255,
+"rate": null,
+"resolution": null,
+"widescreen": null
+}
 },
 {
 "code": "VidM",
@@ -13229,6 +13286,7 @@ true
 "result": "stored",
 "value": {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -13635,6 +13693,7 @@ true
 "downscale": [
 {
 "interlaced": true,
+"known": true,
 "mode": 2,
 "rate": 59.94,
 "resolution": 525,
@@ -13642,6 +13701,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 3,
 "rate": 50,
 "resolution": 625,
@@ -13649,6 +13709,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 5,
 "rate": 59.94,
 "resolution": 720,
@@ -13656,6 +13717,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 7,
 "rate": 59.94,
 "resolution": 1080,
@@ -13663,6 +13725,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 9,
 "rate": 24,
 "resolution": 1080,
@@ -13670,6 +13733,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -13677,6 +13741,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 12,
 "rate": 50,
 "resolution": 1080,
@@ -13684,6 +13749,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 14,
 "rate": 23.98,
 "resolution": 2160,
@@ -13691,6 +13757,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 17,
 "rate": 29.97,
 "resolution": 2160,
@@ -13698,6 +13765,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 18,
 "rate": 50,
 "resolution": 2160,
@@ -13705,6 +13773,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 19,
 "rate": 59.94,
 "resolution": 2160,
@@ -13712,6 +13781,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 20,
 "rate": 23.98,
 "resolution": 4320,
@@ -13719,6 +13789,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 22,
 "rate": 25,
 "resolution": 4320,
@@ -13726,6 +13797,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 25,
 "rate": 59.94,
 "resolution": 4320,
@@ -13733,6 +13805,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 27,
 "rate": 60,
 "resolution": 1080,
@@ -13740,6 +13813,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 28,
 "rate": 60,
 "resolution": 720,
@@ -13748,6 +13822,7 @@ true
 ],
 "mode": {
 "interlaced": true,
+"known": true,
 "mode": 3,
 "rate": 50,
 "resolution": 625,
@@ -13757,6 +13832,7 @@ true
 "multiview": [
 {
 "interlaced": true,
+"known": true,
 "mode": 2,
 "rate": 59.94,
 "resolution": 525,
@@ -13764,6 +13840,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 4,
 "rate": 50,
 "resolution": 720,
@@ -13771,6 +13848,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 5,
 "rate": 59.94,
 "resolution": 720,
@@ -13778,6 +13856,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 6,
 "rate": 50,
 "resolution": 1080,
@@ -13785,6 +13864,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 7,
 "rate": 59.94,
 "resolution": 1080,
@@ -13792,6 +13872,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 9,
 "rate": 24,
 "resolution": 1080,
@@ -13799,6 +13880,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 10,
 "rate": 25,
 "resolution": 1080,
@@ -13806,6 +13888,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -13813,6 +13896,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 12,
 "rate": 50,
 "resolution": 1080,
@@ -13820,6 +13904,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -13827,6 +13912,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 16,
 "rate": 25,
 "resolution": 2160,
@@ -13834,6 +13920,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 17,
 "rate": 29.97,
 "resolution": 2160,
@@ -13841,6 +13928,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 19,
 "rate": 59.94,
 "resolution": 2160,
@@ -13848,6 +13936,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 24,
 "rate": 50,
 "resolution": 4320,
@@ -13855,6 +13944,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 25,
 "rate": 59.94,
 "resolution": 4320,
@@ -13862,6 +13952,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 28,
 "rate": 60,
 "resolution": 720,
@@ -13885,6 +13976,7 @@ true
 "downscale": [
 {
 "interlaced": true,
+"known": true,
 "mode": 2,
 "rate": 59.94,
 "resolution": 525,
@@ -13892,6 +13984,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 3,
 "rate": 50,
 "resolution": 625,
@@ -13899,6 +13992,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 7,
 "rate": 59.94,
 "resolution": 1080,
@@ -13906,6 +14000,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 10,
 "rate": 25,
 "resolution": 1080,
@@ -13913,6 +14008,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -13920,6 +14016,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 12,
 "rate": 50,
 "resolution": 1080,
@@ -13927,6 +14024,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -13934,6 +14032,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 15,
 "rate": 24,
 "resolution": 2160,
@@ -13941,6 +14040,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 17,
 "rate": 29.97,
 "resolution": 2160,
@@ -13948,6 +14048,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 21,
 "rate": 24,
 "resolution": 4320,
@@ -13955,6 +14056,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 22,
 "rate": 25,
 "resolution": 4320,
@@ -13962,6 +14064,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 24,
 "rate": 50,
 "resolution": 4320,
@@ -13969,6 +14072,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 29,
 "rate": 60,
 "resolution": 1080,
@@ -13977,6 +14081,7 @@ true
 ],
 "mode": {
 "interlaced": false,
+"known": true,
 "mode": 14,
 "rate": 23.98,
 "resolution": 2160,
@@ -13986,6 +14091,7 @@ true
 "multiview": [
 {
 "interlaced": true,
+"known": true,
 "mode": 2,
 "rate": 59.94,
 "resolution": 525,
@@ -13993,6 +14099,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 3,
 "rate": 50,
 "resolution": 625,
@@ -14000,6 +14107,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 4,
 "rate": 50,
 "resolution": 720,
@@ -14007,6 +14115,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 5,
 "rate": 59.94,
 "resolution": 720,
@@ -14014,6 +14123,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 9,
 "rate": 24,
 "resolution": 1080,
@@ -14021,6 +14131,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -14028,6 +14139,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 12,
 "rate": 50,
 "resolution": 1080,
@@ -14035,6 +14147,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -14042,6 +14155,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 14,
 "rate": 23.98,
 "resolution": 2160,
@@ -14049,6 +14163,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 18,
 "rate": 50,
 "resolution": 2160,
@@ -14056,6 +14171,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 19,
 "rate": 59.94,
 "resolution": 2160,
@@ -14063,6 +14179,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 20,
 "rate": 23.98,
 "resolution": 4320,
@@ -14070,6 +14187,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 29,
 "rate": 60,
 "resolution": 1080,
@@ -14082,6 +14200,7 @@ true
 "downscale": [
 {
 "interlaced": true,
+"known": true,
 "mode": 0,
 "rate": 59.94,
 "resolution": 525,
@@ -14089,6 +14208,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 5,
 "rate": 59.94,
 "resolution": 720,
@@ -14096,6 +14216,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 6,
 "rate": 50,
 "resolution": 1080,
@@ -14103,6 +14224,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 8,
 "rate": 23.98,
 "resolution": 1080,
@@ -14110,6 +14232,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 10,
 "rate": 25,
 "resolution": 1080,
@@ -14117,6 +14240,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 12,
 "rate": 50,
 "resolution": 1080,
@@ -14124,6 +14248,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -14131,6 +14256,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 14,
 "rate": 23.98,
 "resolution": 2160,
@@ -14138,6 +14264,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 16,
 "rate": 25,
 "resolution": 2160,
@@ -14145,6 +14272,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 18,
 "rate": 50,
 "resolution": 2160,
@@ -14152,6 +14280,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 19,
 "rate": 59.94,
 "resolution": 2160,
@@ -14159,6 +14288,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 21,
 "rate": 24,
 "resolution": 4320,
@@ -14166,6 +14296,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 22,
 "rate": 25,
 "resolution": 4320,
@@ -14173,6 +14304,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 23,
 "rate": 29.97,
 "resolution": 4320,
@@ -14180,6 +14312,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 25,
 "rate": 59.94,
 "resolution": 4320,
@@ -14187,6 +14320,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 26,
 "rate": 30,
 "resolution": 1080,
@@ -14195,6 +14329,7 @@ true
 ],
 "mode": {
 "interlaced": true,
+"known": true,
 "mode": 1,
 "rate": 50,
 "resolution": 625,
@@ -14204,6 +14339,7 @@ true
 "multiview": [
 {
 "interlaced": true,
+"known": true,
 "mode": 0,
 "rate": 59.94,
 "resolution": 525,
@@ -14211,6 +14347,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 7,
 "rate": 59.94,
 "resolution": 1080,
@@ -14218,6 +14355,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 10,
 "rate": 25,
 "resolution": 1080,
@@ -14225,6 +14363,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -14232,6 +14371,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -14239,6 +14379,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 17,
 "rate": 29.97,
 "resolution": 2160,
@@ -14246,6 +14387,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 18,
 "rate": 50,
 "resolution": 2160,
@@ -14253,6 +14395,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 19,
 "rate": 59.94,
 "resolution": 2160,
@@ -14260,6 +14403,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 21,
 "rate": 24,
 "resolution": 4320,
@@ -14267,6 +14411,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 23,
 "rate": 29.97,
 "resolution": 4320,
@@ -14274,6 +14419,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 24,
 "rate": 50,
 "resolution": 4320,
@@ -14281,6 +14427,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 25,
 "rate": 59.94,
 "resolution": 4320,
@@ -14288,6 +14435,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 26,
 "rate": 30,
 "resolution": 1080,
@@ -14311,6 +14459,7 @@ true
 "downscale": [
 {
 "interlaced": true,
+"known": true,
 "mode": 1,
 "rate": 50,
 "resolution": 625,
@@ -14318,6 +14467,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 2,
 "rate": 59.94,
 "resolution": 525,
@@ -14325,6 +14475,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 4,
 "rate": 50,
 "resolution": 720,
@@ -14332,6 +14483,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 6,
 "rate": 50,
 "resolution": 1080,
@@ -14339,6 +14491,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 8,
 "rate": 23.98,
 "resolution": 1080,
@@ -14346,6 +14499,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -14353,6 +14507,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 12,
 "rate": 50,
 "resolution": 1080,
@@ -14360,6 +14515,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -14367,6 +14523,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 14,
 "rate": 23.98,
 "resolution": 2160,
@@ -14374,6 +14531,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 16,
 "rate": 25,
 "resolution": 2160,
@@ -14381,6 +14539,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 17,
 "rate": 29.97,
 "resolution": 2160,
@@ -14388,6 +14547,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 18,
 "rate": 50,
 "resolution": 2160,
@@ -14395,6 +14555,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 19,
 "rate": 59.94,
 "resolution": 2160,
@@ -14402,6 +14563,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 23,
 "rate": 29.97,
 "resolution": 4320,
@@ -14409,6 +14571,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 25,
 "rate": 59.94,
 "resolution": 4320,
@@ -14416,6 +14579,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 27,
 "rate": 60,
 "resolution": 1080,
@@ -14423,6 +14587,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 29,
 "rate": 60,
 "resolution": 1080,
@@ -14431,6 +14596,7 @@ true
 ],
 "mode": {
 "interlaced": false,
+"known": true,
 "mode": 26,
 "rate": 30,
 "resolution": 1080,
@@ -14440,6 +14606,7 @@ true
 "multiview": [
 {
 "interlaced": true,
+"known": true,
 "mode": 0,
 "rate": 59.94,
 "resolution": 525,
@@ -14447,6 +14614,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 3,
 "rate": 50,
 "resolution": 625,
@@ -14454,6 +14622,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 7,
 "rate": 59.94,
 "resolution": 1080,
@@ -14461,6 +14630,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -14468,6 +14638,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 15,
 "rate": 24,
 "resolution": 2160,
@@ -14475,6 +14646,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 17,
 "rate": 29.97,
 "resolution": 2160,
@@ -14482,6 +14654,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 18,
 "rate": 50,
 "resolution": 2160,
@@ -14489,6 +14662,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 24,
 "rate": 50,
 "resolution": 4320,
@@ -14496,6 +14670,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 25,
 "rate": 59.94,
 "resolution": 4320,
@@ -14503,6 +14678,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 27,
 "rate": 60,
 "resolution": 1080,
@@ -14515,6 +14691,7 @@ true
 "downscale": [
 {
 "interlaced": true,
+"known": true,
 "mode": 2,
 "rate": 59.94,
 "resolution": 525,
@@ -14522,6 +14699,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 6,
 "rate": 50,
 "resolution": 1080,
@@ -14529,6 +14707,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 10,
 "rate": 25,
 "resolution": 1080,
@@ -14536,6 +14715,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -14543,6 +14723,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 12,
 "rate": 50,
 "resolution": 1080,
@@ -14550,6 +14731,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 13,
 "rate": 59.94,
 "resolution": 1080,
@@ -14557,6 +14739,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 20,
 "rate": 23.98,
 "resolution": 4320,
@@ -14564,6 +14747,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 23,
 "rate": 29.97,
 "resolution": 4320,
@@ -14571,6 +14755,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 28,
 "rate": 60,
 "resolution": 720,
@@ -14578,6 +14763,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 29,
 "rate": 60,
 "resolution": 1080,
@@ -14586,6 +14772,7 @@ true
 ],
 "mode": {
 "interlaced": false,
+"known": true,
 "mode": 27,
 "rate": 60,
 "resolution": 1080,
@@ -14595,6 +14782,7 @@ true
 "multiview": [
 {
 "interlaced": true,
+"known": true,
 "mode": 0,
 "rate": 59.94,
 "resolution": 525,
@@ -14602,6 +14790,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 2,
 "rate": 59.94,
 "resolution": 525,
@@ -14609,6 +14798,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 3,
 "rate": 50,
 "resolution": 625,
@@ -14616,6 +14806,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 7,
 "rate": 59.94,
 "resolution": 1080,
@@ -14623,6 +14814,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 8,
 "rate": 23.98,
 "resolution": 1080,
@@ -14630,6 +14822,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 9,
 "rate": 24,
 "resolution": 1080,
@@ -14637,6 +14830,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 10,
 "rate": 25,
 "resolution": 1080,
@@ -14644,6 +14838,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 17,
 "rate": 29.97,
 "resolution": 2160,
@@ -14651,6 +14846,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 20,
 "rate": 23.98,
 "resolution": 4320,
@@ -14658,6 +14854,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 24,
 "rate": 50,
 "resolution": 4320,
@@ -14665,6 +14862,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 25,
 "rate": 59.94,
 "resolution": 4320,
@@ -14672,6 +14870,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 26,
 "rate": 30,
 "resolution": 1080,
@@ -14679,6 +14878,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 28,
 "rate": 60,
 "resolution": 720,
@@ -14691,6 +14891,7 @@ true
 "downscale": [
 {
 "interlaced": true,
+"known": true,
 "mode": 1,
 "rate": 50,
 "resolution": 625,
@@ -14698,6 +14899,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 3,
 "rate": 50,
 "resolution": 625,
@@ -14705,6 +14907,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 9,
 "rate": 24,
 "resolution": 1080,
@@ -14712,6 +14915,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 10,
 "rate": 25,
 "resolution": 1080,
@@ -14719,6 +14923,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -14726,6 +14931,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 14,
 "rate": 23.98,
 "resolution": 2160,
@@ -14733,6 +14939,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 16,
 "rate": 25,
 "resolution": 2160,
@@ -14740,6 +14947,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 18,
 "rate": 50,
 "resolution": 2160,
@@ -14747,6 +14955,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 23,
 "rate": 29.97,
 "resolution": 4320,
@@ -14754,6 +14963,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 24,
 "rate": 50,
 "resolution": 4320,
@@ -14761,6 +14971,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 26,
 "rate": 30,
 "resolution": 1080,
@@ -14768,6 +14979,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 27,
 "rate": 60,
 "resolution": 1080,
@@ -14776,6 +14988,7 @@ true
 ],
 "mode": {
 "interlaced": false,
+"known": true,
 "mode": 28,
 "rate": 60,
 "resolution": 720,
@@ -14785,6 +14998,7 @@ true
 "multiview": [
 {
 "interlaced": true,
+"known": true,
 "mode": 0,
 "rate": 59.94,
 "resolution": 525,
@@ -14792,6 +15006,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 1,
 "rate": 50,
 "resolution": 625,
@@ -14799,6 +15014,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 2,
 "rate": 59.94,
 "resolution": 525,
@@ -14806,6 +15022,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 4,
 "rate": 50,
 "resolution": 720,
@@ -14813,6 +15030,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 5,
 "rate": 59.94,
 "resolution": 720,
@@ -14820,6 +15038,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 8,
 "rate": 23.98,
 "resolution": 1080,
@@ -14827,6 +15046,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 10,
 "rate": 25,
 "resolution": 1080,
@@ -14834,6 +15054,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 11,
 "rate": 29.97,
 "resolution": 1080,
@@ -14841,6 +15062,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 12,
 "rate": 50,
 "resolution": 1080,
@@ -14848,6 +15070,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 15,
 "rate": 24,
 "resolution": 2160,
@@ -14855,6 +15078,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 16,
 "rate": 25,
 "resolution": 2160,
@@ -14862,6 +15086,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 19,
 "rate": 59.94,
 "resolution": 2160,
@@ -14869,6 +15094,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 20,
 "rate": 23.98,
 "resolution": 4320,
@@ -14876,6 +15102,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 21,
 "rate": 24,
 "resolution": 4320,
@@ -14883,6 +15110,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 22,
 "rate": 25,
 "resolution": 4320,
@@ -14890,6 +15118,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 23,
 "rate": 29.97,
 "resolution": 4320,
@@ -14897,6 +15126,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 24,
 "rate": 50,
 "resolution": 4320,
@@ -14904,6 +15134,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 26,
 "rate": 30,
 "resolution": 1080,
@@ -14911,6 +15142,7 @@ true
 },
 {
 "interlaced": false,
+"known": true,
 "mode": 28,
 "rate": 60,
 "resolution": 720,
@@ -14918,6 +15150,7 @@ true
 },
 {
 "interlaced": true,
+"known": true,
 "mode": 29,
 "rate": 60,
 "resolution": 1080,
@@ -14931,33 +15164,831 @@ true
 },
 {
 "code": "_VMC",
-"error": "ValueError",
+"key": "_VMC",
+"name": "video-mode-capability",
 "payload": "0001000028000000000000000000000000",
-"result": "error"
+"result": "stored",
+"value": {
+"modes": [
+{
+"downscale": [],
+"mode": {
+"interlaced": null,
+"known": false,
+"mode": 40,
+"rate": null,
+"resolution": null,
+"widescreen": null
+},
+"modenum": 40,
+"multiview": [],
+"reconfigure": false
+}
+]
+}
 },
 {
 "code": "_VMC",
-"error": "ValueError",
+"key": "_VMC",
+"name": "video-mode-capability",
 "payload": "0001000001000000400000000000000000",
-"result": "error"
+"result": "stored",
+"value": {
+"modes": [
+{
+"downscale": [],
+"mode": {
+"interlaced": true,
+"known": true,
+"mode": 1,
+"rate": 50,
+"resolution": 625,
+"widescreen": false
+},
+"modenum": 1,
+"multiview": [
+{
+"interlaced": null,
+"known": false,
+"mode": 30,
+"rate": null,
+"resolution": null,
+"widescreen": null
+}
+],
+"reconfigure": false
+}
+]
+}
 },
 {
 "code": "_VMC",
-"error": "ValueError",
+"key": "_VMC",
+"name": "video-mode-capability",
 "payload": "0001000001000000000000008000000001",
-"result": "error"
+"result": "stored",
+"value": {
+"modes": [
+{
+"downscale": [
+{
+"interlaced": null,
+"known": false,
+"mode": 31,
+"rate": null,
+"resolution": null,
+"widescreen": null
+}
+],
+"mode": {
+"interlaced": true,
+"known": true,
+"mode": 1,
+"rate": 50,
+"resolution": 625,
+"widescreen": false
+},
+"modenum": 1,
+"multiview": [],
+"reconfigure": true
+}
+]
+}
 },
 {
 "code": "_VMC",
-"error": "error",
+"key": "_VMC",
+"name": "video-mode-capability",
 "payload": "0002000001000000000000000000000000",
-"result": "error"
+"result": "stored",
+"value": {
+"modes": [
+{
+"downscale": [],
+"mode": {
+"interlaced": true,
+"known": true,
+"mode": 1,
+"rate": 50,
+"resolution": 625,
+"widescreen": false
+},
+"modenum": 1,
+"multiview": [],
+"reconfigure": false
+}
+]
+}
 },
 {
 "code": "_VMC",
-"error": "error",
+"key": "_VMC",
+"name": "video-mode-capability",
 "payload": "00",
-"result": "error"
+"result": "stored",
+"value": {
+"modes": []
+}
+},
+{
+"code": "_VMC",
+"key": "_VMC",
+"name": "video-mode-capability",
+"payload": "000200000c00000000001000040000001e0000008000000000000000",
+"result": "stored",
+"value": {
+"modes": [
+{
+"downscale": [
+{
+"interlaced": false,
+"known": true,
+"mode": 26,
+"rate": 30,
+"resolution": 1080,
+"widescreen": true
+}
+],
+"mode": {
+"interlaced": false,
+"known": true,
+"mode": 12,
+"rate": 50,
+"resolution": 1080,
+"widescreen": true
+},
+"modenum": 12,
+"multiview": [
+{
+"interlaced": false,
+"known": true,
+"mode": 12,
+"rate": 50,
+"resolution": 1080,
+"widescreen": true
+}
+],
+"reconfigure": false
+},
+{
+"downscale": [],
+"mode": {
+"interlaced": null,
+"known": false,
+"mode": 30,
+"rate": null,
+"resolution": null,
+"widescreen": null
+},
+"modenum": 30,
+"multiview": [
+{
+"interlaced": null,
+"known": false,
+"mode": 31,
+"rate": null,
+"resolution": null,
+"widescreen": null
+}
+],
+"reconfigure": false
+}
+]
+}
+},
+{
+"code": "_VMC",
+"key": "_VMC",
+"name": "video-mode-capability",
+"payload": "0001000007000000ffffffff00000000",
+"result": "stored",
+"value": {
+"modes": [
+{
+"downscale": [],
+"mode": {
+"interlaced": true,
+"known": true,
+"mode": 7,
+"rate": 59.94,
+"resolution": 1080,
+"widescreen": true
+},
+"modenum": 7,
+"multiview": [
+{
+"interlaced": true,
+"known": true,
+"mode": 0,
+"rate": 59.94,
+"resolution": 525,
+"widescreen": false
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 1,
+"rate": 50,
+"resolution": 625,
+"widescreen": false
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 2,
+"rate": 59.94,
+"resolution": 525,
+"widescreen": true
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 3,
+"rate": 50,
+"resolution": 625,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 4,
+"rate": 50,
+"resolution": 720,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 5,
+"rate": 59.94,
+"resolution": 720,
+"widescreen": true
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 6,
+"rate": 50,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 7,
+"rate": 59.94,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 8,
+"rate": 23.98,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 9,
+"rate": 24,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 10,
+"rate": 25,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 11,
+"rate": 29.97,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 12,
+"rate": 50,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 13,
+"rate": 59.94,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 14,
+"rate": 23.98,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 15,
+"rate": 24,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 16,
+"rate": 25,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 17,
+"rate": 29.97,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 18,
+"rate": 50,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 19,
+"rate": 59.94,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 20,
+"rate": 23.98,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 21,
+"rate": 24,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 22,
+"rate": 25,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 23,
+"rate": 29.97,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 24,
+"rate": 50,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 25,
+"rate": 59.94,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 26,
+"rate": 30,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 27,
+"rate": 60,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 28,
+"rate": 60,
+"resolution": 720,
+"widescreen": true
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 29,
+"rate": 60,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": null,
+"known": false,
+"mode": 30,
+"rate": null,
+"resolution": null,
+"widescreen": null
+},
+{
+"interlaced": null,
+"known": false,
+"mode": 31,
+"rate": null,
+"resolution": null,
+"widescreen": null
+}
+],
+"reconfigure": false
+}
+]
+}
+},
+{
+"code": "_VMC",
+"key": "_VMC",
+"name": "video-mode-capability",
+"payload": "000300000c0000000000000000000000010d000000000000000000000001000000000000",
+"result": "stored",
+"value": {
+"modes": [
+{
+"downscale": [],
+"mode": {
+"interlaced": false,
+"known": true,
+"mode": 12,
+"rate": 50,
+"resolution": 1080,
+"widescreen": true
+},
+"modenum": 12,
+"multiview": [],
+"reconfigure": true
+},
+{
+"downscale": [],
+"mode": {
+"interlaced": false,
+"known": true,
+"mode": 13,
+"rate": 59.94,
+"resolution": 1080,
+"widescreen": true
+},
+"modenum": 13,
+"multiview": [],
+"reconfigure": true
+}
+]
+}
+},
+{
+"code": "_VMC",
+"key": "_VMC",
+"name": "video-mode-capability",
+"payload": "00050000",
+"result": "stored",
+"value": {
+"modes": []
+}
+},
+{
+"code": "_VMC",
+"key": "_VMC",
+"name": "video-mode-capability",
+"payload": "0001",
+"result": "stored",
+"value": {
+"modes": []
+}
+},
+{
+"code": "_VMC",
+"key": "_VMC",
+"name": "video-mode-capability",
+"payload": "000100",
+"result": "stored",
+"value": {
+"modes": []
+}
+},
+{
+"code": "_VMC",
+"key": "_VMC",
+"name": "video-mode-capability",
+"payload": "00010000ff000000c00000003fffffff01",
+"result": "stored",
+"value": {
+"modes": [
+{
+"downscale": [
+{
+"interlaced": true,
+"known": true,
+"mode": 0,
+"rate": 59.94,
+"resolution": 525,
+"widescreen": false
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 1,
+"rate": 50,
+"resolution": 625,
+"widescreen": false
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 2,
+"rate": 59.94,
+"resolution": 525,
+"widescreen": true
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 3,
+"rate": 50,
+"resolution": 625,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 4,
+"rate": 50,
+"resolution": 720,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 5,
+"rate": 59.94,
+"resolution": 720,
+"widescreen": true
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 6,
+"rate": 50,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 7,
+"rate": 59.94,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 8,
+"rate": 23.98,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 9,
+"rate": 24,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 10,
+"rate": 25,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 11,
+"rate": 29.97,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 12,
+"rate": 50,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 13,
+"rate": 59.94,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 14,
+"rate": 23.98,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 15,
+"rate": 24,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 16,
+"rate": 25,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 17,
+"rate": 29.97,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 18,
+"rate": 50,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 19,
+"rate": 59.94,
+"resolution": 2160,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 20,
+"rate": 23.98,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 21,
+"rate": 24,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 22,
+"rate": 25,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 23,
+"rate": 29.97,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 24,
+"rate": 50,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 25,
+"rate": 59.94,
+"resolution": 4320,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 26,
+"rate": 30,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 27,
+"rate": 60,
+"resolution": 1080,
+"widescreen": true
+},
+{
+"interlaced": false,
+"known": true,
+"mode": 28,
+"rate": 60,
+"resolution": 720,
+"widescreen": true
+},
+{
+"interlaced": true,
+"known": true,
+"mode": 29,
+"rate": 60,
+"resolution": 1080,
+"widescreen": true
+}
+],
+"mode": {
+"interlaced": null,
+"known": false,
+"mode": 255,
+"rate": null,
+"resolution": null,
+"widescreen": null
+},
+"modenum": 255,
+"multiview": [
+{
+"interlaced": null,
+"known": false,
+"mode": 30,
+"rate": null,
+"resolution": null,
+"widescreen": null
+},
+{
+"interlaced": null,
+"known": false,
+"mode": 31,
+"rate": null,
+"resolution": null,
+"widescreen": null
+}
+],
+"reconfigure": true
+}
+]
+}
 },
 {
 "code": "_mpl",

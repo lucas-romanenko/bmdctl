@@ -177,6 +177,9 @@ func opMediaUpload(c *call) (any, bool, error) {
 	r.Name, r.Description = opts.Name, opts.Description
 	if m := c.state.VideoMode.Mode; m != nil {
 		r.Width, r.Height = m.FrameSize()
+		if r.Width == 0 {
+			return nil, false, unknownFrameSize(m)
+		}
 	}
 	ctx, cancel := c.transferCtx()
 	defer cancel()
@@ -184,6 +187,13 @@ func opMediaUpload(c *call) (any, bool, error) {
 		return nil, false, transferErr(err)
 	}
 	return r, true, nil
+}
+
+// unknownFrameSize refuses a still transfer at a video mode atemwire's
+// table lacks (bmdwire#71): its frame size is unknown, so a still can be
+// neither sized nor decoded.
+func unknownFrameSize(m *atem.VideoModeField) error {
+	return codeErr(CodeRejected, "the switcher runs video mode %s, whose frame size isn't known, so a still can't be sized for it", m.Label())
 }
 
 func opMediaDownload(c *call) (any, bool, error) {
@@ -197,6 +207,9 @@ func opMediaDownload(c *call) (any, bool, error) {
 		return nil, false, codeErr(CodeUnreachable, "the switcher hasn't reported its video mode")
 	}
 	w, h := m.FrameSize()
+	if w == 0 {
+		return nil, false, unknownFrameSize(m)
+	}
 	ctx, cancel := c.transferCtx()
 	defer cancel()
 	frame, err := c.sess.DownloadStill(c.withProgress(ctx, bytesMoved), slot)

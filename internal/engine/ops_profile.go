@@ -310,6 +310,12 @@ func (c *call) downloadImages(param, prefix string) ([]ImageResult, error) {
 		return []ImageResult{}, nil
 	}
 	w, h := m.FrameSize()
+	if w == 0 {
+		// A mode atemwire's table lacks: its frame size is unknown, so no
+		// download could be decoded (bmdwire#71, 9e52191).
+		c.e.log.Warn("media-pool image capture skipped: the video mode has no known frame size", "mode", m.Label())
+		return []ImageResult{}, nil
+	}
 	files := mediaPoolFiles(st)
 	cache := c.e.cfg.Stills
 	type still struct {
@@ -675,6 +681,10 @@ func (c *call) uploadImages(p *profile.Profile) []ImageResult {
 				return
 			}
 			w, h := mode.FrameSize()
+			if w == 0 {
+				pic.err = fmt.Errorf("the video mode %s has no known frame size", mode.Label())
+				return
+			}
 			frame, err := atem.RGBAToYCbCrA(atem.FitFrame(img, w, h), format == "png")
 			if err != nil {
 				pic.err = err

@@ -4,7 +4,7 @@
 
     python3 -I gen_profile.py /path/to/bmdwire profile.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.4.0 (which has
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.14.5 (which has
 bmdwire#22, the fly-key locations; #23, dual-mono Fairlight inputs; #24,
 macro floats to six significant digits; and #30, a Fairlight strip op with
 no sourceId as the stereo strip). The C
@@ -104,8 +104,12 @@ def norm(v, stand_in=False):
 
 def attrs(obj):
     if hasattr(obj, 'CODE'):  # a Recv instance
-        return {RENAME.get(k, k): norm(v) for k, v in vars(obj).items()
-                if k != 'raw' and not k.startswith('_')}
+        out = {RENAME.get(k, k): norm(v) for k, v in vars(obj).items()
+               if k != 'raw' and not k.startswith('_')}
+        # VideoModeField.known (bmdwire#71) is a property, not an attribute.
+        if isinstance(getattr(type(obj), 'known', None), property):
+            out['known'] = obj.known
+        return out
     out = {}
     for k in dir(obj):
         if k.startswith('_'):
@@ -1056,6 +1060,24 @@ for x in PARSE:
     record_parse(x)
 for b in PARSE_BYTES:
     record_parse(b)
+# bmdwire#71 (v1.10.0): a switcher at a mode atemwire's table lacks saves
+# its mode-<n> label, and apply reads it back; ASC's UHD names and the older
+# spellings; labels that look like mode-<n> but aren't.
+for mode in (30, 31, 200, 255):
+    sw = Switcher()
+    sw.feed('VidM', bytes([mode, 0, 0, 0]))
+    VM_STATES[mode] = sw.mixerstate
+    record_save(f'videomode-unknown-{mode}', sw.mixerstate, VM_ONLY)
+    for live_name, live in (('none', {}), ('same', VM_STATES[mode]), ('other', VM_STATES[12])):
+        record_apply(f'videomode-unknown-{mode}-{live_name}', from_save=f'videomode-unknown-{mode}',
+                     factory='default', live=live)
+record_apply('videomode-18-at-unknown', from_save='videomode-18', factory='default', live=VM_STATES[31])
+for label in ('4KHDp50', '2160p50', '8KHDp2398', '4320p2398', 'mode-30', 'mode-256', 'mode-', 'mode-x',
+              'mode-\u0661', 'mode-007', 'mode-12'):
+    record_apply(f'videomode-label-{label!r}', xml=doc(f'<VideoMode videoMode="{label}"/>'), opts=VM_APPLY)
+    record_apply(f'videomode-label-{label!r}-at-31', xml=doc(f'<VideoMode videoMode="{label}"/>'), opts=VM_APPLY,
+                 live=VM_STATES[31])
+
 # Each save parsed back: the same XML again, or the parser's refusal.
 for s in saves:
     try:
@@ -1063,7 +1085,7 @@ for s in saves:
     except Exception as e:
         s['reparse'] = exc(e)
 
-out = {'bmdwire': 'v1.4.0', 'generator': 'internal/fixtures/oracle/gen_profile.py',
+out = {'bmdwire': 'v1.14.5', 'generator': 'internal/fixtures/oracle/gen_profile.py',
        'golden': golden, 'saves': saves, 'applies': applies, 'commands': COMMANDS, 'parses': parses}
 with open(OUT, 'w') as f:
     json.dump(out, f, separators=(',', ':'), sort_keys=True, ensure_ascii=False)

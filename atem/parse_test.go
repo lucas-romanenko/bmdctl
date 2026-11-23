@@ -10,7 +10,10 @@ package atem
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
@@ -177,9 +180,134 @@ func TestVidMLabels(t *testing.T) {
 	if label(0) != "525i59.94" || label(2) != "525i59.94" || label(1) != "625i50" || label(3) != "625i50" {
 		t.Fatal(label(0), label(1), label(2), label(3))
 	}
-	// SURFACE.md §5.4 item 3: an unknown mode is an error.
-	if _, err := parseVidM([]byte{30, 0, 0, 0}); err == nil {
-		t.Fatal("mode 30 parsed")
+}
+
+// uhdList is test_unknown_video_modes.py's UHD_LIST: what a UHD switcher on
+// newer firmware might list, its HD and 4K modes plus two codes past the
+// table (30, 31) and one far out (200).
+var uhdList = []int{4, 5, 28, 6, 7, 29, 8, 9, 10, 11, 26, 12, 13, 27, 14, 15, 16, 17, 18, 19, 30, 31, 200}
+
+func b2u(b bool) uint32 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// vmcPayload is test_unknown_video_modes.py's _vmc_payload: u16 count, 2
+// pad, then per mode u8 mode, 3 pad, u32 multiview bits, u32 downconvert
+// bits (+ u8 reconfigure from protocol 8.0), padded to four bytes.
+func vmcPayload(blocks [][4]uint32, v8 bool) []byte {
+	out := []byte{byte(len(blocks) >> 8), byte(len(blocks)), 0, 0}
+	for _, b := range blocks {
+		out = append(out, byte(b[0]), 0, 0, 0)
+		out = binary.BigEndian.AppendUint32(out, b[1])
+		out = binary.BigEndian.AppendUint32(out, b[2])
+		if v8 {
+			out = append(out, byte(b[3]))
+		}
+	}
+	return append(out, make([]byte, (4-len(out)%4)%4)...)
+}
+
+func uhdBlocks() [][4]uint32 {
+	bits := uint32(1<<12 | 1<<30 | 1<<31)
+	var out [][4]uint32
+	for _, m := range uhdList {
+		out = append(out, [4]uint32{uint32(m), bits, 1 << 31, b2u(m >= 14)})
+	}
+	return out
+}
+
+// test_unknown_video_modes.py (bmdwire#71, 9e52191): every code the table
+// lacks parses as an unknown mode, labelled mode-<n>, with no frame size;
+// every known code is unchanged.
+func TestUnknownVidMCodes(t *testing.T) {
+	for m := range 256 {
+		f, err := parseVidM([]byte{byte(m), 0, 0, 0})
+		if err != nil {
+			t.Fatalf("mode %d: %v", m, err)
+		}
+		_, known := videoModes[byte(m)]
+		if f.Known != known || int(f.Mode) != m {
+			t.Errorf("mode %d: %+v", m, f)
+		}
+		w, h := f.FrameSize()
+		if !known {
+			if f.Label() != fmt.Sprintf("mode-%d", m) || w != 0 || h != 0 || f.Pixels() != 0 ||
+				f.Resolution != 0 || f.Interlaced || f.Rate != 0 || f.Widescreen {
+				t.Errorf("mode %d: %+v %q %dx%d", m, f, f.Label(), w, h)
+			}
+		} else if strings.HasPrefix(f.Label(), "mode-") || f.Pixels() != w*h || w == 0 {
+			t.Errorf("mode %d: %q %dx%d", m, f.Label(), w, h)
+		}
+	}
+}
+
+// test_vmc_with_unknown_codes_keeps_every_mode,
+// test_vmc_before_protocol_8_has_12_byte_blocks and
+// test_a_vmc_cut_short_parses_what_it_holds (bmdwire#71).
+func TestVMCUnknownModesOldBlocksAndCutPayloads(t *testing.T) {
+	cap, err := parseVMC(vmcPayload(uhdBlocks(), true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[int]*VideoModeCapability{}
+	var nums []int
+	for _, m := range cap.Modes {
+		nums = append(nums, int(m.ModeNum))
+		by[int(m.ModeNum)] = &m
+	}
+	if !slices.Equal(nums, uhdList) {
+		t.Fatalf("modes %v", nums)
+	}
+	for _, code := range []int{30, 31, 200} {
+		if m := by[code].Mode; m.Known || m.Label() != fmt.Sprintf("mode-%d", code) {
+			t.Errorf("%d: %+v", code, m)
+		}
+	}
+	if l := by[18].Mode.Label(); l != "2160p50" {
+		t.Errorf("18: %s", l)
+	}
+	var mv []string
+	for _, v := range by[10].Multiview {
+		mv = append(mv, fmt.Sprint(v.Mode, v.Known))
+	}
+	if !slices.Equal(mv, []string{"12 true", "30 false", "31 false"}) || len(by[10].Downscale) != 1 || by[10].Downscale[0].Mode != 31 {
+		t.Errorf("bitfields %v %+v", mv, by[10].Downscale)
+	}
+	if !by[14].Reconfigure || by[10].Reconfigure {
+		t.Error("reconfigure")
+	}
+
+	old, err := parseVMC(vmcPayload([][4]uint32{{10, 1 << 6, 1 << 10, 0}, {12, 1 << 12, 1 << 12, 0}, {13, 1 << 7, 1 << 13, 0}}, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got [][3]int
+	for _, m := range old.Modes {
+		got = append(got, [3]int{int(m.ModeNum), int(m.Multiview[0].Mode), int(m.Downscale[0].Mode)})
+		if m.Reconfigure {
+			t.Error("reconfigure before 8.0")
+		}
+	}
+	if !slices.Equal(got, [][3]int{{10, 6, 10}, {12, 12, 12}, {13, 7, 13}}) {
+		t.Errorf("12-byte blocks: %v", got)
+	}
+
+	full := vmcPayload(uhdBlocks(), true)
+	for _, cut := range []int{0, 1, 3, 5, 17, 30} {
+		c, err := parseVMC(full[:cut])
+		if err != nil {
+			t.Fatalf("cut %d: %v", cut, err)
+		}
+		var n []int
+		for _, m := range c.Modes {
+			n = append(n, int(m.ModeNum))
+		}
+		if !slices.Equal(n, uhdList[:len(n)]) {
+			t.Errorf("cut %d: %v", cut, n)
+		}
 	}
 }
 

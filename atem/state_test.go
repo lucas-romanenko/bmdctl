@@ -250,11 +250,12 @@ func TestVideoModeLabel(t *testing.T) {
 		label string
 		w, h  int
 	}{
-		{VideoModeField{Mode: 13, Resolution: 1080, Rate: 59.94, Widescreen: true}, "1080p59.94", 1920, 1080},
-		{VideoModeField{Mode: 6, Resolution: 1080, Interlaced: true, Rate: 50, Widescreen: true}, "1080i50", 1920, 1080},
-		{VideoModeField{Mode: 0, Resolution: 525, Interlaced: true, Rate: 59.94}, "525i59.94 4:3", 720, 480},
-		{VideoModeField{Mode: 3, Resolution: 625, Interlaced: true, Rate: 50, Widescreen: true}, "625i50 16:9", 720, 576},
-		{VideoModeField{Mode: 14, Resolution: 2160, Rate: 23.98, Widescreen: true}, "2160p23.98", 3840, 2160},
+		{VideoModeField{Mode: 13, Resolution: 1080, Rate: 59.94, Widescreen: true, Known: true}, "1080p59.94", 1920, 1080},
+		{VideoModeField{Mode: 6, Resolution: 1080, Interlaced: true, Rate: 50, Widescreen: true, Known: true}, "1080i50", 1920, 1080},
+		{VideoModeField{Mode: 0, Resolution: 525, Interlaced: true, Rate: 59.94, Known: true}, "525i59.94 4:3", 720, 480},
+		{VideoModeField{Mode: 3, Resolution: 625, Interlaced: true, Rate: 50, Widescreen: true, Known: true}, "625i50 16:9", 720, 576},
+		{VideoModeField{Mode: 14, Resolution: 2160, Rate: 23.98, Widescreen: true, Known: true}, "2160p23.98", 3840, 2160},
+		{VideoModeField{Mode: 31}, "mode-31", 0, 0},
 	} {
 		if got := c.f.Label(); got != c.label {
 			t.Errorf("mode %d: label %q, want %q", c.f.Mode, got, c.label)

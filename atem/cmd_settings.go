@@ -50,7 +50,8 @@ func (c InputProperties) build() *wire {
 }
 
 // VideoModeNames is atemwire's VIDEO_MODE_NAMES: the names set_video_mode
-// accepts, case-sensitive.
+// accepts, case-sensitive. ATEM Software Control spells the UHD modes
+// 4KHDp… and 8KHDp…; both spellings are taken (bmdwire#71, 42c7267).
 var VideoModeNames = map[string]uint8{
 	"NTSC": 0, "525i5994": 0, "PAL": 1, "625i50": 1,
 	"NTSC_widescreen": 2, "PAL_widescreen": 3,
@@ -58,12 +59,15 @@ var VideoModeNames = map[string]uint8{
 	"1080i50": 6, "1080i5994": 7, "1080i60": 29,
 	"1080p2398": 8, "1080p24": 9, "1080p25": 10, "1080p2997": 11, "1080p30": 26,
 	"1080p50": 12, "1080p5994": 13, "1080p60": 27,
+	"4KHDp2398": 14, "4KHDp24": 15, "4KHDp25": 16, "4KHDp2997": 17, "4KHDp50": 18, "4KHDp5994": 19,
+	"8KHDp2398": 20, "8KHDp24": 21, "8KHDp25": 22, "8KHDp2997": 23, "8KHDp50": 24, "8KHDp5994": 25,
 	"2160p2398": 14, "2160p24": 15, "2160p25": 16, "2160p2997": 17, "2160p50": 18, "2160p5994": 19,
 	"4320p2398": 20, "4320p24": 21, "4320p25": 22, "4320p2997": 23, "4320p50": 24, "4320p5994": 25,
 }
 
 // VideoMode is CVdM (VideoModeCommand, op set_video_mode): change the
-// switcher's video mode (0-29; see VideoModeNames). Destructive: the
+// switcher's video mode (0-29, see VideoModeNames, or any number the
+// switcher lists, such as a mode-<n> in _VMC). Destructive: the
 // outputs resync and clients may be dropped.
 type VideoMode struct {
 	Mode uint8

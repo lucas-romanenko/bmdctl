@@ -1,5 +1,5 @@
 {
-"bmdwire": "v1.4.0",
+"bmdwire": "v1.14.5",
 "cases": [
 {
 "bytes": "000c00004350674900000000",
@@ -63203,6 +63203,114 @@
 "call": "set_video_mode('1080p60')",
 "fields": {
 "Mode": 27
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d0e000000",
+"call": "set_video_mode('4KHDp2398')",
+"fields": {
+"Mode": 14
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d0f000000",
+"call": "set_video_mode('4KHDp24')",
+"fields": {
+"Mode": 15
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d10000000",
+"call": "set_video_mode('4KHDp25')",
+"fields": {
+"Mode": 16
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d11000000",
+"call": "set_video_mode('4KHDp2997')",
+"fields": {
+"Mode": 17
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d12000000",
+"call": "set_video_mode('4KHDp50')",
+"fields": {
+"Mode": 18
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d13000000",
+"call": "set_video_mode('4KHDp5994')",
+"fields": {
+"Mode": 19
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d14000000",
+"call": "set_video_mode('8KHDp2398')",
+"fields": {
+"Mode": 20
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d15000000",
+"call": "set_video_mode('8KHDp24')",
+"fields": {
+"Mode": 21
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d16000000",
+"call": "set_video_mode('8KHDp25')",
+"fields": {
+"Mode": 22
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d17000000",
+"call": "set_video_mode('8KHDp2997')",
+"fields": {
+"Mode": 23
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d18000000",
+"call": "set_video_mode('8KHDp50')",
+"fields": {
+"Mode": 24
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d19000000",
+"call": "set_video_mode('8KHDp5994')",
+"fields": {
+"Mode": 25
 },
 "result": "bytes",
 "type": "VideoMode"

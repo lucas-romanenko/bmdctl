@@ -4,7 +4,7 @@
 
     python3 -I gen_macro.py /path/to/bmdwire macro.json [fixtures/macro]
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.4.0 (which has
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.14.5 (which has
 bmdwire#22, the fly-key locations; #23, dual-mono Fairlight inputs; #24,
 macro floats to six significant digits; and #30, a Fairlight strip op with
 no sourceId as the stereo strip). The C
@@ -467,6 +467,11 @@ for raw in RAW_PARAMS:
     encode_case('Unknown_0x9999', [('rawParams', raw)])
     encode_case('Unknown_0x9999', [('rawParams', raw), ('decodeError', 'x')])
 
+# bmdwire#71 (v1.10.0): the mode-<n> label of a mode atemwire's table lacks.
+for v in ('mode-30', 'mode-0', 'mode-255', 'mode-256', 'mode-007', 'mode-', 'mode--1', 'mode-1a',
+          'mode-\u0661', 'mode- 3', 'Mode-3', 'mode-0000000000000300', '2160p50', '4KHDp50'):
+    encode_case('VideoMode', [('videoMode', v)])
+
 # --- write ------------------------------------------------------------------
 
 
@@ -475,7 +480,7 @@ def dump(c):
 
 
 with open(OUT, 'w') as f:
-    f.write('{"bmdwire":"v1.4.0","python":%s,"generator":"internal/fixtures/oracle/gen_macro.py",\n'
+    f.write('{"bmdwire":"v1.14.5","python":%s,"generator":"internal/fixtures/oracle/gen_macro.py",\n'
             % json.dumps(platform.python_version()))
     f.write('"decode":[\n' + ',\n'.join(dump(c) for c in decode_cases) + '\n],\n')
     f.write('"encode":[\n' + ',\n'.join(dump(c) for c in encode_cases) + '\n]}\n')

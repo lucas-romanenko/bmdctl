@@ -4,7 +4,7 @@
 
     python3 -I gen_recv.py /path/to/bmdwire recv.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.6.0. The C
+/path/to/bmdwire must be a checkout of bmdwire at tag v1.14.5. The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 For every opcode atemwire registers a Recv class for, plus a few it stores
@@ -74,6 +74,16 @@ def payloads(code, cls):
         out.append(struct.pack('>H2x', 1) + struct.pack('>B3x I I ?', 1, 0, 1 << 31, 1))
         out.append(struct.pack('>H2x', 2) + struct.pack('>B3x I I ?', 1, 0, 0, 0))
         out.append(b'\x00')
+        # bmdwire#71: 12-byte blocks (before protocol 8.0), a block cut
+        # short, a count with no blocks, 2 and 3 bytes, unknown modes.
+        out.append(struct.pack('>H2x', 2) + struct.pack('>B3x I I', 12, 1 << 12, 1 << 26)
+                   + struct.pack('>B3x I I', 30, 1 << 31, 0))
+        out.append(struct.pack('>H2x', 1) + struct.pack('>B3x I I', 7, 0xffffffff, 0))
+        out.append(struct.pack('>H2x', 3) + struct.pack('>B3x I I ?', 12, 0, 0, 1)
+                   + struct.pack('>B3x I I ?', 13, 0, 0, 1) + bytes(6))
+        out.append(struct.pack('>H2x', 5))
+        out += [b'\x00\x01', b'\x00\x01\x00']
+        out.append(struct.pack('>H2x', 1) + struct.pack('>B3x I I ?', 255, 0xc0000000, 0x3fffffff, 2))
     elif code == 'MPfe':
         for ln in (22, 23, 24, 25, 30, 45, 60):
             b = bytearray(rand(ln))
@@ -165,6 +175,9 @@ def attrs(obj):
                         else {str(k): lamps(t) for k, t in obj.tally.items()})
     if code == 'FASD':
         out['raw'] = obj.raw.hex()
+    # VideoModeField.known (bmdwire#71) is a property, not an attribute.
+    if isinstance(getattr(type(obj), 'known', None), property):
+        out['known'] = obj.known
     return out
 
 
@@ -223,7 +236,7 @@ for code in ('InCm', 'RCPS', 'MPCS', '_MAC', 'Zzzz'):
         cases.append(c)
 
 with open(OUT, 'w') as f:
-    json.dump({'bmdwire': 'v1.6.0', 'generator': 'internal/fixtures/oracle/gen_recv.py',
+    json.dump({'bmdwire': 'v1.14.5', 'generator': 'internal/fixtures/oracle/gen_recv.py',
                'cases': cases}, f, indent=0, sort_keys=True)
     f.write('\n')
 counts = {}

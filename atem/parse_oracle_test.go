@@ -18,7 +18,7 @@ import (
 )
 
 // oracleCase is one entry of internal/fixtures/oracle/recv.json: a payload
-// fed to bmdwire v1.6.0's AtemProtocol.save_field_data and what it did.
+// fed to bmdwire v1.14.5's AtemProtocol.save_field_data and what it did.
 type oracleCase struct {
 	Code    string         `json:"code"`
 	Payload string         `json:"payload"`
@@ -40,7 +40,7 @@ func TestParsersMatchAtemwire(t *testing.T) {
 	if err := json.Unmarshal(fixtures.Bytes(t, "oracle/recv.json"), &oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.Bmdwire != "v1.6.0" {
+	if oracle.Bmdwire != "v1.14.5" {
 		t.Fatalf("oracle generated from bmdwire %s", oracle.Bmdwire)
 	}
 	codes := map[string]bool{}
@@ -148,6 +148,13 @@ func normalize(v reflect.Value, field string) any {
 		for i := range v.NumField() {
 			f := v.Type().Field(i)
 			out[f.Tag.Get("json")] = normalize(v.Field(i), v.Type().Name()+"."+f.Name)
+		}
+		if m, ok := v.Interface().(VideoModeField); ok && !m.Known {
+			// An unknown mode's table values are None in atemwire and
+			// zero here (bmdwire#71).
+			for _, k := range []string{"resolution", "interlaced", "rate", "widescreen"} {
+				out[k] = nil
+			}
 		}
 		return out
 	case reflect.Array, reflect.Slice:

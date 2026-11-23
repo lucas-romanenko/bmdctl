@@ -26,7 +26,8 @@ var errCorrupt = errors.New("atem: zero-length command header")
 // each an 8-byte header (u16 length including the header, 2 bytes, 4-byte
 // code) and its payload, and hand each to save in order. It stops at the
 // first error, losing the rest of the packet, as an exception escaping
-// atemwire's loop() does.
+// atemwire's loop() does; since bmdwire#71 the session's save takes a
+// field's parse error itself and goes on.
 func decodeFields(data []byte, save func(code string, payload []byte) error) error {
 	for off := 0; off < len(data); {
 		if len(data)-off < 8 {
@@ -54,7 +55,8 @@ func decodeFields(data []byte, save func(code string, payload []byte) error) err
 // counterpart, put it where atemwire's KEY_FORMAT (or the strip id) puts
 // it, and return the change to publish. A nil change means the command was
 // consumed without being stored. A parse error is atemwire's exception out
-// of the Recv constructor: the caller drops the rest of the packet.
+// of the Recv constructor: the session drops that field and goes on with
+// the rest of the packet (bmdwire#71, 564593d).
 func (s *State) store(code string, payload []byte) (*Change, error) {
 	if !utf8.ValidString(code) {
 		// atemwire's fieldname.decode() raises here.

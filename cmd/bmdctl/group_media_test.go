@@ -156,3 +156,27 @@ func TestTransferProgressNotes(t *testing.T) {
 		t.Errorf("%v %+v, last progress %+v", err, resp, last)
 	}
 }
+
+// test_unknown_video_modes.py::test_media_pool_images_at_an_unknown_mode_downloads_nothing
+// (bmdwire#71): at a video mode atemwire's table lacks the frame size is
+// unknown, so a still is neither uploaded nor downloaded, and the session
+// itself connects (it used to lose its VidM and time out).
+func TestMediaAtAnUnknownVideoMode(t *testing.T) {
+	dump := bytes.Clone(fixtures.Bytes(t, "dump/initial-dump.bin"))
+	dump[bytes.Index(dump, []byte("VidM"))+4] = 31
+	b := newBenchDump(t, dump)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	logo := filepath.Join(dir, "logo.png")
+	os.WriteFile(logo, testPNG(t), 0o644)
+	for _, args := range [][]string{{"media", "upload", "3", logo}, {"media", "download", "1"}} {
+		if code, _, errOut := b.run(with(args...)...); code != exitRejected || !strings.Contains(errOut, "mode-31") {
+			t.Errorf("%v: %d %q", args, code, errOut)
+		}
+	}
+	for _, c := range b.switchers()[0].Commands() {
+		if code := string(c[4:8]); code == "PLCK" || code == "LOCK" || code == "FTSD" || code == "FTSU" {
+			t.Errorf("sent %s", code)
+		}
+	}
+}

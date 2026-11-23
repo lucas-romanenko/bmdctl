@@ -406,85 +406,88 @@ func parseTlSr(b []byte) (*TallySourceField, error) {
 	return f, nil
 }
 
-// videoModes is VideoModeField._MODE_TABLE: mode → resolution, interlaced,
-// field rate, widescreen.
+// videoModes is VideoModeField.MODE_TABLE: mode → resolution, interlaced,
+// field rate, widescreen (and Known).
 var videoModes = map[uint8]VideoModeField{
-	0: {0, 525, true, 59.94, false}, 1: {1, 625, true, 50, false},
-	2: {2, 525, true, 59.94, true}, 3: {3, 625, true, 50, true},
-	4: {4, 720, false, 50, true}, 5: {5, 720, false, 59.94, true},
-	6: {6, 1080, true, 50, true}, 7: {7, 1080, true, 59.94, true},
-	8: {8, 1080, false, 23.98, true}, 9: {9, 1080, false, 24, true},
-	10: {10, 1080, false, 25, true}, 11: {11, 1080, false, 29.97, true},
-	12: {12, 1080, false, 50, true}, 13: {13, 1080, false, 59.94, true},
-	14: {14, 2160, false, 23.98, true}, 15: {15, 2160, false, 24, true},
-	16: {16, 2160, false, 25, true}, 17: {17, 2160, false, 29.97, true},
-	18: {18, 2160, false, 50, true}, 19: {19, 2160, false, 59.94, true},
-	20: {20, 4320, false, 23.98, true}, 21: {21, 4320, false, 24, true},
-	22: {22, 4320, false, 25, true}, 23: {23, 4320, false, 29.97, true},
-	24: {24, 4320, false, 50, true}, 25: {25, 4320, false, 59.94, true},
-	26: {26, 1080, false, 30, true}, 27: {27, 1080, false, 60, true},
-	28: {28, 720, false, 60, true}, 29: {29, 1080, true, 60, true},
+	0: {0, 525, true, 59.94, false, true}, 1: {1, 625, true, 50, false, true},
+	2: {2, 525, true, 59.94, true, true}, 3: {3, 625, true, 50, true, true},
+	4: {4, 720, false, 50, true, true}, 5: {5, 720, false, 59.94, true, true},
+	6: {6, 1080, true, 50, true, true}, 7: {7, 1080, true, 59.94, true, true},
+	8: {8, 1080, false, 23.98, true, true}, 9: {9, 1080, false, 24, true, true},
+	10: {10, 1080, false, 25, true, true}, 11: {11, 1080, false, 29.97, true, true},
+	12: {12, 1080, false, 50, true, true}, 13: {13, 1080, false, 59.94, true, true},
+	14: {14, 2160, false, 23.98, true, true}, 15: {15, 2160, false, 24, true, true},
+	16: {16, 2160, false, 25, true, true}, 17: {17, 2160, false, 29.97, true, true},
+	18: {18, 2160, false, 50, true, true}, 19: {19, 2160, false, 59.94, true, true},
+	20: {20, 4320, false, 23.98, true, true}, 21: {21, 4320, false, 24, true, true},
+	22: {22, 4320, false, 25, true, true}, 23: {23, 4320, false, 29.97, true, true},
+	24: {24, 4320, false, 50, true, true}, 25: {25, 4320, false, 59.94, true, true},
+	26: {26, 1080, false, 30, true, true}, 27: {27, 1080, false, 60, true, true},
+	28: {28, 720, false, 60, true, true}, 29: {29, 1080, true, 60, true, true},
 }
 
-// videoMode is VideoModeField(mode): an unknown mode is an error, as it is
-// a ValueError in atemwire (SURFACE.md §5.4 item 3).
-func videoMode(mode uint8) (VideoModeField, error) {
+// UnknownVideoModePrefix starts the label of a video mode atemwire's table
+// lacks: "mode-<n>" (input_video._UNKNOWN_MODE_PREFIX, bmdwire#71). The
+// number is the switcher's own, so it can still be set; profiles and macros
+// read the label back as that number.
+const UnknownVideoModePrefix = "mode-"
+
+// videoMode is VideoModeField(mode). A mode the table lacks is kept as an
+// unknown mode, Known false (bmdwire#71, 9e52191); until v1.10.0 atemwire
+// raised ValueError, which lost the rest of the packet (SURFACE.md §5.4
+// item 3).
+func videoMode(mode uint8) VideoModeField {
 	m, ok := videoModes[mode]
 	if !ok {
-		return VideoModeField{}, fmt.Errorf("atem: unknown resolution code %d, cannot continue", mode)
+		return VideoModeField{Mode: mode}
 	}
-	return m, nil
+	return m
 }
 
 func parseVidM(b []byte) (*VideoModeField, error) {
 	if err := atLeast("VidM", b, 1); err != nil {
 		return nil, err
 	}
-	m, err := videoMode(b[0])
-	if err != nil {
-		return nil, err
-	}
+	m := videoMode(b[0])
 	return &m, nil
 }
 
-// parseVMC: a count, then from byte 4 one 13-byte entry per mode (mode,
-// 3 pad bytes, multiview and downscale bitfields, reconfigure).
+// parseVMC: a count, then from byte 4 one block per mode (mode, 3 pad
+// bytes, multiview and downscale bitfields, and from protocol 8.0 the
+// reconfigure flag). As in bmdwire v1.10.0 (bmdwire#71, 9e52191) it never
+// fails: under two bytes there are no modes; a block is 13 bytes, or 12
+// (before protocol 8.0, reconfigure false) when the payload holds the
+// count's 12-byte blocks but not its 13-byte ones; a block cut short by
+// the end of the payload ends the list; and an unknown mode number, in a
+// block or a bitfield, is an unknown mode.
 func parseVMC(b []byte) (*VideoModeCapabilityField, error) {
-	if err := atLeast("_VMC", b, 2); err != nil {
-		return nil, err
-	}
 	f := &VideoModeCapabilityField{Modes: []VideoModeCapability{}}
-	modes := func(bits uint32) ([]VideoModeField, error) {
+	if len(b) < 2 {
+		return f, nil
+	}
+	modes := func(bits uint32) []VideoModeField {
 		out := []VideoModeField{}
 		for i := range 32 {
 			if bits&(1<<i) != 0 {
-				m, err := videoMode(uint8(i))
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, m)
+				out = append(out, videoMode(uint8(i)))
 			}
 		}
-		return out, nil
+		return out
 	}
-	for i := range int(u16(b, 0)) {
-		off := 4 + 13*i
-		if err := atLeast("_VMC", b, off+13); err != nil {
-			return nil, err
+	count := int(u16(b, 0))
+	size := 13
+	if 4+count*12 <= len(b) && len(b) < 4+count*13 {
+		size = 12
+	}
+	for i := range count {
+		off := 4 + size*i
+		if off+size > len(b) {
+			break
 		}
-		var c VideoModeCapability
-		var err error
-		c.ModeNum = b[off]
-		if c.Mode, err = videoMode(c.ModeNum); err != nil {
-			return nil, err
-		}
-		if c.Multiview, err = modes(u32(b, off+4)); err != nil {
-			return nil, err
-		}
-		if c.Downscale, err = modes(u32(b, off+8)); err != nil {
-			return nil, err
-		}
-		c.Reconfigure = flag(b, off+12)
+		c := VideoModeCapability{ModeNum: b[off], Mode: videoMode(b[off])}
+		c.Multiview = modes(u32(b, off+4))
+		c.Downscale = modes(u32(b, off+8))
+		c.Reconfigure = size == 13 && b[off+12] != 0
 		f.Modes = append(f.Modes, c)
 	}
 	return f, nil

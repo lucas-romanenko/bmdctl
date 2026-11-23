@@ -12,6 +12,7 @@ package atem
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -257,6 +258,9 @@ type Session struct {
 	// hello are Dial's limits (dialStalled).
 	dialStart    time.Time
 	stall, hello time.Duration
+	// fieldErrorsLogged holds the codes of the fields that failed to
+	// parse and were logged at Error (onData), for the session's life.
+	fieldErrorsLogged map[string]bool
 
 	// Shared.
 	reqs      chan func()   // closures the run goroutine executes
@@ -303,6 +307,7 @@ func newSession(conn net.PacketConn, raddr *net.UDPAddr, log *slog.Logger, silen
 		lane:              newLane(),
 		reqs:              make(chan func()),
 		legacyAudioLogged: make(map[string]bool),
+		fieldErrorsLogged: make(map[string]bool),
 		datagrams:         make(chan datagram, 256),
 		quit:              make(chan struct{}),
 		done:              make(chan struct{}),
@@ -695,51 +700,21 @@ var timeRequest = []byte{0, 8, 0, 0, 'T', 'i', 'R', 'q'}
 func (s *Session) onData(data []byte) {
 	s.protoConnected = true
 	err := decodeFields(data, func(code string, payload []byte) error {
-		switch code {
-		case "LKOB", "FTCD", "FTDa", "FTDE", "FTDC":
-			return s.onTransferPacket(code, payload)
-		case "LKST":
-			// The engine reacts to a release first, then it is stored and
-			// published, as in save_field_data.
-			v, err := parsers[code].parse(payload)
-			if err != nil {
-				return err
-			}
-			if f := v.(*LockStateField); !f.State {
-				s.onLockReleased(f.Store)
-			} else {
-				s.onLockTaken(f.Store)
-			}
-		}
-		c, err := s.state.store(code, payload)
-		if err != nil && !s.initialized && s.dumpErr == nil {
-			s.dumpErr = fmt.Errorf("%s: %w", code, err)
-		}
-		if err != nil || c == nil {
+		err := s.onField(code, payload)
+		if err == nil || errors.Is(err, errIncomplete) || errors.Is(err, errCorrupt) {
 			return err
 		}
-		s.publish(*c)
-		if legacyAudioDiagnosticKeys[code] {
-			s.logLegacyAudio(code, payload, c)
-		}
-		if code == "InCm" {
-			if !s.state.hasVideoMode() && s.incompleteDumps < incompleteDumpRetries {
-				// Its first packet was lost for good (the first reliable
-				// packet set the receive baseline): ask for a fresh dump
-				// at once, as atemwire raises IncompleteStateDump.
-				s.incompleteDumps++
-				s.log.Error("atem: the state dump ended without a video mode, so its first packet was probably lost; re-handshaking",
-					"first_sequence", s.t.firstRX, "attempt", s.incompleteDumps, "of", incompleteDumpRetries)
-				return errIncomplete
-			}
-			// The end of the state dump: the next packet reports ready.
-			s.t.markNextConnected = true
-			if s.state.hasVideoMode() {
-				s.incompleteDumps = 0
-			} else {
-				s.incompleteDumps = 0
-				s.incompleteDump()
-			}
+		// A field that fails to parse costs only itself (bmdwire#71,
+		// 564593d, _save_field_guarded): logged at Error the first time
+		// for its code, then at Debug, and the next field goes on. Until
+		// v1.10.0 the rest of the packet was lost with it, so an unknown
+		// video mode in _VMC cost the VidM behind it.
+		if s.fieldErrorsLogged[code] {
+			s.log.Debug("atem: field dropped again: it could not be parsed", "code", code, "err", err)
+		} else {
+			s.fieldErrorsLogged[code] = true
+			s.log.Error("atem: field could not be parsed; dropped, the rest of the packet goes on",
+				"code", code, "bytes", len(payload), "payload", hex.EncodeToString(payload[:min(len(payload), 32)]), "err", err)
 		}
 		return nil
 	})
@@ -749,10 +724,62 @@ func (s *Session) onData(data []byte) {
 	case errors.Is(err, errCorrupt):
 		s.resync("atem: protocol corruption, forcing a clean session reconnect")
 	case err != nil:
-		// An exception escaping atemwire's loop(): the rest of this
-		// packet is lost, the session carries on.
+		// decode_packet's own errors (a truncated command header): the
+		// rest of this packet is lost, the session carries on.
 		s.log.Error("atem: packet dropped part way", "err", err)
 	}
+}
+
+// onField is save_field_data for one command of a packet's data, with what
+// AtemProtocol.loop does around it.
+func (s *Session) onField(code string, payload []byte) error {
+	switch code {
+	case "LKOB", "FTCD", "FTDa", "FTDE", "FTDC":
+		return s.onTransferPacket(code, payload)
+	case "LKST":
+		// The engine reacts to a release first, then it is stored and
+		// published, as in save_field_data.
+		v, err := parsers[code].parse(payload)
+		if err != nil {
+			return err
+		}
+		if f := v.(*LockStateField); !f.State {
+			s.onLockReleased(f.Store)
+		} else {
+			s.onLockTaken(f.Store)
+		}
+	}
+	c, err := s.state.store(code, payload)
+	if err != nil && !s.initialized && s.dumpErr == nil {
+		s.dumpErr = fmt.Errorf("%s: %w", code, err)
+	}
+	if err != nil || c == nil {
+		return err
+	}
+	s.publish(*c)
+	if legacyAudioDiagnosticKeys[code] {
+		s.logLegacyAudio(code, payload, c)
+	}
+	if code == "InCm" {
+		if !s.state.hasVideoMode() && s.incompleteDumps < incompleteDumpRetries {
+			// Its first packet was lost for good (the first reliable
+			// packet set the receive baseline): ask for a fresh dump
+			// at once, as atemwire raises IncompleteStateDump.
+			s.incompleteDumps++
+			s.log.Error("atem: the state dump ended without a video mode, so its first packet was probably lost; re-handshaking",
+				"first_sequence", s.t.firstRX, "attempt", s.incompleteDumps, "of", incompleteDumpRetries)
+			return errIncomplete
+		}
+		// The end of the state dump: the next packet reports ready.
+		s.t.markNextConnected = true
+		if s.state.hasVideoMode() {
+			s.incompleteDumps = 0
+		} else {
+			s.incompleteDumps = 0
+			s.incompleteDump()
+		}
+	}
+	return nil
 }
 
 // logLegacyAudio logs the first legacy-audio packet of each key (AMIP per
@@ -792,7 +819,7 @@ func (s *Session) logAudioMixer() {
 func (s *Session) incompleteDump() {
 	err := fmt.Errorf("%w: the first dump packet to arrive was sequence %d, and any the switcher sent before it was lost", ErrIncompleteDump, s.t.firstRX)
 	if s.dumpErr != nil {
-		err = fmt.Errorf("%w; a parse error also dropped part of the dump (%w)", err, s.dumpErr)
+		err = fmt.Errorf("%w; a field of the dump also failed to parse and was dropped (%w)", err, s.dumpErr)
 	}
 	if !s.dialed {
 		s.fatal = err
