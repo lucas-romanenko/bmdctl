@@ -5,7 +5,7 @@
     python3 -I gen_recv.py /path/to/bmdwire recv.json
 
 /path/to/bmdwire must be a checkout of bmdwire at the version internal/fixtures/README.md
-names (v1.14.5 with bmdwire#93, 27b8ba9). The C
+names (v1.14.6). The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 For every opcode atemwire registers a Recv class for, plus a few it stores

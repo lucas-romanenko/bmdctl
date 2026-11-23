@@ -5,7 +5,7 @@
     python3 -I gen_readers.py /path/to/bmdwire readers.json
 
 /path/to/bmdwire must be a checkout of bmdwire at the version internal/fixtures/README.md
-names (v1.14.5 with bmdwire#93, 27b8ba9). The C
+names (v1.14.6). The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 The readers are the functions in atemwire.messages.* whose first parameter

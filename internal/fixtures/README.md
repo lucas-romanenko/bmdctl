@@ -109,10 +109,9 @@ it against a bmdwire checkout at the version the file's `bmdwire` field
 and its row name to regenerate: `imaging.json` at tag `v1.3.0` (bmdwire's
 imaging code is the same at v1.4.0), `macro.json` and `profile.json` at
 tag `v1.14.5`, and `recv.json`, `send.json` and `readers.json` at
-`v1.14.5-2-g27b8ba9`, the head of bmdwire#93 (the legacy mixer's headphone
-output), which they record as `git describe` gives it. Regenerate those
-three at the release that carries #93 once it is merged; they come out the
-same bar the version. Run them with CPython 3.12.3, which `macro.json` records:
+`v1.14.6`, the release carrying bmdwire#93 (the legacy mixer's headphone
+output); generated first at #93's head, they came out the same at the tag
+bar the version. Run them with CPython 3.12.3, which `macro.json` records:
 CPython 3.12.15 and 3.13 parse a zero-length Pascal string that 3.12.3
 refuses, so `recv.json`'s 23-byte `MPfe` case comes out stored instead
 of an error.

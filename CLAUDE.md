@@ -1,8 +1,8 @@
 # bmdctl: notes for future sessions
 
 bmdctl is a Go port of bmdwire (`../bmdwire`), written against v1.3.0
-(tag `v1.3.0`, commit `e5e336c`) and following v1.14.5 (tag `v1.14.5`,
-commit `41b57e7`) with bmdwire#93 ahead of its release, as
+(tag `v1.3.0`, commit `e5e336c`) and following v1.14.6 (tag `v1.14.6`,
+commit `75503ed`), as
 `docs/PORTING.md` ("Source of truth") says, plus one CLI binary. Read `docs/PORTING.md`
 before changing anything in `atem/`: it records every decision already
 made, so you follow it instead of re-deriving it. Add to it whenever you
@@ -41,8 +41,8 @@ shows (colour, the prompt, the spinner) is snapshot-tested in
 `internal/fixtures/oracle/` and the `testdata/oracle/` of `hyperdeck/`,
 `videohub/` and `ultimatte/` are regenerated with the scripts beside
 them (see the README there) against `../bmdwire` at the version each
-file records (`recv.json`, `send.json` and `readers.json` at bmdwire#93's
-head `v1.14.5-2-g27b8ba9` until a release carries it, `macro.json` and
+file records (`recv.json`, `send.json` and `readers.json` at `v1.14.6`,
+the release carrying bmdwire#93, `macro.json` and
 `profile.json` at `v1.14.5`, the Videohub oracle at `v1.6.0`, the
 Ultimatte one at `v1.7.0` (the same at `v1.14.5`); `imaging.json` at
 `v1.3.0`, the README says why; the HyperDeck `client.json` at

@@ -267,7 +267,7 @@ func TestReadersMatchAtemwire(t *testing.T) {
 	if err := dec.Decode(&oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.Bmdwire != "v1.14.5-2-g27b8ba9" {
+	if oracle.Bmdwire != "v1.14.6" {
 		t.Fatalf("oracle generated from bmdwire %s", oracle.Bmdwire)
 	}
 	if len(oracle.Readers) != 95 {

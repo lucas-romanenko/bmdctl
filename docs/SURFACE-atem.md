@@ -1,8 +1,6 @@
 <!--
-Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at v1.14.5 with
-bmdwire#93 (v1.14.5-2-g27b8ba9, commit 27b8ba9), which is what bmdwire
-main holds once #93 merges. It is the specification for bmdctl's atem
-package.
+Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at v1.14.6
+(commit 75503ed). It is the specification for bmdctl's atem package.
 
 Its own header says which bmdwire it describes, and §5.4 marks the fixes
 made since; all of them are in what the port follows (docs/PORTING.md,
@@ -779,6 +777,7 @@ Profile enum tables (`profile/_enums.py`):
 | HyperDeck bind planning | `hyperdeck.plan_binding_push(mx, deck_ip, switcher_input, *, exclude_slots=()) -> (slot\|None, needs_write)` | pure function; the write is `set_hyperdeck_settings` |
 | full snapshot | `state.build_full_state(conn)` / `ATEM.snapshot()` | §2.6 |
 | meters | `fairlight.enable_fairlight_levels`, `audio_legacy.enable_audio_levels` | opt-in streams (`FMLv`/`FDLv`, `AMLv`) at ~10 Hz; re-arm after every reconnect |
+| session count | `sessions.count_sessions(ip, *, port=9910, limit=16, answer_timeout=10.0, max_sessions=None) -> {'ip', 'free', 'full', 'stopped', 'model', 'max', 'in_use', 'session_ids', 'accepts', 'seconds'}`; command `python -m atemwire.sessions IP [--json] [--limit N] [--max N]` | how many sessions the switcher has free, by everyone. The switcher reports no client count, so it opens handshake sessions one at a time (each waits for the answer to the last, each pumped and ACKed like any client) until the hello is answered `0x03`, then sends every one the goodbye (a session whose first packet, and so its id, hasn't come yet is waited for up to `CLOSE_ID_TIMEOUT`, 5 s, so its goodbye carries the id). `stopped` is `'no room'` (`full`, `free` exact), `'limit'` (at least `free`) or `'no answer'` (nothing for `answer_timeout`; at least `free`). `in_use = max - free`, derived, only when `full` and the model's max is known (`max_sessions`, else `sessions.MAX_SESSIONS[model]`, empty until measured on an idle unit). `session_ids` and `accepts` (each 0x02 answer's payload, hex) are kept as evidence for whether the switcher numbers sessions by table slot (unverified). The report shows `free`, and `in use` only when the max is known. Sessions already open are untouched; while it holds the table full (well under a second on a good link) anyone else's hello is answered `0x03`, so it is not for use during a live show |
 | macro record by replay | `macro_start_recording` → ops → `macro_sleep` → `macro_stop_recording` | the live way to build a macro without bytecode |
 
 ## 4. Connection lifecycle
@@ -1028,6 +1027,7 @@ fixed after 1.9.0 and still apply to it. Items 48 to 52 were fixed in 1.13.0 and
 after 1.14.2 and still applies to 1.11.0 through 1.14.2.
 Items 54 and 55 were fixed in 1.14.4 and still apply to 1.14.3 and earlier.
 Item 56 was fixed in 1.14.5 and still applies to 1.12.0 through 1.14.4.
+Item 57 was fixed in 1.14.6 and still applies to 1.6.0 through 1.14.5.
 
 1. **Profile video mode does not round-trip at fractional rates** (1.2.0). Save writes
    `get_label()` (`1080p59.94`); apply only knows `1080p5994`-style names, so it skips the mode as
@@ -1461,7 +1461,7 @@ Item 56 was fixed in 1.14.5 and still applies to 1.12.0 through 1.14.4.
 57. **On a legacy mixer the headphones read the monitor bus** (1.6.0). The legacy mixer's
     headphone packet `AMHP` had no class, so it was stored raw under `mx['AMHP']`, and
     `legacy_audio_headphones` gave the monitor bus (`AMmO`); on a unit with a headphone output
-    that may be the wrong bus (bmdwire#51). *Fixed in `7ac3b4c`:* `AMHP` is parsed, `CAMH` /
+    that may be the wrong bus (bmdwire#51). *Fixed in 1.14.6 (`7ac3b4c`):* `AMHP` is parsed, `CAMH` /
     `set_audio_headphones` write it, the reader takes it when the unit sends one and says which
     with `bus`, and the first `AMHP` is logged with the other legacy-audio packets (§1.11, §2.4).
     Which models send it is still not known. Untested on a switcher.

@@ -6,11 +6,10 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.14.5
+Tracks: bmdwire v1.14.6
 
-- The port follows **bmdwire v1.14.5** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.14.5`, commit `41b57e7`), and bmdwire#93 ahead of its release
-  (below). Up to v1.8.0 (tag `v1.8.0`, commit `01024ad`) that was
+- The port follows **bmdwire v1.14.6** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.14.6`, commit `75503ed`). Up to v1.8.0 (tag `v1.8.0`, commit `01024ad`) that was
   v1.4.0 (tag `v1.4.0`, commit `394435c`), bmdwire#36, #38, #40, #42,
   #46, #47, #49, #52, #53, #56, #57, #59 and #60; after it, the releases
   listed below. It was
@@ -185,23 +184,24 @@ Tracks: bmdwire v1.14.5
   (`3c3ce1d`, "HyperDeck"). 1.14.2 changed only wording, 1.14.3 to
   1.14.5 only the ATEM transport (above). videohubwire has not changed
   since 1.8.0.
-- **bmdwire#93** (`7ac3b4c`, head `27b8ba9`; not yet in a release): the
-  legacy mixer's headphone output, `AMHP` and `CAMH`, and
-  `LegacyAudioHeadphones` reading it ("Parsers", "Commands", "Readers"),
-  ported in `d02e7b3` ahead of its release, with its oracles at its head
-  (`v1.14.5-2-g27b8ba9`). The `Tracks:` line stays at `v1.14.5` until a
-  release carries #93 (expected 1.14.6); then regenerate those oracles
-  at that tag, change the three `Bmdwire` checks in the oracle tests and
-  move the line. If #93 is not taken, `d02e7b3` comes out and the rest
-  stands at `v1.14.5`.
+- **bmdwire 1.14.6** is bmdwire#93 (`7ac3b4c`, merged as `52bd2a8`) and
+  #79 (`938e822`, merged as `63486b6`). #93, the legacy mixer's
+  headphone output, `AMHP` and `CAMH`, and `LegacyAudioHeadphones`
+  reading it ("Parsers", "Commands", "Readers"), was ported ahead of the
+  release with its oracles at #93's head; `recv.json`, `send.json` and
+  `readers.json` regenerated at `v1.14.6` came out the same bar the
+  version. #79, `python -m atemwire.sessions`, counts a switcher's free
+  sessions by opening sessions until it answers "no room": not ported.
+  It is a hand-run tool outside atemwire's public layers that fills the
+  switcher's session table while it runs, and its only protocol
+  knowledge, the `0x03` answer, the transport has had since bmdwire#75.
 - The `Tracks:` line above says the same on one line, for workflows to
   read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.14.5`. Keep it a line of its own, exactly
+  tag `v1.14.6`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at v1.14.5 with bmdwire#93
-  (`27b8ba9`), what bmdwire main holds once #93 merges, whose §5.4 marks
+  header naming the version: bmdwire's at v1.14.6 (`75503ed`), whose §5.4 marks
   each fix. It is the specification for `atem/`. Its body says it describes
   1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
   follows, so it describes that apart from those marks.
@@ -728,8 +728,8 @@ with a store function (where `save_field_data` puts the result);
   except the classic mixer's meters (`AMLv`), where Go's `math.Log10` and
   CPython's libm `log10` can differ in the last place.
 - **Verification.** `internal/fixtures/oracle/recv.json` holds 1,080
-  payloads fed to the real `save_field_data` of bmdwire v1.14.5 with
-  bmdwire#93 (`v1.14.5-2-g27b8ba9`) and what it did with each;
+  payloads fed to the real `save_field_data` of bmdwire v1.14.6 and what
+  it did with each;
   `VideoModeField`'s `known` is recorded (a property), and `_top`'s
   payload as `raw`. `TestParsersMatchAtemwire` replays every case: same error or
   not, same consumed/raw/stored outcome, same key, same attribute values

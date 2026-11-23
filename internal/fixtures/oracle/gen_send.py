@@ -5,7 +5,7 @@
     python3 -I gen_send.py /path/to/bmdwire send.json
 
 /path/to/bmdwire must be a checkout of bmdwire at the version internal/fixtures/README.md
-names (v1.14.5 with bmdwire#93, 27b8ba9); its C
+names (v1.14.6); its C
 extension is stubbed. Each case calls one atemwire operation (or, for the
 fields no operation sets, the Send class itself) on a fake connection and
 records what went out: the command's bytes, an error (atemwire raised, in
