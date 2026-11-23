@@ -23,7 +23,8 @@ func TestProbeFindsTheSwitcher(t *testing.T) {
 	}
 	// The handshake completed and the session said goodbye to: nothing
 	// dangles, neither a SYN answered nor a session open.
-	if hs, bye := sw.Handshakes(), sw.Goodbyes(); hs != 1 || bye != 1 {
+	// The goodbye goes three times (bmdwire#103), as Close says it.
+	if hs, bye := sw.Handshakes(), sw.Goodbyes(); hs != 1 || bye != 3 {
 		t.Errorf("%d handshakes, %d goodbyes", hs, bye)
 	}
 	if sw.Dangling() {
