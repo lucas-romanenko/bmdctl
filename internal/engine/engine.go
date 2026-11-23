@@ -612,8 +612,15 @@ func dialMessage(key string, err error) string {
 	case errors.Is(err, context.DeadlineExceeded) && strings.HasSuffix(key, fmt.Sprintf(":%d", videohub.DefaultPort)):
 		// videohub.Dial tries twice, each try ConnectTimeout.
 		return fmt.Sprintf("no Videohub answered at %s (tried twice, %v each)", key, videohub.ConnectTimeout)
+	case errors.Is(err, atem.ErrNoFreeConnection):
+		// "No room" (bmdwire#75): the switcher is there, every slot taken.
+		return fmt.Sprintf("%s: no free connection on this switcher (ATEM Software Control, panels or other clients are using all its slots)", key)
+	case errors.Is(err, atem.ErrNoAnswer):
+		return fmt.Sprintf("no switcher answered at %s within %v", key, atem.ConnectHelloTimeout)
+	case errors.Is(err, atem.ErrStalled):
+		return fmt.Sprintf("the switcher at %s stopped sending during the connect (nothing for %v)", key, atem.ConnectStallTimeout)
 	case errors.Is(err, context.DeadlineExceeded):
-		return fmt.Sprintf("no switcher answered at %s within %v", key, atem.ConnectTimeout)
+		return fmt.Sprintf("no switcher answered at %s within %v", key, atem.ConnectMax)
 	}
 	return err.Error()
 }
@@ -643,7 +650,11 @@ func (e *Engine) dial(h *host) {
 			s = v
 		}
 	default:
-		ctx, cancel := context.WithTimeout(e.ctx, atem.ConnectTimeout)
+		// Dial gives up on no progress (atem.ConnectStallTimeout, or
+		// ConnectHelloTimeout before the switcher answers) and at once on
+		// "no room"; a dump that keeps arriving is waited for up to
+		// ConnectMax (bmdwire#75).
+		ctx, cancel := context.WithTimeout(e.ctx, atem.ConnectMax)
 		var a *atem.Session
 		a, err = e.cfg.Dial(ctx, h.key)
 		cancel()
