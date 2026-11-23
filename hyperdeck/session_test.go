@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -251,6 +252,40 @@ func TestASilentGreetingFailsDialAfterConnectTimeout(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) || took < ConnectTimeout || took > ConnectTimeout+3*time.Second {
 		t.Errorf("%v after %v, want a deadline after %v", err, took, ConnectTimeout)
 	}
+}
+
+// A deck that takes the connection and closes it before its greeting
+// fails Dial, and the connection Dial opened is closed, not left for the
+// collector: hyperdeckwire's session hygiene test (bmdwire v1.14.1,
+// test_connect_greeting_failure_closes_socket_and_clears_sock). Its other
+// case, a reconnect over a live connection, has nothing to mirror here:
+// a Session is never dialled again, a new Dial is a new Session.
+func TestAGreetingFailureClosesTheConnection(t *testing.T) {
+	t.Parallel()
+	var near *closeCounter
+	closing := func(context.Context, string, string) (net.Conn, error) {
+		n, far := net.Pipe()
+		far.Close() // EOF before any greeting
+		near = &closeCounter{Conn: n}
+		return near, nil
+	}
+	_, err := (&Dialer{DialContext: closing}).Dial(context.Background(), "192.0.2.11:9993")
+	if err == nil {
+		t.Fatal("dialled")
+	}
+	if near == nil || near.closed.Load() != 1 {
+		t.Errorf("connection closed %d times, want 1", near.closed.Load())
+	}
+}
+
+type closeCounter struct {
+	net.Conn
+	closed atomic.Int32
+}
+
+func (c *closeCounter) Close() error {
+	c.closed.Add(1)
+	return c.Conn.Close()
 }
 
 func TestALineBreakIsRefused(t *testing.T) {
