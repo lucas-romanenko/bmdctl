@@ -4,7 +4,8 @@
 
     python3 -I gen_recv.py /path/to/bmdwire recv.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.6.0. The C
+/path/to/bmdwire must be a checkout of bmdwire at the version internal/fixtures/README.md
+names (v1.14.6). The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 For every opcode atemwire registers a Recv class for, plus a few it stores
@@ -19,10 +20,15 @@ in atem/ checks the port does the same for every case.
 import json
 import random
 import struct
+import subprocess
 import sys
 import types
 
 BMDWIRE, OUT = sys.argv[1], sys.argv[2]
+# The version the file records: the bmdwire checkout's git describe, a tag
+# (v1.14.5) or a commit past one (v1.14.5-2-g7ac3b4c).
+BMDWIRE_VERSION = subprocess.run(['git', '-C', BMDWIRE, 'describe', '--tags', '--always'],
+                                 capture_output=True, text=True, check=True).stdout.strip()
 sys.path.insert(0, BMDWIRE)
 stub = types.ModuleType('atemwire.mediaconvert')
 stub.rgb_to_atem = stub.atem_to_rgb = stub.rle_encode = None
@@ -74,6 +80,16 @@ def payloads(code, cls):
         out.append(struct.pack('>H2x', 1) + struct.pack('>B3x I I ?', 1, 0, 1 << 31, 1))
         out.append(struct.pack('>H2x', 2) + struct.pack('>B3x I I ?', 1, 0, 0, 0))
         out.append(b'\x00')
+        # bmdwire#71: 12-byte blocks (before protocol 8.0), a block cut
+        # short, a count with no blocks, 2 and 3 bytes, unknown modes.
+        out.append(struct.pack('>H2x', 2) + struct.pack('>B3x I I', 12, 1 << 12, 1 << 26)
+                   + struct.pack('>B3x I I', 30, 1 << 31, 0))
+        out.append(struct.pack('>H2x', 1) + struct.pack('>B3x I I', 7, 0xffffffff, 0))
+        out.append(struct.pack('>H2x', 3) + struct.pack('>B3x I I ?', 12, 0, 0, 1)
+                   + struct.pack('>B3x I I ?', 13, 0, 0, 1) + bytes(6))
+        out.append(struct.pack('>H2x', 5))
+        out += [b'\x00\x01', b'\x00\x01\x00']
+        out.append(struct.pack('>H2x', 1) + struct.pack('>B3x I I ?', 255, 0xc0000000, 0x3fffffff, 2))
     elif code == 'MPfe':
         for ln in (22, 23, 24, 25, 30, 45, 60):
             b = bytearray(rand(ln))
@@ -163,8 +179,11 @@ def attrs(obj):
         lamps = lambda t: {'program': t[0], 'preview': t[1]}
         out['tally'] = ([lamps(t) for t in obj.tally] if code == 'TlIn'
                         else {str(k): lamps(t) for k, t in obj.tally.items()})
-    if code == 'FASD':
+    if code in ('FASD', '_top'):
         out['raw'] = obj.raw.hex()
+    # VideoModeField.known (bmdwire#71) is a property, not an attribute.
+    if isinstance(getattr(type(obj), 'known', None), property):
+        out['known'] = obj.known
     return out
 
 
@@ -210,8 +229,14 @@ def run(code, payload):
     return {'result': 'stored', 'name': path[0], 'key': k, 'value': attrs(contents)}
 
 
+# Codes added after the file's cases were first drawn go last, so the
+# fixed seed gives every earlier code the payloads it gave it before:
+# AMHP, the legacy mixer's headphone output (bmdwire#93).
+LATE = ('AMHP',)
 cases = []
 for code, cls in sorted(M.RECV_BY_CODE.items()):
+    if code in LATE:
+        continue
     for b in payloads(code, cls):
         c = {'code': code, 'payload': b.hex()}
         c.update(run(code, b))
@@ -221,9 +246,15 @@ for code in ('InCm', 'RCPS', 'MPCS', '_MAC', 'Zzzz'):
         c = {'code': code, 'payload': b.hex()}
         c.update(run(code, b))
         cases.append(c)
+for code in LATE:
+    if code in M.RECV_BY_CODE:
+        for b in payloads(code, M.RECV_BY_CODE[code]):
+            c = {'code': code, 'payload': b.hex()}
+            c.update(run(code, b))
+            cases.append(c)
 
 with open(OUT, 'w') as f:
-    json.dump({'bmdwire': 'v1.6.0', 'generator': 'internal/fixtures/oracle/gen_recv.py',
+    json.dump({'bmdwire': BMDWIRE_VERSION, 'generator': 'internal/fixtures/oracle/gen_recv.py',
                'cases': cases}, f, indent=0, sort_keys=True)
     f.write('\n')
 counts = {}

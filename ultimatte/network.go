@@ -105,7 +105,13 @@ func ParseInterface(text string, index int) (NetworkInterface, error) {
 		v := int(n)
 		iface.Priority = &v
 	}
-	switch pytext.Lower(get("Dynamic IP")) {
+	// "Dynamic IP" as a 12 4K sends it, else "DynamicIP" as the protocol
+	// document's example spells it (bmdwire v1.14.0).
+	dynamic := get("Dynamic IP")
+	if dynamic == "" {
+		dynamic = get("DynamicIP")
+	}
+	switch pytext.Lower(dynamic) {
 	case "true":
 		iface.Dynamic = new(true)
 	case "false":

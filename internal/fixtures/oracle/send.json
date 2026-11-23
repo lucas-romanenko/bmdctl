@@ -1,5 +1,5 @@
 {
-"bmdwire": "v1.4.0",
+"bmdwire": "v1.14.6",
 "cases": [
 {
 "bytes": "000c00004350674900000000",
@@ -63209,6 +63209,114 @@
 },
 {
 "bytes": "000c00004356644d0e000000",
+"call": "set_video_mode('4KHDp2398')",
+"fields": {
+"Mode": 14
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d0f000000",
+"call": "set_video_mode('4KHDp24')",
+"fields": {
+"Mode": 15
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d10000000",
+"call": "set_video_mode('4KHDp25')",
+"fields": {
+"Mode": 16
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d11000000",
+"call": "set_video_mode('4KHDp2997')",
+"fields": {
+"Mode": 17
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d12000000",
+"call": "set_video_mode('4KHDp50')",
+"fields": {
+"Mode": 18
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d13000000",
+"call": "set_video_mode('4KHDp5994')",
+"fields": {
+"Mode": 19
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d14000000",
+"call": "set_video_mode('8KHDp2398')",
+"fields": {
+"Mode": 20
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d15000000",
+"call": "set_video_mode('8KHDp24')",
+"fields": {
+"Mode": 21
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d16000000",
+"call": "set_video_mode('8KHDp25')",
+"fields": {
+"Mode": 22
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d17000000",
+"call": "set_video_mode('8KHDp2997')",
+"fields": {
+"Mode": 23
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d18000000",
+"call": "set_video_mode('8KHDp50')",
+"fields": {
+"Mode": 24
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d19000000",
+"call": "set_video_mode('8KHDp5994')",
+"fields": {
+"Mode": 25
+},
+"result": "bytes",
+"type": "VideoMode"
+},
+{
+"bytes": "000c00004356644d0e000000",
 "call": "set_video_mode('2160p2398')",
 "fields": {
 "Mode": 14
@@ -64736,6 +64844,152 @@
 },
 "result": "bytes",
 "type": "TransferAck"
+},
+{
+"bytes": "0014000043414d48020000007fff000000000000",
+"call": "set_audio_headphones({'program_out_gain': 32767})",
+"fields": {
+"ProgramOutGain": 32767
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48030000010000000000000000",
+"call": "set_audio_headphones({'gain': 1, 'program_out_gain': 0})",
+"fields": {
+"Gain": 1,
+"ProgramOutGain": 0
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48000000000000000000000000",
+"call": "set_audio_headphones({})",
+"fields": {},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48010000000000000000000000",
+"call": "set_audio_headphones({'gain': 0})",
+"fields": {
+"Gain": 0
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48080000000000000003e80000",
+"call": "set_audio_headphones({'sidetone_gain': 1000})",
+"fields": {
+"SidetoneGain": 1000
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d480a0000000bc2000000010000",
+"call": "set_audio_headphones({'program_out_gain': 3010, 'sidetone_gain': 1})",
+"fields": {
+"ProgramOutGain": 3010,
+"SidetoneGain": 1
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48080000000000000003e80000",
+"call": "set_audio_headphones({'sidetone_gain': 1000})",
+"fields": {
+"SidetoneGain": 1000
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d480a000000000100000bc20000",
+"call": "set_audio_headphones({'program_out_gain': 1, 'sidetone_gain': 3010})",
+"fields": {
+"ProgramOutGain": 1,
+"SidetoneGain": 3010
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48080000000000000000010000",
+"call": "set_audio_headphones({'sidetone_gain': 1})",
+"fields": {
+"SidetoneGain": 1
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48000000000000000000000000",
+"call": "set_audio_headphones({})",
+"fields": {},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d480200000003e8000000000000",
+"call": "set_audio_headphones({'program_out_gain': 1000})",
+"fields": {
+"ProgramOutGain": 1000
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48070000000000ffff00000000",
+"call": "set_audio_headphones({'gain': 0, 'program_out_gain': 0, 'talkback_gain': 65535})",
+"fields": {
+"Gain": 0,
+"ProgramOutGain": 0,
+"TalkbackGain": 65535
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48010000000000000000000000",
+"call": "set_audio_headphones({'gain': 0})",
+"fields": {
+"Gain": 0
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d48000000000000000000000000",
+"call": "set_audio_headphones({})",
+"fields": {},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d480c0000000000000100000000",
+"call": "set_audio_headphones({'talkback_gain': 1, 'sidetone_gain': 0})",
+"fields": {
+"SidetoneGain": 0,
+"TalkbackGain": 1
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
+},
+{
+"bytes": "0014000043414d480700ffff03e8000000000000",
+"call": "set_audio_headphones({'gain': 65535, 'program_out_gain': 1000, 'talkback_gain': 0})",
+"fields": {
+"Gain": 65535,
+"ProgramOutGain": 1000,
+"TalkbackGain": 0
+},
+"result": "bytes",
+"type": "AudioHeadphoneProperties"
 }
 ],
 "generator": "internal/fixtures/oracle/gen_send.py"

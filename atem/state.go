@@ -182,8 +182,11 @@ type Audio struct {
 	Inputs  map[string]*AudioInputField       `atem:"AMIP" json:"inputs"`
 	Master  *AudioMixerMasterPropertiesField  `atem:"AMMO" json:"master"`
 	Monitor *AudioMixerMonitorPropertiesField `atem:"AMmO" json:"monitor"`
-	Tally   *AudioMixerTallyField             `atem:"AMTl" json:"tally"`
-	Levels  *AudioMeterLevelsField            `atem:"AMLv" json:"levels"`
+	// Headphones is the headphone output of a unit that has one
+	// (bmdwire#93).
+	Headphones *AudioMixerHeadphonePropertiesField `atem:"AMHP" json:"headphones"`
+	Tally      *AudioMixerTallyField               `atem:"AMTl" json:"tally"`
+	Levels     *AudioMeterLevelsField              `atem:"AMLv" json:"levels"`
 }
 
 // Multiviewer is multiviewer-properties and, per window,
@@ -962,6 +965,18 @@ type AudioMixerMonitorPropertiesField struct {
 	DimVolume  uint16 `json:"dim_volume"`
 }
 
+// AudioMixerHeadphonePropertiesField is AMHP,
+// mixerstate['audio-mixer-headphone-properties'], bare (bmdwire#93): the
+// headphone output on a legacy audio unit that has one, each gain a legacy
+// volume (32768 is 0 dB). The layout is LibAtem's
+// AudioMixerHeadphoneGetCommand; no switcher has checked it.
+type AudioMixerHeadphonePropertiesField struct {
+	Gain           uint16 `json:"gain"`
+	ProgramOutGain uint16 `json:"program_out_gain"`
+	TalkbackGain   uint16 `json:"talkback_gain"`
+	SidetoneGain   uint16 `json:"sidetone_gain"`
+}
+
 // AudioMixerTallyField is AMTl, mixerstate['audio-mixer-tally'], bare.
 // Tally is keyed "<source>.0".
 type AudioMixerTallyField struct {
@@ -1166,17 +1181,24 @@ type TallySourceField struct {
 
 // VideoModeField is VidM, mixerstate['video-mode'], bare. Resolution,
 // Interlaced, Rate (the field rate) and Widescreen come from atemwire's
-// mode table.
+// mode table. A mode number the table lacks (newer firmware lists modes
+// it doesn't have) is kept, not refused (bmdwire#71, 9e52191): Known is
+// false, and the four table values, None in atemwire, are zero here.
 type VideoModeField struct {
 	Mode       uint8   `json:"mode"`
 	Resolution int     `json:"resolution"`
 	Interlaced bool    `json:"interlaced"`
 	Rate       float64 `json:"rate"`
 	Widescreen bool    `json:"widescreen"`
+	Known      bool    `json:"known"`
 }
 
-// Label is atemwire's get_label: "1080p59.94", "625i50 16:9".
+// Label is atemwire's get_label: "1080p59.94", "625i50 16:9", and
+// "mode-<n>" for a mode the table lacks (bmdwire#71).
 func (f *VideoModeField) Label() string {
+	if !f.Known {
+		return UnknownVideoModePrefix + strconv.Itoa(int(f.Mode))
+	}
 	pi := "p"
 	if f.Interlaced {
 		pi = "i"
@@ -1192,7 +1214,8 @@ func (f *VideoModeField) Label() string {
 }
 
 // FrameSize is atemwire's get_resolution: the frame in pixels. It returns
-// 0, 0 for a resolution atemwire's table lacks (atemwire raises KeyError).
+// 0, 0 where atemwire returns None: for a mode the table lacks
+// (bmdwire#71), whose frame size is unknown.
 func (f *VideoModeField) FrameSize() (width, height int) {
 	switch f.Resolution {
 	case 525:
@@ -1211,7 +1234,8 @@ func (f *VideoModeField) FrameSize() (width, height int) {
 	return 0, 0
 }
 
-// Pixels is atemwire's get_pixels.
+// Pixels is atemwire's get_pixels: 0 where atemwire returns None, for a
+// mode the table lacks.
 func (f *VideoModeField) Pixels() int {
 	w, h := f.FrameSize()
 	return w * h
@@ -1284,6 +1308,9 @@ type TopologyField struct {
 	Stingers            uint8 `json:"stingers"`
 	SuperSources        uint8 `json:"supersources"`
 	MultiviewerRoutable bool  `json:"multiviewer_routable"`
+	// Raw is the payload, which TopologyBlockCounts reads at the offsets
+	// the switcher's protocol version calls for (bmdwire#70).
+	Raw []byte `json:"raw"`
 }
 
 // MixerEffectConfigField is _MeC, mixerstate['mixer-effect-config'][me]:

@@ -2,9 +2,9 @@
 
 package ultimatte
 
-// The connections and the 9996 binary channel of bmdwire v1.7.0's
-// ultimattewire/_protocol.py: _connect_with_retry, binary_request and
-// upload_one.
+// The connections and the 9996 binary channel of ultimattewire's
+// _protocol.py: _connect_with_retry, binary_request and upload_one
+// (bmdwire v1.7.0), upload_stream and _read_write_ack (v1.14.0).
 
 import (
 	"context"
@@ -48,7 +48,8 @@ const ackLen = 6
 
 // Client reaches Ultimatte units. ultimattewire keeps nothing between
 // calls, and neither does a Client: every method opens its own
-// connections and closes them. The zero value is ready to use.
+// connections and closes them, but for Open, which opens a Session that
+// lasts until it is closed. The zero value is ready to use.
 type Client struct {
 	// DialContext opens a TCP connection; nil means a net.Dialer's.
 	// Tests point it at internal/fakeultimatte.
@@ -56,6 +57,9 @@ type Client struct {
 	// The timings; zero means ultimattewire's (the Default constants).
 	ConnectTimeout, ReadTimeout, PreludeQuiet, ReplyQuiet, PreludeDrain time.Duration
 	ReadbackTimeout, ReadbackPoll, RetryDelay                           time.Duration
+	// IdleTimeout and FunctionIdleTimeout are a Session's no-progress
+	// waits; zero means DefaultIdleTimeout and DefaultFunctionIdleTimeout.
+	IdleTimeout, FunctionIdleTimeout time.Duration
 
 	// now and sleep are set_network's clock; tests replace them.
 	now   func() time.Time
@@ -76,10 +80,21 @@ func (c *Client) connectTimeout() time.Duration { return or(c.ConnectTimeout, De
 // prelude, UltimatteNetworkError for the text channel, ValueError for an
 // argument refused, TimeoutError for a read that timed out), Msg is its
 // message. errors.Is tells the kinds apart.
+//
+// The session (Session, bmdwire v1.14.0) adds its own classes:
+// UltimatteConnectionError (ErrConnection), UltimatteTimeout
+// (ErrTimeout), UltimatteNak (ErrRefused, Block the block refused),
+// UltimatteMessageError (ErrMessage, Message the MESSAGE's items and
+// Block the block it answered), and the value checks' ControlValueError
+// (ErrControlValue) and UnsupportedError (ErrUnsupported), both also
+// ErrValue, as both are ValueErrors there. Every ultimattewire error is
+// an *Error: errors.As catches the lot, as except UltimatteError does.
 type Error struct {
-	Class string
-	Msg   string
-	kind  error
+	Class   string
+	Msg     string
+	Block   string
+	Message map[string]string
+	kind    error
 }
 
 func (e *Error) Error() string { return e.Msg }
@@ -98,7 +113,30 @@ var (
 	ErrUnsettled = errors.New("ultimatte: did not settle")
 	// ErrValue: an argument refused before anything is sent.
 	ErrValue = errors.New("ultimatte: invalid argument")
+	// ErrControlValue: a value the protocol document says the control
+	// can't take (ControlValueError). Also ErrValue.
+	ErrControlValue error = &subKind{"ultimatte: control value refused", ErrValue}
+	// ErrUnsupported: a control, block or command the document says this
+	// model or protocol version lacks (UnsupportedError). Also ErrValue.
+	ErrUnsupported error = &subKind{"ultimatte: not on this unit", ErrValue}
+	// ErrConnection: no session, or it was lost (UltimatteConnectionError).
+	ErrConnection = errors.New("ultimatte: no session")
+	// ErrTimeout: the unit went quiet while it owed an answer
+	// (UltimatteTimeout).
+	ErrTimeout = errors.New("ultimatte: no answer")
+	// ErrMessage: the unit answered a command with a MESSAGE block
+	// (UltimatteMessageError).
+	ErrMessage = errors.New("ultimatte: answered with a message")
 )
+
+// subKind is a kind that is also another, as a Python subclass is.
+type subKind struct {
+	msg    string
+	parent error
+}
+
+func (k *subKind) Error() string { return k.msg }
+func (k *subKind) Unwrap() error { return k.parent }
 
 func ioError(kind error, format string, args ...any) *Error {
 	return &Error{Class: "IOError", Msg: fmt.Sprintf(format, args...), kind: kind}
@@ -261,6 +299,80 @@ func (c *Client) UploadOne(ctx context.Context, host string, opcode uint16, name
 	if err := write(ctx, conn, frame, timeout); err != nil {
 		return err
 	}
+	return readWriteAck(ctx, conn, timeout)
+}
+
+// UploadStream is upload_stream (bmdwire v1.14.0): UploadOne's frame
+// with the data read from r as it goes out instead of built in memory,
+// size bytes of it (1 byte to 4 GiB, in the header). progress, when not
+// nil, is called with the bytes sent so far after each chunk; an error
+// from it abandons the write. Data that ends before size, or goes on
+// past it, is an *Error, and the trailing zero is then never sent, so
+// the unit can't take a short or long file.
+func (c *Client) UploadStream(ctx context.Context, host string, opcode uint16, name string, size int64, r io.Reader, progress func(sent, size int64) error) error {
+	if size <= 0 || size > 0xFFFFFFFF {
+		return ioError(ErrValue, "payload size %d doesn't fit the frame (1 to 4 GiB)", size)
+	}
+	head := binary.BigEndian.AppendUint16(nil, opcode)
+	head = binary.BigEndian.AppendUint32(head, uint32(len(name)))
+	head = append(head, name...)
+	head = binary.BigEndian.AppendUint32(head, uint32(size))
+	conn, err := c.connect(ctx, host, SettingsPort, c.connectTimeout())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer watch(ctx, conn)()
+	timeout := or(c.ReadTimeout, DefaultReadTimeout)
+	if err := write(ctx, conn, head, timeout); err != nil {
+		return err
+	}
+	var sent int64
+	buf := make([]byte, StreamChunk)
+	for {
+		// One byte past what is owed tells "longer than announced" apart
+		// from "exactly as long".
+		want := min(int64(len(buf)), size-sent+1)
+		k, rerr := io.ReadFull(r, buf[:want])
+		if k > 0 {
+			if sent+int64(k) > size {
+				return ioError(ErrValue, "the data is longer than the %d bytes announced", size)
+			}
+			if err := write(ctx, conn, buf[:k], timeout); err != nil {
+				return err
+			}
+			sent += int64(k)
+			if progress != nil {
+				if err := progress(sent, size); err != nil {
+					return err
+				}
+			}
+		}
+		if rerr == io.EOF || rerr == io.ErrUnexpectedEOF {
+			break
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
+	if sent != size {
+		return ioError(ErrValue, "the data ended after %d of the %d bytes announced", sent, size)
+	}
+	if err := write(ctx, conn, []byte{0}, timeout); err != nil {
+		return err
+	}
+	return readWriteAck(ctx, conn, timeout)
+}
+
+// StreamChunk is how much UploadStream reads and sends at a time
+// (media.upload_image's chunk_size).
+const StreamChunk = 256 << 10
+
+// readWriteAck is _read_write_ack: the unit's answer to a write, zero
+// bytes. It sends the ACK and closes at once, so fewer than six and then
+// the close is a success (a 12 4K answered an image with one zero byte);
+// any other byte is a refusal.
+func readWriteAck(ctx context.Context, conn net.Conn, timeout time.Duration) error {
 	var ack []byte
 	chunk := make([]byte, ackLen)
 	for len(ack) < ackLen {

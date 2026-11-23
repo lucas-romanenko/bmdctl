@@ -63,7 +63,7 @@ func loadOracle(t *testing.T) oracle {
 	if err := json.Unmarshal(fixtures.Bytes(t, "oracle/macro.json"), &o); err != nil {
 		t.Fatal(err)
 	}
-	if o.Bmdwire != "v1.4.0" {
+	if o.Bmdwire != "v1.14.5" {
 		t.Fatalf("oracle generated from bmdwire %s", o.Bmdwire)
 	}
 	return o

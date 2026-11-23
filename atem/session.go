@@ -12,6 +12,7 @@ package atem
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,8 +23,24 @@ import (
 	"time"
 )
 
-// ConnectTimeout bounds Dial when its context has no deadline: atemwire's
-// CONNECT_TIMEOUT, the handshake plus the whole initial state dump.
+// How long a connect waits (bmdwire#75, 1.12.0; bmdwire#77, 1.12.1). Dial
+// waits while the switcher keeps sending its state dump, however long a
+// big dump over a slow link takes, and gives up once nothing has come
+// from the switcher for ConnectStallTimeout, or ConnectHelloTimeout before
+// its first answer (two of the transport's 5 s hellos, so one lost hello
+// or answer is not a failed connect). ConnectMax bounds Dial when its
+// context has no deadline. A switcher that answers "no room" fails it at
+// once (ErrNoFreeConnection).
+const (
+	ConnectStallTimeout = 5 * time.Second
+	ConnectHelloTimeout = 10 * time.Second
+	ConnectMax          = 60 * time.Second
+)
+
+// ConnectTimeout is atemwire's CONNECT_TIMEOUT. Until bmdwire#75 it bounded
+// every connect (the handshake plus the whole state dump); now it bounds
+// only the wait for a session that is re-handshaking after a silence to
+// finish its new dump (the engine's waitReady).
 const ConnectTimeout = 15 * time.Second
 
 // burstSpacing is the least time between two command packets (atemwire's
@@ -53,11 +70,25 @@ var (
 	// re-handshakes did too. The error says which sequence number came
 	// first.
 	ErrIncompleteDump = errors.New("atem: the state dump ended without a video mode")
+	// ErrNoFreeConnection is returned by Dial at once when the switcher
+	// answers the hello 0x03, "no room": every client slot it has is
+	// taken (bmdwire#75, atemwire's NoFreeConnection).
+	ErrNoFreeConnection = errors.New("atem: " + noFreeConnectionMessage)
+	// ErrNoAnswer is returned by Dial when the switcher has not answered
+	// the hello within ConnectHelloTimeout (bmdwire#77).
+	ErrNoAnswer = errors.New("atem: no answer from the switcher")
+	// ErrStalled is returned by Dial when the switcher answered but then
+	// sent nothing for ConnectStallTimeout before its state dump was
+	// complete (bmdwire#75).
+	ErrStalled = errors.New("atem: the switcher stopped sending")
 
 	// errIncomplete stops a packet's commands at an InCm that ended a dump
 	// without a video mode: the session re-handshakes for a fresh one.
 	errIncomplete = errors.New("atem: the state dump ended without a video mode")
 )
+
+// noFreeConnectionMessage is NoFreeConnection.MESSAGE.
+const noFreeConnectionMessage = "no free connection on this switcher (ATEM Software Control, panels or other clients are using all its slots)"
 
 // incompleteDumpRetries is how many times in a row a dump that ends
 // without a video mode is answered by a re-handshake for a fresh one, as
@@ -107,13 +138,18 @@ type Dialer struct {
 	AggressiveDrain bool
 
 	silence time.Duration // tests shorten the 5 s silence timeout
+	// Tests shorten Dial's limits; zero means ConnectStallTimeout and
+	// ConnectHelloTimeout.
+	stall, hello time.Duration
 }
 
 // Dial connects to the switcher at addr ("host" or "host:port", UDP 9910 by
 // default) and returns once the handshake is done, the whole initial state
 // dump has arrived and the switcher has reported its video mode: atemwire's
-// ATEMConnection.connect and wait_ready. If ctx has no deadline,
-// ConnectTimeout applies.
+// ATEMConnection.connect and wait_ready. It gives up once the switcher has
+// sent nothing for ConnectStallTimeout (ErrStalled), or ConnectHelloTimeout
+// before it answered at all (ErrNoAnswer), and at once on "no room"
+// (ErrNoFreeConnection). If ctx has no deadline, ConnectMax applies.
 func Dial(ctx context.Context, addr string) (*Session, error) {
 	var d Dialer
 	return d.Dial(ctx, addr)
@@ -123,7 +159,7 @@ func Dial(ctx context.Context, addr string) (*Session, error) {
 func (d *Dialer) Dial(ctx context.Context, addr string) (*Session, error) {
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, ConnectTimeout)
+		ctx, cancel = context.WithTimeout(ctx, ConnectMax)
 		defer cancel()
 	}
 	raddr, err := resolve(ctx, addr)
@@ -139,14 +175,26 @@ func (d *Dialer) Dial(ctx context.Context, addr string) (*Session, error) {
 		// 16 MiB as atemwire asks, stepping down: macOS refuses more than
 		// kern.ipc.maxsockbuf with errno 55 (ENOBUFS) instead of capping
 		// (bmdwire#46, 968798e). None taken leaves the system's default.
+		asked := 0
 		for _, mib := range []int{16, 8, 4, 1} {
 			if uc.SetReadBuffer(mib<<20) == nil {
+				asked = mib << 20
 				break
 			}
+		}
+		if got, ok := readBuffer(uc); ok {
+			checkReadBuffer(d.Logger, asked, got)
 		}
 		conn = uc
 	}
 	s := newSession(conn, raddr, d.Logger, d.silence)
+	s.stall, s.hello = ConnectStallTimeout, ConnectHelloTimeout
+	if d.stall > 0 {
+		s.stall = d.stall
+	}
+	if d.hello > 0 {
+		s.hello = d.hello
+	}
 	if d.AggressiveDrain {
 		s.t.setAggressiveDrain()
 	}
@@ -206,6 +254,13 @@ type Session struct {
 	// legacyAudioLogged holds the keys of the legacy-audio packets
 	// already logged (logLegacyAudio), for the session's life.
 	legacyAudioLogged map[string]bool
+	// dialStart is when the run goroutine sent the first hello; stall and
+	// hello are Dial's limits (dialStalled).
+	dialStart    time.Time
+	stall, hello time.Duration
+	// fieldErrorsLogged holds the codes of the fields that failed to
+	// parse and were logged at Error (onData), for the session's life.
+	fieldErrorsLogged map[string]bool
 
 	// Shared.
 	reqs      chan func()   // closures the run goroutine executes
@@ -252,6 +307,7 @@ func newSession(conn net.PacketConn, raddr *net.UDPAddr, log *slog.Logger, silen
 		lane:              newLane(),
 		reqs:              make(chan func()),
 		legacyAudioLogged: make(map[string]bool),
+		fieldErrorsLogged: make(map[string]bool),
 		datagrams:         make(chan datagram, 256),
 		quit:              make(chan struct{}),
 		done:              make(chan struct{}),
@@ -417,10 +473,15 @@ func (s *Session) run() {
 func (s *Session) loop() error {
 	s.pace = time.NewTimer(time.Hour)
 	s.pace.Stop()
+	s.dialStart = s.t.now()
 	if err := s.t.connect(); err != nil {
 		return err
 	}
 	silence := time.NewTimer(s.t.silence)
+	// stalled fires when Dial's stall limit would be reached
+	// (dialStalled); stopped once Dial has returned.
+	stalled := time.NewTimer(time.Hour)
+	stalled.Stop()
 	// resend fires when the transport's unacknowledged packets are due to
 	// be sent again (resendAfter, bmdwire#36); stopped while none are.
 	resend := time.NewTimer(time.Hour)
@@ -430,10 +491,9 @@ func (s *Session) loop() error {
 		case <-s.quit:
 			return nil
 		case d := <-s.datagrams:
-			if d.err != nil {
-				return fmt.Errorf("atem: read: %w", d.err)
+			if err := s.drain(d); err != nil {
+				return err
 			}
-			s.onDatagram(d)
 		case f := <-s.reqs:
 			f()
 			// Run everything else already waiting before sending, so
@@ -459,9 +519,17 @@ func (s *Session) loop() error {
 			}
 		case <-resend.C:
 			s.t.resendUnacked()
+		case <-stalled.C:
+			s.checkDialStall()
 		}
 		if s.fatal != nil {
 			return s.fatal
+		}
+		if s.dialed || s.stall <= 0 {
+			stalled.Stop()
+		} else {
+			_, due := s.dialStalled(s.t.now())
+			stalled.Reset(max(0, due.Sub(s.t.now())))
 		}
 		silence.Reset(time.Until(s.t.lastRX.Add(s.t.silence)))
 		if due := s.t.resendDue; due.IsZero() {
@@ -494,6 +562,70 @@ func (s *Session) shutdown() {
 	s.waiters, s.subs = nil, nil
 }
 
+// drain is _drain_socket (bmdwire#73): the datagram that woke the run
+// goroutine and every one already waiting behind it, up to drainMax, then
+// the cumulative ACK they are owed, and one every ackEvery of a long run.
+// atemwire's UDP thread fell behind a still download at line rate when it
+// read one datagram and sent one ACK per packet; here the reads are
+// another goroutine's, but the ACKs mirror bmdwire's on the wire.
+func (s *Session) drain(d datagram) error {
+	s.t.batching = true
+	for n := 1; ; n++ {
+		if d.err != nil {
+			return fmt.Errorf("atem: read: %w", d.err)
+		}
+		s.onDatagram(d)
+		if s.fatal != nil {
+			return s.fatal
+		}
+		if s.t.acksOwed >= ackEvery {
+			if err := s.t.flushACK(); err != nil {
+				return err
+			}
+		}
+		if n == drainMax {
+			break
+		}
+		select {
+		case d = <-s.datagrams:
+			continue
+		default:
+		}
+		break
+	}
+	s.t.batching = false
+	return s.t.flushACK()
+}
+
+// dialStalled is wait_ready's stall test (bmdwire#75, #77): whether Dial
+// has waited out its limit at now, and when it will if nothing arrives.
+// The limit counts from the switcher's last datagram (ConnectStallTimeout)
+// or, before its first answer, from the first hello (ConnectHelloTimeout).
+// Reaching it counts, as atemwire's >= does since bmdwire#88.
+func (s *Session) dialStalled(now time.Time) (bool, time.Time) {
+	base, limit := s.dialStart, s.hello
+	if last := s.t.lastHeard; !last.IsZero() && !last.Before(s.dialStart) {
+		base, limit = last, s.stall
+	}
+	due := base.Add(limit)
+	return !now.Before(due), due
+}
+
+// checkDialStall ends a Dial that has waited out its stall limit.
+func (s *Session) checkDialStall() {
+	if s.dialed || s.stall <= 0 {
+		return
+	}
+	if stalled, _ := s.dialStalled(s.t.now()); !stalled {
+		return
+	}
+	if last := s.t.lastHeard; !last.IsZero() && !last.Before(s.dialStart) {
+		s.fatal = fmt.Errorf("%w: nothing from it for %v", ErrStalled, s.stall)
+	} else {
+		s.fatal = fmt.Errorf("%w within %v", ErrNoAnswer, s.hello)
+	}
+}
+
 func (s *Session) onDatagram(d datagram) {
 	pkts, err := s.t.receive(d.b, d.from)
 	if err != nil {
@@ -505,6 +637,15 @@ func (s *Session) onDatagram(d datagram) {
 		h, err := s.t.handle(p)
 		if err != nil {
 			s.fatal = err
+			return
+		}
+		if s.t.refused && !s.dialed {
+			// "No room" (bmdwire#75): Dial fails at once, where it used
+			// to wait out its timeout as for a switcher that is off. A
+			// session already dialled that is refused on a re-handshake
+			// keeps asking, every silence timeout, as atemwire's UDP
+			// thread does.
+			s.fatal = ErrNoFreeConnection
 			return
 		}
 		if h.ready {
@@ -545,6 +686,9 @@ func (s *Session) onReady() {
 		return
 	}
 	s.logAudioMixer()
+	// _log_topology (bmdwire#70, 8defba1): so that a log from any model
+	// can confirm where its _top keeps the block counts.
+	s.log.Info("atem: topology at connect: " + s.state.TopologyDiagnostic())
 	if !s.readyClosed {
 		s.readyClosed = true
 		close(*s.ready.Load())
@@ -559,51 +703,21 @@ var timeRequest = []byte{0, 8, 0, 0, 'T', 'i', 'R', 'q'}
 func (s *Session) onData(data []byte) {
 	s.protoConnected = true
 	err := decodeFields(data, func(code string, payload []byte) error {
-		switch code {
-		case "LKOB", "FTCD", "FTDa", "FTDE", "FTDC":
-			return s.onTransferPacket(code, payload)
-		case "LKST":
-			// The engine reacts to a release first, then it is stored and
-			// published, as in save_field_data.
-			v, err := parsers[code].parse(payload)
-			if err != nil {
-				return err
-			}
-			if f := v.(*LockStateField); !f.State {
-				s.onLockReleased(f.Store)
-			} else {
-				s.onLockTaken(f.Store)
-			}
-		}
-		c, err := s.state.store(code, payload)
-		if err != nil && !s.initialized && s.dumpErr == nil {
-			s.dumpErr = fmt.Errorf("%s: %w", code, err)
-		}
-		if err != nil || c == nil {
+		err := s.onField(code, payload)
+		if err == nil || errors.Is(err, errIncomplete) || errors.Is(err, errCorrupt) {
 			return err
 		}
-		s.publish(*c)
-		if legacyAudioDiagnosticKeys[code] {
-			s.logLegacyAudio(code, payload, c)
-		}
-		if code == "InCm" {
-			if !s.state.hasVideoMode() && s.incompleteDumps < incompleteDumpRetries {
-				// Its first packet was lost for good (the first reliable
-				// packet set the receive baseline): ask for a fresh dump
-				// at once, as atemwire raises IncompleteStateDump.
-				s.incompleteDumps++
-				s.log.Error("atem: the state dump ended without a video mode, so its first packet was probably lost; re-handshaking",
-					"first_sequence", s.t.firstRX, "attempt", s.incompleteDumps, "of", incompleteDumpRetries)
-				return errIncomplete
-			}
-			// The end of the state dump: the next packet reports ready.
-			s.t.markNextConnected = true
-			if s.state.hasVideoMode() {
-				s.incompleteDumps = 0
-			} else {
-				s.incompleteDumps = 0
-				s.incompleteDump()
-			}
+		// A field that fails to parse costs only itself (bmdwire#71,
+		// 564593d, _save_field_guarded): logged at Error the first time
+		// for its code, then at Debug, and the next field goes on. Until
+		// v1.10.0 the rest of the packet was lost with it, so an unknown
+		// video mode in _VMC cost the VidM behind it.
+		if s.fieldErrorsLogged[code] {
+			s.log.Debug("atem: field dropped again: it could not be parsed", "code", code, "err", err)
+		} else {
+			s.fieldErrorsLogged[code] = true
+			s.log.Error("atem: field could not be parsed; dropped, the rest of the packet goes on",
+				"code", code, "bytes", len(payload), "payload", hex.EncodeToString(payload[:min(len(payload), 32)]), "err", err)
 		}
 		return nil
 	})
@@ -613,10 +727,62 @@ func (s *Session) onData(data []byte) {
 	case errors.Is(err, errCorrupt):
 		s.resync("atem: protocol corruption, forcing a clean session reconnect")
 	case err != nil:
-		// An exception escaping atemwire's loop(): the rest of this
-		// packet is lost, the session carries on.
+		// decode_packet's own errors (a truncated command header): the
+		// rest of this packet is lost, the session carries on.
 		s.log.Error("atem: packet dropped part way", "err", err)
 	}
+}
+
+// onField is save_field_data for one command of a packet's data, with what
+// AtemProtocol.loop does around it.
+func (s *Session) onField(code string, payload []byte) error {
+	switch code {
+	case "LKOB", "FTCD", "FTDa", "FTDE", "FTDC":
+		return s.onTransferPacket(code, payload)
+	case "LKST":
+		// The engine reacts to a release first, then it is stored and
+		// published, as in save_field_data.
+		v, err := parsers[code].parse(payload)
+		if err != nil {
+			return err
+		}
+		if f := v.(*LockStateField); !f.State {
+			s.onLockReleased(f.Store)
+		} else {
+			s.onLockTaken(f.Store)
+		}
+	}
+	c, err := s.state.store(code, payload)
+	if err != nil && !s.initialized && s.dumpErr == nil {
+		s.dumpErr = fmt.Errorf("%s: %w", code, err)
+	}
+	if err != nil || c == nil {
+		return err
+	}
+	s.publish(*c)
+	if legacyAudioDiagnosticKeys[code] {
+		s.logLegacyAudio(code, payload, c)
+	}
+	if code == "InCm" {
+		if !s.state.hasVideoMode() && s.incompleteDumps < incompleteDumpRetries {
+			// Its first packet was lost for good (the first reliable
+			// packet set the receive baseline): ask for a fresh dump
+			// at once, as atemwire raises IncompleteStateDump.
+			s.incompleteDumps++
+			s.log.Error("atem: the state dump ended without a video mode, so its first packet was probably lost; re-handshaking",
+				"first_sequence", s.t.firstRX, "attempt", s.incompleteDumps, "of", incompleteDumpRetries)
+			return errIncomplete
+		}
+		// The end of the state dump: the next packet reports ready.
+		s.t.markNextConnected = true
+		if s.state.hasVideoMode() {
+			s.incompleteDumps = 0
+		} else {
+			s.incompleteDumps = 0
+			s.incompleteDump()
+		}
+	}
+	return nil
 }
 
 // logLegacyAudio logs the first legacy-audio packet of each key (AMIP per
@@ -656,7 +822,7 @@ func (s *Session) logAudioMixer() {
 func (s *Session) incompleteDump() {
 	err := fmt.Errorf("%w: the first dump packet to arrive was sequence %d, and any the switcher sent before it was lost", ErrIncompleteDump, s.t.firstRX)
 	if s.dumpErr != nil {
-		err = fmt.Errorf("%w; a parse error also dropped part of the dump (%w)", err, s.dumpErr)
+		err = fmt.Errorf("%w; a field of the dump also failed to parse and was dropped (%w)", err, s.dumpErr)
 	}
 	if !s.dialed {
 		s.fatal = err
@@ -684,7 +850,19 @@ func (s *Session) resync(why string) {
 
 // onSilence: 5 s without traffic. The transport has handshaken again;
 // atemwire's loop() then reports a disconnect if it had data.
+//
+// While Dial waits, its stall limit is judged first, from how long the
+// switcher had been silent when the timeout fired: the re-sent hello may
+// be answered at once, and that answer is not progress (bmdwire#91).
+// atemwire's wait_ready reads the tick the UDP thread notes for it
+// (silence_tick); here the same goroutine runs both, so it is judged
+// before the hello goes.
 func (s *Session) onSilence() {
+	if !s.dialed {
+		if s.checkDialStall(); s.fatal != nil {
+			return
+		}
+	}
 	if err := s.t.timeout(); err != nil {
 		s.fatal = err
 		return

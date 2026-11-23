@@ -4,11 +4,12 @@
 
     python3 -I gen_readers.py /path/to/bmdwire readers.json
 
-/path/to/bmdwire must be a checkout of bmdwire at tag v1.6.0. The C
+/path/to/bmdwire must be a checkout of bmdwire at the version internal/fixtures/README.md
+names (v1.14.6). The C
 extension (atemwire.mediaconvert) is stubbed; nothing here touches it.
 
 The readers are the functions in atemwire.messages.* whose first parameter
-is the mixerstate (``mx``): 93 of them at v1.6.0, found by introspection so
+is the mixerstate (``mx``): 95 of them at v1.14.5, found by introspection so
 none is missed. Each scenario starts from a fresh AtemProtocol and feeds it
 well-formed state packets through save_field_data, the function atemwire's
 loop() calls, then calls readers with every relevant index argument
@@ -39,10 +40,15 @@ import pkgutil
 import random
 import socket
 import struct
+import subprocess
 import sys
 import types
 
 BMDWIRE, OUT = sys.argv[1], sys.argv[2]
+# The version the file records: the bmdwire checkout's git describe, a tag
+# (v1.14.5) or a commit past one (v1.14.5-2-g7ac3b4c).
+BMDWIRE_VERSION = subprocess.run(['git', '-C', BMDWIRE, 'describe', '--tags', '--always'],
+                                 capture_output=True, text=True, check=True).stdout.strip()
 sys.path.insert(0, BMDWIRE)
 stub = types.ModuleType('atemwire.mediaconvert')
 stub.rgb_to_atem = stub.atem_to_rgb = stub.rle_encode = None
@@ -58,10 +64,11 @@ for info in pkgutil.iter_modules(M.__path__):
     mod = importlib.import_module('atemwire.messages.' + info.name)
     for fname, fn in vars(mod).items():
         if (inspect.isfunction(fn) and fn.__module__ == mod.__name__
-                and list(inspect.signature(fn).parameters)[:1] == ['mx']):
+                and list(inspect.signature(fn).parameters)[:1] == ['mx']
+                and not fname.startswith('_')):
             READERS[fname] = fn
-if len(READERS) != 93:
-    raise SystemExit(f'expected 93 readers, found {len(READERS)}')
+if len(READERS) != 95:
+    raise SystemExit(f'expected 95 readers, found {len(READERS)}')
 HELPERS = {
     'me_count': S.me_count, 'me_keyer_count': S.me_keyer_count,
     '_dsk_count': S._dsk_count, 'display_fps': S.display_fps,
@@ -330,6 +337,7 @@ BARE_READERS = [
     'fairlight_expander', 'fairlight_master_compressor',
     'fairlight_master_limiter', 'fairlight_headphones', 'fairlight_solo',
     'video_mode', 'available_video_modes', 'video_resolution',
+    'topology_block_counts', 'topology_diagnostic',
     'product_name', 'device_name', 'sdi_3g_level', 'macro_play_running',
     'macro_play_index', 'me_count', '_dsk_count', 'display_fps',
     'audio_mixer_type', 'legacy_audio_master', 'legacy_audio_strips',
@@ -831,6 +839,66 @@ for pan in pans:
 scenarios.append(s)
 
 
+# bmdwire#71 (v1.10.0): video modes atemwire's table lacks, running and
+# listed in _VMC (13-byte blocks, 12-byte ones from before protocol 8.0,
+# and a payload cut short), and the readers on each.
+VM_READERS = ['video_mode', 'available_video_modes', 'video_resolution', 'display_fps']
+s = Scenario('unknown-video-modes')
+for mode in (30, 31, 200, 255, 12, 0, 29):
+    s.feed('VidM', bytes([mode, 0, 0, 0]))
+    for r in VM_READERS:
+        s.call(r)
+    s.call('video_resolution', default=(640, 480))
+UHD = [4, 5, 28, 6, 7, 29, 8, 9, 10, 11, 26, 12, 13, 27, 14, 15, 16, 17, 18, 19, 30, 31, 200]
+for v8 in (True, False):
+    b = struct.pack('>H2x', len(UHD))
+    for m in UHD:
+        b += struct.pack('>B3x I I', m, (1 << 12) | (1 << 30) | (1 << 31), 1 << 31)
+        if v8:
+            b += bytes([m >= 14])
+    for cut in (len(b), 30, 3):
+        s.feed('_VMC', b[:cut])
+        s.call('available_video_modes')
+scenarios.append(s)
+
+# bmdwire#70 (v1.10.0): the DVE, stinger and SuperSource counts, at the
+# offsets the switcher's _ver calls for. A 1 M/E Constellation HD's own
+# _top (protocol 2.30, 28 bytes), the 18-byte layout before 2.30, payloads
+# too short for their layout, and versions without a known layout.
+CONSTELLATION_TOP = bytes.fromhex('01200106060201000a01010000020a01000001000001010100000000')
+s = Scenario('topology-block-counts')
+for r in ('topology_block_counts', 'topology_diagnostic'):
+    s.call(r)
+s.feed('_top', CONSTELLATION_TOP)
+for r in ('topology_block_counts', 'topology_diagnostic'):
+    s.call(r)
+for major, minor in ((2, 30), (2, 31), (2, 29), (2, 22), (2, 21), (3, 0), (1, 40), (0, 0), (65535, 65535)):
+    s.feed('_ver', struct.pack('>HH', major, minor))
+    for top in (CONSTELLATION_TOP, CONSTELLATION_TOP[:18], CONSTELLATION_TOP[:17],
+                CONSTELLATION_TOP[:13], bytes(range(40)), bytes([0xff]) * 28):
+        s.feed('_top', top)
+        s.call('topology_block_counts')
+        s.call('topology_diagnostic')
+scenarios.append(s)
+
+
+# bmdwire#93: the headphone output (AMHP). The headphones read the monitor
+# bus until an AMHP arrives, then the headphone output, with the monitor's
+# own keys still the monitor's; AMHP alone, and at its anchors.
+if 'audio-mixer-headphone-properties' in {getattr(c, 'PRETTY', None) for c in M.RECV_BY_CODE.values()}:
+    s = Scenario('legacy-headphones')
+    s.call('legacy_audio_headphones')
+    s.feed('AMHP', struct.pack('>4H', 32768, 32768, 32768, 32768))
+    s.call('legacy_audio_headphones')
+    s.feed('AMMO', struct.pack('>H2x?3x', 32768, True))
+    s.feed('AMmO', struct.pack('>?xH??H?xH', True, 16384, True, True, 2, True, 5000))
+    for g in ((16384, 65381, 0, 32768), (0, 0, 0, 0), (65535, 1, 100, 65380), (32767, 32769, 4096, 50000)):
+        s.feed('AMHP', struct.pack('>4H', *g))
+        for r in LEGACY_READERS:
+            s.call(r)
+    scenarios.append(s)
+
+
 # legacy_volume_to_db of every u16, as the SHA-256 of its results (each
 # float's IEEE 754 bits big-endian, None as eight 0xFF bytes): the one
 # reader helper that goes through log10, which the Go test checks bit for
@@ -845,7 +913,7 @@ if missing:
     raise SystemExit(f'no cases for {sorted(missing)}')
 
 with open(OUT, 'w') as f:
-    f.write('{"bmdwire":"v1.6.0","generator":"internal/fixtures/oracle/gen_readers.py",\n')
+    f.write('{"bmdwire":"' + BMDWIRE_VERSION + '","generator":"internal/fixtures/oracle/gen_readers.py",\n')
     f.write('"legacy_volume_to_db_every_u16":' + json.dumps(VOLUME_DIGEST) + ',\n')
     f.write('"readers":' + json.dumps(sorted(READERS)) + ',\n')
     f.write('"helpers":' + json.dumps(sorted(HELPERS)) + ',\n')

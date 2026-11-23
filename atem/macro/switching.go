@@ -292,10 +292,15 @@ func eFTBEnabled(a attrs) []byte {
 	return []byte{me, b2i(enabled), 0, 0}
 }
 
+// eVideoMode is _e_video_mode: ASC's names, the older 2160p/4320p
+// spellings, mode-<n> for a mode atemwire has no name for (bmdwire#71,
+// 9e52191), or the number the decoder writes for one.
 func eVideoMode(a attrs) []byte {
 	mode := a.req("videoMode")
 	var n *big.Int
 	if v, ok := videoModeNames[mode]; ok {
+		n = num(int64(v))
+	} else if v, ok := unknownVideoModeNumber(mode); ok {
 		n = num(int64(v))
 	} else {
 		var exc *pyExc
@@ -320,12 +325,34 @@ var videoModeNames = map[string]uint8{
 	"1080i50": 6, "1080i5994": 7, "1080i60": 29,
 	"1080p2398": 8, "1080p24": 9, "1080p25": 10, "1080p2997": 11, "1080p30": 26,
 	"1080p50": 12, "1080p5994": 13, "1080p60": 27,
+	"4KHDp2398": 14, "4KHDp24": 15, "4KHDp25": 16, "4KHDp2997": 17, "4KHDp50": 18, "4KHDp5994": 19,
+	"8KHDp2398": 20, "8KHDp24": 21, "8KHDp25": 22, "8KHDp2997": 23, "8KHDp50": 24, "8KHDp5994": 25,
 	"2160p2398": 14, "2160p24": 15, "2160p25": 16, "2160p2997": 17, "2160p50": 18, "2160p5994": 19,
 	"4320p2398": 20, "4320p24": 21, "4320p25": 22, "4320p2997": 23, "4320p50": 24, "4320p5994": 25,
 }
 
+// unknownVideoModeNumber is the mode-<n> half of input_video's
+// _video_mode_number: n of 0 to 255 in ASCII digits (bmdwire#71).
+func unknownVideoModeNumber(name string) (int, bool) {
+	digits, ok := strings.CutPrefix(name, "mode-")
+	if !ok || digits == "" {
+		return 0, false
+	}
+	n := 0
+	for _, c := range digits {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		if n = n*10 + int(c-'0'); n > 0xFF {
+			return 0, false
+		}
+	}
+	return n, true
+}
+
 // videoModeXMLNames is input_video.VIDEO_MODE_XML_NAMES: one canonical
-// name per mode, the one the VideoMode op decodes to.
+// name per mode, the one the VideoMode op decodes to; ASC's 4KHDp… and
+// 8KHDp… for 14-25 since bmdwire#71 (42c7267).
 var videoModeXMLNames = map[int]string{
 	0: "525i5994", 1: "625i50",
 	2: "NTSC_widescreen", 3: "PAL_widescreen",
@@ -334,8 +361,8 @@ var videoModeXMLNames = map[int]string{
 	8: "1080p2398", 9: "1080p24", 10: "1080p25",
 	11: "1080p2997", 26: "1080p30",
 	12: "1080p50", 13: "1080p5994", 27: "1080p60",
-	14: "2160p2398", 15: "2160p24", 16: "2160p25", 17: "2160p2997",
-	18: "2160p50", 19: "2160p5994",
-	20: "4320p2398", 21: "4320p24", 22: "4320p25", 23: "4320p2997",
-	24: "4320p50", 25: "4320p5994",
+	14: "4KHDp2398", 15: "4KHDp24", 16: "4KHDp25", 17: "4KHDp2997",
+	18: "4KHDp50", 19: "4KHDp5994",
+	20: "8KHDp2398", 21: "8KHDp24", 22: "8KHDp25", 23: "8KHDp2997",
+	24: "8KHDp50", 25: "8KHDp5994",
 }

@@ -350,7 +350,7 @@ func TestRetransmitResendsInOrderWithFlagAndOriginalSeqs(t *testing.T) { // test
 		sendReliable(t, tr, payload(i))
 	}
 	c.reset()
-	if n := tr.retransmitFrom(3); n != 3 {
+	if n := tr.retransmitFrom(3, false); n != 3 {
 		t.Fatalf("resent %d", n)
 	}
 	out := c.sent()
@@ -371,7 +371,7 @@ func TestRetransmitSkipsSequencesMissingFromBuffer(t *testing.T) { // test_retra
 	}
 	delete(tr.retransmitBuf, 4)
 	c.reset()
-	if n := tr.retransmitFrom(3); n != 2 || !slices.Equal(seqsOf(c.sent()), []uint16{3, 5}) {
+	if n := tr.retransmitFrom(3, false); n != 2 || !slices.Equal(seqsOf(c.sent()), []uint16{3, 5}) {
 		t.Fatalf("resent %d: %v", n, seqsOf(c.sent()))
 	}
 }
@@ -383,7 +383,7 @@ func TestRequestOutsideWindowResendsNothing(t *testing.T) { // test_request_outs
 		sendReliable(t, tr, []byte("\x00\x08TEST"))
 	}
 	c.reset()
-	if n := tr.retransmitFrom(32765); n != 0 || len(c.sent()) != 0 {
+	if n := tr.retransmitFrom(32765, false); n != 0 || len(c.sent()) != 0 {
 		t.Fatalf("resent %d", n)
 	}
 }
@@ -395,7 +395,7 @@ func TestRetransmitIsFifteenBitWrapAware(t *testing.T) { // test_retransmit_is_f
 		sendReliable(t, tr, []byte("\x00\x08TEST"))
 	}
 	c.reset()
-	if n := tr.retransmitFrom(32767); n != 3 || !slices.Equal(seqsOf(c.sent()), []uint16{32767, 0, 1}) {
+	if n := tr.retransmitFrom(32767, false); n != 3 || !slices.Equal(seqsOf(c.sent()), []uint16{32767, 0, 1}) {
 		t.Fatalf("resent %d: %v", n, seqsOf(c.sent()))
 	}
 }
@@ -404,7 +404,7 @@ func TestSecondRequestForSameRangeResendsAgain(t *testing.T) { // test_second_re
 	tr, c := retransmitTransport(t)
 	sendReliable(t, tr, []byte("\x00\x08TEST"))
 	c.reset()
-	if tr.retransmitFrom(1) != 1 || tr.retransmitFrom(1) != 1 || len(c.sent()) != 2 {
+	if tr.retransmitFrom(1, false) != 1 || tr.retransmitFrom(1, false) != 1 || len(c.sent()) != 2 {
 		t.Fatalf("sent %d", len(c.sent()))
 	}
 }
@@ -416,7 +416,7 @@ func TestVolleyIsCappedPerRequest(t *testing.T) { // test_volley_is_capped_per_r
 		sendReliable(t, tr, []byte("\x00\x08TEST"))
 	}
 	c.reset()
-	if n := tr.retransmitFrom(1); n != 4 || !slices.Equal(seqsOf(c.sent()), []uint16{1, 2, 3, 4}) {
+	if n := tr.retransmitFrom(1, false); n != 4 || !slices.Equal(seqsOf(c.sent()), []uint16{1, 2, 3, 4}) {
 		t.Fatalf("resent %d: %v", n, seqsOf(c.sent()))
 	}
 }
@@ -647,18 +647,26 @@ func TestHandshake(t *testing.T) {
 	}
 }
 
+// Hello 0x03 is "no room": the switcher's session table is full. It is
+// not ACKed and the transport stays in SYN_SENT with refused set, which
+// Dial turns into ErrNoFreeConnection; connect forgets it (bmdwire#75,
+// test_no_free_connection.py). Until then it was ACKed like any answer.
 func TestHandshakeRefusedStaysSYNSent(t *testing.T) {
 	tr, c := newTestTransport(t)
 	if err := tr.connect(); err != nil {
 		t.Fatal(err)
 	}
 	c.reset()
-	got, _ := tr.receive(rawDatagram(helloSession, 0, flagSYN, []byte{0x03, 0, 0, 0, 0, 0, 0, 0}), switcherAddr)
+	got, _ := tr.receive(rawDatagram(helloSession, 0, flagSYN, []byte{helloNoRoom, 0, 0, 0, 0, 0, 0, 0}), switcherAddr)
 	if _, err := tr.handle(got[0]); err != nil {
 		t.Fatal(err)
 	}
-	if tr.state != stateSYNSent || len(c.sent()) != 1 {
-		t.Fatalf("state %v, sent %d", tr.state, len(c.sent()))
+	if tr.state != stateSYNSent || len(c.sent()) != 0 || !tr.refused {
+		t.Fatalf("state %v, sent %d, refused %v", tr.state, len(c.sent()), tr.refused)
+	}
+	tr.state = stateClosed
+	if err := tr.connect(); err != nil || tr.refused {
+		t.Fatalf("connect: %v, refused %v", err, tr.refused)
 	}
 }
 
@@ -701,8 +709,13 @@ func TestSilenceTimeoutReconnects(t *testing.T) {
 	if err := tr.timeout(); err != nil {
 		t.Fatal(err)
 	}
-	if tr.state != stateSYNSent || len(c.sent()) != 1 || c.sent()[0].flags != flagSYN {
-		t.Fatalf("state %v sent %+v", tr.state, c.sent())
+	// The session being replaced is said goodbye first (bmdwire#80,
+	// test_the_replaced_session_is_said_goodbye_first), then the hello.
+	sent := c.sent()
+	if tr.state != stateSYNSent || len(sent) != 2 ||
+		sent[0].flags != flagSYN || sent[0].data[0] != helloClosing || sent[0].session != 0x8001 ||
+		sent[1].flags != flagSYN || sent[1].data[0] != helloConnect {
+		t.Fatalf("state %v sent %+v", tr.state, sent)
 	}
 	if tr.silent() {
 		t.Fatal("the re-SYN did not get a fresh window")

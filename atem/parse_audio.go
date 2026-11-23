@@ -94,6 +94,10 @@ var audioParsers = []parser{
 		s.Audio.Monitor = f
 		return "AMmO"
 	}),
+	entry("AMHP", "audio-mixer-headphone-properties", parseAMHP, func(s *State, f *AudioMixerHeadphonePropertiesField) string {
+		s.Audio.Headphones = f
+		return "AMHP"
+	}),
 	entry("AMTl", "audio-mixer-tally", parseAMTl, func(s *State, f *AudioMixerTallyField) string {
 		s.Audio.Tally = f
 		return "AMTl"
@@ -339,6 +343,17 @@ func parseAMmO(b []byte) (*AudioMixerMonitorPropertiesField, error) {
 	return &AudioMixerMonitorPropertiesField{
 		Enabled: flag(b, 0), Volume: u16(b, 2), Mute: flag(b, 4), Solo: flag(b, 5),
 		SoloSource: u16(b, 6), Dim: flag(b, 8), DimVolume: u16(b, 10),
+	}, nil
+}
+
+// parseAMHP: four u16 legacy volumes, gain, program out, talkback and
+// sidetone (bmdwire#93).
+func parseAMHP(b []byte) (*AudioMixerHeadphonePropertiesField, error) {
+	if err := atLeast("AMHP", b, 8); err != nil {
+		return nil, err
+	}
+	return &AudioMixerHeadphonePropertiesField{
+		Gain: u16(b, 0), ProgramOutGain: u16(b, 2), TalkbackGain: u16(b, 4), SidetoneGain: u16(b, 6),
 	}, nil
 }
 

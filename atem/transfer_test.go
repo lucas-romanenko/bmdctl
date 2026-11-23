@@ -35,6 +35,9 @@ func laneSession(t *testing.T) (*Session, *fakeConn) {
 	s.t.enableACK = true
 	s.initialized = true
 	s.protoConnected = true
+	// The first transfer is 43, as before bmdwire#64 drew it at random,
+	// so the bytes below stay readable.
+	s.lane.nextID = 42
 	return s, c
 }
 
@@ -167,7 +170,9 @@ func TestFTDE6ReleasesKeepsTheTaskAndReRequestsOnRelease(t *testing.T) { // test
 	// for anyone to take it again (bmdwire#38), then re-request.
 	clock := moveClock(s)
 	feedCmd(t, s, "LKST", []byte{0, 0, 0, 0})
-	*clock = clock.Add(lockCourtesy)
+	// The session we collided with is waiting too: it has the turn after
+	// our release first (lockHandover, bmdwire#68).
+	*clock = clock.Add(lockCourtesy + lockHandover)
 	s.serviceYields()
 	if count(c, "PLCK") != 2 {
 		t.Fatal("no re-request on the release")
@@ -189,14 +194,18 @@ func TestFTDE6IsNotRaisedAsAFatalError(t *testing.T) { // test_ftde_6_is_not_rai
 }
 
 // Statuses 1 (try again) and 5 (no lock) are recovered too: 1 resends the
-// request with the same transfer id, 5 asks for the lock again.
+// request with the same transfer id, after tryAgainFirst (bmdwire#73), 5
+// asks for the lock again.
 func TestFTDE1And5AreRecovered(t *testing.T) {
 	s, c := laneSession(t)
+	clock := moveClock(s)
 	tk := task(taskDownload, 0, 4)
 	s.enqueueTask(tk)
 	grant(t, s, 0)
 	tid := s.lane.transfer.tid
 	feedCmd(t, s, "FTDE", append(u16be(tid), 1, 0))
+	*clock = clock.Add(tryAgainFirst)
+	s.serviceYields()
 	if ftsu := commands(c, "FTSU"); len(ftsu) != 2 || binary.BigEndian.Uint16(ftsu[1]) != tid {
 		t.Fatalf("FTSU %x", ftsu)
 	}
@@ -333,8 +342,9 @@ func TestTimeoutNamesForeignLockHolder(t *testing.T) { // test_timeout_names_for
 }
 
 // test_timeout_aborts_transfer_state, for one task: a transfer in flight
-// that its caller gives up on is abandoned like a fatal one, its lock
-// released, and the lane goes on to the next.
+// that its caller gives up on is abandoned, and the lane goes on to the
+// next. Since bmdwire#73 and #80 a still download with the request out is
+// drained first: its lock is kept until its FTDC (or FTDE, or drainStall).
 func TestCancelledTransferInFlightIsAbandoned(t *testing.T) {
 	s, c := laneSession(t)
 	tk := task(taskDownload, 0, 3)
@@ -343,11 +353,16 @@ func TestCancelledTransferInFlightIsAbandoned(t *testing.T) {
 	s.enqueueTask(next)
 	grant(t, s, 0)
 	s.cancelTask(tk, context.DeadlineExceeded)
-	if s.lane.transfer != nil || s.lane.requested || s.lane.queues[0][0] != next || count(c, "LOCK") != 1 {
+	if s.lane.transfer != nil || s.lane.requested || s.lane.queues[0][0] != next || count(c, "LOCK") != 0 ||
+		s.lane.draining == nil {
 		t.Fatalf("lane %+v", s.lane)
 	}
-	// A straggler for the abandoned transfer changes nothing.
+	// The abandoned transfer's end gives the lock back, and is nobody's
+	// result.
 	feedCmd(t, s, "FTDC", append(u16be(43), 1, 2))
+	if count(c, "LOCK") != 1 || s.lane.draining != nil {
+		t.Fatalf("LOCKs %d, draining %+v", count(c, "LOCK"), s.lane.draining)
+	}
 	noResult(t, next)
 	feedCmd(t, s, "LKST", []byte{0, 0, 0, 0})
 	grant(t, s, 0)
@@ -697,5 +712,267 @@ func TestEmptyUploadSendsFTFDInline(t *testing.T) {
 	}
 	if d := commands(c, "FTSD")[0]; binary.BigEndian.Uint16(d[12:]) != 0x0300 || binary.BigEndian.Uint32(d[8:]) != 0 {
 		t.Fatalf("FTSD %x", d)
+	}
+}
+
+// --- test_transfer_engine_kept_free.py (bmdwire#73, v1.11.0) -----------------
+
+// started is the Python tests' helper: a still download granted and
+// requested, FTSU on the wire.
+func started(t *testing.T, s *Session, c *fakeConn, slot uint16) (*transferTask, uint16) {
+	t.Helper()
+	tk := task(taskDownload, 0, slot)
+	s.enqueueTask(tk)
+	grant(t, s, 0)
+	if !lastIs(c, "FTSU") {
+		t.Fatalf("sent %v, not the request", lastCodes(c))
+	}
+	return tk, s.lane.transfer.tid
+}
+
+func ftde(t *testing.T, s *Session, tid uint16, status byte) {
+	t.Helper()
+	feedCmd(t, s, "FTDE", append(u16be(tid), status, 0))
+}
+
+func TestTryAgainIsAskedAgainAfterADoublingPause(t *testing.T) { // test_try_again_is_asked_again_after_a_doubling_pause
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	_, tid := started(t, s, c, 1)
+	var pauses []time.Duration
+	for range 7 {
+		before := packets(c)
+		ftde(t, s, tid, 1)
+		s.serviceYields()
+		if packets(c) != before {
+			t.Fatal("asked again at once")
+		}
+		due := s.lane.tryAgainDue
+		pauses = append(pauses, due.Sub(*clock))
+		*clock = due
+		s.serviceYields()
+		if !lastIs(c, "FTSU") {
+			t.Fatalf("sent %v, not the request again", lastCodes(c))
+		}
+		tid = s.lane.transfer.tid
+	}
+	var want []time.Duration
+	for i := range 7 {
+		want = append(want, min(tryAgainMax, tryAgainFirst<<i))
+	}
+	if !slices.Equal(pauses, want) {
+		t.Fatalf("pauses %v, want %v", pauses, want)
+	}
+}
+
+func TestTryAgainGivesUpAndFreesTheStore(t *testing.T) { // test_try_again_gives_up_and_frees_the_store
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	tk, tid := started(t, s, c, 1)
+	for range tryAgainAttempts {
+		ftde(t, s, tid, 1)
+		*clock = s.lane.tryAgainDue
+		s.serviceYields()
+		tid = s.lane.transfer.tid
+	}
+	noResult(t, tk)
+	ftde(t, s, tid, 1) // one refusal too many
+	var te *TransferError
+	if r := result(t, tk); !errors.As(r.err, &te) || te.Status != 1 {
+		t.Fatalf("result %+v", r)
+	}
+	if s.lane.transfer != nil || len(s.lane.queues[0]) != 0 || !lastIs(c, "LOCK") || s.lane.locks[0] {
+		t.Fatalf("lane %+v, sent %v", s.lane, lastCodes(c))
+	}
+}
+
+// chunk feeds one FTDa of eight bytes for tid.
+func chunk(t *testing.T, s *Session, tid uint16) {
+	t.Helper()
+	feedCmd(t, s, "FTDa", append(append(u16be(tid), 0, 8), bytes.Repeat([]byte{1}, 8)...))
+}
+
+// released says the last packet is the store lock's release.
+func released(c *fakeConn) bool {
+	l := commands(c, "LOCK")
+	return lastIs(c, "LOCK") && len(l) > 0 && l[len(l)-1][2] == 0
+}
+
+func TestAnAbandonedDownloadIsAcknowledgedToItsEnd(t *testing.T) { // test_an_abandoned_download_is_acknowledged_to_its_end
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	tk, tid := started(t, s, c, 1)
+	chunk(t, s, tid)
+	s.cancelTask(tk, context.DeadlineExceeded) // the caller's timeout
+	if !lastIs(c, "FTUA") || !s.lane.locks[0] {
+		t.Fatalf("sent %v: no lock release mid-stream", lastCodes(c))
+	}
+	before := packets(c)
+	for range 3 {
+		*clock = clock.Add(time.Second)
+		chunk(t, s, tid)
+	}
+	if packets(c)-before != 3 || count(c, "FTUA") != 4 || !lastIs(c, "FTUA") {
+		t.Fatal("not every chunk acknowledged")
+	}
+	if len(s.lane.buffer) != 0 {
+		t.Fatal("its data kept")
+	}
+	ftdc(t, s, tid)
+	if !released(c) || s.lane.draining != nil {
+		t.Fatalf("sent %v", lastCodes(c))
+	}
+}
+
+func TestARetryWaitsForTheAbandonedDownload(t *testing.T) { // test_a_retry_waits_for_the_abandoned_download
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	tk, tid := started(t, s, c, 1)
+	chunk(t, s, tid)
+	s.cancelTask(tk, context.DeadlineExceeded)
+	s.enqueueTask(task(taskDownload, 0, 1)) // the caller tries again
+	if count(c, "FTSU") != 1 {
+		t.Fatal("asked while the abandoned download was finishing")
+	}
+	ftdc(t, s, tid) // the old one ends
+	*clock = clock.Add(time.Second)
+	lkst(t, s, 0, false)
+	*clock = clock.Add(time.Second)
+	s.serviceYields()
+	if !lastIs(c, "PLCK") {
+		t.Fatalf("sent %v: then the retry asks", lastCodes(c))
+	}
+}
+
+func TestADownloadThatStoppedArrivingGivesTheLockBack(t *testing.T) { // test_a_download_that_stopped_arriving_gives_the_lock_back
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	tk, tid := started(t, s, c, 1)
+	chunk(t, s, tid)
+	s.cancelTask(tk, context.DeadlineExceeded)
+	*clock = clock.Add(drainStall)
+	s.serviceYields()
+	if !released(c) || s.lane.draining != nil {
+		t.Fatalf("sent %v", lastCodes(c))
+	}
+}
+
+func TestADrainIsCapped(t *testing.T) { // test_a_drain_is_capped
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	start := *clock
+	tk, tid := started(t, s, c, 1)
+	chunk(t, s, tid)
+	s.cancelTask(tk, context.DeadlineExceeded)
+	for clock.Before(start.Add(drainCap)) {
+		*clock = clock.Add(time.Second)
+		chunk(t, s, tid)
+	}
+	s.serviceYields()
+	if !released(c) {
+		t.Fatalf("sent %v", lastCodes(c))
+	}
+}
+
+func TestAnAbortBeforeAnyDataWaitsForTheSwitcher(t *testing.T) { // test_an_abort_before_any_data_waits_for_the_switcher
+	// The request is out and nothing has come yet: the switcher may be
+	// about to start it (up to 2.5 s to a still's first chunk on a LAN).
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	tk, tid := started(t, s, c, 1)
+	s.cancelTask(tk, context.DeadlineExceeded)
+	if !lastIs(c, "FTSU") || s.lane.draining == nil || !s.lane.locks[0] {
+		t.Fatalf("sent %v: no release yet", lastCodes(c))
+	}
+	*clock = clock.Add(time.Second)
+	chunk(t, s, tid) // it starts after all
+	if !lastIs(c, "FTUA") {
+		t.Fatalf("sent %v", lastCodes(c))
+	}
+	ftdc(t, s, tid)
+	if !released(c) || s.lane.draining != nil {
+		t.Fatalf("sent %v", lastCodes(c))
+	}
+}
+
+func TestAnAbortBeforeAnyDataReleasesAtARefusal(t *testing.T) { // test_an_abort_before_any_data_releases_at_a_refusal
+	s, c := laneSession(t)
+	tk, tid := started(t, s, c, 1)
+	s.cancelTask(tk, context.DeadlineExceeded)
+	ftde(t, s, tid, 1)
+	if !released(c) || s.lane.draining != nil {
+		t.Fatalf("sent %v", lastCodes(c))
+	}
+}
+
+func TestAnAbortBeforeAnyDataReleasesAfterTheDrainStall(t *testing.T) { // test_an_abort_before_any_data_releases_after_the_drain_stall
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	tk, _ := started(t, s, c, 1)
+	s.cancelTask(tk, context.DeadlineExceeded)
+	*clock = clock.Add(drainStall)
+	s.serviceYields()
+	if !released(c) || s.lane.draining != nil {
+		t.Fatalf("sent %v", lastCodes(c))
+	}
+}
+
+func TestChunksOfADownloadWeNoLongerFollowAreAcknowledged(t *testing.T) { // test_chunks_of_a_download_we_no_longer_follow_are_acknowledged
+	// A download given up on whose chunks come after its drain ended: they
+	// are acknowledged all the same, so the switcher's engine is not held
+	// by them, and nothing of the transfer now running is touched.
+	s, c := laneSession(t)
+	clock := moveClock(s)
+	tk, old := started(t, s, c, 1)
+	s.cancelTask(tk, context.DeadlineExceeded)
+	*clock = clock.Add(drainStall)
+	s.serviceYields() // drain over, lock given back
+	s.enqueueTask(task(taskDownload, 0, 2))
+	*clock = clock.Add(time.Second)
+	lkst(t, s, 0, false)
+	*clock = clock.Add(time.Second)
+	s.serviceYields()
+	grant(t, s, 0)
+	cur := s.lane.transfer.tid
+	if cur == old {
+		t.Fatal("the same id")
+	}
+	before := packets(c)
+	chunk(t, s, old)
+	ftua := commands(c, "FTUA")
+	if packets(c)-before != 1 || !lastIs(c, "FTUA") || binary.BigEndian.Uint16(ftua[len(ftua)-1]) != old {
+		t.Fatalf("sent %v", lastCodes(c))
+	}
+	if len(s.lane.buffer) != 0 {
+		t.Fatal("its data taken for the new one's")
+	}
+	ftdc(t, s, old)
+	if s.lane.transfer == nil || s.lane.transfer.tid != cur {
+		t.Fatal("the transfer now running was ended")
+	}
+	chunk(t, s, cur)
+	if s.lane.bufferBytes != 8 {
+		t.Fatalf("buffer %d bytes", s.lane.bufferBytes)
+	}
+}
+
+func TestChunksOfATransferWeNeverAskedForAreLeftAlone(t *testing.T) { // test_chunks_of_a_transfer_we_never_asked_for_are_left_alone
+	s, c := laneSession(t)
+	_, tid := started(t, s, c, 1)
+	before := packets(c)
+	chunk(t, s, tid%0xFFFF+1000)
+	if packets(c) != before {
+		t.Fatal("answered another session's chunk")
+	}
+}
+
+func TestAnFTDEEndsTheDrain(t *testing.T) { // test_an_ftde_ends_the_drain
+	s, c := laneSession(t)
+	tk, tid := started(t, s, c, 1)
+	chunk(t, s, tid)
+	s.cancelTask(tk, context.DeadlineExceeded)
+	ftde(t, s, tid, 2)
+	if !lastIs(c, "LOCK") || s.lane.draining != nil {
+		t.Fatalf("sent %v", lastCodes(c))
 	}
 }

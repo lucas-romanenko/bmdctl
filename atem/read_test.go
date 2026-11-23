@@ -11,6 +11,7 @@ package atem
 // (read_oracle_test.go) covers every reader more broadly.
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
@@ -1120,29 +1122,6 @@ func TestReadAudioLegacy(t *testing.T) {
 		}
 	}
 
-	// test_audio_legacy.py::_legacy_mx: a Production Studio 4K-shaped
-	// mixer, two cameras (one renamed), a media player, the XLR input; an
-	// AFV master and the monitor soloing camera 2. 2001's InPr is the
-	// video side's, not MP1's name.
-	legacyMX := func() State {
-		s := newState()
-		s.Inputs[1] = &InputPropertiesField{Name: "Camera 1\x00", ShortName: "CAM1\x00"}
-		s.Inputs[2] = &InputPropertiesField{Name: "Pulpit\x00", ShortName: "PULP\x00"}
-		s.Inputs[2001] = &InputPropertiesField{Name: "Color 1\x00", ShortName: "COL1\x00"}
-		s.Audio.Master = &AudioMixerMasterPropertiesField{Volume: 32768, AFV: true}
-		s.Audio.Monitor = &AudioMixerMonitorPropertiesField{Enabled: true, Volume: 16384, Mute: true, Solo: true, SoloSource: 2, Dim: true, DimVolume: 5000}
-		for _, in := range []AudioInputField{
-			{Index: 1001, Type: 2, Plug: 32, State: 1, Volume: 65381},
-			{Index: 2001, Type: 1, Plug: 0, State: 0, Volume: 0},
-			{Index: 2, Type: 0, Plug: 2, State: 2, Volume: 23197, Balance: 5000},
-			{Index: 1, Type: 0, Plug: 1, State: 1, Volume: 32768, Balance: -10000},
-		} {
-			in.StripID = strconv.Itoa(int(in.Index)) + ".0"
-			s.Audio.Inputs[in.StripID] = &in
-		}
-		return s
-	}
-
 	// test_audio_legacy.py::test_legacy_build_full_state_shape, the readers
 	// build_full_state's legacy section is made of (it adds each strip's
 	// soloed; build_full_state is not ported, docs/PORTING.md "Readers").
@@ -1154,7 +1133,7 @@ func TestReadAudioLegacy(t *testing.T) {
 		t.Errorf("legacy_audio_master %+v", m)
 	}
 	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, LegacyAudioHeadphonesView{Present: true, VolumeDB: f(-6.02),
-		Unmuted: false, Enabled: true, Dim: true, DimLevel: 50.0, Solo: true, SoloSource: new(2)}) {
+		Unmuted: false, Enabled: true, Dim: true, DimLevel: 50.0, Solo: true, SoloSource: new(2), Bus: "monitor"}) {
 		t.Errorf("legacy_audio_headphones %+v", h)
 	}
 	if so := s.LegacyAudioSolo(); !so.AnySoloed || so.StripID == nil || *so.StripID != "2.0" {
@@ -1210,7 +1189,7 @@ func TestReadAudioLegacy(t *testing.T) {
 	// test_audio_legacy.py::test_legacy_monitor_absent_and_nothing_soloed
 	s = legacyMX()
 	s.Audio.Monitor = nil
-	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, LegacyAudioHeadphonesView{VolumeDB: f(0.0), Unmuted: true}) {
+	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, LegacyAudioHeadphonesView{VolumeDB: f(0.0), Unmuted: true, Bus: "monitor"}) {
 		t.Errorf("legacy_audio_headphones without AMmO %+v", h)
 	}
 	if so := s.LegacyAudioSolo(); so.AnySoloed || so.StripID != nil {
@@ -1298,4 +1277,163 @@ func TestLegacyAudioDiagnostic(t *testing.T) {
 			t.Errorf("%s:\n got %s\nwant %s", c.code, got, c.line)
 		}
 	}
+}
+
+// --- test_topology_blocks.py (bmdwire#70, 8defba1) -------------------------
+
+// constellationHD is a 1 M/E Constellation HD's _top (protocol 2.30,
+// 2026-10-30): 1 DVE, 1 stinger, no SuperSource, as its spec sheet lists.
+var constellationHD, _ = hex.DecodeString("01200106060201000a01010000020a01000001000001010100000000")
+
+// topState is a state holding raw as _top and, unless major is 0, a _ver.
+func topState(t *testing.T, raw []byte, major, minor uint16) State {
+	t.Helper()
+	st := newState()
+	if raw != nil {
+		if _, err := st.store("_top", raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if major != 0 {
+		if _, err := st.store("_ver", []byte{byte(major >> 8), byte(major), byte(minor >> 8), byte(minor)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return st
+}
+
+// oldTop is a pre-2.30 payload: distinct counts, so a read one byte off
+// can't pass (DVE 3, stinger 2, SuperSource 1 at 8, 9 and 10).
+func oldTop(n int) []byte {
+	b := make([]byte, n)
+	copy(b, []byte{2, 30, 2, 6, 0, 2, 1, 4, 3, 2, 1})
+	return b
+}
+
+func counts(v TopologyBlockCountsView) string {
+	f := func(p *int) string {
+		if p == nil {
+			return "None"
+		}
+		return strconv.Itoa(*p)
+	}
+	return f(v.DVEs) + " " + f(v.Stingers) + " " + f(v.SuperSources)
+}
+
+func TestTopologyBlockCounts(t *testing.T) {
+	// The bench capture, and upstream pyatem's TopologyField table of
+	// seven models (28 bytes, protocol 2.30 offsets).
+	upstream := map[string]struct {
+		payload []byte
+		want    string
+	}{
+		"Atem Mini": {[]byte{1, 14, 1, 1, 0, 1, 0, 0, 4, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0x20, 3, 0xe8}, "1 0 0"},
+		"Mini Pro":  {[]byte{1, 15, 1, 1, 0, 1, 1, 0, 4, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0x2f, 108, 0x69}, "1 0 0"},
+		"1M/E 4k":   {[]byte{1, 31, 2, 3, 0, 2, 1, 1, 4, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0x20, 0, 0}, "1 1 0"},
+		"Prod 4k":   {[]byte{1, 24, 2, 1, 0, 2, 1, 0, 4, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0}, "0 0 0"},
+		"TVS HD":    {[]byte{1, 24, 2, 1, 4, 2, 1, 1, 4, 1, 0, 0, 1, 1, 4, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0x10, 0, 0}, "1 0 0"},
+		"CHD 2ME":   {[]byte{2, 57, 2, 12, 12, 2, 2, 0, 4, 1, 1, 1, 0, 2, 20, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0}, "1 1 1"},
+		"TVS4K8":    {[]byte{1, 35, 2, 10, 10, 2, 1, 1, 10, 1, 1, 1, 0, 2, 8, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0}, "1 1 1"},
+		"bench":     {constellationHD, "1 1 0"},
+	}
+	for name, c := range upstream {
+		if got := counts(topState(t, c.payload, 2, 30).TopologyBlockCounts()); got != c.want {
+			t.Errorf("%s: %s, want %s", name, got, c.want)
+		}
+	}
+	// Before 2.30 the counts are one byte earlier; later versions and
+	// longer payloads keep the 2.30 layout; a 0 is a count.
+	for _, c := range []struct {
+		raw          []byte
+		major, minor uint16
+		want         string
+	}{
+		{oldTop(18), 2, 22, "3 2 1"}, {oldTop(20), 2, 27, "3 2 1"}, {oldTop(24), 2, 28, "3 2 1"}, {oldTop(24), 2, 29, "3 2 1"},
+		{constellationHD, 2, 32, "1 1 0"}, {append(bytes.Clone(constellationHD), 0, 0, 0, 0), 2, 30, "1 1 0"},
+		{make([]byte, 28), 2, 30, "0 0 0"},
+	} {
+		if got := counts(topState(t, c.raw, c.major, c.minor).TopologyBlockCounts()); got != c.want {
+			t.Errorf("%d bytes at %d.%d: %s, want %s", len(c.raw), c.major, c.minor, got, c.want)
+		}
+	}
+	// Unknown is None for all three, never 0, and the diagnostic says why.
+	for _, c := range []struct {
+		raw          []byte
+		major, minor uint16
+		why          string
+	}{
+		{nil, 0, 0, "no _top"},
+		{nil, 2, 30, "no _top"},
+		{constellationHD, 0, 0, "no _ver"},
+		{oldTop(20), 2, 21, "protocol 2.21 is older than any known _top layout"},
+		{constellationHD, 3, 0, "protocol 3.0 is not 2.x"},
+		{constellationHD[:24], 2, 30, "24 bytes, the 2.30 layout has 28"},
+		{oldTop(16), 2, 29, "16 bytes, the 2.22 layout has 18"},
+	} {
+		st := topState(t, c.raw, c.major, c.minor)
+		if got := counts(st.TopologyBlockCounts()); got != "None None None" {
+			t.Errorf("%s: %s", c.why, got)
+		}
+		if d := st.TopologyDiagnostic(); !strings.HasSuffix(d, "block counts unknown ("+c.why+")") {
+			t.Errorf("%s: %s", c.why, d)
+		}
+	}
+	for i := 1; i < len(topologyLayouts); i++ {
+		if topologyLayouts[i].minor >= topologyLayouts[i-1].minor {
+			t.Error("the layout table is not newest first")
+		}
+	}
+}
+
+// test_audio_legacy.py's headphone tests (bmdwire#93): the headphones read
+// AMHP when the unit sends it, with the monitor bus's own keys still the
+// monitor's; AMHP alone; the monitor bus without AMHP, with no mix keys.
+func TestLegacyHeadphonesReadAMHP(t *testing.T) {
+	f := func(x float64) *float64 { return &x }
+	s := legacyMX()
+	s.Audio.Headphones = &AudioMixerHeadphonePropertiesField{Gain: 16384, ProgramOutGain: 65381, TalkbackGain: 0, SidetoneGain: 32768}
+	want := LegacyAudioHeadphonesView{Present: true, VolumeDB: f(-6.02), Unmuted: true, Enabled: true, Dim: true,
+		DimLevel: 50.0, Solo: true, SoloSource: new(2), Bus: "headphones",
+		LegacyHeadphonesMixView: &LegacyHeadphonesMixView{ProgramOutDB: f(6.0), TalkbackDB: nil, SidetoneDB: f(0.0)}}
+	if h := s.LegacyAudioHeadphones(); !reflect.DeepEqual(h, want) {
+		t.Errorf("with AMHP %+v %+v", h, h.LegacyHeadphonesMixView)
+	}
+	b, _ := json.Marshal(s.LegacyAudioHeadphones())
+	if !strings.Contains(string(b), `"bus":"headphones","program_out_db":6,"talkback_db":null,"sidetone_db":0`) {
+		t.Errorf("JSON %s", b)
+	}
+	s.Audio.Monitor = nil
+	s.Audio.Headphones = &AudioMixerHeadphonePropertiesField{Gain: 32768, ProgramOutGain: 32768, TalkbackGain: 32768, SidetoneGain: 32768}
+	if h := s.LegacyAudioHeadphones(); !h.Present || h.Bus != "headphones" || !reflect.DeepEqual(h.VolumeDB, f(0.0)) || h.Solo {
+		t.Errorf("AMHP alone %+v", h)
+	}
+	s = legacyMX()
+	h := s.LegacyAudioHeadphones()
+	b, _ = json.Marshal(h)
+	if h.Bus != "monitor" || !reflect.DeepEqual(h.VolumeDB, f(-6.02)) || h.Unmuted || strings.Contains(string(b), "program_out_db") {
+		t.Errorf("without AMHP %+v %s", h, b)
+	}
+}
+
+// test_audio_legacy.py::_legacy_mx: a Production Studio 4K-shaped
+// mixer, two cameras (one renamed), a media player, the XLR input; an
+// AFV master and the monitor soloing camera 2. 2001's InPr is the
+// video side's, not MP1's name.
+func legacyMX() State {
+	s := newState()
+	s.Inputs[1] = &InputPropertiesField{Name: "Camera 1\x00", ShortName: "CAM1\x00"}
+	s.Inputs[2] = &InputPropertiesField{Name: "Pulpit\x00", ShortName: "PULP\x00"}
+	s.Inputs[2001] = &InputPropertiesField{Name: "Color 1\x00", ShortName: "COL1\x00"}
+	s.Audio.Master = &AudioMixerMasterPropertiesField{Volume: 32768, AFV: true}
+	s.Audio.Monitor = &AudioMixerMonitorPropertiesField{Enabled: true, Volume: 16384, Mute: true, Solo: true, SoloSource: 2, Dim: true, DimVolume: 5000}
+	for _, in := range []AudioInputField{
+		{Index: 1001, Type: 2, Plug: 32, State: 1, Volume: 65381},
+		{Index: 2001, Type: 1, Plug: 0, State: 0, Volume: 0},
+		{Index: 2, Type: 0, Plug: 2, State: 2, Volume: 23197, Balance: 5000},
+		{Index: 1, Type: 0, Plug: 1, State: 1, Volume: 32768, Balance: -10000},
+	} {
+		in.StripID = strconv.Itoa(int(in.Index)) + ".0"
+		s.Audio.Inputs[in.StripID] = &in
+	}
+	return s
 }

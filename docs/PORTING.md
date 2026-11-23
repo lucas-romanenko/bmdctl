@@ -6,12 +6,13 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.8.0
+Tracks: bmdwire v1.14.6
 
-- The port follows **bmdwire v1.8.0** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.8.0`, commit `01024ad`): v1.4.0 (tag `v1.4.0`, commit
-  `394435c`), bmdwire#36, #38, #40, #42, #46, #47, #49, #52, #53, #56,
-  #57, #59 and #60. It was
+- The port follows **bmdwire v1.14.6** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.14.6`, commit `75503ed`). Up to v1.8.0 (tag `v1.8.0`, commit `01024ad`) that was
+  v1.4.0 (tag `v1.4.0`, commit `394435c`), bmdwire#36, #38, #40, #42,
+  #46, #47, #49, #52, #53, #56, #57, #59 and #60; after it, the releases
+  listed below. It was
   written against **v1.3.0** (tag `v1.3.0`, commit `e5e336c`), and the
   code and these notes cite that tag wherever they were checked against
   it; v1.4.0 changed only what
@@ -107,34 +108,123 @@ Tracks: bmdwire v1.8.0
   the deck answers `clips clear` before the timeline is empty, which
   `timeline clear` waits out ("HyperDeck commands"). The HyperDeck
   oracle is regenerated at v1.8.0.
+- **bmdwire 1.9.0** is bmdwire#68 (`6876ba2`, `c7a8788`, merged as
+  `e455984`) and #67 (`2b540db`), with hyperdeckwire's #66. Ported in
+  `85bdce3` and `74e8a79` ("Transfers"): each session draws its first
+  transfer id at random in 1..0xFFFF, ids wrapping without 0, where
+  every session started at 43 and two sessions on one switcher took
+  each other's FTDC; and the turn after our own release goes to the
+  client waiting on it (`lockHandover`), while another client has been
+  seen within `lockQuiet`. #67's other halves were here already: a
+  transfer waiting when the session drops fails at once
+  (`resetLane(ErrDisconnected)`), and the engine waits for a
+  re-handshaking session to be ready before it runs a command
+  (`waitReady`, "Engine"). #66, `upload_clip`'s `should_cancel`, is FTP
+  upload, which is out of scope here ("HyperDeck").
+- **bmdwire 1.10.0** is bmdwire#70 (`8defba1`) and #71 (`9e52191`,
+  `564593d`, `42c7267`), ported in `762f86e` and `43a5a42`. #71: a video
+  mode number atemwire's table lacks is kept as an unknown mode (`Known`
+  false, label `mode-<n>`, no frame size), in `VidM` and in `_VMC`'s
+  blocks and bitfields, where it was an error that lost the rest of its
+  packet; `_VMC` takes 12-byte blocks from before protocol 8.0 and a cut
+  payload; a field whose parser fails is dropped on its own ("Session",
+  Bad packets); ATEM Software Control's `4KHDp…` and `8KHDp…` names are
+  read beside the `2160p…` and `4320p…` ones and written by profile save
+  and the macro decoder ("Profiles", "Macro codec", "Commands"). Still
+  transfers refuse a mode with no frame size (`7dd6caa`, "Still
+  images"). #70: `TopologyBlockCounts` reads `_top`'s DVE, stinger and
+  SuperSource counts where `_ver` says they are, and the session logs
+  `TopologyDiagnostic` at every connect ("Readers", "Session").
+  `build_full_state`'s new `topology` keys wait with `build_full_state`,
+  which is not ported ("Readers").
+- **bmdwire 1.11.0 to 1.14.5, transport and connect** (bmdwire#73, #75,
+  #77, #80, #88, #91; #83/#86 had nothing to port): ported in `9e9e645`
+  and `9419699` ("Transport", "Session", "Engine"). #73: the session
+  drains the datagrams waiting and ACKs them once, ACKs a resend of a
+  packet it has, and logs a capped receive buffer once. #80: only
+  reliable packets count as received, the resend timer follows the round
+  trip (RFC 6298) with a fast resend on repeated ACKs, no ACK repeats for
+  parked packets, 4096/8192 windows, a goodbye before a silence
+  re-handshake. #75/#77: "no room" fails Dial at once, Dial gives up on
+  no progress (5 s, 10 s before the first answer) within 60 s. #91: the
+  stall is judged before the hello is re-sent. #88's tick slack and
+  WSAECONNRESET fix, and #83's `MSG_DONTWAIT`, have no counterpart here
+  ("Transport", Windows).
+- **bmdwire 1.11.0 and 1.13.0, transfers** (bmdwire#73, `588a389`;
+  #80): ported in `095531e`, `d7f923e` and `575907c` ("Transfers"). FTDE
+  1 is asked again after a pause that doubles from 50 ms to 1 s, and
+  fails after 20; a still download its caller gives up on is drained to
+  its end before its lock goes back, since 1.13.0 also before its first
+  chunk; chunks of the session's last 64 transfers it no longer follows
+  are acknowledged and dropped; the first FTDE 1 of a transfer is logged,
+  and a transfer given up on while the switcher answers busy says so;
+  `WithStallTimeout` is `download_still`'s `stall_timeout`. 1.11.0's
+  imaging half is not ported: `atem_to_rgb` in pieces frees Python's
+  GIL, which Go doesn't have, and `RLEDecode` already takes 15–18 ms on
+  a 4K frame against bmdwire's 18 ms after the change ("Still images").
+- **bmdwire 1.14.0** is bmdwire#78 (merged as `1558306`), ultimattewire
+  only: the documented Ultimatte 12 Ethernet Protocol v2.0 on 9998 in full
+  (`client.py`, `controls.py`), media pool images from captures of
+  Software Control (`media.py`, `upload_stream`), `parse_interface` reading
+  the document's `DynamicIP`, and `UltimatteError` above every error. All
+  of the library is ported (`0822aa0`, `b8b4af0`, `a928a68`, `ce89b61`,
+  "Ultimatte"); its bench check, `smoke.py`, is not (the hardware rule),
+  and the CLI has no verb over the session yet ("Ultimatte commands").
+  ultimattewire has a SURFACE.md of its own from this release, and
+  `docs/SURFACE-ultimatte.md` is now a copy of it, as
+  `docs/SURFACE-atem.md` is of atemwire's. The oracle, regenerated at
+  v1.14.5, is byte for byte the one recorded at v1.7.0 (`2348cc8`).
+- **bmdwire 1.14.1** (bmdwire#84) made six Python names public. bmdctl
+  needs none: the mode table's names are `VideoModeNames`, it has no
+  `build_full_state` or `build_topology`, its fake is
+  `internal/fakeatem`, not `atemwire.testing`, `read_preamble` and
+  `parse_section` were public here already (`ReadPrelude`,
+  `ParseSection`), and `resolve_slot_dir` is FTP upload. Its session
+  hygiene tests for hyperdeckwire: the greeting failure's is ported
+  (`3c3ce1d`, "HyperDeck"). 1.14.2 changed only wording, 1.14.3 to
+  1.14.5 only the ATEM transport (above). videohubwire has not changed
+  since 1.8.0.
+- **bmdwire 1.14.6** is bmdwire#93 (`7ac3b4c`, merged as `52bd2a8`) and
+  #79 (`938e822`, merged as `63486b6`). #93, the legacy mixer's
+  headphone output, `AMHP` and `CAMH`, and `LegacyAudioHeadphones`
+  reading it ("Parsers", "Commands", "Readers"), was ported ahead of the
+  release with its oracles at #93's head; `recv.json`, `send.json` and
+  `readers.json` regenerated at `v1.14.6` came out the same bar the
+  version. #79, `python -m atemwire.sessions`, counts a switcher's free
+  sessions by opening sessions until it answers "no room": not ported.
+  It is a hand-run tool outside atemwire's public layers that fills the
+  switcher's session table while it runs, and its only protocol
+  knowledge, the `0x03` answer, the transport has had since bmdwire#75.
 - The `Tracks:` line above says the same on one line, for workflows to
   read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.8.0`. Keep it a line of its own, exactly
+  tag `v1.14.6`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at v1.6.0, whose §5.4 marks each
-  fix. It is the specification for `atem/`. Its body says it describes
+  header naming the version: bmdwire's at v1.14.6 (`75503ed`), whose §5.4 marks
+  each fix. It is the specification for `atem/`. Its body says it describes
   1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
   follows, so it describes that apart from those marks.
 - `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
   bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md,
   and brought up to v1.8.0.
-  `docs/SURFACE-videohub.md` and `docs/SURFACE-ultimatte.md` are the same
-  for `videohub/` and `ultimatte/` (phase 5), written from videohubwire's
-  code at v1.6.0 and ultimattewire's at v1.7.0 (`31f9724`), which have
-  none either. videohubwire's code hasn't changed since 1.0.0;
-  ultimattewire's last change is 1.7.0's `extract_model` and
-  `parse_current_file` (bmdwire#52, `39dded8`).
+  `docs/SURFACE-videohub.md` is the same for `videohub/` (phase 5),
+  written from videohubwire's code at v1.6.0, which has none either;
+  videohubwire's code hasn't changed since 1.0.0.
+  `docs/SURFACE-ultimatte.md` was written here the same way from
+  ultimattewire's code at v1.7.0 (`31f9724`); since bmdwire 1.14.0
+  ultimattewire has `docs/SURFACE.md` of its own, and the file is a copy
+  of it at v1.14.5, as `docs/SURFACE-atem.md` is of atemwire's.
 - **Drift is reported, not merged.** `.github/workflows/surface-drift.yml`
   compares the four copies every night, less their header comment, with the
   SURFACE.md bmdwire main has beside each package, and keeps one issue,
   "SURFACE drift from bmdwire", open while they differ: rewritten each
   night, closed once they match. It never edits a SURFACE file; catching
-  up is a port. Until hyperdeckwire, videohubwire and ultimattewire have
+  up is a port. Until hyperdeckwire and videohubwire have
   `docs/SURFACE.md`, their copies have nothing to compare and the issue
   says so; once one has, make its comparison required in
-  `.github/scripts/surface-drift.sh`, as the atemwire one is. Separately, bmdwire's publish workflow opens "Port
+  `.github/scripts/surface-drift.sh`, as the atemwire and (since bmdwire
+  1.14.0) ultimattewire ones are. Separately, bmdwire's publish workflow opens "Port
   bmdwire v<version>" here, labelled `port`, once a release is on PyPI.
 - Where SURFACE.md and the Python code disagree, the code at v1.3.0 wins,
   as SURFACE.md itself says. Each disagreement found during the port is
@@ -216,13 +306,13 @@ Mirrors bmdwire v1.3.0 `atemwire/transport.py` (`Packet`, `UdpProtocol`):
 UDP 9910; SYN with hello `0x01` under session `0x1337`, the switcher's SYN
 answer (`0x02` accepted) ACKed, the session id then taken from the
 switcher's next packet; the contiguous ACK high-water mark; dedup of
-flagged retransmissions; in-order delivery with up to 512 packets parked
-ahead of a gap; go-back-N resends only when the switcher asks (from header
+flagged retransmissions; in-order delivery with up to 4096 packets
+parked ahead of a gap (512 until bmdwire#80); go-back-N resends only when the switcher asks (from header
 bytes 6-7, at most 128, window 4096); the goodbye (SYN, hello `0x04`, only
 when established); 15-bit sequence arithmetic throughout. No client
 keepalive, as in atemwire. Since bmdwire#36 (`d050c10`) there is a client
-retransmit timer: what the switcher hasn't acknowledged in 250 ms is
-resent (below).
+retransmit timer: what the switcher hasn't acknowledged is resent on a
+timer that follows the round trip (below).
 
 - **No thread.** atemwire splits the transport between a UDP thread
   (`_receive_packet_low`, `_send_packet_low`) and the protocol worker
@@ -230,14 +320,34 @@ resent (below).
   the session's owner goroutine (step 3), so it has no locks and no queues.
   It never reads the socket: the session hands it each datagram
   (`receive`), then each packet that comes out (`handle`).
-- **ACKs go out immediately.** atemwire queues an ACK for its UDP thread to
-  send on its next `select()` wake-up; here it is written while the
-  datagram is processed. Same ACK number, same order relative to the data.
+- **ACKs.** ACK numbers are cumulative, and since bmdwire#73 (1.11.0)
+  the session takes every datagram already waiting behind the one that
+  woke it (up to `drainMax`, 512, UdpProtocol's `DRAIN_MAX`; the
+  transfer lane's 120 s cap, protocol.py's `DRAIN_MAX`, is `drainCap`)
+  before it ACKs: one ACK after them, and one every `ackEvery` (32) of a
+  long run, as atemwire's UDP thread drains its socket and as the
+  switcher ACKs our uploads. Outside a drain an ACK goes at once. An ACK
+  that would say what the last one said is not sent (packets parked
+  behind a gap; bmdwire#80), except for a resend of a packet we have,
+  which means the switcher missed our ACK and is ACKed again
+  (bmdwire#73; dropped silently, the switcher resent its whole window
+  every ~80 ms). atemwire's reason, a Python thread falling behind a 4K
+  still at line rate, doesn't hold for the read goroutine, but the ACKs
+  on the wire are bmdwire's.
+- **Received sequence numbers** are kept for the last 8192 (twice the
+  park window, so a parked packet is still known when the ACK walk
+  reaches it) and only for reliable packets (bmdwire#80): the switcher's
+  ACK-only packets all carry sequence 0, and counting them made a lost
+  real packet 0 (once per 32,768) look received, so the ACK walked over
+  it and its resend was dropped as a duplicate.
 - **"5 s of silence" is 5 s with no datagram accepted from the switcher**
   (right peer, well formed, not stale), counted from the last one or from
   the last SYN. This is a deliberate difference (bmdwire#11, see
   "Deliberate differences"). On timeout the transport re-SYNs at once and
-  the session reports a disconnect.
+  the session reports a disconnect. Since bmdwire#80 the session being
+  replaced is said goodbye before the new hello, so a switcher whose link
+  is back ends it, its locks and transfers with it, at once rather than
+  after reaping it.
 - **ConnectionReady without a stash.** atemwire marks the dump complete
   when `InCm` is stored, then returns a `ConnectionReady` sentinel for the
   next packet and keeps that packet for its next call (the 2026-09-16
@@ -257,18 +367,50 @@ resent (below).
   invented values, so a Winsock error may be treated as fatal there; the
   caller dials again. A packet sent while the session id is unknown is
   dropped, which is what atemwire's `to_bytes` failure does.
-- **The resend timer** (bmdwire#36, `RESEND_AFTER`). The switcher's ACK
-  number, which is cumulative (the last of our packets it has: ASC's
-  restore capture never shows it ahead of the latest sent), is read from
-  every packet carrying it (`onACK`). A reliable packet sent with none
-  outstanding arms `resendDue`; an ACK that leaves some outstanding moves
-  it on, one that leaves none clears it. When it passes, `resendUnacked`
-  goes back N from the first unacknowledged packet (at most 128) and
-  waits 250 ms again. atemwire checks after each `select()` of its UDP
-  thread; here the session's run loop has a timer for it beside the
-  silence timer. The switcher asks for a packet it finds missing only when
-  a later one arrives, and nothing follows the last chunk of an upload
-  budget: its loss stalled the upload until the caller's timeout.
+- **The resend timer** (bmdwire#36; paced by bmdwire#80, 1.13.0). The
+  switcher's ACK number, which is cumulative (the last of our packets it
+  has: ASC's restore capture never shows it ahead of the latest sent), is
+  read from every packet carrying it (`onACK`), and what it hasn't
+  acknowledged is resent from the first unacknowledged packet (go back N,
+  128 at most). How long it waits follows the link, as TCP's timer does
+  (RFC 6298): the smoothed round trip to the switcher's ACK plus four
+  times its variation, measured on packets sent once (Karn), between
+  `resendMin` (50 ms) and `resendMax` (1 s), `resendAfter` (250 ms)
+  before the first measurement, doubled for each resend nobody
+  acknowledges (to 64×) and reset by an ACK. The same ACK number on two
+  more ACK-only packets resends at once (`dupACKs`, TCP's fast
+  retransmit): the switcher takes our packets in order only and never
+  asks for one it missed. `resends` and `fastResends` count them; each
+  is logged at debug and a warning sums them up every 5 s. A fixed
+  250 ms per lost packet, where the ACK comes back in 2 ms (p50) to
+  28 ms (p99) on a LAN, made a 1080p still take 96 s at 5 % loss in
+  bmdwire's replay. The session's run loop has a timer for it beside the
+  silence timer; nothing follows the last chunk of an upload budget, so
+  without it that chunk's loss stalled the upload until the caller's
+  timeout.
+- **"No room"** (bmdwire#75, 1.12.0). A hello answered `0x03` sets
+  `refused` and is not ACKed (atemwire ACKed it). Dial then fails at
+  once with `ErrNoFreeConnection` ("Session"). A session already dialled
+  that is refused on a re-handshake keeps asking every silence timeout,
+  as atemwire's UDP thread does.
+- **The receive buffer** (bmdwire#73). After asking for 16, 8, 4 or 1
+  MiB, Dial reads back what the system granted (`getsockopt`, halved on
+  Linux, which reports double; nothing on Windows) and, when it is less,
+  logs once per process that the system caps it (`net.core.rmem_max`).
+  Linux's default, 208 KB, is a fraction of one 4K still in flight. It is
+  not kept as a field (atemwire's `UdpProtocol.rcvbuf`): nothing reads it.
+- **Nothing queued between threads** (bmdwire#73). atemwire's UDP thread
+  now sends everything queued for it per wake; the run goroutine writes
+  every packet to the socket itself, so there is no queue to drain.
+- **Windows** (bmdwire#83, #86, #88). Nothing to port. atemwire's UDP
+  thread read its wakeup bytes with `MSG_DONTWAIT`, which Windows'
+  Python lacks; here there is no wakeup socket, only channels. It also
+  ended on `WSAECONNRESET`, Windows' report of an ICMP port-unreachable;
+  Go's `net` switches that report off for every UDP socket on Windows
+  (`net/fd_windows.go`, `SIO_UDP_CONNRESET` and `SIO_UDP_NETRESET`,
+  go.dev/issue/5834 and 68614), so `ReadFrom` never sees it. The stall
+  check's `_TICK_SLACK` is atemwire's for a wait that looks only at 5 s
+  ticks; Dial's stall has its own timer ("Session").
 - **Foreign-peer guard** compares IP addresses. atemwire compares the
   sender's address string with the `ip` it was given; the session resolves
   a host name once when dialling, so a name works here.
@@ -293,7 +435,11 @@ resent (below).
   transport half of `test_lock_delivery.py` one for one against a fake
   `net.PacketConn`, using the `transport/` fixtures where the Python tests
   use those literals. Python tests with no counterpart say why in a comment
-  where they would be.
+  where they would be. `transport_link_test.go` ports the transport tests
+  of bmdwire#73 and #80 (the drain and its ACKs, packet 0, the resend
+  timer, the fast resend, the windows), and `connect_test.go` those of
+  #75, #77 and #91 (no room, the stall and hello limits, the tick judged
+  before the re-hello).
 
 ## Session (`atem/session.go`, `atem/protocol.go`)
 
@@ -325,9 +471,27 @@ two settings `Dial` needs a struct for.
   race the owner.
 - **Dial** is `ATEMConnection.connect` plus `wait_ready`: it returns when
   the dump is complete (`InCm`, then the next packet: atemwire's
-  `ConnectionReady`) and the video mode has arrived. Without a context
-  deadline it gives up after `CONNECT_TIMEOUT`, 15 s. On failure it says
-  goodbye if the handshake got that far and closes the socket. It resolves
+  `ConnectionReady`) and the video mode has arrived. Since bmdwire#75 and
+  #77 (1.12.0, 1.12.1) it waits as long as the switcher keeps sending,
+  and gives up after `ConnectStallTimeout` (5 s) with nothing from it
+  (`ErrStalled`), `ConnectHelloTimeout` (10 s, two hellos) before its
+  first answer (`ErrNoAnswer`), and at once on "no room"
+  (`ErrNoFreeConnection`). Without a context deadline `ConnectMax`
+  (60 s) caps it; `ConnectTimeout` (15 s) now bounds only the engine's
+  wait for a session re-handshaking after a silence, as atemwire's
+  CONNECT_TIMEOUT does. The limits count from the switcher's last
+  accepted datagram (`transport.lastHeard`, which connect doesn't
+  reset) or from the first hello, and reaching one counts (atemwire's
+  `>=`, bmdwire#88). They have their own timer in the run goroutine, and
+  the silence timeout judges them before it re-sends the hello
+  (bmdwire#91): both fall due together for a switcher that welcomes and
+  then goes quiet, and when the silence timer ran first the answer to
+  the re-sent hello could be read before the stall was judged, one more
+  5 s tick each time. atemwire notes the tick for its waiting thread
+  (`silence_tick`); here one goroutine does both in turn. Not ported:
+  `connect_refused` and `connect_progress()`, which a page polling a
+  connect reads; Dial's error says which failure it was. On failure Dial
+  says goodbye if the handshake got that far and closes the socket. It resolves
   `host` or `host:port` (default 9910) to IPv4 once and binds an
   unconnected ephemeral UDP socket with a 16 MiB receive buffer, or the
   first of 8, 4 and 1 MiB the system takes (bmdwire#46), as atemwire
@@ -390,7 +554,14 @@ two settings `Dial` needs a struct for.
   Fairlight, which sends none of the four. atemwire guards the
   description with a `try`; formatting it here can't fail. The engine
   logs at Info, so the lines land in its log file, which is what a user
-  with a legacy switcher can send.
+  with a legacy switcher can send. Since bmdwire#93 the first `AMHP` is
+  logged the same way, with `<field>_db` for each of its four gains.
+- **Topology at connect** (bmdwire#70, `8defba1`): at every connect the
+  session logs at Info `atem: topology at connect: protocol <ver>, _top
+  <n> bytes: <hex> -> dves=… stingers=… superSources=… (DVE at offset
+  9)`, or why the counts are unknown, as atemwire's `_log_topology` does,
+  so that a log from any model can confirm the layout. Formatting it
+  can't fail, so atemwire's guard around it has no counterpart.
 - **TiRq** is sent once per completed dump, straight to the transport and
   not through the outbox, as atemwire's `send_commands` call in `loop()`
   is.
@@ -405,20 +576,25 @@ two settings `Dial` needs a struct for.
   `ErrDisconnected` could wait on `Ready`, find the old closed channel
   and get `ErrNotReady` from its next call; CI hit it in
   `TestDisconnectFailsWaitingTransfers` (2026-10-12).
-- **Bad packets.** A packet whose commands can't be decoded (a truncated
-  header, a non-UTF-8 code, and from step 5 a parser error) loses its
-  remaining commands and the session carries on: an exception escaping
-  atemwire's `loop()` does exactly that. This includes SURFACE.md §5.4
-  item 3: an unknown `VidM` mode loses the rest of its packet and Dial
-  waits for a video mode that never comes. Fixing it is a deliberate
-  change for later, not part of the port.
+- **Bad packets.** A packet whose commands can't be split (a truncated
+  header, a zero length, which is corruption and resyncs) loses its
+  remaining commands and the session carries on, as an exception out of
+  atemwire's `decode_packet` does. A command whose parser fails costs
+  only itself (bmdwire#71, `564593d`, `_save_field_guarded`): it is logged
+  at Error the first time for its code, with up to 32 bytes of payload,
+  then at Debug, and the commands after it still land. Until v1.10.0 it
+  took the rest of the packet with it, so an unknown video mode in
+  `_VMC` cost the `VidM` behind it and Dial waited for a video mode that
+  never came (SURFACE.md §5.4 items 3 and 40). A parse error during the
+  dump is still named in `ErrIncompleteDump` if the dump ends without a
+  video mode.
 - **Fatal errors** (a non-transient write error, any read error) end the
   session: `Connected` goes false, subscriber channels close and every
   method returns an error matching `ErrClosed` that also wraps the cause.
   atemwire's `on_died` callback and pool eviction have no counterpart; the
-  caller dials again. On Windows an ICMP port-unreachable can surface as a
-  read error (WSAECONNRESET) and end the session, as it ends atemwire's UDP
-  thread.
+  caller dials again. Windows' report of an ICMP port-unreachable
+  (WSAECONNRESET), which ended atemwire's UDP thread until bmdwire#88,
+  never reaches a read here ("Transport", Windows).
 - **Close** gives back any store lock held (`release_locks_now`, see
   "Transfers"), says goodbye, closes the socket, fails pending waiters and
   transfers with `ErrClosed` and closes subscriber channels.
@@ -454,7 +630,7 @@ two settings `Dial` needs a struct for.
   single pointers; the last one wins, including `FMLv` and `RTMD`, as in
   atemwire. A nil pointer is a packet that hasn't arrived.
 - **Tags.** Every field that holds packets is tagged `atem:"OPCODE"`; a
-  test checks that the 85 stored opcodes (92 parsed, less the six the
+  test checks that the 86 stored opcodes (93 parsed, less the six the
   transfer engine consumes and `InCm`) each appear exactly once and that
   every JSON name is snake_case.
 - **Raw.** `State.Raw` holds what atemwire stores as bytes under the
@@ -478,7 +654,16 @@ two settings `Dial` needs a struct for.
   `Pixels` (atemwire's `get_label`, `get_resolution`, `get_pixels`),
   `TimeField.TotalSeconds`, `AudioInputField.PlugName`, and the three
   `get_rgb` methods through a port of `colorsys.hls_to_rgb`, checked
-  bit for bit against Python 3.12.
+  bit for bit against Python 3.12. For a mode the table lacks
+  (bmdwire#71) `Label` is `mode-<n>` and `FrameSize`/`Pixels` give 0
+  where atemwire gives None; `Known` (atemwire's `known` property) says
+  which, and `Resolution`, `Interlaced`, `Rate` and `Widescreen`, None in
+  atemwire, are zero (the parser oracle reads them as None when `Known`
+  is false).
+- **Topology and headphones.** `TopologyField.Raw` is the payload, which
+  `TopologyBlockCounts` reads (bmdwire#70); the class's own fields keep
+  protocol 2.30's offsets, one byte late before 2.30, as atemwire's do
+  (SURFACE.md §5.4 item 38). `Audio.Headphones` is `AMHP` (bmdwire#93).
 - **Copies.** `deepCopy` (reflection, `clone.go`) copies the tree with
   nothing shared; `State()` and every `Change.Value` go through it. A test
   fills every field of a `State` and checks that the copy shares no
@@ -507,13 +692,18 @@ with a store function (where `save_field_data` puts the result);
   subpart (not per byte, as Go's own helpers would). Names atemwire keeps
   as bytes (`MPfe`, `MPrp`) stay undecoded.
 - **Quirks copied on purpose:** an `MPfe` of exactly 23 bytes is an error
-  (Python's `struct` raises on a zero-length Pascal string); an unknown
-  `VidM` mode, or a `_VMC` bitfield with bit 30 or 31 set, is an error
-  (atemwire's `ValueError`, §5.4 item 3); `CCdP` with data type 5 or an
-  unknown type yields empty data. All of these are what bmdwire v1.3.0
+  (Python 3.12.3's `struct` raises on a zero-length Pascal string; later
+  CPythons don't, so the oracle scripts run on 3.12.3); `CCdP` with data
+  type 5 or an unknown type yields empty data. All of these are what bmdwire v1.3.0
   does. Two of its quirks are fixed instead (see "Deliberate
   differences"): `*XFC` is dropped, not an error (bmdwire#14), and `LKST`
   is stored taken or released, per store (bmdwire#15).
+- **Video modes** (bmdwire#71, `9e52191`): a mode number the table
+  lacks, in `VidM`, a `_VMC` block or either bitfield, parses as an
+  unknown mode. `_VMC` never fails: under two bytes it has no modes; its
+  blocks are 12 bytes (before protocol 8.0, `reconfigure` false) when
+  the payload holds the count's 12-byte blocks and not its 13-byte ones;
+  a block cut short ends the list.
 - **Keys.** `Change.Key` is the opcode and the indices atemwire's
   `KEY_FORMAT` reads, with the strip id in place of the first index for
   every packet that carries one (`FASP`, `AEBP`, `AICP`, `AILP`, `AIXP`
@@ -537,9 +727,11 @@ with a store function (where `save_field_data` puts the result);
   same way (same operations, same order), so they match bit for bit,
   except the classic mixer's meters (`AMLv`), where Go's `math.Log10` and
   CPython's libm `log10` can differ in the last place.
-- **Verification.** `internal/fixtures/oracle/recv.json` holds 1,062
-  payloads fed to bmdwire v1.6.0's real `save_field_data` and what it did
-  with each. `TestParsersMatchAtemwire` replays every case: same error or
+- **Verification.** `internal/fixtures/oracle/recv.json` holds 1,080
+  payloads fed to the real `save_field_data` of bmdwire v1.14.6 and what
+  it did with each;
+  `VideoModeField`'s `known` is recorded (a property), and `_top`'s
+  payload as `raw`. `TestParsersMatchAtemwire` replays every case: same error or
   not, same consumed/raw/stored outcome, same key, same attribute values
   (floats to 1e-12), and the value sits in the `State` tree under the
   field tagged with its opcode at the indices the key names. Every parser
@@ -551,8 +743,8 @@ with a store function (where `save_field_data` puts the result);
 
 ## Commands (`atem/cmd_*.go`, `atem/command.go`, `atem/rate.go`)
 
-One file per SURFACE.md §1 table, 82 command types in all: one per
-atemwire Send class. Each implements `Command` (`Opcode`, `Encode`,
+One file per SURFACE.md §1 table, 83 command types in all: one per
+atemwire Send class, with bmdwire#93's `CAMH`. Each implements `Command` (`Opcode`, `Encode`,
 `EchoKey`, `Unverified`, `Destructive`) and, except the four that take no
 arguments, `Validator`.
 
@@ -609,7 +801,10 @@ arguments, `Validator`.
 - **Unverified** are the 20 classes atemwire restored from upstream pyatem
   without re-verifying them (`CTPr`, `CTPs`, the four legacy audio, `CCmd`,
   `CMvI`, `CMvP`, `CSBP`, `CSSc`, `CRMS`, `RcTM`, `CRSS`, `STAB`, `StrR`,
-  `AiVM`, `SRsv`, `SRcl`, `SToD`) and `CKMs` ("not Wireshark-validated").
+  `AiVM`, `SRsv`, `SRcl`, `SToD`), `CKMs` ("not Wireshark-validated")
+  and `CAMH` (LibAtem's layout, not checked on a switcher, bmdwire#93;
+  the CLI's notice says so). `AudioHeadphoneProperties` is `CAMH`, in
+  wire units like the other legacy audio commands.
   `CXMS` is not: atemwire live-validated it. **Destructive** are
   `VideoMode`, `SaveStartupState`, `ClearStartupState` and `ClearStill`.
 - **Echo keys** come from SURFACE.md §2's "written by" column, in the
@@ -641,8 +836,15 @@ arguments, `Validator`.
   dotted-quad IPv4 (atemwire's `inet_aton` also takes `"10.1"`-style
   shorthand); `CameraControl` string data must be a string or `[]byte`
   (atemwire's `bytes(v)` of an integer would send that many zero bytes).
-- **Verification.** `internal/fixtures/oracle/send.json` records 5,966 calls
-  of bmdwire v1.3.0's operations and Send classes and what each sent,
+- **Video mode names** (bmdwire#71, `42c7267`): `VideoModeNames` takes
+  ATEM Software Control's `4KHDp…` and `8KHDp…` for modes 14-25 beside
+  the `2160p…`/`4320p…` spellings; `video-mode set --mode` also takes any
+  number 0-255, so a `mode-<n>` mode `_VMC` lists can be set by its
+  number.
+- **Verification.** `internal/fixtures/oracle/send.json` records 5,994 calls
+  of the operations and Send classes of bmdwire v1.14.5 with bmdwire#93
+  (12 more than v1.3.0's for ASC's UHD names in `set_video_mode`, 16 for
+  `set_audio_headphones`) and what each sent,
   raised or declined; `TestCommandsMatchAtemwire` builds the matching Go
   command for each and checks `Encode` byte for byte or that `Validate`
   fails. Every command type has cases. `cmd_test.go` ports the byte
@@ -650,8 +852,9 @@ arguments, `Validator`.
 
 ## Readers (`atem/read_*.go`)
 
-bmdwire v1.3.0's 88 readers, and the five v1.6.0 adds for the legacy
-audio mixer (bmdwire#49), 93 in all (the `atemwire.messages.*` functions
+bmdwire v1.3.0's 88 readers, the five v1.6.0 adds for the legacy
+audio mixer (bmdwire#49) and the two v1.10.0 adds for `_top`
+(bmdwire#70), 95 in all (the `atemwire.messages.*` functions
 whose first parameter is `mx`, SURFACE.md §2.1), are methods on `State`,
 one file per atemwire module (`read_switching.go`, `read_transition.go`,
 ..., `read_audio_legacy.go`), so callers never see wire units. `read_state.go` holds what they share from
@@ -726,18 +929,42 @@ one file per atemwire module (`read_switching.go`, `read_transition.go`,
   instead. The read-modify-write operations built on readers
   (`toggle_usk`, `toggle_dsk`, `toggle_transition_*`,
   `set_transition_rate`) are the engine's ("Operations").
+- **The block counts** (bmdwire#70, `8defba1`): `TopologyBlockCounts`
+  is `topology_block_counts`, a `TopologyBlockCountsView` of three `*int`
+  (JSON `dves`, `stingers`, `superSources`, atemwire's keys), all nil
+  until `_top` and `_ver` have both arrived, for a protocol older than
+  2.22 or not 2.x, and for a payload shorter than its layout
+  (`topologyLayouts`, newest first: 2.30 and on, 28 bytes, DVE at 9;
+  2.22 to 2.29, 18 bytes, DVE at 8). `TopologyDiagnostic` is
+  `topology_diagnostic`, word for word. Private `_topology_layout` is
+  `topologyLayout`. `build_full_state`'s `topology` keys have no
+  counterpart: `build_full_state` is not ported.
+- **Headphones** (bmdwire#93): `LegacyAudioHeadphones` reads `AMHP` when
+  the unit sends one: `Bus` `"headphones"`, `VolumeDB` its gain,
+  `Unmuted` true, and the mix in the embedded `*LegacyHeadphonesMixView`
+  (`program_out_db`, `talkback_db`, `sidetone_db`). Otherwise `Bus` is
+  `"monitor"` and the embedded view is nil, so the three keys are absent
+  as in atemwire's dict (encoding/json leaves out a nil embedded
+  struct). `Enabled`, `Dim`, `DimLevel`, `Solo` and `SoloSource` are the
+  monitor's either way.
+- **Unknown video modes** (bmdwire#71): `VideoMode`,
+  `AvailableVideoModes`, `VideoResolution` (its default) and `DisplayFPS`
+  (its default) needed no change once `Label` and `FrameSize` did.
 - **Verification.** `internal/fixtures/oracle/readers.json`
-  (`gen_readers.py`) holds 36 scenarios: 2,336 packets fed to bmdwire
-  v1.6.0's `save_field_data`, interleaved with 17,025 reader and helper
-  calls and their results. The scenarios cover the empty state, all-0x00,
+  (`gen_readers.py`) holds 39 scenarios: 2,420 packets fed to the
+  `save_field_data` of bmdwire v1.14.5 with bmdwire#93, interleaved with
+  17,232 reader and helper calls and their results. The scenarios cover the empty state, all-0x00,
   all-0xFF and all-0x80 payloads, random 1-4 M/E switchers with partial
   packet sets, split and stereo Fairlight strips, names, HyperDeck
   planning, every video mode, chroma sample values on decimal rounding
   ties, and the legacy mixer (bmdwire's `_legacy_mx` from packets,
   random and filled ones, `AMIP` at both lengths, a `FAMP` beside them,
-  and the unit helpers on their anchors, ties, clamps and NaN). The
-  legacy scenarios come after the others, so the generator's fixed seed
-  gives those the packets it gave them at v1.4.0. An exception is matched
+  and the unit helpers on their anchors, ties, clamps and NaN), video
+  modes past the table (13- and 12-byte `_VMC`, whole and cut), the
+  `_top` block counts under nine `_ver`s, and the headphone output. The
+  legacy, unknown-mode, topology and headphone scenarios come after the
+  others, each new one with fixed data, so the generator's fixed seed
+  gives every earlier scenario the packets it gave them at v1.4.0. An exception is matched
   only by a helper that returns an error (`raised`). Each call uses every index the state has plus out-of-range ones.
   `TestReadersMatchAtemwire` replays them through `State.store` and checks
   values bit for bit, int vs float, None, dict keys and list order. Every
@@ -829,6 +1056,21 @@ does.
   and the downloaded RGBA equals the same steps run locally, byte for
   byte. Not yet seen on a switcher: conversion without premultiply, and
   a fit that shrinks the image or adds bars at the sides.
+- **No frame size, no still** (bmdwire#71). At a video mode atemwire's
+  table lacks, `FrameSize` is 0×0: `UploadStill` refuses before it asks
+  for the lock (`7dd6caa`; `FitFrame` panicked on 0×0), and the CLI's
+  `media upload` and `media download` and the profile's image capture
+  and apply refuse too ("Operations", "Profiles"). Transfer progress
+  needs no guard: `report` ignores a total of 0.
+- **Not ported from bmdwire 1.11.0**: `atem_to_rgb` converting in 1 MB
+  pieces (`CONVERT_PIECE`), which frees Python's GIL between them so the
+  UDP threads can ACK; Go has no GIL, and `YCbCrAToRGBA` runs on the
+  caller's goroutine (42 ms for a 4K frame). `rle_decode`'s whole-run
+  copies took it from 133 to 18 ms on a 12 MB 4K frame; `RLEDecode`,
+  which does run on the session's goroutine at FTDC, takes 14.7 ms on a
+  33 MB all-literal 4K frame and 17.6 ms on a half-flat one (Go 1.27,
+  measured 2026-11-23), under the switcher's ~80 ms resend, so it is
+  left as it is.
 
 ## Transfers (`atem/transfer.go`)
 
@@ -860,8 +1102,12 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   which SURFACE §4.5 notes isn't thread safe; here nothing can race it.
 - **The state machine is atemwire's, branch for branch**:
   - per-store queues, tried in the order they were created (Python's dict
-    order); one transfer in flight; transfer ids from 43 (42, incremented
-    before use), carried across reconnects;
+    order); one transfer in flight; transfer ids from a random start in
+    1..0xFFFF, wrapping without 0, carried across reconnects (bmdwire#64,
+    `6876ba2`: from 43, as every session numbered them, two sessions on
+    one switcher took each other's FTDC, and the switcher, its transfer
+    engine held by a transfer nobody drained, refused everything after
+    with FTDE 1);
   - PLCK for a transfer, a whole-store LOCK for a clear; a lock request not
     repeated within a second (`LOCK_REREQUEST_SECONDS`); on a release with
     work queued and the store not ours, an immediate re-request (the
@@ -889,10 +1135,27 @@ atemwire's `upload` takes RLE data with `compressed=True`),
     set told `LockHolder`, a release of ours not yet announced. The
     lock-exempt macro store goes on at once; with nothing queued, every
     held lock is released;
-  - FTDE 1 retries with the same transfer id, 5 asks for the lock again, 6
-    gives the lock back and keeps the task; any other status drops the task
-    and releases the lock; FTDa, FTDE and FTDC with no transfer in flight or
-    another transfer id are ignored;
+  - the turn after our own release goes to the client waiting on it
+    (bmdwire#63, #68, `6876ba2`): both used to ask `lockCourtesy` after
+    the release was announced, 0.3 ms apart on the bench, and one transfer
+    was aborted. After a release of ours (`ownRelease`) the next request
+    waits `lockHandover` (0.1 s) more, while another client has been seen
+    within `lockQuiet` (`othersSeen`: its LKST, its FTDC, an FTDE 6 to
+    us); alone it waits nothing more. A release announced over
+    `lockEchoWindow` (0.25 s) after ours is another client's, handed the
+    store unannounced; we ask as its waiter. An LKST "taken" within
+    `lockEchoWindow` of our LKOB (`lastGrant`) is our own grant announced
+    late, after a transfer shorter than a frame, not another client
+    (`c7a8788`);
+  - FTDE 1 is asked again with the same transfer id after a pause that
+    doubles from `tryAgainFirst` (50 ms) to `tryAgainMax` (1 s), and after
+    `tryAgainAttempts` (20) refusals the transfer fails like a fatal status,
+    its lock given back (bmdwire#73, `588a389`; it was asked again at once,
+    ~900 times in 13 s on a 4K Plus); the first refusal of each transfer is
+    logged at info (1.13.0). The pause rides the yield timer. 5 asks for the
+    lock again, 6 gives the lock back and keeps the task; any other status
+    drops the task and releases the lock; FTDa, FTDE and FTDC of a transfer
+    not ours are ignored;
   - FTDC pops the queue head and releases the lock before the RLE decode;
     each downloaded chunk is acknowledged with FTUA(tid, 0);
   - FTCD's size is rounded down to whole words and its transfer id isn't
@@ -937,9 +1200,33 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   succeeds, as `clear_still`'s does. A timeout with the store lock never
   granted wraps `ErrLockNotGranted`: `download_still`'s "another client is
   holding it". `abort_transfers` itself has no counterpart.
+  Since bmdwire#73 and #80 a still download with its request out and the
+  lock held is not abandoned at once: it is drained (`draining`), its
+  chunks acknowledged and dropped, and the lock goes back at its FTDC or
+  FTDE, after `drainStall` (5 s) with nothing, or after `drainCap`
+  (120 s, protocol.py's `DRAIN_MAX`; the transport's `drainMax` is
+  UdpProtocol's) in all; the lane starts nothing else meanwhile. A
+  release mid-stream left the switcher's transfer engine with a transfer
+  nobody took, and every later request, from every session, got FTDE 1
+  (a 4K Plus, 2026-11-04); a release before the first chunk did the
+  same, since a still's first chunk can take 2.5 s on a LAN. atemwire's
+  `abort_transfers` also releases every other lock it holds; here the
+  other queued tasks stay and wait for the drain. Chunks of any of the
+  session's last `orphanIDs` (64) transfers that it no longer follows
+  (`asked`, `orphans`) are acknowledged and dropped; a transfer id never
+  asked for is another session's and left alone. A transfer given up on
+  while the switcher was answering FTDE 1, its lock granted, says "the
+  switcher answered busy (try again) N times" (bmdwire#80).
 - **Default timeouts** when the context has no deadline: 30 s still
   download, 5 s clear, 10 s macro download and upload (atemwire's callers),
   90 s still upload (WebATEM's `UPLOAD_TIMEOUT`).
+- **A stall timeout** (bmdwire#73, `588a389`): `download_still`'s
+  `stall_timeout` is `WithStallTimeout(ctx, d)`, a context option as
+  `WithProgress` is, so `DownloadStill`'s signature stays. The owner
+  stamps the task (`heard`, atomic) at each chunk; the caller's goroutine
+  gives up once `d` passes without one, the wait for the lock included,
+  with an error that says `stalled` and wraps `context.DeadlineExceeded`.
+  The engine doesn't set it; atemwire's own callers don't either.
 - **Not ready means refused.** A transfer asked for between a disconnect and
   the end of the next state dump fails with `ErrNotReady` before anything
   is sent; atemwire v1.3.0 checks only `is_connected` and queues into a
@@ -1031,7 +1318,13 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   client (a timeout that names it, a withdrawn clear that never runs, a
   waiting transfer that runs on its release), `*XFC` with a transfer queued,
   a disconnect failing waiting transfers, and a command echoed while a
-  download is in flight.
+  download is in flight. `lock_turns_test.go` ports `test_lock_turns.py`
+  (bmdwire#68): the transfer ids and the turn after our release.
+  `transfer_test.go` also ports `test_transfer_engine_kept_free.py`
+  (bmdwire#73, #80: the drain, orphan chunks, FTDE 1's pause and cap),
+  and `transfer_fake_test.go` `test_download_stall.py` against the fake
+  switcher, which `PaceDownloads` slows to a chunk refill every 20 ms,
+  and `UploadStill` at an unknown mode.
 
 ## Macro codec (`atem/macro`)
 
@@ -1115,6 +1408,10 @@ Params []Param}`, `Decode`, `EncodeOp`, `Encode`, `*Error{Class, Message}`.
   `encoder_test.go` port `test_macro_decoder.py`, `test_macro_encoder.py`
   and the macro halves of `test_wipe_pattern_names.py` and
   `test_input_video_migration.py` one for one, on the `macro/` fixtures.
+- **Video modes** (bmdwire#71): the `VideoMode` op decodes 14-25 to
+  ASC's names and encodes `mode-<n>` as well as the names and a bare
+  number; `macro.json` is at v1.14.5 (2,128 decode cases, 4,299 encode
+  cases).
 - **On hardware** (the fourth run, docs/HARDWARE.md): the 712-byte macro
   downloaded from a Constellation decodes to 52 ops, Fairlight ones
   included, and they encode back to the same bytes.
@@ -1200,8 +1497,8 @@ and a zero value selects nothing.
   does ("Operations", "Images"); `_source_symbol` (unused),
   `_ProtocolAdapter`/`_resolve_connection`.
 - **Verification:** `oracle/profile.json` from `gen_profile.py` (bmdwire
-  `v1.3.0-9-g62e97f7`) holds the golden's state, 46 saves, 274 applies
-  (18,628 events, 30 raising) and 130 parses, all replayed byte for
+  `v1.14.5`) holds the golden's state, 50 saves, 309 applies
+  (18,674 events, 30 raising) and 130 parses, all replayed byte for
   byte. The golden's state holds a TStP media player of 3010, more than
   a u8, so the golden test injects that one value through the saver's
   `stingerSource` hook. `profile_test.go` ports bmdwire's profile tests
@@ -1213,6 +1510,13 @@ and a zero value selects nothing.
   opens a save (the tenth run, a Constellation on firmware 9.2.1) in its
   Restore dialog with every section listed and no warning; the items it
   greys are hardware the unit lacks.
+- **Video mode names** (bmdwire#71): save writes ATEM Software
+  Control's `4KHDp…`/`8KHDp…` for 14-25, and a mode atemwire's table
+  lacks as its label `mode-<n>`; apply reads ASC's names, the older
+  `2160p…`/`4320p…` ones, and `mode-<n>` (ASCII digits, 0-255) as `<n>`.
+  The media pool's image capture at an unknown mode takes nothing and
+  logs why (a frame of unknown size can't be decoded), and apply refuses
+  each picture with the same reason.
 - **Name-only macros are restored, never skipped.** A `<Macro>` with a
   name and no ops (or none that encode) is uploaded as empty bytecode,
   as atemwire's `_apply_macros` does, and a switcher keeps it as a macro
@@ -1331,7 +1635,8 @@ and a zero value selects nothing.
   `engine.NewRegistry` does both and the CLI and the engine share it. No
   `init()` side effects, so a program that imports `atem` without the CLI
   gets no table.
-- **One entry per wire command**, 75 of them: every command except the
+- **One entry per wire command**, 76 of them (`classic-audio headphones`,
+  bmdwire#93, the latest): every command except the
   seven lock and file-transfer ones (§1.19), which a CLI reaches only
   through transfers. Paths group by SURFACE §1 table: `program`,
   `transition wipe`, `usk dve`, `audio strip`, ... Each parameter maps
@@ -2183,6 +2488,9 @@ there instead of taking every address for an ATEM.
 - **Not verified on hardware:** any of it. The HyperDeck's greeting is
   hyperdeckwire's hardware-verified form; the Videohub's and Ultimatte's
   are their libraries' test samples.
+- **No room** (bmdwire#75): the probe already takes a refusal (any
+  answer but 0x02) as "a switcher", so 1.12.0's `no_free_connection` has
+  no counterpart here; the connect that follows names the full switcher.
 
 ## Alias binaries (`cmd/bmdctl/alias.go`, `.goreleaser.yml`, `install.sh`)
 
@@ -2752,10 +3060,17 @@ lives until 10 minutes pass without a request, or an hour if pinned
   check beforehand only catches what needs no switcher.
 - **Sessions** are keyed by `host:port`, lower-cased, port 9910 by
   default. Concurrent requests share one dial, made on the engine's
-  context (`ConnectTimeout`, 15 s), not a request's, so one caller giving
-  up doesn't fail the others. A session whose `Connected` has gone false
-  is replaced on the next request; one that is re-handshaking after a
-  silence is waited for (up to 15 s) before the state is read. The idle
+  context within `atem.ConnectMax` (60 s; Dial gives up on no progress
+  itself, bmdwire#75), not a request's, so one caller giving up doesn't
+  fail the others. A failed connect names its cause: `no free connection
+  on this switcher (ATEM Software Control, panels or other clients are
+  using all its slots)`, `no switcher answered at X within 10s`, or `the
+  switcher at X stopped sending during the connect (nothing for 5s)`. A
+  session whose `Connected` has gone false is replaced on the next
+  request; one that is re-handshaking after a silence is waited for (up
+  to `ConnectTimeout`, 15 s) before the state is read. That is 1.9.0's
+  `acquire_connection(ready_timeout=)` and `wait_until_ready`
+  (bmdwire#65, #67), which needed nothing new here. The idle
   clock starts when the last request using a session ends.
 - **Pinned sessions close too** (#7: an engine kept a pinned session to
   a studio switcher for two days, 41 hours after its last command, and
@@ -2997,7 +3312,9 @@ comes back. Indexes in results count from 1, as the flags do
     nothing else (`--premultiply` overrides it) and the slot is named
     after the file without its extension (`still` from stdin). Replacing
     a used slot is destructive: without `--yes` it is refused with the
-    name it holds.
+    name it holds. `media upload` and `media download` refuse at a video
+    mode atemwire's table lacks (rejected, naming `mode-<n>`): its frame
+    size is unknown (bmdwire#71).
   - `media download` converts the frame at the current video mode
     (`FrameImage`) and sends it as a PNG; without `--file` it is named
     after the slot, made safe as a file name. A frame of another size (a
@@ -3203,6 +3520,10 @@ comes back. Indexes in results count from 1, as the flags do
   through `export_test.go`'s `QueuedTransfers`); one that must act while
   a command waits for the switcher waits for its `connecting to` line.
   A sleep only paces (a burst window, a slow dial).
+- `PaceDownloads(d)` sends a download's chunks `d` after the FTUA that
+  makes room for them: a download whose data keeps arriving, never more
+  than `d` apart, for the stall timeout's test. `CAMH` is echoed as
+  `AMHP`, as the other legacy audio writes are.
 
 ## HyperDeck (`hyperdeck/`)
 
@@ -3384,6 +3705,14 @@ type per line (`Command{Line}`, `Validator`); `*Error{Code, Text}`,
   `session_test.go` tests what bmdctl adds against the fake deck, over a
   pipe and over loopback TCP. The Session has run against a Studio HD
   Mini since the nineteenth hardware run (docs/HARDWARE.md).
+- **bmdwire 1.14.1's session hygiene**: a deck that closes before its
+  greeting fails `Dial`, and the connection `Dial` opened is closed
+  (`TestAGreetingFailureClosesTheConnection`); it already was.
+  hyperdeckwire's other case, a reconnect over a live connection, has
+  nothing here to mirror: a `Session` is never dialled again.
+- **Not ported, out of scope**: `upload_clip`'s `should_cancel` (bmdwire#66,
+  1.9.0) and `resolve_slot_dir` (bmdwire#84, 1.14.1) belong to the FTP
+  upload (`upload.py`), which bmdctl doesn't have.
 
 ## HyperDeck commands (`hyperdeck/table.go`, `internal/engine/hyperdeck.go`, `cmd/bmdctl/deck.go`)
 
@@ -3833,6 +4162,64 @@ functions `ParseSection`, `ParseFileList`, `Label`, `ExtractLabel`,
   `client_test.go` ports the four test files one for one on the
   fixtures copied from them. The range table itself is generated from
   Python's (`ranges_table.go`). Nothing here has run against a unit.
+- **The text protocol session (bmdwire 1.14.0, bmdwire#78).**
+  `Client.Open(ctx, host)` is `Ultimatte(host).connect()`: the connection
+  (with the retry), then the status dump to `END PRELUDE` into
+  `Session.State`, kept current by every block read after. Its methods
+  are `Ultimatte`'s: `Subscribe`, `Poll`, `WaitFor`, `Refresh`,
+  `GetControl`, `SetControl`, `SetControls`, `OffsetControl`,
+  `RunFunction`, `LoadFile`, `SaveFile`, `DeleteFile`, `RenameFile`,
+  `GPIInsert`, `GPIRemove`, `GPISetIndex`, `SetFrameBuffer`, `AssignImage`,
+  `AssignedImage`, `UploadImage`, `DeleteImage`, `FlushSettings`,
+  `SetFrameBufferMix`, `SetTransitionDuration`, `SetCameraID`, `SendBlock`,
+  `Context`, `Close`. Synchronous as there: no goroutine, nothing read
+  unless a method reads, subscribers called in the caller's goroutine,
+  every wait a no-progress wait on the Client's `IdleTimeout` (3 s) or
+  `FunctionIdleTimeout` (10 s), the cursor colour stream not counting as
+  progress. Not safe for concurrent use, as `Ultimatte` isn't.
+- **Where the session differs, and why:**
+  - `validate=` and `wait=` are `Options{NoValidate, NoWait}`, zero being
+    Python's defaults; `set_controls`' dict is a `[]ControlValue`, so the
+    block's order is the caller's as a dict's is.
+  - Values are `any`: an `int`, a `bool` or the string sent, as
+    `parse_value` types them; a value to set is a `bool`, an `int` or a
+    string.
+  - `poll(0)` and every other "only what is already here" read wait 1 ms
+    (`pollWindow`): Go checks a passed read deadline before it looks at
+    what has arrived, so a deadline of now would never read anything.
+  - A subscriber's panic is recovered and logged to `Session.Log`, as
+    Python logs a callback's exception.
+  - A pushed `NETWORK INTERFACE n` whose merged text `ParseInterface`
+    refuses (a superscript Priority) keeps the interface as it was; in
+    Python the `ValueError` leaves whichever method was reading.
+  - `socket_factory`, `port` and `settings_port` are the Client's
+    `DialContext`, as for every other Client call.
+  - `to_dict()` is `json.Marshal(state)`: the same keys, with `family` and
+    `tally`, the interfaces without `raw`, integer keys as strings.
+- **The control table** (`controls.go`) is `controls.py`'s 289 rows in the
+  document's order (176 range, 79 On/Off, 1 read only, 13 choices, 20
+  functions); `ParseInt`, `ParseBool`, `Lookup` and the choice matching use
+  `internal/pytext`'s `int()`, `strip()`, `lower()` and `split()`.
+  `ControlValueError` and `UnsupportedError` are `*Error` of kind
+  `ErrControlValue` / `ErrUnsupported`, both also `ErrValue`.
+- **Media pool** (`media.go`): `Client.UploadImage(ctx, host, name, r,
+  size, videoFormat, progress)` is `media.upload_image` with the data an
+  `io.Reader` (size -1: an `*os.File` or an `io.Seeker` says its own) where
+  Python takes bytes, a path, a file or an iterable; `UploadStream` is
+  `upload_stream` the same way. A progress error abandons the upload and
+  comes back as it is; any other failure of the write is
+  `UltimatteImageError` (`ErrImage`) naming the host and the image.
+- **1.14.0's smaller changes**: `ParseInterface` reads the document's
+  `DynamicIP` spelling beside the units' own, and every error is an
+  `*Error` whose kinds sit under `UltimatteError`'s.
+- **Verification of the session**: `session_test.go` ports test_client.py
+  and the session tests of test_media.py one for one against
+  `fakeultimatte.Keyer` (ultimattewire's two fakes) and scripted
+  connections replaying the 12 4K prelude and the 2026-11-12 capture;
+  `controls_test.go` ports test_controls.py; `media_test.go` the rest of
+  test_media.py. The three packages' tests went from 128 to 232; 8 runs
+  in a row under `-race` with no failure. None of it has met a unit,
+  here or in bmdwire.
 
 ## Ultimatte commands (`internal/engine/ultimatte.go`, `cmd/bmdctl/keyer.go`)
 
@@ -3945,6 +4332,16 @@ type `ultimatte`, goes to a keyer through the engine.
   (`TestEveryUltCommandRuns`); `testdata/terminal/ultimatte.golden` is
   the terminal's. A set that never settles is the package's to test (the
   fake always settles). None of it has met a unit.
+- **No verb over the session yet (bmdwire 1.14.0).** The library has all
+  of `Ultimatte`, but no `bmdctl keyer` command uses it: the session has
+  not met a unit (bmdwire's SURFACE.md, §1.3), where every keyer verb here
+  so far drives what bmdwire checked on a 12 4K, and each verb is its own
+  table entry, golden and MCP tool. Left for later, when wanted: `set`,
+  `offset`, `run`, `load` / `save` / `delete` / `rename`, `gpi`, `image
+  upload` / `assign` / `delete`, `flush`, `watch`. ultimattewire's
+  `smoke.py` (read every block, nudge one control and put it back) is the
+  check to run first, from bmdwire, or as a `-tags hardware` test here once
+  the hardware rule names a bench keyer.
 
 ## Fake Ultimatte (`internal/fakeultimatte`)
 
@@ -3969,6 +4366,22 @@ type `ultimatte`, goes to a keyer through the engine.
   address and `connect: connection refused`: a unit re-addressed out of
   reach), `RefuseNetwork` (NAK every block); `Writes`, `Blocks`,
   `Presets`, `Static` to look inside.
+- **`Keyer`, the session's fake (bmdwire 1.14.0):** ultimattewire's
+  `FakeUltimatte` and `FakeCaptured4K`. `NewKeyer(model, protocol)` ("8K",
+  "4K", "HD", "HD Mini"; "1.2" has no Output Range) speaks the documented
+  protocol and nothing more: the dump in the document's order, every
+  documented block answered ACK or NAK then pushed to every client,
+  `Panel` and `Broadcast` for the front panel and unsolicited blocks.
+  `NewCaptured4K()` adds what a 12 4K did in the 2026-11-11 and -12
+  captures: frame buffers by name, IMAGE LIST with Capacity and
+  Available, CURRENT FILE as Name/Status (Modified after the first
+  write), Image: / Delete:, FLUSH SETTINGS, the 9996 image write, the
+  cursor lock MESSAGE, the colour stream (started by the first Dial, so a
+  test sets the timings first), Sample Wall / Floor ending in CONTROL
+  DEFAULT, and the BM/GM/HM input settings after an assignment. Each
+  client gets its own writer goroutine and queue, so a push never waits
+  on a client that isn't reading (a pipe has no buffer). `Unit` stays the
+  archive's and the network's fake.
 
 ## Traps inherited from atemwire
 
@@ -4047,8 +4460,8 @@ says what it does now and what difference, if any, remains.
   the end: where atemwire carries on and `wait_ready` waits out its
   timeout, Dial fails at once with `ErrIncompleteDump`, naming the
   sequence number that arrived first (`transport.firstRX`) and any parse
-  error during the dump (an unknown `VidM` mode, §5.4 item 3, ends here
-  too). After Dial, the last dump without a video mode is logged and the
+  error during the dump. (An unknown `VidM` mode, §5.4 item 3, ended
+  here until bmdwire#71; it now parses as an unknown mode.) After Dial, the last dump without a video mode is logged and the
   session carries on, as atemwire's does. The silent loss of whatever
   else was in a lost first packet remains (see "Traps").
   `TestLosingTheFirstDumpPacketRehandshakes`,

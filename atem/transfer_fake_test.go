@@ -18,6 +18,8 @@ import (
 	"image"
 	"image/color"
 	"math/rand/v2"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,6 +77,27 @@ func TestStillRoundTrip(t *testing.T) {
 	waitState(t, s, 2*time.Second, func(st atem.State) bool { return st.Locks[0] != nil && !st.Locks[0].State })
 	if sw.LockedBySession(0) || s.LockHolder(0) != atem.LockFree {
 		t.Fatal("the store lock is still held")
+	}
+}
+
+// At a video mode the table doesn't have there is no frame to fit an image
+// to (bmdwire#71): UploadStill refuses before it asks for the lock.
+func TestUploadStillRefusesAnUnknownVideoMode(t *testing.T) {
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	sw.Send(fakeatem.Command("VidM", []byte{31, 0, 0, 0}))
+	waitState(t, s, 2*time.Second, func(st atem.State) bool {
+		return st.VideoMode.Mode != nil && !st.VideoMode.Mode.Known
+	})
+	img := image.NewNRGBA(image.Rect(0, 0, 16, 9))
+	err := s.UploadStill(ctxFor(t, 2*time.Second), 0, img, atem.StillOptions{Name: "card"})
+	if err == nil || !strings.Contains(err.Error(), "mode-31") {
+		t.Fatalf("err %v", err)
+	}
+	for _, c := range sw.Commands() {
+		if string(c[4:8]) == "PLCK" || string(c[4:8]) == "LOCK" {
+			t.Fatalf("asked for the lock: %q", c[4:8])
+		}
 	}
 }
 
@@ -483,5 +506,63 @@ func TestTransferProgress(t *testing.T) {
 	}
 	if _, err := s.DownloadMacro(atem.WithProgress(ctxFor(t, 5*time.Second), record), 2); err != nil || len(reports) != 0 {
 		t.Errorf("macro download: %v, %d reports", err, len(reports))
+	}
+}
+
+// --- download_still(stall_timeout=...), bmdwire#73 (test_download_stall.py)
+
+// A download that keeps arriving outlives the stall timeout; the deadline
+// still caps the whole of it.
+func TestADownloadThatKeepsArrivingOutlivesTheStallTimeout(t *testing.T) { // test_a_download_that_keeps_arriving_outlives_the_stall_timeout
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	frame := make([]byte, 800*fakeatem.ChunkSize)
+	for i := range frame {
+		frame[i] = byte(i*7 + i>>9) // no runs: every word goes on the wire
+	}
+	rle, _ := atem.RLEEncode(frame)
+	sw.PutStill(1, rle, "x", [16]byte{})
+	sw.PaceDownloads(20 * time.Millisecond) // longer in all than the stall timeout; chunks never 20 ms apart
+	const stall = 120 * time.Millisecond
+	start := time.Now()
+	got, err := s.DownloadStill(atem.WithStallTimeout(ctxFor(t, 30*time.Second), stall), 1)
+	if err != nil || len(got) != len(frame) {
+		t.Fatalf("%d bytes, %v", len(got), err)
+	}
+	if took := time.Since(start); took < 2*stall {
+		t.Fatalf("took %v: not long enough to outlive the stall timeout", took)
+	}
+}
+
+// One that stops arriving gives up after the stall timeout, long before
+// its deadline, and says so.
+func TestADownloadThatStopsArrivingGivesUpAfterTheStallTimeout(t *testing.T) { // test_a_download_that_stops_arriving_gives_up_after_the_stall_timeout
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	rle, _ := atem.RLEEncode(make([]byte, 4096))
+	sw.PutStill(1, rle, "x", [16]byte{})
+	sw.Unanswered("FTSU") // the lock is granted; no data ever comes
+	start := time.Now()
+	_, err := s.DownloadStill(atem.WithStallTimeout(ctxFor(t, 5*time.Second), 200*time.Millisecond), 1)
+	if err == nil || !strings.Contains(err.Error(), "stalled") || !errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, atem.ErrLockNotGranted) {
+		t.Fatalf("err %v", err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("gave up after %v", took)
+	}
+}
+
+// Refused with FTDE 1 all along, the lock ours: not silence, a busy
+// transfer engine, and the error says so.
+func TestASwitcherAnsweringBusyIsNamed(t *testing.T) { // test_a_switcher_answering_busy_is_named
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	rle, _ := atem.RLEEncode(make([]byte, 4096))
+	sw.PutStill(1, rle, "x", [16]byte{})
+	sw.FailTransfers(slices.Repeat([]uint8{1}, 30)...)
+	_, err := s.DownloadStill(atem.WithStallTimeout(ctxFor(t, 5*time.Second), 400*time.Millisecond), 1)
+	if err == nil || !strings.Contains(err.Error(), "answered busy (try again)") || !strings.Contains(err.Error(), "stalled") {
+		t.Fatalf("err %v", err)
 	}
 }

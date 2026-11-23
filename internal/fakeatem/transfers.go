@@ -217,6 +217,19 @@ func (sw *Switcher) transferEcho(code string, c []byte) [][]byte {
 			return nil
 		}
 		x.inFlight--
+		if d := sw.downloadPace; d > 0 {
+			time.AfterFunc(d, func() {
+				sw.mu.Lock()
+				defer sw.mu.Unlock()
+				if sw.xfers[tid] != x {
+					return // finished meanwhile
+				}
+				if out := sw.sendChunks(tid, x); len(out) > 0 {
+					sw.broadcast(out...)
+				}
+			})
+			return nil
+		}
 		return sw.sendChunks(tid, x)
 	case "FTSD":
 		if len(c) < 14 {

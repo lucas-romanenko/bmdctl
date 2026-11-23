@@ -916,7 +916,7 @@ func TestProfileFromAtemAgainstSyntheticState(t *testing.T) {
 func videoModeStates(t *testing.T) map[int]atem.State {
 	out := map[int]atem.State{}
 	for _, s := range loadOracle(t).Saves {
-		if m, ok := strings.CutPrefix(s.Name, "videomode-"); ok && m != "none" {
+		if m, ok := strings.CutPrefix(s.Name, "videomode-"); ok && m != "none" && !strings.HasPrefix(m, "unknown-") {
 			n, _ := strconv.Atoi(m)
 			out[n], _ = buildState(t, s.State, false)
 		}
@@ -987,6 +987,72 @@ func TestSavedModeAppliesAsTheSameMode(t *testing.T) {
 				t.Fatalf("mode %d: sent %v (%s)", mode, got, res.Summary())
 			}
 		}
+	}
+}
+
+// stateAt is a state whose switcher runs mode, known to atemwire's table
+// or not.
+func stateAt(mode uint8) atem.State {
+	st := atem.State{}
+	st.VideoMode.Mode = &atem.VideoModeField{Mode: mode}
+	if m := videoModeXMLNames[int(mode)]; m != "" {
+		st = videoModeStatesCache[int(mode)]
+	}
+	return st
+}
+
+var videoModeStatesCache map[int]atem.State
+
+// test_unknown_video_modes.py (bmdwire#71): a save at a mode atemwire's
+// table lacks writes mode-<n>, and apply reads it back as n; ASC's UHD
+// names are written and read; a name that only looks like mode-<n> is
+// skipped.
+func TestUnknownModesAndASCUHDNames(t *testing.T) {
+	videoModeStatesCache = videoModeStates(t)
+	saved, err := Save(context.Background(), &fakeSource{st: stateAt(31)}, videoModeOnlySave())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := saved.ToXML()
+	p := mustProfile(t, out)
+	if p.VideoMode() != "mode-31" {
+		t.Fatalf("saved %q", p.VideoMode())
+	}
+	tg := newTarget(stateAt(10))
+	mustApply(t, p, tg, videoModeOnlyApply())
+	if got := sentModes(tg); !slices.Equal(got, []uint8{31}) {
+		t.Errorf("onto 10: %v", got)
+	}
+	tg = newTarget(stateAt(31))
+	res := mustApply(t, p, tg, videoModeOnlyApply())
+	if got := sentModes(tg); len(got) != 0 || !slices.ContainsFunc(res.Skipped, func(s string) bool { return strings.HasPrefix(s, "video_mode: already at") }) {
+		t.Errorf("onto 31: %v %v", got, res.Skipped)
+	}
+	apply := func(name string, live atem.State) ([]uint8, *ApplyResult) {
+		tg := newTarget(live)
+		res := mustApply(t, mustProfile(t, `<Profile majorVersion="2" minorVersion="1"><VideoMode videoMode="`+name+`"/></Profile>`), tg, videoModeOnlyApply())
+		return sentModes(tg), res
+	}
+	if sent, _ := apply("1080p50", stateAt(31)); !slices.Equal(sent, []uint8{12}) {
+		t.Errorf("1080p50 onto mode-31: %v", sent)
+	}
+	for _, name := range []string{"mode-", "mode-x", "mode-256", "mode-\u0663", "banana"} {
+		if sent, res := apply(name, stateAt(10)); len(sent) != 0 || !slices.ContainsFunc(res.Skipped, func(s string) bool { return strings.Contains(s, "unrecognized mode") }) {
+			t.Errorf("%q: %v %v", name, sent, res.Skipped)
+		}
+	}
+	saved, _ = Save(context.Background(), &fakeSource{st: stateAt(17)}, videoModeOnlySave())
+	if out, _ := saved.ToXML(); !strings.Contains(out, `<VideoMode videoMode="4KHDp2997"`) {
+		t.Errorf("mode 17 saved as %s", out)
+	}
+	if sent, _ := apply("4KHDp2997", stateAt(10)); !slices.Equal(sent, []uint8{17}) {
+		t.Errorf("4KHDp2997: %v", sent)
+	}
+	if sent, _ := apply("2160p2997", stateAt(10)); !slices.Equal(sent, []uint8{17}) {
+		t.Errorf("2160p2997: %v", sent)
+	}
+	if sent, _ := apply("4KHDp2997", stateAt(17)); len(sent) != 0 {
+		t.Errorf("4KHDp2997 at 17: %v", sent)
 	}
 }
 

@@ -62,7 +62,7 @@ func TestDisplayFPSMatchesAtemwire(t *testing.T) {
 // destructive. Every echo key names a packet the parsers store, keyed the
 // way the parser keys it.
 func TestCommandFlagsAndEchoKeys(t *testing.T) {
-	unverified := []string{"AiVM", "CAMI", "CAMM", "CAMm", "CCmd", "CKMs", "CMvI", "CMvP", "CRMS", "CRSS", "CSBP", "CSSc",
+	unverified := []string{"AiVM", "CAMH", "CAMI", "CAMM", "CAMm", "CCmd", "CKMs", "CMvI", "CMvP", "CRMS", "CRSS", "CSBP", "CSSc",
 		"CTPr", "CTPs", "RcTM", "SALN", "SRcl", "SRsv", "STAB", "SToD", "StrR"}
 	destructive := []string{"CSTL", "CVdM", "SRcl", "SRsv"}
 	var gotU, gotD []string

@@ -19,7 +19,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"math/rand/v2"
 	"slices"
+	"sync/atomic"
 	"time"
 )
 
@@ -36,9 +38,36 @@ const (
 	// lockRerequest is LOCK_REREQUEST_SECONDS: a lock request with no
 	// LKOB back is not repeated sooner than this.
 	lockRerequest = time.Second
-	// firstTransferID is atemwire's initial transfer_id; it is incremented
-	// before each new transfer, so the first is 43.
-	firstTransferID = 42
+	// FTDE 1 (try again) is asked again after a pause that doubles from
+	// tryAgainFirst to tryAgainMax, and after tryAgainAttempts refusals in
+	// a row the transfer fails like a fatal status, its lock given back
+	// (TRY_AGAIN_*, bmdwire#73, 588a389, v1.11.0). It used to be asked
+	// again at once, with no end: ~900 requests in 13 s on a 4K Plus whose
+	// transfer engine was held by a download nobody drained (2026-11-04).
+	tryAgainFirst    = 50 * time.Millisecond
+	tryAgainMax      = time.Second
+	tryAgainAttempts = 20
+	// A download its caller stops waiting for is not abandoned mid-stream:
+	// the switcher's transfer engine stays busy with a transfer neither
+	// acknowledged nor finished, and answers every later request, from
+	// every session, with FTDE 1 (a 4K Plus did it for good after a lock
+	// release 15 s into a still, 2026-11-04). The abandoned transfer is
+	// acknowledged to its end and its data dropped, and the store lock goes
+	// back at its FTDC (or FTDE), or once nothing of it has come for
+	// drainStall, or after drainCap in all (DRAIN_STALL, protocol.py's DRAIN_MAX,
+	// bmdwire#73, 588a389, v1.11.0). Since bmdwire#80 (v1.13.0) that holds
+	// for a request with nothing come of it yet, too: the switcher takes
+	// up to 2.5 s to a still's first chunk on a LAN (2026-11-06).
+	drainStall = 5 * time.Second
+	drainCap   = 120 * time.Second
+	// orphanIDs is ORPHAN_IDS: the ids of the session's last 64 transfers
+	// are kept, and a chunk of one it no longer follows (its caller gave
+	// up, a drain ended before the switcher started it) is acknowledged
+	// all the same and dropped: a chunk left unacknowledged holds the
+	// switcher's transfer engine, and every later request is refused with
+	// FTDE 1 while it lasts (bmdwire#80, v1.13.0). Another session's
+	// chunks are left alone.
+	orphanIDs = 64
 	// macroUploadMode is FTSD's mode for the macro store: write
 	// uncompressed and pre-erase (0x0300). The still store takes
 	// UploadWriteRLE.
@@ -52,6 +81,21 @@ var (
 	// holding it. atemwire's download_still says the same.
 	ErrLockNotGranted = errors.New("atem: the store lock was never granted; another client is holding it")
 )
+
+// firstTransferID is _first_transfer_id: a session's transfer ids start
+// at random in 1..0xFFFF (bmdwire#64, #68, 6876ba2, v1.9.0). The switcher
+// broadcasts FTDC to every session with the owner's transfer id, and a
+// session matches it against its own; every session used to start at 43
+// (42, incremented before use), so two sessions on one switcher, this
+// port's or bmdwire's, used the same ids. One took the other's FTDC for
+// its own and stopped acknowledging the transfer the switcher was still
+// sending, and the switcher refused every later request from both with
+// FTDE 1, for good. It is a variable so that tests can pin it.
+var firstTransferID = func() uint16 { return uint16(rand.IntN(0xFFFF) + 1) }
+
+// nextTransferID is the id after id: a u16 on the wire, wrapping without
+// 0 (6876ba2).
+func nextTransferID(id uint16) uint16 { return id%0xFFFF + 1 }
 
 // TransferError is a transfer the switcher refused: an FTDE whose status
 // is not one of the three the engine recovers from (1 try again, 5 no
@@ -141,6 +185,13 @@ type transferTask struct {
 	done     chan transferResult // buffered 1; written once
 	finished bool
 
+	// tryAgain counts the switcher's FTDE 1 refusals of this transfer
+	// (TransferTask.try_again).
+	tryAgain int
+	// heard is when a chunk of this download last arrived (UnixNano),
+	// for WithStallTimeout; the owner writes it, the caller reads it.
+	heard atomic.Int64
+
 	// size is the upload's length as sent (compressed, if it is), for
 	// its progress; progress, if not nil, takes the latest Progress
 	// (buffered 1): the owner never waits on it.
@@ -159,6 +210,20 @@ type Progress struct {
 }
 
 type progressKey struct{}
+
+type stallKey struct{}
+
+// WithStallTimeout returns a context under which a download gives up once
+// d passes with no data arriving (waiting for the lock counts as no data),
+// while the context's deadline, or the transfer's default timeout, caps
+// the whole download: download_still's stall_timeout (bmdwire#73,
+// 588a389, v1.11.0). A 4K still is 12 MB or more on the wire and an 8K
+// one four times that, so one fixed timeout is either too short for them
+// or far too long to notice a transfer that stopped. The error of a
+// stalled download says "stalled" and wraps context.DeadlineExceeded.
+func WithStallTimeout(ctx context.Context, d time.Duration) context.Context {
+	return context.WithValue(ctx, stallKey{}, d)
+}
 
 // WithProgress returns a context under which a transfer reports its
 // progress to f, from the goroutine that called the transfer (not the
@@ -223,8 +288,31 @@ type lane struct {
 	foreignHeld map[uint16]bool
 	yieldTimer  *time.Timer
 	yieldDue    time.Time
+	// ownRelease holds, for a store whose yield a release of ours
+	// started, when we released it: the turn after it goes to a waiter
+	// first (_own_release, lockHandover). othersSeen is when another
+	// client was last seen at the stores (its LKST, its FTDC, an FTDE 6
+	// to us), zero if never; lastGrant, when our last LKOB for each
+	// store came (_last_grant).
+	ownRelease map[uint16]time.Time
+	othersSeen time.Time
+	lastGrant  map[uint16]time.Time
 
 	budget *FileTransferContinueDataField // transfer_budget: nil when exhausted
+
+	// tryAgainDue is when the transfer refused with FTDE 1 is asked again
+	// (_try_again_due), zero when none waits.
+	tryAgainDue time.Time
+	// draining is the abandoned download being acknowledged to its end
+	// (_draining), nil if none; lastData, when the transfer in flight last
+	// had a chunk (_transfer_last_data), zero before its first.
+	draining *drainState
+	lastData time.Time
+	// asked holds the ids of the last orphanIDs transfers asked for,
+	// newest last (_asked_tids); orphans, those whose chunks came after we
+	// stopped following them.
+	asked   []uint16
+	orphans map[uint16]bool
 
 	// The paced bulk queue's triggers (see bulkTrigger).
 	bulkPending int
@@ -247,27 +335,80 @@ const (
 	lockQuiet    = 10 * time.Second      // LOCK_QUIET
 )
 
+// The turn after our own release goes to whoever was waiting for it
+// (bmdwire#63, #68, 6876ba2, v1.9.0). They ask lockCourtesy after the
+// release is announced; so did we, and two requests that close together
+// are both granted, or one is aborted (FTDE 6 to a download; to an upload,
+// a refusal of every chunk of its budget). Measured on a Constellation HD,
+// 2026-10-30: an uploader and a downloader in one process asked 0.3 ms
+// apart after each upload's release. So after a release of ours, our next
+// request waits lockHandover more: time for a waiter's request, its grant,
+// and the LKST that announces it to reach us, after which the store is
+// another client's and we ask once they let go. Only while another client
+// has been seen within lockQuiet: alone, nothing is waiting, and a restore
+// of 20 stills would pay it 20 times for nobody.
+//
+// Our release's own LKST comes at the switcher's next frame tick, about
+// 40 ms later. A release announced later than lockEchoWindow is another
+// client's: the store was handed to a request waiting at the switcher,
+// unannounced, and that client has now let go; we ask as its waiter. And
+// an LKST "taken" within lockEchoWindow of our own LKOB is the late
+// announcement of our own grant (a transfer or a clear shorter than a
+// frame, released before it was announced; c7a8788), not another client.
+const (
+	lockHandover   = 100 * time.Millisecond // LOCK_HANDOVER
+	lockEchoWindow = 250 * time.Millisecond // LOCK_ECHO_WINDOW
+)
+
+// drainState is an abandoned download being drained: its transfer id and
+// store, when it was abandoned and when it last had a chunk.
+type drainState struct {
+	tid, store  uint16
+	since, last time.Time
+}
+
 // yieldState is a store's turn for other clients: since, when we released
 // it or last saw anyone at work; announced, when it was announced free
 // (zero until then).
 type yieldState struct{ since, announced time.Time }
 
-func (y *yieldState) due() time.Time {
+// yieldDue is _yield_due: when a store we are leaving free may be asked
+// for again.
+func (s *Session) yieldDue(store uint16, y *yieldState) time.Time {
 	if !y.announced.IsZero() {
+		if _, own := s.lane.ownRelease[store]; own && s.othersRecently() {
+			return y.announced.Add(lockCourtesy + lockHandover)
+		}
 		return y.announced.Add(lockCourtesy)
 	}
 	return y.since.Add(lockQuiet)
 }
 
+// othersRecently is _others_recently: another client was seen within
+// lockQuiet.
+func (s *Session) othersRecently() bool {
+	o := s.lane.othersSeen
+	return !o.IsZero() && s.t.now().Sub(o) < lockQuiet
+}
+
+// endYield is _end_yield: the store's turn for others is over.
+func (s *Session) endYield(store uint16) {
+	delete(s.lane.yielding, store)
+	delete(s.lane.ownRelease, store)
+}
+
 func newLane() lane {
 	return lane{
 		queues:        make(map[uint16][]*transferTask),
-		nextID:        firstTransferID,
+		nextID:        firstTransferID(),
 		locks:         make(map[uint16]bool),
 		lockRequested: make(map[uint16]time.Time),
 		releasing:     make(map[uint16]bool),
 		yielding:      make(map[uint16]*yieldState),
 		foreignHeld:   make(map[uint16]bool),
+		ownRelease:    make(map[uint16]time.Time),
+		lastGrant:     make(map[uint16]time.Time),
+		orphans:       make(map[uint16]bool),
 	}
 }
 
@@ -348,6 +489,11 @@ func (s *Session) UploadStill(ctx context.Context, slot int, img image.Image, op
 		return err
 	}
 	w, h := mode.FrameSize()
+	if w == 0 {
+		// A mode the table doesn't have has no frame size (bmdwire#71,
+		// 9e52191), so there is nothing to fit the image to.
+		return fmt.Errorf("atem: no frame size for video mode %s, so no still can be sized for it", mode.Label())
+	}
 	frame, err := RGBAToYCbCrA(FitFrame(img, w, h), opts.Premultiply)
 	if err != nil {
 		return err
@@ -521,6 +667,15 @@ func (s *Session) runTransfer(ctx context.Context, t *transferTask, timeout time
 		t.progress = make(chan Progress, 1)
 	}
 	t.size = len(t.data)
+	// The stall clock, when asked for: a download gives up once nothing
+	// has arrived for stall.
+	stall, _ := ctx.Value(stallKey{}).(time.Duration)
+	var stallC <-chan time.Time // nil, and never ready, without it
+	if stall > 0 && t.kind == taskDownload {
+		t.heard.Store(time.Now().UnixNano())
+		stallC = time.After(stall)
+	}
+	var cause error
 	errc := make(chan error, 1)
 	if err := s.do(func() {
 		if !s.initialized {
@@ -550,12 +705,20 @@ wait:
 			return r.data, r.err
 		case p := <-t.progress: // nil, and never ready, without WithProgress
 			progress(p)
+		case <-stallC:
+			quiet := time.Since(time.Unix(0, t.heard.Load()))
+			if quiet >= stall {
+				cause = fmt.Errorf("stalled (no data for %v): %w", stall, context.DeadlineExceeded)
+				break wait
+			}
+			stallC = time.After(stall - quiet)
 		case <-ctx.Done():
+			cause = ctx.Err()
 			break wait
 		}
 	}
 	ch := make(chan error, 1)
-	if err := s.do(func() { ch <- s.cancelTask(t, ctx.Err()) }); err != nil {
+	if err := s.do(func() { ch <- s.cancelTask(t, cause) }); err != nil {
 		// The session ended, and with it the task.
 		select {
 		case r := <-t.done:
@@ -591,7 +754,8 @@ func (t *transferTask) describe() string {
 // the caller reports; nil if t had already finished. A queued task is
 // dequeued (atemwire's dequeue_clear, for every kind of task) and the lane
 // carries on; the transfer in flight is abandoned the way a fatal FTDE
-// abandons it, its lock released per frame. atemwire's callers instead
+// abandons it, its lock released per frame, except a still download with
+// its request out, which is drained first (drainStall, bmdwire#73, #80). atemwire's callers instead
 // call abort_transfers, which empties the whole lane: that is safe there
 // only because its transfers are serialised per connection.
 func (s *Session) cancelTask(t *transferTask, cause error) error {
@@ -604,18 +768,40 @@ func (s *Session) cancelTask(t *transferTask, cause error) error {
 	notGranted := t.store != StoreMacros && !l.locks[t.store]
 	t.finished = true
 	if l.transfer == t {
+		// A still download the switcher is sending, or may be about to
+		// start, is drained to its end, its lock kept until then
+		// (drainStall); one that has gone quiet for drainStall is given up
+		// on with its lock, as before.
+		now := s.t.now()
+		drain := t.kind == taskDownload && t.store != StoreMacros && l.requested &&
+			l.locks[t.store] && (l.lastData.IsZero() || now.Sub(l.lastData) < drainStall) &&
+			l.draining == nil
+		l.tryAgainDue = time.Time{}
 		l.popHead(t)
 		l.transfer = nil
 		l.requested = false
 		l.buffer, l.bufferBytes = nil, 0
-		s.releaseThenContinue(t.store, true)
+		if drain {
+			l.draining = &drainState{tid: t.tid, store: t.store, since: now, last: now}
+			s.log.Info("atem: download abandoned by its caller: acknowledging it to its end before giving the lock back",
+				"task", t.describe(), "transfer", t.tid)
+			s.armYieldTimer(now.Add(drainStall))
+		} else {
+			s.releaseThenContinue(t.store, true)
+		}
 	} else {
 		l.remove(t)
 		s.transferTrigger(t.store, false)
 	}
 	err := fmt.Errorf("atem: %s: %w", t.describe(), cause)
-	if notGranted {
+	switch {
+	case notGranted:
 		err = fmt.Errorf("%w (%w)", err, ErrLockNotGranted)
+	case t.tryAgain > 0:
+		// The switcher answering "try again" (FTDE 1) all along is not
+		// silence: its transfer engine is busy, with another client's
+		// transfer or one nobody is taking (bmdwire#80).
+		err = fmt.Errorf("%w: the switcher answered busy (try again) %d times; its transfer engine is taken", err, t.tryAgain)
 	}
 	return err
 }
@@ -660,6 +846,22 @@ func (s *Session) sendCommands(cmds ...Command) {
 // lock held.
 func (s *Session) transferTrigger(store uint16, retry bool) {
 	l := &s.lane
+	if l.draining != nil {
+		// The store lock is ours until the abandoned download ends; a
+		// request now would meet its busy engine (FTDE 1).
+		s.log.Debug("atem: an abandoned download is still finishing; the next transfer waits for it")
+		return
+	}
+	if !l.tryAgainDue.IsZero() {
+		// A transfer the switcher answered busy is asked again only after
+		// its pause; the yield timer asks then.
+		if s.t.now().Before(l.tryAgainDue) {
+			s.armYieldTimer(l.tryAgainDue)
+			return
+		}
+		l.tryAgainDue = time.Time{}
+		retry = true
+	}
 	var next *transferTask
 	if q := l.queues[store]; len(q) > 0 {
 		next = q[0]
@@ -690,12 +892,12 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 			return
 		}
 		if y := l.yielding[next.store]; y != nil {
-			if due := y.due(); s.t.now().Before(due) {
+			if due := s.yieldDue(next.store, y); s.t.now().Before(due) {
 				s.log.Debug("atem: leaving the store free a moment for other clients", "store", next.store)
 				s.armYieldTimer(due)
 				return
 			}
-			delete(l.yielding, next.store)
+			s.endYield(next.store)
 		}
 		if at, ok := l.lockRequested[next.store]; ok && s.t.now().Sub(at) < lockRerequest {
 			s.log.Debug("atem: lock request already on the wire", "store", next.store)
@@ -726,7 +928,7 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 		return
 	}
 	if !retry {
-		l.nextID++
+		l.nextID = nextTransferID(l.nextID)
 	}
 	l.transfer = next
 	next.tid = l.nextID
@@ -748,6 +950,14 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 		s.log.Info("atem: requesting download", "store", next.store, "slot", next.slot, "transfer", next.tid)
 	}
 	l.requested = true
+	l.lastData = time.Time{}
+	if n := len(l.asked); n == 0 || l.asked[n-1] != next.tid {
+		l.asked = append(l.asked, next.tid)
+		if len(l.asked) > orphanIDs {
+			l.asked = l.asked[len(l.asked)-orphanIDs:]
+		}
+	}
+	delete(l.orphans, next.tid)
 	if next.kind == taskUpload {
 		// Each attempt sends its metadata and its data from the start.
 		next.offset, next.metadataSent = 0, false
@@ -783,6 +993,7 @@ func (s *Session) releaseThenContinue(store uint16, requestNext bool) {
 		l.releasing[store] = true
 		s.sendCommands(Lock{Store: store})
 		l.yielding[store] = &yieldState{since: s.t.now()}
+		l.ownRelease[store] = s.t.now()
 		if !requestNext {
 			return
 		}
@@ -823,12 +1034,24 @@ func (s *Session) serviceYields() {
 	l := &s.lane
 	l.yieldDue = time.Time{}
 	now := s.t.now()
+	s.serviceDrain()
+	if due := l.tryAgainDue; !due.IsZero() {
+		switch {
+		case l.transfer == nil:
+			l.tryAgainDue = time.Time{}
+		case now.Before(due):
+			s.armYieldTimer(due)
+		default:
+			l.tryAgainDue = time.Time{}
+			s.transferTrigger(l.transfer.store, true)
+		}
+	}
 	for store, y := range l.yielding {
-		due := y.due()
+		due := s.yieldDue(store, y)
 		switch {
 		case len(l.queues[store]) == 0:
 			if !now.Before(due) {
-				delete(l.yielding, store)
+				s.endYield(store)
 			}
 		case l.requested || l.locks[store] || l.foreignHeld[store]:
 		case now.Before(due):
@@ -839,10 +1062,66 @@ func (s *Session) serviceYields() {
 	}
 }
 
+// serviceDrain is _service_drain: give the abandoned download's lock back
+// once nothing of it has come for drainStall, or it has run drainCap.
+func (s *Session) serviceDrain() {
+	d := s.lane.draining
+	if d == nil {
+		return
+	}
+	now := s.t.now()
+	switch {
+	case now.Sub(d.last) >= drainStall:
+		s.log.Warn("atem: abandoned download stopped (nothing for a while): giving its lock back",
+			"transfer", d.tid, "quiet", now.Sub(d.last).Round(time.Second))
+		s.endDrain()
+	case now.Sub(d.since) >= drainCap:
+		s.log.Warn("atem: abandoned download stopped (over the cap): giving its lock back",
+			"transfer", d.tid, "cap", drainCap)
+		s.endDrain()
+	default:
+		s.armYieldTimer(minTime(d.last.Add(drainStall), d.since.Add(drainCap)))
+	}
+}
+
+// endDrain is _end_drain: the abandoned download is over; give its store
+// lock back and carry on with the queue.
+func (s *Session) endDrain() {
+	d := s.lane.draining
+	s.lane.draining = nil
+	if d != nil {
+		s.releaseThenContinue(d.store, true)
+	}
+}
+
+// ackOrphan is _ack_orphan: acknowledge a chunk of a transfer we asked for
+// and no longer follow; anything else is not ours to answer.
+func (s *Session) ackOrphan(tid uint16) {
+	l := &s.lane
+	if !slices.Contains(l.asked, tid) {
+		s.log.Debug("atem: FTDa for a transfer not ours; ignoring", "transfer", tid)
+		return
+	}
+	if !l.orphans[tid] {
+		l.orphans[tid] = true
+		s.log.Warn("atem: chunks of a download we no longer follow: acknowledging it to its end so the switcher can take the next request",
+			"transfer", tid)
+	}
+	s.sendCommands(TransferAck{Transfer: tid})
+}
+
+func minTime(a, b time.Time) time.Time {
+	if b.Before(a) {
+		return b
+	}
+	return a
+}
+
 // someoneAtWork is _someone_at_work: another session's transfer ended, so
 // a store we wait for, not yet announced free, is busy: lockQuiet starts
-// again.
+// again, and another client has been seen.
 func (s *Session) someoneAtWork() {
+	s.lane.othersSeen = s.t.now()
 	for _, y := range s.lane.yielding {
 		if y.announced.IsZero() {
 			y.since = s.t.now()
@@ -863,6 +1142,7 @@ func (s *Session) onTransferPacket(code string, payload []byte) error {
 	case *LockObtainedField:
 		s.log.Info("atem: got store lock", "store", f.Store)
 		s.lane.locks[f.Store] = true
+		s.lane.lastGrant[f.Store] = s.t.now()
 		delete(s.lane.lockRequested, f.Store)
 		delete(s.lane.releasing, f.Store)
 		s.transferTrigger(f.Store, false)
@@ -896,8 +1176,13 @@ func (s *Session) onLockReleased(store uint16) {
 	now := s.t.now()
 	if y := l.yielding[store]; y == nil {
 		l.yielding[store] = &yieldState{since: now, announced: now}
+		delete(l.ownRelease, store)
 	} else if y.announced.IsZero() {
 		y.announced = now
+		if released, ok := l.ownRelease[store]; ok && now.Sub(released) > lockEchoWindow {
+			// Not our release's echo: another client's (lockEchoWindow).
+			delete(l.ownRelease, store)
+		}
 	}
 	delete(l.lockRequested, store)
 	if len(l.queues[store]) > 0 && !l.requested {
@@ -916,8 +1201,16 @@ func (s *Session) onLockTaken(store uint16) {
 		return
 	}
 	l.foreignHeld[store] = true
+	now := s.t.now()
+	if granted, ok := l.lastGrant[store]; !ok || now.Sub(granted) > lockEchoWindow {
+		// Not the late announcement of a grant of ours: another client.
+		l.othersSeen = now
+	}
 	if y := l.yielding[store]; y != nil {
-		*y = yieldState{since: s.t.now()}
+		*y = yieldState{since: now}
+		// Theirs now: the next turn after their release is ours as a
+		// waiter, not as the releaser.
+		delete(l.ownRelease, store)
 	}
 }
 
@@ -942,15 +1235,20 @@ func (s *Session) onBudget(f FileTransferContinueDataField) {
 // acknowledged.
 func (s *Session) onChunk(f *FileTransferDataField) {
 	l := &s.lane
-	if l.transfer == nil {
-		// A straggler after the transfer ended or was abandoned.
-		s.log.Debug("atem: FTDa with no transfer in flight")
+	if d := l.draining; d != nil && f.Transfer == d.tid {
+		// The abandoned download: acknowledged, its data dropped.
+		d.last = s.t.now()
+		s.sendCommands(TransferAck{Transfer: d.tid})
 		return
 	}
-	if f.Transfer != l.transfer.tid {
-		s.log.Error("atem: file transfer data for the wrong transfer id", "got", f.Transfer, "want", l.transfer.tid)
+	if l.transfer == nil || f.Transfer != l.transfer.tid {
+		// A chunk of a transfer we no longer follow (orphanIDs), or not
+		// ours at all.
+		s.ackOrphan(f.Transfer)
 		return
 	}
+	l.lastData = s.t.now()
+	l.transfer.heard.Store(time.Now().UnixNano())
 	l.buffer = append(l.buffer, f.Data)
 	l.bufferBytes += len(f.Data)
 	// transfer-progress: a still's, of its frame's uncompressed size.
@@ -969,6 +1267,16 @@ func (s *Session) onTransferError(f *FileTransferErrorField) {
 	} else {
 		s.log.Error("atem: file transfer error", "transfer", f.Transfer, "status", transferStatus(f.Status))
 	}
+	if d := l.draining; d != nil && f.Transfer == d.tid {
+		s.log.Info("atem: abandoned download ended", "transfer", d.tid, "status", transferStatus(f.Status))
+		s.endDrain()
+		return
+	}
+	if l.orphans[f.Transfer] {
+		delete(l.orphans, f.Transfer)
+		s.log.Info("atem: a download we no longer followed ended", "transfer", f.Transfer, "status", transferStatus(f.Status))
+		return
+	}
 	if l.transfer == nil {
 		s.log.Debug("atem: FTDE with no transfer in flight")
 		return
@@ -980,8 +1288,25 @@ func (s *Session) onTransferError(f *FileTransferErrorField) {
 	t := l.transfer
 	l.requested = false
 	switch f.Status {
-	case 1: // try again, same transfer id
-		s.transferTrigger(t.store, true)
+	case 1:
+		// Try again, with the same transfer id, after a pause that
+		// doubles each time; give up after tryAgainAttempts.
+		t.tryAgain++
+		if t.tryAgain == 1 {
+			// Once per transfer: a busy switcher was invisible in the
+			// logs, and read as "no data" at the caller.
+			s.log.Info("atem: the switcher is busy (FTDE 1, try again); asking again", "task", t.describe())
+		}
+		if t.tryAgain > tryAgainAttempts {
+			s.log.Error("atem: transfer refused too often (FTDE 1, try again): giving up; the switcher's transfer engine is busy",
+				"task", t.describe(), "refusals", tryAgainAttempts)
+			s.failTransfer(t, f)
+			return
+		}
+		pause := min(tryAgainMax, tryAgainFirst<<(t.tryAgain-1))
+		s.log.Debug("atem: retrying transfer", "in", pause, "try_again", t.tryAgain)
+		l.tryAgainDue = s.t.now().Add(pause)
+		s.armYieldTimer(l.tryAgainDue)
 	case 5: // no lock: ask for it again
 		l.locks[t.store] = false
 		s.transferTrigger(t.store, true)
@@ -990,21 +1315,40 @@ func (s *Session) onTransferError(f *FileTransferErrorField) {
 		// the switcher aborted our request but we still hold the lock. Give
 		// it back, keep the task, and ask again on the next release.
 		delete(l.lockRequested, t.store)
+		l.othersSeen = s.t.now()
 		s.releaseThenContinue(t.store, false)
 	default:
-		// Fatal for this transfer: drop it, release the lock, carry on.
-		l.popHead(t)
-		l.transfer = nil
-		l.buffer, l.bufferBytes = nil, 0
-		s.releaseThenContinue(t.store, true)
-		s.finish(t, transferResult{err: &TransferError{Store: t.store, Slot: t.slot, Transfer: f.Transfer, Status: f.Status}})
+		s.failTransfer(t, f)
 	}
+}
+
+// failTransfer is _fail_transfer: fatal for this transfer (a status other
+// than 1, 5 and 6, or tryAgainAttempts refusals): drop it, release the
+// lock, carry on.
+func (s *Session) failTransfer(t *transferTask, f *FileTransferErrorField) {
+	l := &s.lane
+	l.tryAgainDue = time.Time{}
+	l.popHead(t)
+	l.transfer = nil
+	l.buffer, l.bufferBytes = nil, 0
+	s.releaseThenContinue(t.store, true)
+	s.finish(t, transferResult{err: &TransferError{Store: t.store, Slot: t.slot, Transfer: f.Transfer, Status: f.Status}})
 }
 
 // onTransferComplete is the file-transfer-data-complete branch: the lock is
 // released before the (slow) RLE decode and the delivery.
 func (s *Session) onTransferComplete(f *FileTransferDataCompleteField) {
 	l := &s.lane
+	if d := l.draining; d != nil && f.Transfer == d.tid {
+		s.log.Info("atem: abandoned download finished; its data dropped", "transfer", d.tid)
+		s.endDrain()
+		return
+	}
+	if l.orphans[f.Transfer] {
+		delete(l.orphans, f.Transfer)
+		s.log.Info("atem: a download we no longer followed finished; its data dropped", "transfer", f.Transfer)
+		return
+	}
 	if l.transfer == nil {
 		// The switcher announces every session's completions.
 		s.log.Debug("atem: FTDC for another session's transfer")
@@ -1213,10 +1557,10 @@ func (s *Session) resetLane(err error) {
 	if l.transfer != nil {
 		s.finish(l.transfer, transferResult{err: err})
 	}
-	id := l.nextID
+	id, others := l.nextID, l.othersSeen
 	timer, ytimer := l.bulkTimer, l.yieldTimer
 	*l = newLane()
-	l.nextID = id
+	l.nextID, l.othersSeen = id, others
 	if timer != nil {
 		timer.Stop()
 		l.bulkTimer = timer
@@ -1244,6 +1588,7 @@ func (s *Session) releaseLocksNow() {
 	clear(l.releasing)
 	clear(l.lockRequested)
 	clear(l.yielding)
+	clear(l.ownRelease)
 }
 
 func sortedStores(m map[uint16]bool) []uint16 {

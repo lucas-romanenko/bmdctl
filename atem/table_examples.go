@@ -77,6 +77,10 @@ var examples = map[string][]string{
 		"classic-audio master --volume 32768",
 		"classic-audio master --afv",
 	},
+	"classic-audio headphones": {
+		"classic-audio headphones --gain 32768",
+		"classic-audio headphones --program-out 23197 --talkback 32768",
+	},
 	"classic-audio monitor": {
 		"classic-audio monitor --enabled --volume 32768",
 		"classic-audio monitor --solo --solo-source cam2",

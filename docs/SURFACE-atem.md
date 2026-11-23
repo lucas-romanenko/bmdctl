@@ -1,6 +1,6 @@
 <!--
-Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at v1.6.0 (commit
-4ad0799). It is the specification for bmdctl's atem package.
+Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at v1.14.6
+(commit 75503ed). It is the specification for bmdctl's atem package.
 
 Its own header says which bmdwire it describes, and §5.4 marks the fixes
 made since; all of them are in what the port follows (docs/PORTING.md,
@@ -32,8 +32,8 @@ code, the code wins, and the disagreement is listed in §5.3.
 
 | § | contents |
 |---|---|
-| 1 | Commands (writes): 82 wire commands and their operation wrappers, by feature area |
-| 2 | State (reads): 92 parsed packets, how `mixerstate` is keyed, the `build_full_state` snapshot, the read/write cross-reference |
+| 1 | Commands (writes): 83 wire commands and their operation wrappers, by feature area |
+| 2 | State (reads): 93 parsed packets, how `mixerstate` is keyed, the `build_full_state` snapshot, the read/write cross-reference |
 | 3 | Transfers and special operations: stills, macros and bytecode, profiles, image conversion, video modes |
 | 4 | Connection lifecycle: facade, pool, connection, bare protocol, transport, events, confirming a write |
 | 5 | Gaps: known but unimplemented, implemented but unexposed, doc/code mismatches, traps |
@@ -189,13 +189,14 @@ multiply by 100 themselves. The ops below take display units in every case.
 
 ### 1.11 audio-legacy (pre-Fairlight mixer) — `messages/audio_legacy.py`
 
-All four are restored upstream and not re-exported.
+The first four are restored upstream; `CAMH` is new in bmdwire#51. None is re-exported.
 
 | name | opcode | params | notes |
 |---|---|---|---|
 | `AudioInputCommand` | `CAMI` | `source:u16`, `balance?:i16=±10000`, `volume?:u16=0–65381`, `on?:bool`, `afv?:bool` | `on`/`afv` become `mix_option` 0 off / 1 on / 2 AFV (`on` wins). Op `set_audio_input(conn, source, balance, volume, on, afv)` |
 | `AudioMasterPropertiesCommand` | `CAMM` | `volume?:u16=0–65381`, `afv?:bool` | op `set_audio_master` |
 | `AudioMonitorPropertiesCommand` | `CAMm` | `enabled?`, `volume?:u16`, `mute?`, `solo?`, `solo_source?:u16`, `dim?`, `dim_volume?:u16` | op `set_audio_monitor(conn, **props)` |
+| `AudioHeadphonePropertiesCommand` | `CAMH` | `gain?:u16=0–65381`, `program_out_gain?:u16`, `talkback_gain?:u16`, `sidetone_gain?:u16` | mask bits 0–3 in that order; the layout is LibAtem's `AudioMixerHeadphoneSetCommand`, not checked on a switcher. Only for a unit that sends `AMHP` (§2.4). Op `set_audio_headphones(conn, gain, program_out_gain, talkback_gain, sidetone_gain)` |
 | `SendAudioLevelsCommand` | `SALN` | `enable:bool` | opts in to `AMLv`. Op `enable_audio_levels` |
 
 The ops take wire units. Three helpers in the module convert from the units the state shows
@@ -261,7 +262,7 @@ All three are restored upstream and not re-exported.
 | name | opcode | params | notes |
 |---|---|---|---|
 | `InputPropertiesCommand` | `CInL` | `source_index:u16`, `label?:str[≤20 B]`, `short_label?:str[≤4 B]`, `port_type?:u16` | custom mask: a key is applied whenever its argument is not None, so `''` is a valid label. Op `set_input_label(conn, source, *, long_name, short_name)` (truncates to 20/4 bytes). No op sets `port_type`. Fixed internal sources (Black, Bars, Key Mask, Program, Preview) are not renamable |
-| `VideoModeCommand` | `CVdM` | `mode:u8=0–29` | **destructive**: outputs resync and clients may be dropped. Op `set_video_mode(conn, mode int\|name)`. Names (`input_video.VIDEO_MODE_NAMES`): 0 NTSC/525i5994, 1 PAL/625i50, 2 NTSC_widescreen, 3 PAL_widescreen, 4 720p50, 5 720p5994, 6 1080i50, 7 1080i5994, 8 1080p2398, 9 1080p24, 10 1080p25, 11 1080p2997, 12 1080p50, 13 1080p5994, 14 2160p2398, 15 2160p24, 16 2160p25, 17 2160p2997, 18 2160p50, 19 2160p5994, 20 4320p2398, 21 4320p24, 22 4320p25, 23 4320p2997, 24 4320p50, 25 4320p5994, 26 1080p30, 27 1080p60, 28 720p60, 29 1080i60. The supported subset per model is in `_VMC` |
+| `VideoModeCommand` | `CVdM` | `mode:u8=0–29` | **destructive**: outputs resync and clients may be dropped. Op `set_video_mode(conn, mode int\|name)`. Names (`input_video.VIDEO_MODE_NAMES`): 0 NTSC/525i5994, 1 PAL/625i50, 2 NTSC_widescreen, 3 PAL_widescreen, 4 720p50, 5 720p5994, 6 1080i50, 7 1080i5994, 8 1080p2398, 9 1080p24, 10 1080p25, 11 1080p2997, 12 1080p50, 13 1080p5994, 14 4KHDp2398, 15 4KHDp24, 16 4KHDp25, 17 4KHDp2997, 18 4KHDp50, 19 4KHDp5994, 20 8KHDp2398, 21 8KHDp24, 22 8KHDp25, 23 8KHDp2997, 24 8KHDp50, 25 8KHDp5994, 26 1080p30, 27 1080p60, 28 720p60, 29 1080i60. 14–25 are ATEM Software Control's names since `4be0f40`; their `2160p…` / `4320p…` spellings are also accepted. The supported subset per model is in `_VMC`. An integer is sent as given, so a mode the tables don't have (a `_VMC` entry labelled `mode-<n>`, §2.5) can be set by its number |
 | `AutoInputVideoModeCommand` | `AiVM` | `enable:bool` | restored upstream; not re-exported. Op `set_auto_video_mode(conn, enable)` |
 | `SaveStartupStateCommand` | `SRsv` | — | restored upstream; not re-exported. Op `save_startup_state(conn)` |
 | `ClearStartupStateCommand` | `SRcl` | — | restored upstream; not re-exported. Op `clear_startup_state(conn)` |
@@ -292,7 +293,9 @@ pooled `ATEMConnection` exposes the same dict as `conn.mixerstate`. For each inc
 
 1. If the 4-char code has a `Recv` class **and** a `PRETTY` name, the payload is parsed into that
    class and stored under the `PRETTY` key (e.g. `'program-bus-input'`). The attributes in the
-   tables below are attributes of that object.
+   tables below are attributes of that object. Since `df41751` a field whose parser or handler
+   raises is logged (once per code, with a traceback) and not stored; the rest of its packet
+   still lands (§5.4 item 40).
 2. If the class has a `KEY_FORMAT`, the leading bytes become nested dict keys:
    `mx['key-on-air'][me][keyer]`. Fairlight classes that carry `strip_id` replace the first key
    with the `"<source>.<subchannel>"` string (`protocol.py:489-498`), so strips live at
@@ -385,30 +388,35 @@ brackets where it matters). "Written by" names the §1 command(s) whose effect l
 | `audio-input` | `AMIP` | `index:u16`, `type:u8 (0 video input, 1 media player, 2 external audio)`, `number:u8`, `plug:u8` (`plug_name()`: 0 Internal, 1 SDI, 2 HDMI, 3 Component, 4 Composite, 5 SVideo, 32 XLR, 64 AES, 128 RCA), `state:u8 (0 Off, 1 On, 2 AFV)`, `volume:u16`, `balance:i16`, `strip_id` (`"<index>.0"`). 16 bytes from ATEM 8.0 firmware, 20 before; the first 16 are read | strip (`"src.0"`) | `CAMI` |
 | `audio-mixer-master-properties` | `AMMO` | `volume:u16`, `afv:bool` | bare | `CAMM` |
 | `audio-mixer-monitor-properties` | `AMmO` | `enabled`, `volume:u16`, `mute`, `solo`, `solo_source:u16`, `dim`, `dim_volume:u16` (a level, 0–100.00 ×100 per LibAtem, not a gain) | bare | `CAMm` |
+| `audio-mixer-headphone-properties` | `AMHP` | `gain`, `program_out_gain`, `talkback_gain`, `sidetone_gain` (u16 legacy volumes). Layout LibAtem's `AudioMixerHeadphoneGetCommand`; which models send it is not known | bare | `CAMH` |
 | `audio-mixer-tally` | `AMTl` | `num`, `tally:{"src.0": bool}` | bare | — |
 | `audio-meter-levels` | `AMLv` | `count`, `master:(lvlL, lvlR, peakL, peakR)`, `monitor:(4)`, `input:{src:int: (4)}`; dB = `20·log10(v / 2^23)` of each u32, and 0 is `-60` | **bare** (one packet carries every input; listen to `change:audio-meter-levels`) | `SALN` opt-in |
 
 **Legacy mixer readers** (`messages/audio_legacy.py`), which `build_full_state` uses on a legacy
 switcher (§2.6): `audio_mixer_type(mx)` gives `'fairlight'` once `FAMP` has arrived, `'legacy'`
 once `AMMO` has, and `'unknown'` before either. `legacy_audio_master`, `legacy_audio_strips`,
-`legacy_audio_headphones` and `legacy_audio_solo` read `AMMO`, `AMIP` and `AMmO` into the shapes
-of `fairlight_master`, `fairlight_strips`, `fairlight_headphones` and `fairlight_solo`, less
+`legacy_audio_headphones` and `legacy_audio_solo` read `AMMO`, `AMIP`, `AMmO` and `AMHP` into the
+shapes of `fairlight_master`, `fairlight_strips`, `fairlight_headphones` and `fairlight_solo`, less
 what the legacy mixer doesn't have (input gain, EQ, dynamics, delay), which is absent rather
 than zero. Volumes are dB by `legacy_volume_to_db` (§1.11), `None` for silence; pan is balance
 / 100 (±100, as the Fairlight strips show it; LibAtem and atem-connection show balance as ±50);
 `mix_type` takes the Fairlight names (`'Off'`, `'On'`, `'AudioFollowVideo'`) while `mix_state`
 keeps the legacy wire value. Strip names: a video input's from `InPr`, `MP<n>` for media player
 source 2000 + n, and `XLR`, `AES`, `RCA`, `Mic1`, `Mic2` for sources 1001, 1101, 1201, 1301,
-1302. Headphones are the monitor bus: `dim_level` is `dim_volume` / 100, not dB. None of this
+1302. Headphones are `AMHP` on a unit that sends it (`bus` `'headphones'`: `volume_db` its gain,
+`unmuted` True, plus `program_out_db`, `talkback_db`, `sidetone_db`) and the monitor bus otherwise
+(`bus` `'monitor'`, as before bmdwire#51; the three mix keys absent). `enabled`, `dim`, `solo` and
+`solo_source` are the monitor bus's either way; `dim_level` is `dim_volume` / 100, not dB. None of this
 has met a legacy switcher; it is built from the packet layouts, which agree with LibAtem's and
 atem-connection's.
 
 **Legacy audio in the log.** So that a log from a legacy switcher can confirm the layouts or
 correct them, `AtemProtocol` logs at INFO (logger `AtemProtocol`), prefixed `legacy-audio:`, the
-first `AMIP` per source and the first `AMMO`, `AMmO` and `AMLv` a connection receives, each as
-its payload in hex and every decoded attribute (with `volume_db` and `plug_name`), and at every
+first `AMIP` per source and the first `AMMO`, `AMmO`, `AMHP` and `AMLv` a connection receives,
+each as its payload in hex and every decoded attribute (with `<field>_db` for each volume and
+`plug_name`), and at every
 connect the mixer the dump showed (`legacy`, or `unknown` when it had neither `FAMP` nor
-`AMMO`). A Fairlight switcher sends none of the four, and its mixer line is DEBUG. A failure to
+`AMMO`). A Fairlight switcher sends none of these, and its mixer line is DEBUG. A failure to
 describe a packet is logged at DEBUG and never reaches the packet loop.
 
 ### 2.5 outputs, devices, system
@@ -433,14 +441,14 @@ describe a packet is logged at DEBUG and never reaches the packet loop.
 | `streaming-stats` | `SRSS` | `bitrate:u32`, `cache:u16` | bare | — |
 | `tally-index` | `TlIn` | `num`, `tally:[(program, preview)]` | bare | — |
 | `tally-source` | `TlSr` | `num`, `tally:{src: (program, preview)}` | bare | — |
-| `video-mode` | `VidM` | `mode:u8`, `resolution:int`, `interlaced:bool`, `rate:float`, `widescreen:bool`; `get_label()`, `get_resolution()`, `get_pixels()`. **Raises `ValueError` on a mode outside 0–29** | bare | `CVdM` |
-| `video-mode-capability` | `_VMC` | `modes:[{modenum, mode:VideoModeField, multiview:[…], downscale:[…], reconfigure:bool}]` | bare | — |
+| `video-mode` | `VidM` | `mode:u8`, `resolution:int`, `interlaced:bool`, `rate:float`, `widescreen:bool`, `known:bool`; `get_label()`, `get_resolution()`, `get_pixels()`. A mode outside 0–29 raised `ValueError` until `631944d` (§5.4 item 3); now `known` is False, the four values are None, `get_label()` is `mode-<n>` and `get_resolution()` / `get_pixels()` return None | bare | `CVdM` |
+| `video-mode-capability` | `_VMC` | `modes:[{modenum, mode:VideoModeField, multiview:[…], downscale:[…], reconfigure:bool}]`. A UHD capable switcher lists its UHD modes while it runs HD, and an unknown number in a block or a bitfield is an unknown `VideoModeField` (since `631944d`). Blocks are 13 bytes from protocol 8.0 and 12 before, without `reconfigure` (read as False); the size is taken from the payload length (§5.4 item 39) | bare | — |
 | `auto-input-video-mode` | `AiVM` | `enabled:bool`, `detected:bool` | bare | `AiVM` |
 | `sdi-3g-level` | `V3sl` | `level:u8 (0 Level B, 1 Level A)` | bare | — (no command) |
 | `firmware-version` | `_ver` | `major:u16`, `minor:u16`, `version:str` | bare | — |
 | `product-name` | `_pin` | `name:str`, `model:u8` | bare | — |
 | `device-identity` | `WhoI` | `device_id`, `ip`, `hostname`, `name` (str) — not sent by all firmware | bare | — (not re-exported) |
-| `topology` | `_top` | `me_units`, `sources`, `downstream_keyers`, `aux_outputs`, `mixminus_outputs`, `mediaplayers`, `multiviewers`, `rs485`, `hyperdecks`, `dve`, `stingers`, `supersources` (u8), `multiviewer_routable:bool` | bare | — |
+| `topology` | `_top` | `me_units`, `sources`, `downstream_keyers`, `aux_outputs`, `mixminus_outputs`, `mediaplayers`, `multiviewers`, `rs485`, `hyperdecks`, `dve`, `stingers`, `supersources` (u8), `multiviewer_routable:bool`. The offsets are protocol 2.30's; before it, everything from `multiviewers` on reads one byte late (§5.4 item 38). `system_info.topology_block_counts(mx)` reads the DVE, stinger and SuperSource counts where `_ver` puts them | bare | — |
 | `mixer-effect-config` | `_MeC` | `index`, `keyers:u8` | me | — |
 | `mediaplayer-slots` | `_mpl` | `stills:u8`, `clips:u8` | bare | — |
 | `time` | `Time` | `hours`, `minutes`, `seconds`, `frames`, `dropframe:bool`; `total_seconds()` | bare | `TiRq` (request), `SToD` (sets the clock) |
@@ -450,6 +458,12 @@ describe a packet is logged at DEBUG and never reaches the packet loop.
 | `file-transfer-*` | `FTDa`/`FTDE`/`FTDC`/`FTCD` | `transfer`, `size`/`status`/`count`… | consumed by the transfer engine, **not stored** | §3 |
 | `transfer-complete` | `*XFC` | `store`, `slot`, `upload:bool` | consumed (TCP-proxy transport only); since `baa269c` dropped unparsed on UDP (§5.4 item 18) | — |
 | `InCm` | `InCm` | raw bytes (end of the initial state dump) | bare | — |
+
+**Topology in the log.** At every connect `AtemProtocol` logs at INFO (logger `AtemProtocol`)
+one line beginning `topology at connect:`, with the protocol version from `_ver`, the `_top`
+payload in hex, and the DVE, stinger and SuperSource counts read from it, or why they are unknown
+(`system_info.topology_diagnostic`). It is there so that a log from any model can confirm the
+layout. A failure to describe it is logged at DEBUG and never reaches the connect.
 
 ### 2.6 `build_full_state(conn)` (the assembled snapshot)
 
@@ -491,23 +505,26 @@ audio: {mixer 'fairlight'|'unknown', present, master {…, eq_bands[6]}, strips 
        {mixer 'legacy', present (AMMO and an AMIP), master {present, volume_db, afv},
         strips [ {source, channel -1, subchannel 0, split False, strip_id "src.0", name,
         short_name, mix_type, mix_state (0/1/2), volume_db, pan, soloed, input_type, plug} ],
-        headphones {present, volume_db, unmuted, enabled, dim, dim_level, solo, solo_source},
+        headphones {present, volume_db, unmuted, enabled, dim, dim_level, solo, solo_source, bus,
+        and with AMHP program_out_db, talkback_db, sidetone_db},
         solo {any_soloed, strip_id}}
-videoMode: {format, id, fps}
-videoModes: [ {id, label} ]
+videoMode: {format, id, fps}     (a mode with no table entry: format 'mode-<n>', fps the default 25)
+videoModes: [ {id, label} ]      (label 'mode-<n>' for one)
 inputLabels: {inputs: [], outputs: [], media: []}   ({source, long, short})
 sources: [ {source, long, short, port_type, available_aux, available_key_source,
             available_multiview, available_me1..me4} ]
 topology: {meCount, usksPerMe[], dsks, auxOutputs, inputs, outputs, mediaPlayers,
            mediaPoolStills, mediaPoolClips, colorGenerators, multiviewWindows,
-           fairlightStrips, macros}
+           fairlightStrips, macros,
+           dves, stingers, superSources}   (_top block counts; None for all three
+                                            until _top and _ver say, never 0)
 atem_name: WhoI name or _pin product name
 ```
 
 Reader functions not used by `build_full_state`, which a CLI can call directly:
 `transition.dve_style`, `upstream_keyer.usk_fly_keyframe(mx, me, k, which='A'|'B')`,
 `media.mediaplayer_slots/slot_info/selected`, `macros.macro_play_running/macro_play_index`,
-`fade_to_black.*` (also composed), `system_info.video_resolution/sdi_3g_level`,
+`fade_to_black.*` (also composed), `system_info.video_resolution/sdi_3g_level/topology_diagnostic`,
 `hyperdeck.plan_binding_push`, `fairlight.fairlight_master_compressor/limiter`,
 `input_video.input_label`. Helpers in `state`: `me_count(mx)`, `me_keyer_count(mx, me)`,
 `display_fps(mx)`, `decode_name`, `md5_hex`.
@@ -550,15 +567,22 @@ in the transfer flow. At field level, the `CKDV`/`CTDv` fields are all echoed, b
   in one packet, as ATEM Software Control sends them, and a release broadcast while the store is
   held changes nothing; after an FTDE 6 the release goes alone (§5.4 item 21). Since `5827626`
   the release goes alone and the next request waits for the store to be announced free and a
-  frame more, never while another client holds it (§5.4 item 26).
+  frame more, never while another client holds it (§5.4 item 26). Since `6876ba2`, after a release
+  of our own the next request waits `LOCK_HANDOVER` (0.1 s) more while another client has been
+  seen within `LOCK_QUIET`, so a client waiting on that release asks first (§5.4 item 37).
+- **Transfer ids:** each `FTSU`/`FTSD` carries the session's next transfer id, and the switcher's
+  `FTDC` for it goes to every session with that id. Every session used to start at 43; since
+  `6876ba2` each starts at a random id in 1..0xFFFF, wrapping without 0 (§5.4 item 36).
 - **`FTDE` status handling:**
-  - 1 (try again): re-send the request with the same tid.
+  - 1 (try again): re-send the request with the same tid. Since `588a389` after a pause that doubles
+    from `TRY_AGAIN_FIRST` (0.05 s) to `TRY_AGAIN_MAX` (1 s); after `TRY_AGAIN_ATTEMPTS` (20)
+    refusals the task fails like a fatal status, raised as `file-transfer-error` (§5.4 item 43).
   - 5 (no lock): re-request the lock.
   - 6 (another session collided): release, keep the task, re-request on the next release.
   - Any other status: fatal for that task. The task is dropped, the lock released, and
     `file-transfer-error` raised.
 
-  Statuses 1, 5 and 6 never reach callers.
+  Statuses 1, 5 and 6 never reach callers (since `588a389`, 1 does after 20 refusals in a row).
 - **Upload pacing:** the switcher grants budgets with `FTCD(size, count)`. Chunks go out as `FTDa`
   (an RLE header word is never split), then `FTFD(name, description, md5)` once the send queue
   drains. Download chunks are acked one by one with `FTUA(tid, 0)`. Since `d050c10` `FTFD` goes
@@ -567,14 +591,22 @@ in the transfer flow. At field level, the `CKDV`/`CTDv` fields are all echoed, b
   `abort_transfers()`. Timeouts live in the callers below.
 - Lane control: `AtemProtocol.abort_transfers()` clears the lane and releases held locks;
   `release_locks_now()` writes the unlocks straight to the socket and is meant for teardown.
+  Since `588a389` a still download that had a chunk within `DRAIN_STALL` (5 s) is not cut off: its
+  chunks are FTUA'd and dropped, the lock is released at its `FTDC` (or `FTDE`, or after
+  `DRAIN_STALL` with nothing, or `DRAIN_MAX`, 120 s, in all), and the next transfer waits for
+  that (§5.4 item 44). Since 1.13.0 that holds for a request with no chunk yet as well, and a
+  chunk of any of the session's last `ORPHAN_IDS` (64) transfers that it no longer follows is
+  FTUA'd and dropped; another session's ids are left alone (§5.4 item 52). The first `FTDE 1` of
+  a transfer is logged at info, and a `download_still` that stalls while the switcher answers
+  busy says so in its `TimeoutError`.
 
 ### 3.1 Stills
 
 | operation | entry point | parameters | behaviour |
 |---|---|---|---|
-| **download** | `ATEMConnection.download_still` (`connection.py:188`); on the facade, `atem.raw.download_still` | `(slot:int, *, timeout:float=30.0, progress_callback:Callable[[float],None]=None) -> bytes` | Blocking and serialised per connection. Flow: `PLCK(0,slot)` → `LKOB` → `FTSU` → `FTDa`×N/`FTUA` → `FTDC` → unlock. Returns the **RLE-decoded YCbCrA 4:2:2 frame** (w×h×4 bytes; actually a `bytearray`). Convert it with `imaging.atem_to_rgb`. Raises `ConnectionDeadError` (since `1572508` also while `is_ready` is False, §5.4 item 20), `RuntimeError` (fatal `FTDE`) or `TimeoutError` (after `abort_transfers`) |
+| **download** | `ATEMConnection.download_still` (`connection.py:188`); on the facade, `atem.raw.download_still` | `(slot:int, *, timeout:float=30.0, progress_callback:Callable[[float],None]=None, stall_timeout:float=None) -> bytes` | Blocking and serialised per connection. With `stall_timeout` (since `588a389`) it gives up once that long passes with no chunk arriving (lock wait included) and `timeout` caps the whole download (§5.4 item 45). Flow: `PLCK(0,slot)` → `LKOB` → `FTSU` → `FTDa`×N/`FTUA` → `FTDC` → unlock. Returns the **RLE-decoded YCbCrA 4:2:2 frame** (w×h×4 bytes; actually a `bytearray`). Convert it with `imaging.atem_to_rgb`. Raises `ConnectionDeadError` (since `1572508` also while `is_ready` is False, §5.4 item 20; since `2b540db` also when the session goes while it waits, item 34), `RuntimeError` (fatal `FTDE`) or `TimeoutError` (after `abort_transfers`) |
 | **upload** | **no high-level entry point**. Only `AtemProtocol.upload` (`protocol.py:682`) | `(store, index, data, compress=True, compressed=False, name=None, description=None, size=None, task=None) -> None` | Non-blocking: it only queues, and someone must pump `loop()`. `data` is a YCbCrA frame from `imaging.rgb_to_atem`. The MD5 is taken over the uncompressed frame. Flow: `PLCK` → `LKOB` → `FTSD(mode 1 = RLE)` → `FTCD` → `FTDa`… → `FTFD` → `FTDC` → `upload-done(store, slot)`. Progress arrives as `upload-progress(store, slot, percent, done, total)`. `size` is unused. `compressed=True` needs `compress=False`. `aggressive_drain=True` (constructor only, so not reachable through the pool) drains 10 packets per trigger instead of 5; since `d050c10` each budget is sent whole on any connection and it changes nothing (§5.4 item 22). The working reference caller is in WebATEM: `atem_control/uploader.py` (its own `AtemProtocol(ip, aggressive_drain=True)`, pumps until `upload-done`, then checks the `MPfe` hash) |
-| **clear (locked)** | `ATEM.clear_still` / `ATEMConnection.clear_still` (`connection.py:196`); underneath, `AtemProtocol.queue_clear(store, index)` / `dequeue_clear(task)` | `(slot:int, *, timeout:float=5.0) -> None` | `LOCK(0,True)` → `LKOB` → `CSTL` → `clear-dispatched` → unlock. Returns once the clear has been **dispatched**, not confirmed; watch `MPfe.is_used` to confirm. Use this, not the bare `media.clear_still` op (§1.8). Raises `ConnectionDeadError` when not connected (since `1572508`, when not `is_ready`) or `TimeoutError` |
+| **clear (locked)** | `ATEM.clear_still` / `ATEMConnection.clear_still` (`connection.py:196`); underneath, `AtemProtocol.queue_clear(store, index)` / `dequeue_clear(task)` | `(slot:int, *, timeout:float=5.0) -> None` | `LOCK(0,True)` → `LKOB` → `CSTL` → `clear-dispatched` → unlock. Returns once the clear has been **dispatched**, not confirmed; watch `MPfe.is_used` to confirm. Use this, not the bare `media.clear_still` op (§1.8). Raises `ConnectionDeadError` when not connected (since `1572508`, when not `is_ready`; since `2b540db`, also when the session goes before the clear is sent, §5.4 item 34) or `TimeoutError` |
 | capture | `media.capture_still(conn)` | — | single packet `Capt`, listed for completeness |
 
 **Formats and conversion** (`atemwire.mediaconvert`, a C extension; wrappers in `imaging.py`):
@@ -586,10 +618,12 @@ in the transfer flow. At field level, the `CKDV`/`CTDv` fields are all echoed, b
   - Chroma is taken from the **second pixel of each pair only**, not averaged.
   - `premultiply` multiplies RGB by alpha first.
 - `atem_to_rgb(data, width, height) -> bytes`: the inverse, returning RGBA8888. Alpha 0 round-trips
-  to 12.
+  to 12. Since `588a389` the Python wrapper converts in `CONVERT_PIECE` (1 MB) pieces, so the GIL is
+  free between them (§5.4 item 46).
 - **Both converters parse `width`/`height` and never use them.** They walk the byte length, which
   must be a multiple of 8 (`ValueError` otherwise). Output length equals input length.
-- `rle_encode(data) -> bytes` (C) and `rle_decode(data) -> bytearray` (pure Python) work on 8-byte
+- `rle_encode(data) -> bytes` (C) and `rle_decode(data) -> bytearray` (pure Python; since `588a389` it
+  finds the headers with `bytes.find` and copies the literal runs whole) work on 8-byte
   words. The first word of a run is written literally. If it then repeats at least 3 more times, the
   repeats become `FE×8` + a big-endian u64 count + the word (`mediaconvertmodule.c:266-298`). Input that
   contains the word `FEFEFEFEFEFEFEFE` raises.
@@ -612,7 +646,9 @@ in the transfer flow. At field level, the `CKDV`/`CTDv` fields are all echoed, b
 
 The labels above are `get_label()` output, which keeps the decimal point. The names
 `set_video_mode` accepts (`VIDEO_MODE_NAMES`) drop it (`1080p5994`). The modes a given switcher
-supports are in `_VMC`, read with `available_video_modes(mx)`.
+supports are in `_VMC`, read with `available_video_modes(mx)`. A mode with no table entry has no
+frame size: `get_resolution()` returns None and `video_resolution(mx, default)` its default (pass
+`default=None` to tell), so no still can be sized for it (since `631944d`).
 
 **Clips and audio: not implemented.** There is no clip or audio upload or download, and no
 thumbnail transfer (a "thumbnail" means a full frame download). Clip and audio state arrives only
@@ -627,7 +663,7 @@ layers, so whether this module is covered by the version number is unstated.
 
 | entry point | signature | notes |
 |---|---|---|
-| `ATEMConnection.download_macro` | `(slot:int, *, timeout:float=10.0) -> bytes` | `connection.py:254`. The pooled path: serialised by the connection's transfer lock, and the worker pumps the loop. Returns `b''` for an empty slot. Raises `ConnectionDeadError` (since `1572508` also while `is_ready` is False), `TimeoutError`, or `RuntimeError` (rejected by `FTDE`) |
+| `ATEMConnection.download_macro` | `(slot:int, *, timeout:float=10.0) -> bytes` | `connection.py:254`. The pooled path: serialised by the connection's transfer lock, and the worker pumps the loop. Returns `b''` for an empty slot. Raises `ConnectionDeadError` (since `1572508` also while `is_ready` is False; since `2b540db` also when the session goes while it waits), `TimeoutError`, or `RuntimeError` (rejected by `FTDE`) |
 | `download_macro_bytecode` | `(protocol, slot:int, *, timeout=10.0, progress_callback=None) -> bytes` | `macrotransfer/_io.py:42`. For a **bare** `AtemProtocol`: it pumps `protocol.loop()` itself. `progress_callback` never fires (the protocol suppresses progress for store `0xFFFF`). A fatal `FTDE` surfaces as `TimeoutError` |
 | `upload_macro_bytecode` | `(protocol, slot:int, name:str, description:str, bytecode:bytes, *, timeout=10.0) -> None` | `_io.py:105`. Does **not** pump the loop; on a pooled connection pass `conn.protocol`, and the worker pumps. Raises `RuntimeError` (not connected, or fatal `FTDE`) or `TimeoutError`. Name and description are packed `64s`/`128s` (truncated, with no guaranteed NUL). There is **no upload method on `ATEMConnection` or `ATEM`** |
 | `decode_macro_bytecode` | `(raw:bytes, mx:dict=None) -> list[dict]` | each op is `{'id': <ASC XML op id>, <attr>: str, …}`. `mx` is accepted but unused |
@@ -680,10 +716,10 @@ The top-level `atemwire` exports `Profile`, `ApplyOptions` and `ApplyResult`.
 | `Profile.from_atem` | `(atem, options:SaveOptions=None) -> Profile` | Takes anything with `.mixerstate` or `.raw.mixerstate`. First calls `ready.wait_state_settled` (polls only; returns within 3 s at most), then downloads every used macro slot in turn (up to 10 s each). Worst case ≈ 3 s + 10 s × used macros. **With a bare `AtemProtocol` the macros are saved with metadata only and no ops**; the error is swallowed |
 | `Profile.from_xml` / `from_file` | `(xml:str\|bytes)` / `(path)` | refuses NUL bytes, `<!DOCTYPE` and `<!ENTITY`; the root tag and version are not validated |
 | `Profile.to_xml` / `to_file` | `() -> str` / `(path)` | ASC-style XML |
-| properties | `root`, `major_version`, `minor_version`, `product`, `video_mode` | `video_mode` is the raw XML string |
+| properties | `root`, `major_version`, `minor_version`, `product`, `video_mode` | `video_mode` is the raw XML string. Save writes `VIDEO_MODE_XML_NAMES` (ASC's spellings, `4KHDp…` / `8KHDp…` for 14–25 since `4be0f40`), or `mode-<n>` for a mode with no entry, which apply reads back as `<n>` (since `631944d`) |
 | `Profile.macros()` | `-> list[{index, name, description, ops}]` | ops in the §3.2 dict form |
 | `Profile.apply` | `(atem, options:ApplyOptions=None) -> ApplyResult` | Takes an `ATEM`, anything with `.send`, or an `AtemProtocol` (wrapped so `send` is synchronous). Setters only queue. It blocks only for a 3 s sleep after a video-mode change and for macro uploads (10 s each, which **need someone pumping the loop**). Sections run in order: video_mode, inputs, settings_flags, color_generators, aux, transition, upstream_keyers, downstream_keys, fade_to_black, media_players, audio, multiview (placeholder), macros, camera_control (placeholder), hyperdecks, talkback (placeholder), program_preview. There is no model or version guard, and no try/except around sections: a non-`ValueError` raised by a macro encoder aborts the whole apply |
-| `download_media_pool_images` | `(atem, progress_callback=None, cancel_check=None, timeout_per_slot=30.0, cache_get=None, cache_put=None) -> list[{slot, name, png_bytes, from_cache}]` | `download_still` per used slot → `atem_to_rgb` → Pillow PNG (the `[profile]` extra). Not called by `from_atem`. A slot that fails is skipped. Since `1572508` it refuses when not `is_ready` and stops (a partial list) once the session goes |
+| `download_media_pool_images` | `(atem, progress_callback=None, cancel_check=None, timeout_per_slot=30.0, cache_get=None, cache_put=None) -> list[{slot, name, png_bytes, from_cache}]` | `download_still` per used slot → `atem_to_rgb` → Pillow PNG (the `[profile]` extra). Not called by `from_atem`. A slot that fails is skipped. At a video mode with no table entry it downloads nothing and returns `[]` with a warning, since the frame size is unknown (`631944d`). Since `1572508` it refuses when not `is_ready` and stops (a partial list) once the session goes; since `2b540db` the slot in flight then fails at once instead of waiting out `timeout_per_slot` (§5.4 item 34) |
 
 **`SaveOptions`** (all default True): `mes: list[MixEffectOptions]` (×4), `downstream_keys`,
 `color_generators`, `fairlight`, `camera_control`, `media_pool_metadata`, `media_pool_images`
@@ -741,6 +777,7 @@ Profile enum tables (`profile/_enums.py`):
 | HyperDeck bind planning | `hyperdeck.plan_binding_push(mx, deck_ip, switcher_input, *, exclude_slots=()) -> (slot\|None, needs_write)` | pure function; the write is `set_hyperdeck_settings` |
 | full snapshot | `state.build_full_state(conn)` / `ATEM.snapshot()` | §2.6 |
 | meters | `fairlight.enable_fairlight_levels`, `audio_legacy.enable_audio_levels` | opt-in streams (`FMLv`/`FDLv`, `AMLv`) at ~10 Hz; re-arm after every reconnect |
+| session count | `sessions.count_sessions(ip, *, port=9910, limit=16, answer_timeout=10.0, max_sessions=None) -> {'ip', 'free', 'full', 'stopped', 'model', 'max', 'in_use', 'session_ids', 'accepts', 'seconds'}`; command `python -m atemwire.sessions IP [--json] [--limit N] [--max N]` | how many sessions the switcher has free, by everyone. The switcher reports no client count, so it opens handshake sessions one at a time (each waits for the answer to the last, each pumped and ACKed like any client) until the hello is answered `0x03`, then sends every one the goodbye (a session whose first packet, and so its id, hasn't come yet is waited for up to `CLOSE_ID_TIMEOUT`, 5 s, so its goodbye carries the id). `stopped` is `'no room'` (`full`, `free` exact), `'limit'` (at least `free`) or `'no answer'` (nothing for `answer_timeout`; at least `free`). `in_use = max - free`, derived, only when `full` and the model's max is known (`max_sessions`, else `sessions.MAX_SESSIONS[model]`, empty until measured on an idle unit). `session_ids` and `accepts` (each 0x02 answer's payload, hex) are kept as evidence for whether the switcher numbers sessions by table slot (unverified). The report shows `free`, and `in use` only when the max is known. Sessions already open are untouched; while it holds the table full (well under a second on a good link) anyone else's hello is answered `0x03`, so it is not for use during a live show |
 | macro record by replay | `macro_start_recording` → ops → `macro_sleep` → `macro_stop_recording` | the live way to build a macro without bytecode |
 
 ## 4. Connection lifecycle
@@ -749,9 +786,9 @@ Profile enum tables (`profile/_enums.py`):
 
 | layer | entry point | what it gives you |
 |---|---|---|
-| facade | `atemwire.ATEM(ip)` (`atem.py`), context manager; `close()` is idempotent | A pooled session. Blocks up to 15 s on a cold connect (`RuntimeError` on failure); a warm connect joins at once. **Operations:** `atem.<op>(*args)` forwards to the `messages.<module>.<op>(conn, *args)` functions of 17 modules (`atem.py:72-89`). The `hyperdeck`, `lock`, `file_transfer`, `tally` and `meters` modules are not forwarded, so `set_hyperdeck_settings` is not on the facade. **Reads:** properties `connected`, `video_mode`, `product_name`, `program_source`, `preview_source`, `in_transition`, `transition_style`, `transition_rate`, `ftb_active`; methods `get_program_source(me)`, `get_preview_source(me)`, `get_in_transition(me)`, `get_transition_style(me)`, `get_transition_rate(me)`, `get_ftb_active(me)`; `snapshot()` (= `build_full_state`); `clear_still(slot, timeout=5.0)` (locked); `raw` → the `ATEMConnection` |
-| pool | `atemwire.pool.acquire_connection(ip)` (context manager → `ATEMConnection`); `ATEMInstanceManager.peek_connection / get_instance / release_instance / list_instances` | One session per switcher per process, ref-counted. When the last ref goes, a 2 s grace timer disconnects. Nothing reaps a session whose ref is still held. A dead worker is evicted. `close_all_sessions_at_exit()` is registered with atexit. Single-process only |
-| connection | `atemwire.connection.ATEMConnection(instance_id)` | `connect(ip) -> bool` (blocks up to `CONNECT_TIMEOUT = 15 s`), `disconnect()`, `is_connected`, `mixerstate`, `protocol`, `send(command)`, `download_still`, `download_macro`, `clear_still`, `set_on_died(cb)`, `last_run_macro_index`. It has its own worker thread `AtemConn-<id>`, which pumps `protocol.loop()` every 10 ms and sends queued commands in batches of up to 1200 bytes per packet. A command that fails to render or is over-size is **dropped with a log line**, not raised |
+| facade | `atemwire.ATEM(ip)` (`atem.py`), context manager; `close()` is idempotent | A pooled session. Blocks up to 15 s on a cold connect (`RuntimeError` on failure); a warm connect joins at once (since `2b540db`, once the session is ready, §5.4 item 35). **Operations:** `atem.<op>(*args)` forwards to the `messages.<module>.<op>(conn, *args)` functions of 17 modules (`atem.py:72-89`). The `hyperdeck`, `lock`, `file_transfer`, `tally` and `meters` modules are not forwarded, so `set_hyperdeck_settings` is not on the facade. **Reads:** properties `connected`, `video_mode`, `product_name`, `program_source`, `preview_source`, `in_transition`, `transition_style`, `transition_rate`, `ftb_active`; methods `get_program_source(me)`, `get_preview_source(me)`, `get_in_transition(me)`, `get_transition_style(me)`, `get_transition_rate(me)`, `get_ftb_active(me)`; `snapshot()` (= `build_full_state`); `clear_still(slot, timeout=5.0)` (locked); `raw` → the `ATEMConnection` |
+| pool | `atemwire.pool.acquire_connection(ip)` (context manager → `ATEMConnection`; since `2b540db`, `acquire_connection(ip, *, ready_timeout=None)`); `ATEMInstanceManager.peek_connection / get_instance / release_instance / list_instances` | One session per switcher per process, ref-counted. When the last ref goes, a 2 s grace timer disconnects. Nothing reaps a session whose ref is still held. A dead worker is evicted. `close_all_sessions_at_exit()` is registered with atexit. Single-process only. Since `2b540db` `acquire_connection` yields only a ready session, waiting for a re-handshake on a pool hit (§5.4 item 35); `get_instance` and `peek_connection` promise nothing about readiness |
+| connection | `atemwire.connection.ATEMConnection(instance_id)` | `connect(ip) -> bool` (a cold connect waits while the switcher keeps sending and gives up after `CONNECT_STALL_TIMEOUT = 5 s` with nothing from it (`CONNECT_HELLO_TIMEOUT = 10 s` before its first answer), at most `CONNECT_MAX = 60 s`, and at once on a "no room" answer, §5.4 item 47; up to 1.11.0 a fixed `CONNECT_TIMEOUT = 15 s`, which now only bounds the wait for a re-handshaking pooled session; since `2b540db` a connect that joins a session in a re-handshake waits for it too, §5.4 item 35), `disconnect()`, `is_connected`, `mixerstate`, `protocol`, `send(command)`, `download_still`, `download_macro`, `clear_still`, `set_on_died(cb)`, `last_run_macro_index`; since `2b540db`, `wait_until_ready(timeout) -> bool`; since 1.12.0 `connect_refused` and `connect_progress() -> {stage, packets}`. It has its own worker thread `AtemConn-<id>`, which pumps `protocol.loop()` every 10 ms and sends queued commands in batches of up to 1200 bytes per packet. A command that fails to render or is over-size is **dropped with a log line**, not raised |
 | bare protocol | `atemwire.protocol.AtemProtocol(ip, port=9910, *, aggressive_drain=False)` | `connect()` sends SYN without blocking. **You** pump `loop()` (one packet per call). Also `send_commands([cmds])` (≤1300 bytes, else `ValueError`), `send_raw`, `on(event, cb) -> id`, `off(event, id)`, `mixerstate`, `connected`, `initialized`, plus the transfer methods (§3). It is **not thread-safe**. **It has no close method**; teardown is `release_locks_now()` → `transport.close_session()` → `transport.sock.close()` → `transport.thread_queue.close()` (`connection.py:723-755`). Passing a `tcp://` ip or `usb=` raises `NotImplementedError` |
 
 Readiness and identity:
@@ -766,17 +803,31 @@ Readiness and identity:
 ### 4.2 Transport (UDP, `transport.py`)
 
 - The switcher is on UDP **9910**. The handshake is a SYN with `0x01` and session id `0x1337`; the
-  switcher answers with a SYN (`0x02` = accepted) and the client ACKs it. The session id is then
+  switcher answers with a SYN (`0x02` = accepted, `0x03` = no room: every client slot is taken)
+  and the client ACKs an acceptance. A `0x03` sets `transport.refused`, is not ACKed, and is not
+  asked again by the 5 s re-SYN; `wait_ready`, `ATEMConnection.connect` and `acquire_connection`
+  raise `atemwire.NoFreeConnection` (a `RuntimeError`) at once (§5.4 item 47). The session id is then
   adopted from the switcher. The handshake ACK is sent from `loop()`, so it needs pumping. Since
   `7e42caa`, a re-handshake drops packets carrying the replaced session's id, and while the SYN
   is out, anything but its reply (§5.4 item 16).
 - Every reliable packet is ACKed with the contiguous high-water mark, by the transport's **own
-  UDP thread**. A session therefore survives an unpumped loop; events only wait.
-- Duplicates are dropped. Out-of-order packets are parked (up to 512 ahead). Retransmission is
+  UDP thread**. A session therefore survives an unpumped loop; events only wait. Since `588a389` the
+  thread reads every datagram waiting when it wakes (up to `DRAIN_MAX`, 512) and ACKs them once,
+  cumulatively, after them (and every `ACK_EVERY`, 32, of a long run); outside a drain the ACK
+  goes at once. It sends everything queued for it per wake, too (§5.4 item 42).
+- Duplicates are dropped. Since `588a389` a resend of a packet already received is ACKed again, and the
+  duplicate check is an O(1) window of the last 1024 sequences. Out-of-order packets are parked (up to 512 ahead). Retransmission is
   **only on the switcher's request** (go-back-N, max 128). There is no client-side retransmit
   timer, and the switcher's ACK number is never read. Since `d050c10` it is read, and what it
   hasn't acknowledged in 250 ms is resent; a reliable packet the kernel refuses keeps its
-  sequence number (§5.4 items 24 and 25).
+  sequence number (§5.4 items 24 and 25). Since 1.13.0 the wait is the smoothed round trip to
+  the switcher's ACK plus four times its variation (`resend_after()`, RFC 6298, packets sent
+  once only), between `RESEND_MIN` (50 ms) and `RESEND_MAX` (1 s), `RESEND_AFTER` (250 ms)
+  before the first measurement, doubled per resend nobody acknowledged; the same ACK-only
+  packet twice more (`DUP_ACKS`) resends at once; an ACK goes only when its number moves on
+  or the switcher resends a packet we have; packets park up to 4096 ahead, the duplicate
+  window is 8192; and a silence timeout says goodbye to the old session before the new hello
+  (§5.4 items 48 to 51). `transport.resends` and `transport.fast_resends` count them.
 - Goodbye: `close_session()` sends a SYN with `0x04`, fire-and-forget.
 - **There is no client keepalive.** `TiRq` is sent once, on ready. Silence is fine because ACKs
   flow from the UDP thread.
@@ -784,7 +835,9 @@ Readiness and identity:
   `2797515`, 5 s since the last packet accepted from the switcher or the last SYN; §5.4 item
   15). The protocol then raises `disconnected` and **empties `mixerstate`**; when the new dump
   completes, `connected` fires again. Meanwhile `ATEMConnection.is_connected` **stays True**;
-  since `661dc4c`, `is_ready` and `ATEM.connected` go False for the gap (§5.4 item 2).
+  since `661dc4c`, `is_ready` and `ATEM.connected` go False for the gap (§5.4 item 2). Since
+  `2b540db` a pool hit, a warm `connect()` and a warm `ATEM(ip)` wait for the new dump, and
+  transfers waiting when the session goes fail at once (§5.4 items 34 and 35).
 - Environment: `ATEMWIRE_PACKET_TRACE=1|true|yes|on` turns on the `atemwire.trace.packet` and
   `atemwire.trace.drain` loggers. No other environment variable is read.
 
@@ -918,10 +971,10 @@ simulated switcher state beyond a 1080p50 `video-mode`.
 - **`atemwire.macrotransfer` stability is unstated.** It is public in practice, but the
   `atemwire/__init__.py` docstring does not list it among the layers covered by the version
   number.
-- **`build_full_state` omits whole areas.** It covers no multiviewer, SuperSource, recording,
-  streaming, tally, camera control, media-pool slots, media-player selection, locks, time or
-  meters, and lists **only the first 12 macros**. (Legacy audio was in this list until
-  `bd2f4bb`; see §5.4 item 33.)
+- **`build_full_state` omits whole areas.** It covers no multiviewer, SuperSource (only its
+  block count, in `topology`), recording, streaming, tally, camera control, media-pool slots,
+  media-player selection, locks, time or meters, and lists **only the first 12 macros**. (Legacy
+  audio was in this list until `bd2f4bb`; see §5.4 item 33.)
 - **Unused constants.** `FTSD`'s `MODE_WRITE_RLE`, `MODE_WRITE` and `MODE_ERASE` are unused (the
   engine uses literals). `profile/_enums._source_symbol()` is dead code.
 - **`SaveOptions.media_pool_images` and `ApplyOptions.restore_media_pool_images` are never read.**
@@ -939,7 +992,8 @@ simulated switcher state beyond a 1080p50 `video-mode`.
 - `set_fairlight_eq_band` says `frequency_range` takes "0..3"; the wire values are the bitfield
   1/2/4/8.
 - `system_info` calls `TiRq` a keepalive; it is sent once.
-- `probe.py` / `__init__.py` say a cold connect costs ~6 s; `CONNECT_TIMEOUT` is 15 s.
+- `__init__.py` says a cold connect costs ~6 s; it is the handshake and the dump, and an
+  unreachable switcher costs `CONNECT_STALL_TIMEOUT` (5 s) since 1.12.0 (`probe.py` says so).
 - `connection.py:726-734` says an abandoned lock lasts ~5 min; `MEDIA_LOCK.md` measured ~5 s.
 - `_io.py:123` lists an inbound `FTUA` in the upload flow; none is waited for or parsed.
 - The `upstream_keyer` DVE comment calls `rotation` "u16"; the field is i32.
@@ -968,6 +1022,12 @@ Items 1, 2 and 4 were fixed after 1.2.0, in the commits named in each; they stil
 18, 19 and 20, and part of item 17 were fixed after 1.3.0 and still apply to it. Items 21 to 25
 were fixed after 1.4.0 and still apply to it. Item 26 was fixed after 1.5.0 and still applies to
 it; item 27 was fixed after 1.5.1. Items 32 and 33 were fixed after 1.5.5 and still apply to it.
+Items 34 to 37 were fixed after 1.8.0 and still apply to it. Item 3 and items 38 to 41 were
+fixed after 1.9.0 and still apply to it. Items 48 to 52 were fixed in 1.13.0 and still apply to 1.12.1 and earlier. Item 53 was fixed
+after 1.14.2 and still applies to 1.11.0 through 1.14.2.
+Items 54 and 55 were fixed in 1.14.4 and still apply to 1.14.3 and earlier.
+Item 56 was fixed in 1.14.5 and still applies to 1.12.0 through 1.14.4.
+Item 57 was fixed in 1.14.6 and still applies to 1.6.0 through 1.14.5.
 
 1. **Profile video mode does not round-trip at fractional rates** (1.2.0). Save writes
    `get_label()` (`1080p59.94`); apply only knows `1080p5994`-style names, so it skips the mode as
@@ -982,9 +1042,18 @@ it; item 27 was fixed after 1.5.1. Items 32 and 33 were fixed after 1.5.5 and st
    `661dc4c`:* `is_connected` keeps its meaning (worker alive; `send()` and pool eviction use it).
    The new `ATEMConnection.is_ready` is False from `disconnected` until the next `connected`,
    `ATEM.connected` reads it, and `probe()` reports `connection_status=False` during the gap.
-3. **An unknown `VidM` mode code raises inside the parser.** The exception escapes `loop()`, the
-   rest of that packet is lost, `video-mode` never lands, and `wait_ready` times out. Since
-   `2fc9375` the session re-handshakes three times first (item 17).
+   Since `2b540db` a warm `ATEM(ip)` waits for the new dump instead of joining the gap (item 35).
+3. **An unknown video mode code raises inside the parser** (1.9.0). `VideoModeField` refuses a
+   number outside 0–29 with `ValueError`, which escapes `loop()`, and the rest of that packet is
+   lost. In `VidM` that is `video-mode` itself. In `_VMC` it is worse: a 4K or 8K capable switcher
+   lists all its modes there while it runs HD, each block and each multiview / downconvert bit is
+   parsed as a `VideoModeField`, and `_VMC` comes ahead of `VidM` in the first dump packet (on a
+   1 M/E Constellation HD at protocol 2.30, fields 16 and 21 of 31). One mode newer than the table
+   then loses `VidM`: every dump ends without a video mode, the session re-handshakes three
+   times (item 17), and every connect times out. *Fixed in `631944d`:* an unknown number is kept
+   as an unknown mode (§2.5 `video-mode`), and every reader, the snapshot, the transfer progress,
+   the media-pool image export, profile save and apply and the macro `VideoMode` op take it.
+   Untested on a switcher that lists one: neither bench unit does.
 4. **Slot 0 is never latched as the last-run macro** (1.2.0). `last_run_macro_index` uses
    `int(index) or 0xFFFF` (`connection.py:481`). *Fixed in `a5ac82e`:* only a missing index or
    0xFFFF means idle.
@@ -1161,7 +1230,10 @@ it; item 27 was fixed after 1.5.1. Items 32 and 33 were fixed after 1.5.5 and st
     takes it, but macOS 12 refuses anything above `kern.ipc.maxsockbuf` with errno 55
     (`ENOBUFS`): the constructor raised, and no switcher could be connected from that system.
     *Fixed in `968798e`:* the request steps down 16, 8, 4, 1 MB and keeps the first size taken,
-    or the system's default if it takes none.
+    or the system's default if it takes none. Since `588a389` the size granted is read back
+    (`UdpProtocol.rcvbuf`; Linux reports double, halved) and, when it is less than asked, logged
+    once per process with the cap to raise (`net.core.rmem_max`): on Ubuntu's default of 208 KB
+    a 4K still overflowed it (39,258 receive buffer errors in 220,040 datagrams, 2026-11-04).
 31. **A caller's timeout hands the store back early** (1.5.1). `abort_transfers()` cleared the wait
     for another client's turn with the queue. A caller that times out and retries (WebATEM's media
     pool: 15 s, then again) asked at once, though the switcher may have handed the store over
@@ -1181,6 +1253,218 @@ it; item 27 was fixed after 1.5.1. Items 32 and 33 were fixed after 1.5.5 and st
     (`audio_mixer_type`), and on `'legacy'` the section is built from `AMMO`, `AMIP` and `AMmO`
     in the Fairlight shapes (§2.4, §2.6). The first of each legacy packet is logged raw and
     decoded (`45fafa4`, §2.4) so a user's log can check the layouts. Untested on a switcher.
+34. **A transfer already waiting when the session goes waits out its timeout** (1.8.0). Item 20's
+    gates stop a transfer started in a re-handshake, but not one queued or running when it starts.
+    The protocol raises `disconnected` and empties the transfer lane; nothing tells the waiting
+    caller, so `download_still` sits out its 30 s (`download_macro` 10 s, `clear_still` 5 s) and
+    then blames "another client" for the lock, since the lane reset emptied the lock table. On a
+    Constellation, a `download_media_pool_images` of six slots with a re-handshake during the second
+    lost that slot after 30.0 s with the "another client" line, and returned 43 s after the gap had
+    opened, a gap that lasts well under a second on a LAN. *Fixed in `2b540db`:* the three listen
+    for `disconnected` and raise `ConnectionDeadError` at once (the lane reset releases nothing on
+    the wire, so they don't call `abort_transfers`), and the timeout names another client only while
+    the session is ready. The same capture now returns 2 ms after the gap opens, with the slots
+    before it, and no "another client" line (bmdwire#8).
+35. **A pool hit is handed out in the middle of a re-handshake** (1.8.0). `acquire_connection`
+    promises a ready connection but checks only `is_connected`, which stays True through the gap
+    (item 2): it yields a session whose `mixerstate` is `{}`, where every `send()` goes to the
+    session being replaced. `ATEM(ip)` joins the same way, and a warm `ATEMConnection.connect()`
+    returns True at once, though its docstring says it waits for the state. On a Constellation,
+    three pool hits taken in the gap were yielded in 0.03 ms with no state. *Fixed in `2b540db`:*
+    - `acquire_connection(ip, *, ready_timeout=None)` waits for `is_ready`, up to `ready_timeout`
+      (`CONNECT_TIMEOUT`, 15 s, by default), and raises `ConnectionDeadError`, a `RuntimeError`,
+      if it doesn't come. `ready_timeout=0` only checks. The same three pool hits waited 0.52 s
+      and came back with the whole state.
+    - A connect that joins a session already connected to its address waits the same way, up to
+      `CONNECT_TIMEOUT`, outside its lifecycle lock; on timeout it returns False and leaves the
+      shared session alone.
+    - `ATEM(ip, *, ready_timeout=None)` passes it on. `probe()` passes 0 and is unchanged.
+    - `ATEMConnection.wait_until_ready(timeout) -> bool` is the wait, on an event the protocol's
+      `connected` and `disconnected` set and clear. A connection held for a while can still go
+      into a re-handshake; it waits for it again.
+    - `acquire_connection` releases its reference with the identity guard (`instance=`), so an
+      entry evicted while held doesn't take a reference from its replacement.
+    `get_instance` and `peek_connection` still return a connection whatever its state; `send()`
+    still checks only `is_connected` (bmdwire#65).
+36. **Every session uses the same transfer ids** (1.8.0). A session's first transfer id is 43, the
+    next 44, and so on, and the switcher's `FTDC` goes to every session with the owner's id. Two
+    sessions of this package on one switcher, in one process or not, therefore use the same ids.
+    With a still download in one and a macro download in the other, the still's session took the
+    macro's `FTDC` for its own: it dropped its task (a "download" of no data, in 0.09 s), released,
+    and ignored the chunks of the transfer the switcher then started for it (153 on a
+    Constellation), never acknowledging them. With its transfer engine held, the switcher refused
+    every later request from both with `FTDE 1`, about 100 a second each, for as long as the
+    sessions lasted: in 30 s, one download each, then nothing; with a third session uploading, the
+    same (bmdwire#64 took it for retries in step; a random retry delay alone did not unblock it).
+    *Fixed in `6876ba2`:* each session starts at a random id in 1..0xFFFF, and ids wrap without 0.
+    The same 30 s: 13 stills and 43 macros; with the uploader, 10 stills, 39 macros and 10 uploads.
+    A request refused with `FTDE 1` while another session's transfer runs is still sent again at
+    once, about every 10 ms, until that transfer ends.
+37. **The releaser and the client waiting on its release ask together** (1.8.0). After a per-frame
+    release (item 27) the releaser waits for the store to be announced free and `LOCK_COURTESY`
+    more, and so does a client that saw the store held and waited for it. Both ask at the same
+    moment: on a Constellation, an uploader and a downloader in one process asked 0.3 ms apart,
+    twice in each run of four uploads, and in 4 of 5 runs one download was aborted with `FTDE 6` (an
+    upload can be aborted instead: the switcher then refuses every chunk of its budget). *Fixed in
+    `6876ba2`:* after a release of our own, the next request waits `LOCK_HANDOVER` (0.1 s) more, but
+    only while another client has been seen within `LOCK_QUIET` (its `LKST`, its `FTDC`, an
+    `FTDE 6`; since `c7a8788` not the late `LKST` of a grant of ours, from a transfer shorter than a
+    frame). The waiter asks first; its grant is announced about 20 ms later, before our request is
+    due, and the store is then another client's. A release announced more than `LOCK_ECHO_WINDOW`
+    (0.25 s) after ours is not our release's echo but another client's (the store was handed to a
+    request waiting at the switcher, unannounced), and we ask after it as its waiter. The same runs:
+    no requests together and no `FTDE 6`; the downloader took a turn after every upload, so four
+    uploads took 10 s instead of 5.7 s. Alone, four uploads take the same 2.7 to 2.9 s as before
+    (bmdwire#63).
+38. **`_top` is read at protocol 2.30's offsets whatever the switcher's protocol** (1.9.0). 2.30
+    (firmware 8.1.1) inserted the multiviewer count at offset 6 (atem-connection's `TopologyCommand`
+    reads every later byte one place later above 2.29). `TopologyField` declares that layout only,
+    so on a switcher reporting 2.22 to 2.29 `multiviewers` is the serial-port count, `rs485` the
+    HyperDeck count, `hyperdecks` the DVE count, and `dve`, `stingers` and `supersources` each the
+    byte after their own. `build_full_state` carried none of the block counts. *Fixed in
+    `8defba1`:* `system_info.topology_block_counts(mx)` reads the DVE, stinger and SuperSource
+    counts at the offset `_ver` calls for (`TOPOLOGY_LAYOUTS`: 9 from 2.30, 8 from 2.22), and
+    `topology` in the snapshot carries them as `dves`, `stingers` and `superSources`. All three are
+    None, never 0, until `_top` and `_ver` have both arrived, for a protocol older than 2.22 or not
+    2.x, and for a payload shorter than its layout's (28 bytes from 2.30, 18 before), so a frontend
+    can grey on a 0. Every connect logs the payload and what was read from it (§2.5). The class
+    attributes are unchanged, and `_build_hyperdecks` still sizes the HyperDeck slots from
+    `hyperdecks`: on 2.29 and older it lists as many slots as the switcher has DVEs. The 2.30
+    layout matches two 1 M/E Constellation HDs (`_ver` 2.30, 28 bytes, 1 DVE, 1 stinger, no
+    SuperSource, as the spec sheet lists) and the seven payloads in upstream pyatem's
+    `TopologyField` table, one of them with no DVE; the older one is atem-connection's, untested on
+    a switcher.
+39. **A `_VMC` from before protocol 8.0 raises** (1.9.0). Its mode blocks are 12 bytes there,
+    without the requires-reconfiguration byte (Sofie's `atem-connection`,
+    `VideoMixerConfigCommand`), and the parser stepped 13 bytes a block: it read the blocks after
+    the first out of line and the last past the end of the payload, a `struct.error` that took
+    the rest of the packet (item 3). *Fixed in `631944d`:* the block size is taken from the
+    payload length, a 12-byte block reads `reconfigure` as False, and a payload cut short parses
+    the blocks it holds. Untested on a switcher.
+40. **A field whose parser raises loses the rest of its packet** (1.9.0). Any exception from
+    `save_field_data` left `loop()`; the fields after it in that datagram never landed (items 3,
+    18 and 32 were three cases). *Fixed in `df41751`:* `loop()` saves each field through
+    `_save_field_guarded`, which logs the failure once per wire code (with the traceback and the
+    first 32 bytes) and then at debug, and goes on with the next field. `ConnectionError`,
+    `IncompleteStateDump` included, still reaches `loop()` and re-handshakes.
+41. **ATEM Software Control's names for the UHD modes are not read** (1.9.0). ASC writes modes
+    14–25 as `4KHDp2398`…`4KHDp5994` and `8KHDp2398`…`8KHDp5994` (its exports from a 4 M/E
+    Constellation 4K list them; the SDK's `bmdSwitcherVideoMode` names agree); atemwire knew only
+    `2160p…` / `4320p…`. An ASC profile from a UHD switcher had its video mode skipped as
+    unrecognised, and the `VideoMode` prologue of each of its macros was dropped on restore.
+    *Fixed in `4be0f40`:* both spellings are read, and save and the macro decoder write ASC's.
+    ASC's `4KHDp30`, `4KHDp60`, `8KHDp30` and `8KHDp60` have no wire number in any source this
+    library follows, so they stay unknown modes (item 3).
+
+42. **The UDP thread falls behind a still download** (1.10.0). A 4K Plus sends a still's chunks
+    back to back, ~150 before it waits for their `FTUA`s, and resends all it has not had ACKed
+    every ~80 ms. The thread woke, read one datagram and sent one ACK per packet, scanned a
+    1024-entry deque twice per packet, sent one queued packet (each `FTUA`) per wake, and dropped
+    a resend of something it had without ACKing again. Beside any other busy thread it fell
+    behind the wire and the resends kept it there: captures from a 4K Plus (2026-11-04) show ACK
+    p50 ~110 ms, p90 300–800 ms, 59–76% of inbound a resend, and a 12 MB still that never
+    finished. *Fixed in `588a389`:* the drain and cumulative ACK of §4.2, ACKs for resends, an O(1)
+    duplicate window, and every queued packet sent per wake. Offline, against a fake switcher
+    modelled on the captures with one busy thread beside the client, a 4K still went from not
+    finishing in 30 s (140–280× resends) to 2.3–3.6 s with none. A thread spinning in pure Python
+    still slows it to ~12 s and needs a GIL switch interval of 1 ms (WebATEM sets one).
+43. **`FTDE 1` is asked again every ~10 ms, for ever** (1.10.0). While the switcher's transfer
+    engine was held (item 44), a session sent ~900 requests in 13 s. *Fixed in `588a389`:* the pause
+    and the cap of §3.0.
+44. **A caller's timeout cuts a download off mid-stream** (1.10.0). `abort_transfers()` released
+    the store lock while the switcher was still sending; its transfer engine stayed with that
+    transfer, unacknowledged, and refused every later request from every session with `FTDE 1`
+    (WebATEM's 15 s against a 4K still, a 4K Plus capture, 2026-11-04; the state of bmdwire#64).
+    *Fixed in `588a389`:* the abandoned download is drained to its end (§3.0). How ATEM Software
+    Control ends a download early is not known (no capture of it); draining needs nothing the
+    switcher doesn't already do.
+45. **One timeout for every still** (1.10.0). `download_still(timeout=...)` was the whole
+    download, so a timeout that suits 1080p (~2 s) cuts a 4K or 8K still off, and one long
+    enough for them hides a stalled transfer. *Fixed in `588a389`:* `stall_timeout` (§3.1).
+46. **A still's conversion stops every other thread** (1.10.0). `atem_to_rgb` is one C call that
+    holds the GIL: 33 ms for a 1080p frame, 128 ms for a 4K one (measured), longer than the
+    switcher's ~80 ms resend timer, so every connection's UDP thread in the process stood still;
+    and `rle_decode` walked the frame 8 bytes at a time in Python on the connection's worker.
+    *Fixed in `588a389`:* the conversion runs in pieces (the longest stall 6.9 ms) and
+    `rle_decode` copies the literal runs whole (a 12 MB 4K test frame: 133 ms before, 18 ms
+    after, same bytes).
+47. **A full switcher reads as offline, after 15 s** (1.11.0). A switcher whose session table is
+    full answers the hello `0x03` within a millisecond. The transport left the state at SYN_SENT,
+    ACKed the answer, re-sent the hello every 5 s, and the connect failed after `CONNECT_TIMEOUT`
+    (15 s) as "initial state timeout", the same as a switcher that is off. A cold connect also
+    failed at 15 s even while a big state dump was still arriving over a slow link. *Fixed in
+    1.12.0:* the `0x03` raises `NoFreeConnection` at once (`wait_ready`, `ATEMConnection.connect`,
+    whose `connect_refused` is then True, `acquire_connection`; `probe()` returns
+    `no_free_connection: True`); a cold connect waits while the switcher keeps sending and gives
+    up after `CONNECT_STALL_TIMEOUT` (5 s) with nothing from it, within `CONNECT_MAX` (60 s);
+    `wait_ready(stall_timeout=...)` does the same for a bare protocol. *1.12.1:* until the
+    switcher has answered at all the limit is `CONNECT_HELLO_TIMEOUT` (10 s, two of the
+    transport's 5 s hellos; `wait_ready(hello_timeout=...)`): with 5 s alone, one lost hello
+    or answer failed the connect, ~2 % of connects at 1 % loss in a replay.
+48. **Every lost packet of ours costs 250 ms** (1.12.1). The switcher takes our packets in order
+    only and never asks for one it missed (no retransmission request in any capture, 330,000
+    packets). A lost `FTUA` held its send window shut until `RESEND_AFTER` resent it, where the
+    switcher's ACK comes back in 2 ms (p50) to 28 ms (p99) on a LAN. Offline, against a fake
+    switcher modelled on the captures: at 5 % loss a 1080p still took 96 s instead of 0.8 s, and
+    50 ms of jitter, reordering only, loaded none of 24 stills in 300 s. *Fixed in 1.13.0:* the
+    timer of §4.2, and the fast resend on a repeated ACK.
+49. **Repeated ACKs for packets parked behind a gap** (1.11.0). Each packet arriving after a
+    lost one was ACKed again with the same number. That says nothing new, and a switcher that
+    restarted its resend timer on any ACK would never resend the missing packet; whether the
+    hardware does is not known (the captures fit either). *Fixed in 1.13.0:* an ACK goes when its
+    number moves on, or when the switcher resends a packet we have (our ACK was lost).
+50. **A gap that takes long to fill drops the packets behind it** (1.0). After 512 packets parked
+    behind one missing packet, the delivery gate resynced and dropped them all, though the
+    switcher, having had them ACKed, would never send them again. In a download their `FTDa` got
+    no `FTUA`, the switcher's window stayed shut, and the abort that followed left its transfer
+    engine refusing every request (item 44). *Fixed in 1.13.0:* the park window is 4096.
+51. **A silence timeout leaves the old session to be reaped** (1.0). The re-handshake sent no
+    goodbye, so the switcher kept the old session's store lock (and any transfer of it) ~5 s,
+    the new session's lock request queued behind it. *Fixed in 1.13.0:* goodbye first.
+52. **A request the caller stops waiting for, before its first chunk, has its lock released**
+    (1.11.0), and chunks of a transfer the session no longer follows (another id than the one in
+    flight, or none in flight) are dropped without an `FTUA`. The switcher takes up to 2.5 s to a
+    1080p still's first chunk on a LAN (a capture, 2026-11-06), more on a busy link; a release
+    then, or a chunk left unanswered, holds its transfer engine, and every later request from
+    every session is refused with `FTDE 1`, which read at the caller as "stalled (no data for
+    15 s)" with the lock granted, slot after slot. *Fixed in 1.13.0:* §3.0.
+53. **No switcher connects from Windows** (1.11.0). `SocketQueue.get_waiting` read the wakeup
+    bytes with `socket.MSG_DONTWAIT`, which Python on Windows does not have: the UDP thread ended
+    with an `AttributeError` at its first send, and every connect timed out. *Fixed in `e93357d`*
+    (bmdwire#83): `select()` with no timeout asks whether there is anything to read, then a plain
+    `recv`. Over the loopback TCP pair a non-POSIX system gets in place of a socketpair, one read
+    can return fewer wakeup bytes than were put; the rest come at the next wakeup.
+54. **A connect that cannot succeed waits out its cap on Windows** (1.12.0). With nothing arriving,
+    `wait_ready` looks only when the transport's 5 s silence tick wakes it, and its two limits
+    (`stall_timeout` 5 s, `hello_timeout` 10 s) are whole ticks, tested with `>`. Windows' clock
+    steps in 15.6 ms: the tick reads exactly 5.000 s after the answer, and the answer the same
+    instant as the start of the wait, so each tick waited for the next. A switcher that welcomed
+    and then sent nothing was given up on after 10 to 40 s (a 40 s cap; Linux: 5 s), one that
+    never answered after 10 or 15 s. *Fixed in 1.14.4:* `>=`, and within `ready._TICK_SLACK`
+    (0.1 s) of the limit counts as reaching it.
+55. **A reset on `recvfrom` ends the UDP thread on Windows** (1.0). Windows hands the ICMP
+    port-unreachable for a datagram we sent to the next `recvfrom` as `WSAECONNRESET`: a host
+    that is up with nothing on 9910 (a wrong address, a switcher still booting). It was raised
+    out of `_drain_socket`, the UDP thread ended, and with it the silence tick and every
+    re-hello: a connect to such an address sat out `CONNECT_MAX`, and a session that met one
+    would not re-handshake. *Fixed in 1.14.4:* `_drain_socket` takes
+    `ConnectionResetError` and `ConnectionRefusedError` as nothing arrived.
+56. **The answer to a re-sent hello restarts the stall clock** (1.12.0). A switcher that
+    welcomes the hello and then sends nothing is given up on at the transport's silence tick,
+    which re-sends the hello and wakes `wait_ready`. A switcher that answers that hello too moved
+    `last_rx_monotonic`, and when the UDP thread took the answer before `wait_ready` looked, the
+    stall clock restarted and the connect waited one more 5 s tick, each tick the same race
+    (bmdwire#89). On Linux 1 in 8 to 1 in 17 such connects took 10 to 20 s in place of 5 (or
+    10 for a lost first hello). *Fixed in 1.14.5:* the transport notes at each tick, before
+    the re-hello, when it fired and `last_rx_monotonic` then (`UdpProtocol.silence_tick`), and
+    `wait_ready` judges each tick since its last look from that, whichever thread runs first.
+57. **On a legacy mixer the headphones read the monitor bus** (1.6.0). The legacy mixer's
+    headphone packet `AMHP` had no class, so it was stored raw under `mx['AMHP']`, and
+    `legacy_audio_headphones` gave the monitor bus (`AMmO`); on a unit with a headphone output
+    that may be the wrong bus (bmdwire#51). *Fixed in 1.14.6 (`7ac3b4c`):* `AMHP` is parsed, `CAMH` /
+    `set_audio_headphones` write it, the reader takes it when the unit sends one and says which
+    with `bus`, and the first `AMHP` is logged with the other legacy-audio packets (§1.11, §2.4).
+    Which models send it is still not known. Untested on a switcher.
 
 ## Counts
 
@@ -1188,14 +1472,14 @@ Measured by importing the package, not tallied by hand.
 
 | what | count |
 |---|---|
-| **Commands: `Send` classes (= distinct outgoing opcodes)** | **82** (74 control, 7 lock/file-transfer, 1 `TiRq`) |
-| … by area | upstream keyer 12, fairlight 10, downstream keyer 8, transition 8, switching (M/E + aux) 5, system 5, file-transfer 5, legacy audio 4, FTB 3, macro 3, media 3, streaming 3, input/video 2, lock 2, multiviewer 2, recording 2, supersource 2, camera control 1, color gen 1, hyperdeck 1 |
-| … not re-exported from `atemwire.messages` | 21 (20 of them "restored upstream", unverified on hardware) |
-| Operation functions `op(conn, …)` | 180 |
-| **State: `Recv` classes (= distinct incoming opcodes parsed)** | **92** (4 codes, `AiVM`, `FEna`, `FTDa` and `STAB`, are both a command and a state packet) |
-| … parsed state attributes across them | 526 (public, index attributes included) |
+| **Commands: `Send` classes (= distinct outgoing opcodes)** | **83** (75 control, 7 lock/file-transfer, 1 `TiRq`) |
+| … by area | upstream keyer 12, fairlight 10, downstream keyer 8, transition 8, switching (M/E + aux) 5, system 5, file-transfer 5, legacy audio 5, FTB 3, macro 3, media 3, streaming 3, input/video 2, lock 2, multiviewer 2, recording 2, supersource 2, camera control 1, color gen 1, hyperdeck 1 |
+| … not re-exported from `atemwire.messages` | 22 (20 of them "restored upstream", unverified on hardware) |
+| Operation functions `op(conn, …)` | 181 |
+| **State: `Recv` classes (= distinct incoming opcodes parsed)** | **93** (4 codes, `AiVM`, `FEna`, `FTDa` and `STAB`, are both a command and a state packet) |
+| … parsed state attributes across them | 530 (public, index attributes included) |
 | … known-but-unparsed codes stored raw | 27 |
-| Reader functions `reader(mx, …)` | 93 |
+| Reader functions `reader(mx, …)` | 95 |
 | **Transfer and special operations** | **10**: 5 multi-packet wire flows (still download, still upload, locked still clear, macro download, macro upload); 3 composite flows built on them (profile save, profile apply, media-pool PNG export); 2 offline codecs (macro bytecode, image/RLE conversion) |
 | … macro bytecode op codes (encode + decode) | 146 |
 | … profile: sections saved / applied; control opcodes apply emits | 14 / 10; 43 |

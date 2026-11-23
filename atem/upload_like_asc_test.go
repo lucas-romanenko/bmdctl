@@ -350,6 +350,9 @@ func TestGivingUpHoldingTheLockLeavesTheStoreItsTurn(t *testing.T) {
 	if err := s.cancelTask(tk, context.DeadlineExceeded); err == nil {
 		t.Fatal("no error for the abandoned download")
 	}
+	// Nothing came of the request: kept drainStall for the switcher to
+	// start or refuse it, then released (bmdwire#80).
+	after(s, clock, drainStall)
 	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
 		t.Fatalf("%v, want the release", p)
 	}
@@ -422,6 +425,12 @@ func TestFTDE6StillLeavesTheRequestToTheReleaseBroadcast(t *testing.T) {
 	}
 	feedLockState(t, s, 0, false)
 	after(s, clock, lockCourtesy)
+	// The session we collided with waits for this store too: the turn
+	// after our release is its (lockHandover, bmdwire#68).
+	if p := lastPacket(c); !slices.Equal(p, []string{"LOCK"}) {
+		t.Fatalf("%v: asked with the waiter", p)
+	}
+	after(s, clock, lockHandover)
 	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {
 		t.Fatalf("the release broadcast didn't re-request: %v", p)
 	}
@@ -429,12 +438,14 @@ func TestFTDE6StillLeavesTheRequestToTheReleaseBroadcast(t *testing.T) {
 
 func TestARetriedUploadStartsAgainWithItsMetadata(t *testing.T) {
 	s, c := laneSession(t)
+	clock := moveClock(s)
 	tk := uploadTask(3)
 	s.enqueueTask(tk)
 	grant(t, s, 0)
 	tid := s.lane.transfer.tid
 	feedBudget(t, s, 4)
 	feedCmd(t, s, "FTDE", append(u16be(tid), 1, 0)) // try again
+	after(s, clock, tryAgainFirst)                  // asked again after a pause
 	if p := lastPacket(c); !slices.Equal(p, []string{"FTSD"}) {
 		t.Fatalf("retry %v", p)
 	}
@@ -475,7 +486,7 @@ func TestAPacketTheNetworkKeepsRefusingKeepsItsNumber(t *testing.T) {
 		t.Fatalf("localSeq %d, buffered %v", tr.localSeq, tr.retransmitBuf[1] != nil)
 	}
 	sendReliable(t, tr, []byte("\x00\x08NEXT"))
-	tr.retransmitFrom(1) // the switcher asks for the gap
+	tr.retransmitFrom(1, false) // the switcher asks for the gap
 	var seqs []uint16
 	for _, p := range resent(c) {
 		seqs = append(seqs, p.seq)
@@ -500,7 +511,7 @@ func TestWhatTheSwitcherHasNotAcknowledgedIsResent(t *testing.T) {
 	if tr.resendDue.IsZero() {
 		t.Fatal("no resend timer")
 	}
-	tr.onACK(1) // it has 1, not 2 and 3
+	tr.onACK(1, false) // it has 1, not 2 and 3
 	tr.resendUnacked()
 	if len(resent(c)) != 0 {
 		t.Fatal("resent before resendAfter")
@@ -520,7 +531,7 @@ func TestAnACKForEverythingStopsTheTimer(t *testing.T) {
 	tr, c := established(t)
 	sendReliable(t, tr, []byte("\x00\x08TEST"))
 	sendReliable(t, tr, []byte("\x00\x08TEST"))
-	tr.onACK(2)
+	tr.onACK(2, false)
 	if !tr.resendDue.IsZero() {
 		t.Fatal("timer still set")
 	}

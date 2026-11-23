@@ -32,8 +32,12 @@ each with its result or exception and every connection's address and
 bytes sent. An archive's zip is recorded member by member: name, method,
 attributes, flags, versions, CRC, size and contents. `TestRangesMatchUltimattewire`,
 `TestParsersMatchUltimattewire` and `TestCallsMatchUltimattewire`
-replay them all. Regenerate against a bmdwire checkout at `v1.7.0` (the
-seed is fixed, so the file changes only when bmdwire or the script does):
+replay them all. Regenerated against `v1.14.5` (2026-11-23), it comes
+out byte for byte the same: 1.14.0's changes to these functions
+(`parse_interface` reading `DynamicIP`, `upload_one`'s `port`) touch no
+case in it, and `client_test.go` tests them. Regenerate against a
+bmdwire checkout at `v1.7.0` (the seed is fixed, so the file changes
+only when bmdwire or the script does):
 
 ```
 cd ultimatte/testdata/oracle

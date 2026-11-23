@@ -136,7 +136,7 @@ func loadOracle(t *testing.T) *profileOracle {
 	data := fixtures.Bytes(t, "oracle/profile.json")
 	oracleOnce.Do(func() {
 		oracleErr = json.Unmarshal(data, &oracleData)
-		if oracleErr == nil && oracleData.Bmdwire != "v1.4.0" {
+		if oracleErr == nil && oracleData.Bmdwire != "v1.14.5" {
 			oracleErr = fmt.Errorf("oracle generated from bmdwire %s", oracleData.Bmdwire)
 		}
 	})
@@ -186,7 +186,9 @@ func (b *builder) fill(dst any, attrs map[string]any, where string) error {
 		tag := f.Tag.Get("json")
 		val, ok := attrs[tag]
 		if !ok {
-			if b.lenient {
+			if b.lenient || tn == "TopologyField" && tag == "raw" {
+				// The oracle's attributes leave out a Recv's raw payload;
+				// a save reads none of _top's.
 				continue
 			}
 			return fmt.Errorf("%s: no attribute %s", where, tag)

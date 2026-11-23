@@ -97,10 +97,15 @@ type LegacyAudioStripView struct {
 	Plug       string   `json:"plug"`
 }
 
-// LegacyAudioHeadphonesView is legacy_audio_headphones's dict: the monitor
-// bus (AMmO) where fairlight_headphones reads FMHP, then the monitor's own
-// keys. VolumeDB is nil when silenced; DimLevel is the wire value ÷ 100, a
-// level 0-100 (LibAtem's reading), not dB; SoloSource is nil before AMmO.
+// LegacyAudioHeadphonesView is legacy_audio_headphones's dict, where
+// fairlight_headphones reads FMHP. Bus says where VolumeDB came from
+// (bmdwire#93): "headphones" on a unit that sends AMHP, whose gain it is,
+// Unmuted true (the output has no mute) and the three mix gains in
+// LegacyHeadphonesMixView; "monitor" otherwise, all of it the monitor bus
+// (AMmO), with no mix keys. Enabled, Dim, DimLevel, Solo and SoloSource
+// are the monitor's either way. VolumeDB is nil when silenced; DimLevel
+// is the wire value ÷ 100, a level 0-100 (LibAtem's reading), not dB;
+// SoloSource is nil before AMmO.
 type LegacyAudioHeadphonesView struct {
 	Present    bool     `json:"present"`
 	VolumeDB   *float64 `json:"volume_db"`
@@ -110,6 +115,18 @@ type LegacyAudioHeadphonesView struct {
 	DimLevel   float64  `json:"dim_level"`
 	Solo       bool     `json:"solo"`
 	SoloSource *int     `json:"solo_source"`
+	Bus        string   `json:"bus"`
+	// The mix keys, only on a unit that sends AMHP: nil leaves them out,
+	// as atemwire's dict does.
+	*LegacyHeadphonesMixView
+}
+
+// LegacyHeadphonesMixView is the headphone output's mix (AMHP) in
+// legacy_audio_headphones's dict: each gain in dB, nil when silenced.
+type LegacyHeadphonesMixView struct {
+	ProgramOutDB *float64 `json:"program_out_db"`
+	TalkbackDB   *float64 `json:"talkback_db"`
+	SidetoneDB   *float64 `json:"sidetone_db"`
 }
 
 // LegacyAudioSoloView is legacy_audio_solo's dict, fairlight_solo's shape.
@@ -125,7 +142,7 @@ type LegacyAudioSoloView struct {
 var (
 	legacyMixOptionNames      = map[int]string{0: "Off", 1: "On", 2: "AudioFollowVideo"}
 	legacyExternalAudioNames  = map[int][2]string{1001: {"XLR", "XLR"}, 1101: {"AES", "AES/EBU"}, 1201: {"RCA", "RCA"}, 1301: {"Mic1", "Mic 1"}, 1302: {"Mic2", "Mic 2"}}
-	legacyAudioDiagnosticKeys = map[string]bool{"AMIP": true, "AMMO": true, "AMmO": true, "AMLv": true}
+	legacyAudioDiagnosticKeys = map[string]bool{"AMIP": true, "AMMO": true, "AMmO": true, "AMHP": true, "AMLv": true}
 )
 
 // AudioMixerType is audio_mixer_type (messages/audio_legacy.py), bmdwire
@@ -210,25 +227,38 @@ func (s State) LegacyAudioStrips() []LegacyAudioStripView {
 }
 
 // LegacyAudioHeadphones is legacy_audio_headphones
-// (messages/audio_legacy.py), bmdwire v1.6.0: the monitor bus (AMmO);
-// before it, not present, 0.0 dB, unmuted, and no solo source.
+// (messages/audio_legacy.py), bmdwire v1.6.0 and bmdwire#93: the headphone
+// output (AMHP) on a unit that sends one, the monitor bus (AMmO)
+// otherwise; before either, not present, 0.0 dB, unmuted, and no solo
+// source.
 func (s State) LegacyAudioHeadphones() LegacyAudioHeadphonesView {
-	m := s.Audio.Monitor
-	if m == nil {
+	var v LegacyAudioHeadphonesView
+	if m := s.Audio.Monitor; m == nil {
 		zero := 0.0
-		return LegacyAudioHeadphonesView{VolumeDB: &zero, Unmuted: true}
+		v = LegacyAudioHeadphonesView{VolumeDB: &zero, Unmuted: true}
+	} else {
+		solo := int(m.SoloSource)
+		v = LegacyAudioHeadphonesView{
+			Present:    true,
+			VolumeDB:   LegacyVolumeToDB(int(m.Volume)),
+			Unmuted:    !m.Mute,
+			Enabled:    m.Enabled,
+			Dim:        m.Dim,
+			DimLevel:   hundredths(int(m.DimVolume)),
+			Solo:       m.Solo,
+			SoloSource: &solo,
+		}
 	}
-	solo := int(m.SoloSource)
-	return LegacyAudioHeadphonesView{
-		Present:    true,
-		VolumeDB:   LegacyVolumeToDB(int(m.Volume)),
-		Unmuted:    !m.Mute,
-		Enabled:    m.Enabled,
-		Dim:        m.Dim,
-		DimLevel:   hundredths(int(m.DimVolume)),
-		Solo:       m.Solo,
-		SoloSource: &solo,
+	v.Bus = "monitor"
+	if h := s.Audio.Headphones; h != nil {
+		v.Present, v.VolumeDB, v.Unmuted, v.Bus = true, LegacyVolumeToDB(int(h.Gain)), true, "headphones"
+		v.LegacyHeadphonesMixView = &LegacyHeadphonesMixView{
+			ProgramOutDB: LegacyVolumeToDB(int(h.ProgramOutGain)),
+			TalkbackDB:   LegacyVolumeToDB(int(h.TalkbackGain)),
+			SidetoneDB:   LegacyVolumeToDB(int(h.SidetoneGain)),
+		}
 	}
+	return v
 }
 
 // LegacyAudioSolo is legacy_audio_solo (messages/audio_legacy.py), bmdwire
@@ -262,6 +292,12 @@ func legacyAudioDiagnostic(code string, payload []byte, v any) string {
 		decoded = fmt.Sprintf("enabled=%s volume=%d mute=%s solo=%s solo_source=%d dim=%s dim_volume=%d volume_db=%s",
 			pyBoolRepr(f.Enabled), f.Volume, pyBoolRepr(f.Mute), pyBoolRepr(f.Solo), f.SoloSource, pyBoolRepr(f.Dim), f.DimVolume,
 			pyOptFloatRepr(LegacyVolumeToDB(int(f.Volume))))
+	case *AudioMixerHeadphonePropertiesField:
+		// bmdwire#93: <field>_db for each gain, after the four.
+		decoded = fmt.Sprintf("gain=%d program_out_gain=%d talkback_gain=%d sidetone_gain=%d gain_db=%s program_out_gain_db=%s talkback_gain_db=%s sidetone_gain_db=%s",
+			f.Gain, f.ProgramOutGain, f.TalkbackGain, f.SidetoneGain,
+			pyOptFloatRepr(LegacyVolumeToDB(int(f.Gain))), pyOptFloatRepr(LegacyVolumeToDB(int(f.ProgramOutGain))),
+			pyOptFloatRepr(LegacyVolumeToDB(int(f.TalkbackGain))), pyOptFloatRepr(LegacyVolumeToDB(int(f.SidetoneGain))))
 	case *AudioMeterLevelsField:
 		// The input dict in the packet's order, which the map doesn't keep.
 		inputs := make([]string, 0, f.Count)

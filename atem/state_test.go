@@ -14,9 +14,9 @@ import (
 )
 
 // storedOpcodes is every state packet SURFACE.md §2 says atemwire stores
-// under a pretty key: its 92 parsed packets less the six the transfer
-// engine consumes (LKOB, FTCD, FTDC, FTDa, FTDE, *XFC) and InCm, which has
-// no pretty key and is stored raw.
+// under a pretty key: its 93 parsed packets (with bmdwire#93's AMHP) less
+// the six the transfer engine consumes (LKOB, FTCD, FTDC, FTDa, FTDE,
+// *XFC) and InCm, which has no pretty key and is stored raw.
 var storedOpcodes = []string{
 	// §2.2
 	"PrgI", "PrvI", "AuxS", "TrSS", "TrPr", "TrPs", "TMxP", "TDpP", "TWpP", "TDvP", "TStP", "FtbS", "FtbP", "FEna",
@@ -25,7 +25,7 @@ var storedOpcodes = []string{
 	"MPfe", "MPCE", "MPrp", "MRcS", "MRPr",
 	// §2.4
 	"FAMP", "FASP", "AEBP", "AMBP", "AICP", "AILP", "AIXP", "MOCP", "AMLP", "FAIP", "FMTl", "FMHP", "FAMS", "FASD",
-	"FMLv", "FDLv", "AMIP", "AMMO", "AMmO", "AMTl", "AMLv",
+	"FMLv", "FDLv", "AMIP", "AMMO", "AMmO", "AMHP", "AMTl", "AMLv",
 	// §2.5
 	"MvPr", "MvIn", "VuMC", "SaMw", "SSrc", "SSBP", "RXMS", "CCdP", "RTMD", "RMSu", "RTMS", "RTMR", "SRSU", "STAB",
 	"StRS", "SRSS", "TlIn", "TlSr", "VidM", "_VMC", "AiVM", "V3sl", "_ver", "_pin", "WhoI", "_top", "_MeC", "_mpl",
@@ -96,8 +96,8 @@ func TestStateTags(t *testing.T) {
 	if !slices.Equal(tags, want) {
 		t.Errorf("atem tags:\n got %v\nwant %v", tags, want)
 	}
-	if len(want) != 85 {
-		t.Errorf("%d stored opcodes, want 92 - 6 consumed - InCm = 85", len(want))
+	if len(want) != 86 {
+		t.Errorf("%d stored opcodes, want 93 - 6 consumed - InCm = 86", len(want))
 	}
 }
 
@@ -250,11 +250,12 @@ func TestVideoModeLabel(t *testing.T) {
 		label string
 		w, h  int
 	}{
-		{VideoModeField{Mode: 13, Resolution: 1080, Rate: 59.94, Widescreen: true}, "1080p59.94", 1920, 1080},
-		{VideoModeField{Mode: 6, Resolution: 1080, Interlaced: true, Rate: 50, Widescreen: true}, "1080i50", 1920, 1080},
-		{VideoModeField{Mode: 0, Resolution: 525, Interlaced: true, Rate: 59.94}, "525i59.94 4:3", 720, 480},
-		{VideoModeField{Mode: 3, Resolution: 625, Interlaced: true, Rate: 50, Widescreen: true}, "625i50 16:9", 720, 576},
-		{VideoModeField{Mode: 14, Resolution: 2160, Rate: 23.98, Widescreen: true}, "2160p23.98", 3840, 2160},
+		{VideoModeField{Mode: 13, Resolution: 1080, Rate: 59.94, Widescreen: true, Known: true}, "1080p59.94", 1920, 1080},
+		{VideoModeField{Mode: 6, Resolution: 1080, Interlaced: true, Rate: 50, Widescreen: true, Known: true}, "1080i50", 1920, 1080},
+		{VideoModeField{Mode: 0, Resolution: 525, Interlaced: true, Rate: 59.94, Known: true}, "525i59.94 4:3", 720, 480},
+		{VideoModeField{Mode: 3, Resolution: 625, Interlaced: true, Rate: 50, Widescreen: true, Known: true}, "625i50 16:9", 720, 576},
+		{VideoModeField{Mode: 14, Resolution: 2160, Rate: 23.98, Widescreen: true, Known: true}, "2160p23.98", 3840, 2160},
+		{VideoModeField{Mode: 31}, "mode-31", 0, 0},
 	} {
 		if got := c.f.Label(); got != c.label {
 			t.Errorf("mode %d: label %q, want %q", c.f.Mode, got, c.label)
