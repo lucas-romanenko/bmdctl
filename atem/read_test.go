@@ -11,6 +11,7 @@ package atem
 // (read_oracle_test.go) covers every reader more broadly.
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/lucas-romanenko/bmdctl/internal/fixtures"
@@ -1296,6 +1298,112 @@ func TestLegacyAudioDiagnostic(t *testing.T) {
 		}
 		if got := legacyAudioDiagnostic(c.code, payload, ch.Value); got != c.line {
 			t.Errorf("%s:\n got %s\nwant %s", c.code, got, c.line)
+		}
+	}
+}
+
+// --- test_topology_blocks.py (bmdwire#70, 8defba1) -------------------------
+
+// constellationHD is a 1 M/E Constellation HD's _top (protocol 2.30,
+// 2026-10-30): 1 DVE, 1 stinger, no SuperSource, as its spec sheet lists.
+var constellationHD, _ = hex.DecodeString("01200106060201000a01010000020a01000001000001010100000000")
+
+// topState is a state holding raw as _top and, unless major is 0, a _ver.
+func topState(t *testing.T, raw []byte, major, minor uint16) State {
+	t.Helper()
+	st := newState()
+	if raw != nil {
+		if _, err := st.store("_top", raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if major != 0 {
+		if _, err := st.store("_ver", []byte{byte(major >> 8), byte(major), byte(minor >> 8), byte(minor)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return st
+}
+
+// oldTop is a pre-2.30 payload: distinct counts, so a read one byte off
+// can't pass (DVE 3, stinger 2, SuperSource 1 at 8, 9 and 10).
+func oldTop(n int) []byte {
+	b := make([]byte, n)
+	copy(b, []byte{2, 30, 2, 6, 0, 2, 1, 4, 3, 2, 1})
+	return b
+}
+
+func counts(v TopologyBlockCountsView) string {
+	f := func(p *int) string {
+		if p == nil {
+			return "None"
+		}
+		return strconv.Itoa(*p)
+	}
+	return f(v.DVEs) + " " + f(v.Stingers) + " " + f(v.SuperSources)
+}
+
+func TestTopologyBlockCounts(t *testing.T) {
+	// The bench capture, and upstream pyatem's TopologyField table of
+	// seven models (28 bytes, protocol 2.30 offsets).
+	upstream := map[string]struct {
+		payload []byte
+		want    string
+	}{
+		"Atem Mini": {[]byte{1, 14, 1, 1, 0, 1, 0, 0, 4, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0x20, 3, 0xe8}, "1 0 0"},
+		"Mini Pro":  {[]byte{1, 15, 1, 1, 0, 1, 1, 0, 4, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0x2f, 108, 0x69}, "1 0 0"},
+		"1M/E 4k":   {[]byte{1, 31, 2, 3, 0, 2, 1, 1, 4, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0x20, 0, 0}, "1 1 0"},
+		"Prod 4k":   {[]byte{1, 24, 2, 1, 0, 2, 1, 0, 4, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0}, "0 0 0"},
+		"TVS HD":    {[]byte{1, 24, 2, 1, 4, 2, 1, 1, 4, 1, 0, 0, 1, 1, 4, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0x10, 0, 0}, "1 0 0"},
+		"CHD 2ME":   {[]byte{2, 57, 2, 12, 12, 2, 2, 0, 4, 1, 1, 1, 0, 2, 20, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0}, "1 1 1"},
+		"TVS4K8":    {[]byte{1, 35, 2, 10, 10, 2, 1, 1, 10, 1, 1, 1, 0, 2, 8, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0}, "1 1 1"},
+		"bench":     {constellationHD, "1 1 0"},
+	}
+	for name, c := range upstream {
+		if got := counts(topState(t, c.payload, 2, 30).TopologyBlockCounts()); got != c.want {
+			t.Errorf("%s: %s, want %s", name, got, c.want)
+		}
+	}
+	// Before 2.30 the counts are one byte earlier; later versions and
+	// longer payloads keep the 2.30 layout; a 0 is a count.
+	for _, c := range []struct {
+		raw          []byte
+		major, minor uint16
+		want         string
+	}{
+		{oldTop(18), 2, 22, "3 2 1"}, {oldTop(20), 2, 27, "3 2 1"}, {oldTop(24), 2, 28, "3 2 1"}, {oldTop(24), 2, 29, "3 2 1"},
+		{constellationHD, 2, 32, "1 1 0"}, {append(bytes.Clone(constellationHD), 0, 0, 0, 0), 2, 30, "1 1 0"},
+		{make([]byte, 28), 2, 30, "0 0 0"},
+	} {
+		if got := counts(topState(t, c.raw, c.major, c.minor).TopologyBlockCounts()); got != c.want {
+			t.Errorf("%d bytes at %d.%d: %s, want %s", len(c.raw), c.major, c.minor, got, c.want)
+		}
+	}
+	// Unknown is None for all three, never 0, and the diagnostic says why.
+	for _, c := range []struct {
+		raw          []byte
+		major, minor uint16
+		why          string
+	}{
+		{nil, 0, 0, "no _top"},
+		{nil, 2, 30, "no _top"},
+		{constellationHD, 0, 0, "no _ver"},
+		{oldTop(20), 2, 21, "protocol 2.21 is older than any known _top layout"},
+		{constellationHD, 3, 0, "protocol 3.0 is not 2.x"},
+		{constellationHD[:24], 2, 30, "24 bytes, the 2.30 layout has 28"},
+		{oldTop(16), 2, 29, "16 bytes, the 2.22 layout has 18"},
+	} {
+		st := topState(t, c.raw, c.major, c.minor)
+		if got := counts(st.TopologyBlockCounts()); got != "None None None" {
+			t.Errorf("%s: %s", c.why, got)
+		}
+		if d := st.TopologyDiagnostic(); !strings.HasSuffix(d, "block counts unknown ("+c.why+")") {
+			t.Errorf("%s: %s", c.why, d)
+		}
+	}
+	for i := 1; i < len(topologyLayouts); i++ {
+		if topologyLayouts[i].minor >= topologyLayouts[i-1].minor {
+			t.Error("the layout table is not newest first")
 		}
 	}
 }

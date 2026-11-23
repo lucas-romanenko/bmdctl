@@ -811,3 +811,16 @@ func TestTheMixerIsLoggedAtConnect(t *testing.T) {
 		})
 	}
 }
+
+// test_topology_blocks.py::test_the_counts_are_logged_at_connect and
+// test_unknown_counts_are_logged_with_the_reason (bmdwire#70): the _top
+// payload and what was read from it, at Info, at every connect. (The
+// failing-description test has no counterpart: formatting can't fail.)
+func TestTopologyIsLoggedAtConnect(t *testing.T) {
+	_, _, logs := dialedLogging(t, cmdBytes("_top", constellationHD))
+	want := "atem: topology at connect: protocol 2.30, _top 28 bytes: " + hex.EncodeToString(constellationHD) +
+		" -> dves=1 stingers=1 superSources=0 (DVE at offset 9)"
+	if got := logs.matching("topology at connect"); !slices.Equal(got, []logRecord{{slog.LevelInfo, want}}) {
+		t.Errorf("logged %+v", got)
+	}
+}

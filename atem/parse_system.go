@@ -10,6 +10,7 @@ package atem
 // system_info.py, lock.py and file_transfer.py.
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 )
@@ -533,7 +534,10 @@ func parseWhoI(b []byte) (*DeviceIdentityField, error) {
 }
 
 // parseTop: twelve counts, then byte 12, which is 1 when the multiviewer
-// is routable.
+// is routable. These are protocol 2.30's offsets (firmware 8.1.1); before
+// it, everything from Multiviewers on reads one byte late (SURFACE.md
+// §5.4 item 38). TopologyBlockCounts reads the DVE, stinger and
+// SuperSource counts where the switcher's _ver puts them.
 func parseTop(b []byte) (*TopologyField, error) {
 	if err := atLeast("_top", b, 13); err != nil {
 		return nil, err
@@ -541,7 +545,7 @@ func parseTop(b []byte) (*TopologyField, error) {
 	return &TopologyField{
 		MEUnits: b[0], Sources: b[1], DownstreamKeyers: b[2], AuxOutputs: b[3], MixMinusOutputs: b[4],
 		MediaPlayers: b[5], Multiviewers: b[6], RS485: b[7], HyperDecks: b[8], DVE: b[9], Stingers: b[10],
-		SuperSources: b[11], MultiviewerRoutable: b[12] == 1,
+		SuperSources: b[11], MultiviewerRoutable: b[12] == 1, Raw: bytes.Clone(b),
 	}, nil
 }
 

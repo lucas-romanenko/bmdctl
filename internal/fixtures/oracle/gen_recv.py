@@ -173,7 +173,7 @@ def attrs(obj):
         lamps = lambda t: {'program': t[0], 'preview': t[1]}
         out['tally'] = ([lamps(t) for t in obj.tally] if code == 'TlIn'
                         else {str(k): lamps(t) for k, t in obj.tally.items()})
-    if code == 'FASD':
+    if code in ('FASD', '_top'):
         out['raw'] = obj.raw.hex()
     # VideoModeField.known (bmdwire#71) is a property, not an attribute.
     if isinstance(getattr(type(obj), 'known', None), property):

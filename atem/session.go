@@ -686,6 +686,9 @@ func (s *Session) onReady() {
 		return
 	}
 	s.logAudioMixer()
+	// _log_topology (bmdwire#70, 8defba1): so that a log from any model
+	// can confirm where its _top keeps the block counts.
+	s.log.Info("atem: topology at connect: " + s.state.TopologyDiagnostic())
 	if !s.readyClosed {
 		s.readyClosed = true
 		close(*s.ready.Load())

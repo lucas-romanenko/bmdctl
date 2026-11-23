@@ -221,9 +221,11 @@ var readerCalls = map[string]func(State, readerArgs) any{
 		}
 		return s.VideoResolution(def)
 	},
-	"product_name": func(s State, a readerArgs) any { return s.ProductName(a.textKw("default", "")) },
-	"device_name":  func(s State, a readerArgs) any { return s.DeviceName(a.textKw("default", "")) },
-	"sdi_3g_level": func(s State, a readerArgs) any { return s.SDI3GLevel(a.textKw("default", "LevelB")) },
+	"product_name":          func(s State, a readerArgs) any { return s.ProductName(a.textKw("default", "")) },
+	"device_name":           func(s State, a readerArgs) any { return s.DeviceName(a.textKw("default", "")) },
+	"topology_block_counts": func(s State, _ readerArgs) any { return s.TopologyBlockCounts() },
+	"topology_diagnostic":   func(s State, _ readerArgs) any { return s.TopologyDiagnostic() },
+	"sdi_3g_level":          func(s State, a readerArgs) any { return s.SDI3GLevel(a.textKw("default", "LevelB")) },
 	// messages/audio_legacy.py
 	"audio_mixer_type":        func(s State, a readerArgs) any { return s.AudioMixerType() },
 	"legacy_audio_master":     func(s State, a readerArgs) any { return s.LegacyAudioMaster() },
@@ -264,11 +266,11 @@ func TestReadersMatchAtemwire(t *testing.T) {
 	if err := dec.Decode(&oracle); err != nil {
 		t.Fatal(err)
 	}
-	if oracle.Bmdwire != "v1.6.0" {
+	if oracle.Bmdwire != "v1.14.5" {
 		t.Fatalf("oracle generated from bmdwire %s", oracle.Bmdwire)
 	}
-	if len(oracle.Readers) != 93 {
-		t.Errorf("oracle lists %d readers, atemwire v1.6.0 has 93", len(oracle.Readers))
+	if len(oracle.Readers) != 95 {
+		t.Errorf("oracle lists %d readers, atemwire v1.14.5 has 95", len(oracle.Readers))
 	}
 	names := append(slices.Clone(oracle.Readers), oracle.Helpers...)
 	for _, n := range names {

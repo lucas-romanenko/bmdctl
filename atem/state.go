@@ -1293,6 +1293,9 @@ type TopologyField struct {
 	Stingers            uint8 `json:"stingers"`
 	SuperSources        uint8 `json:"supersources"`
 	MultiviewerRoutable bool  `json:"multiviewer_routable"`
+	// Raw is the payload, which TopologyBlockCounts reads at the offsets
+	// the switcher's protocol version calls for (bmdwire#70).
+	Raw []byte `json:"raw"`
 }
 
 // MixerEffectConfigField is _MeC, mixerstate['mixer-effect-config'][me]:
