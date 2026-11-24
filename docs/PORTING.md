@@ -517,7 +517,15 @@ the switcher's that went missing is asked for (below).
   (`splitCommands`), between commands only, before the window sees it;
   a single command, however big, is never split nor taken back. Tests:
   `commands_too_big_test.go`, from `test_commands_too_big.py`, one for
-  one.
+  one. bmdwire#100's new session for a take-back with a small packet
+  after the stuck one ("The switcher asking again", above) is for data
+  chunks only (bmdwire 700a576, on #102's branch): an upload is carried
+  over to the new session, a command packet's commands are not, and a
+  profile restore over a path MTU of 1,200 or 576 lost its labels. A
+  stuck command packet is split and sent again in this session whatever
+  follows it; bmdwire has no test of it, and
+  `TestAStuckPacketOfCommandsWithASmallOneAfterItGoesAgainInThisSession`
+  fails without it.
 - **A congestion window for an upload's chunks** (bmdwire#105,
   `d1b4cbe`). An upload's data chunks (FTDa) go out as a window lets
   them (`cwnd`, atemwire's `CWND_*`): `cwndStart` (768, one budget, so

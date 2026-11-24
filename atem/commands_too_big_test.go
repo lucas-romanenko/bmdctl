@@ -154,3 +154,36 @@ func TestCommandsSplitOnlyBetweenCommands(t *testing.T) { // test_commands_split
 		t.Fatal("a length running past the end")
 	}
 }
+
+// A stuck packet of commands with a small packet after it goes again
+// split in this session (bmdwire 700a576). bmdwire#100 (e4119f7) starts a
+// new session when a smaller packet follows a stuck one, so that no
+// sequence number the switcher may hold goes again with other data; an
+// upload's chunks are carried over to it, a command packet's commands
+// are not, and a profile restore over a path MTU of 1,200 or 576 lost its
+// labels.
+func TestAStuckPacketOfCommandsWithASmallOneAfterItGoesAgainInThisSession(t *testing.T) {
+	clearChunkLimits(t)
+	pkt := labels(30) // 1,200 bytes of commands
+	tr, c, now := stuckCommandPacket(t, pkt)
+	sendReliable(t, tr, []byte("\x00\x08TEST")) // small, after it
+	c.reset()
+	if tb := timerFires(tr, now, tooBigAfter+1, true); tb != nil {
+		t.Fatalf("taken back %+v: no upload among them", tb)
+	}
+	if tr.newSessionAsked != "" {
+		t.Fatalf("a new session asked for (%s): its commands would be lost", tr.newSessionAsked)
+	}
+	var again []byte
+	for _, p := range reliableSent(c) {
+		if p.seq >= 2 && p.flags&flagRetransmission == 0 {
+			again = append(again, p.data...)
+		}
+	}
+	if !bytes.Equal(again, append(slices.Clone(pkt), "\x00\x08TEST"...)) {
+		t.Fatal("not every command, then the small packet, in order")
+	}
+	if tr.maxChunk != 952 {
+		t.Fatalf("maxChunk %d", tr.maxChunk)
+	}
+}

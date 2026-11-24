@@ -1188,7 +1188,11 @@ func (t *transport) askedAgainForStuck(asked uint16) bool {
 // after a gap (the hardware bench, 2026-11-24), so that packet may be with
 // it already, and its sequence number used again for other data would
 // put old data where the new belongs. A new session numbers afresh, and
-// the upload is carried over to it.
+// the upload is carried over to it. Only for a data chunk (bmdwire#102's
+// branch, 700a576): a new session would lose a stuck command packet's
+// commands, which nothing carries over (a profile restore over a path MTU
+// of 1,200 or 576 lost its labels), so those are split and sent again in
+// this one, as before.
 func (t *transport) takeBackChunks(first uint16) (tb *takenBack, ok bool) {
 	p := t.retransmitBuf[first]
 	if p == nil {
@@ -1217,7 +1221,7 @@ func (t *transport) takeBackChunks(first uint16) (tb *takenBack, ok bool) {
 		return nil, false
 	}
 	last := uint16(t.localSeq)
-	for seq := (first + 1) & seqMask; seq != (last+1)&seqMask; seq = (seq + 1) & seqMask {
+	for seq := (first + 1) & seqMask; isChunk && seq != (last+1)&seqMask; seq = (seq + 1) & seqMask {
 		if q := t.retransmitBuf[seq]; q != nil && len(q.data)+headerLen <= limit+24 {
 			t.maxChunk = limit
 			setChunkLimit(t.addr, limit)
