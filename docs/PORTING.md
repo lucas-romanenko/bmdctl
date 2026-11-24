@@ -6,10 +6,11 @@ it. When you make a new decision, add it here in the same commit.
 
 ## Source of truth
 
-Tracks: bmdwire v1.14.6
+Tracks: bmdwire v1.15.0
 
-- The port follows **bmdwire v1.14.6** (`github.com/lucas-romanenko/bmdwire`,
-  tag `v1.14.6`, commit `75503ed`). Up to v1.8.0 (tag `v1.8.0`, commit `01024ad`) that was
+- The port follows **bmdwire v1.15.0** (`github.com/lucas-romanenko/bmdwire`,
+  tag `v1.15.0`, commit `8158c72`); v1.14.6 (tag `v1.14.6`, commit
+  `75503ed`) until 1.14.7's item 17 was ported (below). Up to v1.8.0 (tag `v1.8.0`, commit `01024ad`) that was
   v1.4.0 (tag `v1.4.0`, commit `394435c`), bmdwire#36, #38, #40, #42,
   #46, #47, #49, #52, #53, #56, #57, #59 and #60; after it, the releases
   listed below. It was
@@ -195,25 +196,30 @@ Tracks: bmdwire v1.14.6
   It is a hand-run tool outside atemwire's public layers that fills the
   switcher's session table while it runs, and its only protocol
   knowledge, the `0x03` answer, the transport has had since bmdwire#75.
+- **bmdwire 1.14.7 to 1.15.0** (bmdwire#95, #97, #99 to #106) are
+  ported, each with its tests: 1.15.0's changes in 0.4.0 (bmdctl#49 to
+  #54; the port issue, bmdctl#56, lists them), and 1.14.7's item 17, a
+  session's packets numbered from 1 (`79b847f`, `d959fe4`), after it
+  ("Transport", "A session's packets are numbered from 1"). 1.14.7's
+  quiet end of a closed session's UDP thread (§5.4 item 59) has no
+  counterpart: the read goroutine logs nothing there.
 - The `Tracks:` line above says the same on one line, for workflows to
   read: `git describe` of the bmdwire commit the port follows, here the
-  tag `v1.14.6`. Keep it a line of its own, exactly
+  tag `v1.15.0`. Keep it a line of its own, exactly
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at `95ab667` (bmdwire#100's
-  branch, for 1.15.0; v1.14.6, `75503ed`, until bmdwire#100's port),
-  whose §5.4 marks each fix. It is the specification for `atem/`. Its body
-  says it describes 1.2.0; every fix it marks as made after 1.2.0 (§5.4)
-  is in what the port follows, so it describes that apart from those
-  marks, except two the header names: item 17 (1.14.7, a session's first
-  packet taken as sequence 1), not ported yet ("Traps"), and item 59, a
-  log line of atemwire's UDP thread, which has no counterpart. Items 58
-  to 61 are bmdwire#95, #97 and #100's first commit; 62 to 65 the rest of
-  #100: its §2.7 `upload-retrying` event is `Progress.Retry`, and its
-  `file-transfer-error` status `stalled` an `*UploadStalledError`
-  ("Transfers"). The `Tracks:` line stays at v1.14.6 until item 17 is
-  ported.
+  header naming the version: bmdwire's at `v1.15.0` (`8158c72`; at
+  `95ab667`, bmdwire#100's branch, until item 17's port, and at v1.14.6,
+  `75503ed`, until bmdwire#100's), whose §5.4 marks each fix. It is the
+  specification for `atem/`. Its body says it describes 1.2.0; every fix
+  it marks as made after 1.2.0 (§5.4) is in what the port follows, so it
+  describes that apart from those marks, except item 59, a log line of
+  atemwire's UDP thread, which has no counterpart (the header says so).
+  Items 58 to 61 are bmdwire#95, #97 and #100's first commit; 62 to 65
+  the rest of #100: its §2.7 `upload-retrying` event is
+  `Progress.Retry`, and its `file-transfer-error` status `stalled` an
+  `*UploadStalledError` ("Transfers"); 66 to 70 are bmdwire#101 to #105.
 - `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
   bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md,
   and brought up to v1.8.0.
@@ -344,6 +350,25 @@ the switcher's that went missing is asked for (below).
   every ~80 ms). atemwire's reason, a Python thread falling behind a 4K
   still at line rate, doesn't hold for the read goroutine, but the ACKs
   on the wire are bmdwire's.
+- **A session's packets are numbered from 1** (bmdwire#13, item 17;
+  bmdwire 1.14.7, `79b847f` and `d959fe4`). The first reliable packet
+  after the handshake was seq 1 on 10 of 10 connects to two
+  Constellation HD units, so the handshake's hello `0x02` sets the ACK to
+  0 and the delivery cursor to 1 (`firstRX` 1), instead of the first
+  reliable packet to arrive setting both: a lost packet 1 stalls the ACK
+  at 0, the switcher sends it again, and the packets after it wait
+  parked. If packet 1 has not come `firstPacketWait` (1 s) after the
+  handshake, the next packet parked behind it starts delivery from the
+  first parked one (`startWithoutPacket1`, `firstRX` its number), the ACK
+  moves up to it, and the dump-without-video-mode re-handshake follows,
+  as before. As in atemwire the deadline is looked at only when a new
+  packet is parked (a resend of one we have is dropped before), so a
+  switcher sending nothing new after the dump would hold it until its
+  next ping. `atem/first_packet_test.go` ports
+  `test_first_packet_baseline.py`, plus the 1 s fallback; at the session
+  `TestLosingTheFirstDumpPacketIsSentAgain` (one handshake, the video mode
+  there) and `TestAFirstDumpPacketAlwaysLostFailsDial` (the fake's
+  `DropSequencesAlways` now loses the resends too).
 - **Received sequence numbers** are kept for the last 8192 (twice the
   park window, so a parked packet is still known when the ACK walk
   reaches it) and only for reliable packets (bmdwire#80): the switcher's
@@ -4682,14 +4707,17 @@ Behaviour the port reproduces because bmdwire v1.3.0 has it, found while
 porting and not listed in SURFACE.md §5.4. Each is a candidate for a
 deliberate fix later, recorded here as such when it is made.
 
-- **The first dump packet is not recoverable.** The transport takes the
-  first reliable packet it sees as its sequence baseline (`_rx_established`,
-  `_deliver_next`). If the switcher's first packet after the handshake is
-  lost, the second becomes the baseline, the ACK covers both, and a late
-  copy of the first is dropped as already delivered: its fields never
-  arrive. The port keeps this, but when it costs the video mode Dial now
-  fails at once instead of timing out (bmdwire#13, "Deliberate
-  differences"); anything else in that packet is still silently missing.
+- **The first dump packet was not recoverable** (until bmdwire 1.14.7).
+  The transport took the first reliable packet it saw as its sequence
+  baseline (`_rx_established`, `_deliver_next`). If the switcher's first
+  packet after the handshake was lost, the second became the baseline,
+  the ACK covered both, and a late copy of the first was dropped as
+  already delivered: its fields never arrived. Since 1.14.7 (item 17,
+  ported after 0.4.0) the baseline is 1, set by the handshake, and a lost
+  packet 1 is sent again like any other ("Transport", "A session's
+  packets are numbered from 1"); only a packet 1 that does not come in
+  `firstPacketWait` is still lost, with what follows below (bmdwire#13,
+  "Deliberate differences").
 - **A lost command was recovered only by a later one.** With no client
   retransmit timer (SURFACE.md §4.2), a reliable packet the switcher never
   saw was resent only when a later packet showed the switcher the gap.
@@ -4752,12 +4780,15 @@ says what it does now and what difference, if any, remains.
   which `TestParsersMatchAtemwire` allows for). What remains different is
   the end: where atemwire carries on and `wait_ready` waits out its
   timeout, Dial fails at once with `ErrIncompleteDump`, naming the
-  sequence number that arrived first (`transport.firstRX`) and any parse
-  error during the dump. (An unknown `VidM` mode, §5.4 item 3, ended
+  sequence number delivery started from (`transport.firstRX`) and any parse
+  error during the dump. Since bmdwire 1.14.7 (option A as well, item
+  17) a lost first packet is sent again and none of this happens; it
+  takes a packet 1 that never comes in `firstPacketWait` (1 s), so each
+  of the four dumps then costs about a second. (An unknown `VidM` mode, §5.4 item 3, ended
   here until bmdwire#71; it now parses as an unknown mode.) After Dial, the last dump without a video mode is logged and the
   session carries on, as atemwire's does. The silent loss of whatever
-  else was in a lost first packet remains (see "Traps").
-  `TestLosingTheFirstDumpPacketRehandshakes`,
+  else was in a packet 1 that never came remains (see "Traps").
+  `TestLosingTheFirstDumpPacketIsSentAgain`,
   `TestAFirstDumpPacketAlwaysLostFailsDial`.
 - **bmdwire#14: `*XFC` is dropped.** It is the OpenSwitcher TCP proxy's
   transfer-complete event; no switcher sends it over UDP. atemwire's

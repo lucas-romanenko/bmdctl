@@ -279,6 +279,15 @@ const (
 	// bench, 2026-11-24).
 	gapAskAfter = 100 * time.Millisecond
 	gapAskEvery = 250 * time.Millisecond
+	// firstPacketWait is FIRST_PACKET_WAIT (bmdwire 1.14.7, d959fe4): a
+	// new session's reliable packets are numbered from 1 (handshake). If
+	// packet 1 has not come this long after the handshake while later
+	// ones do, delivery starts from the first that came, as it did
+	// before; the re-handshake on a dump without a video mode then
+	// follows. Without it a switcher numbering from anything else, or a
+	// packet 1 that never gets through, would hold the whole dump back
+	// until Dial gave up.
+	firstPacketWait = time.Second
 	// sendRetries is SEND_RETRIES: a send the kernel refuses with ENOBUFS
 	// (macOS, a full buffer) or EAGAIN is tried again, 1 ms apart, this
 	// many times before the packet counts as lost on the wire.
@@ -466,6 +475,10 @@ type transport struct {
 	deliverNext  uint16 // next sequence owed to the session
 	deliverKnown bool
 	parked       map[uint16]packet
+	// firstDue is when delivery stops waiting for packet 1
+	// (firstPacketWait); zero once something has been delivered, or
+	// before a handshake (_first_due).
+	firstDue time.Time
 	// gapDue is when the open gap in the switcher's packets (something
 	// parked) is next asked for (gapAskAfter), zero with no gap;
 	// gapsAsked counts the requests, for the session's life
@@ -523,10 +536,10 @@ type transport struct {
 	// last_rx_monotonic). Dial's stall limits count from it.
 	lastHeard time.Time
 
-	// firstRX is the sequence of the first reliable packet of the session,
-	// the one that set the receive baseline (rxEstablished). A packet the
-	// switcher sent before it can't be recovered; see bmdwire#13 in
-	// docs/PORTING.md.
+	// firstRX is the sequence the session's delivery started from: 1,
+	// set by the handshake (bmdwire#13, 1.14.7), or the first packet
+	// that came when packet 1 did not come in firstPacketWait. A packet
+	// the switcher sent before it is lost for good.
 	firstRX uint16
 
 	retransmitWindow int
@@ -652,6 +665,7 @@ func (t *transport) connect() error {
 	t.rxEstablished = false
 	t.deliverKnown = false
 	clear(t.parked)
+	t.firstDue = time.Time{}
 	t.gapDue = time.Time{}
 	t.sessionID, t.sessionKnown = helloSession, true
 	t.enableACK = false
@@ -1478,6 +1492,7 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 	dist := (seq - t.deliverNext) & seqMask
 	switch {
 	case dist == 0:
+		t.firstDue = time.Time{}
 		t.deliverNext = (seq + 1) & seqMask
 		out := []packet{p}
 		for {
@@ -1505,6 +1520,9 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 		if t.gapDue.IsZero() {
 			t.gapDue = t.now().Add(gapAskAfter)
 		}
+		if !t.firstDue.IsZero() && !t.now().Before(t.firstDue) {
+			return t.startWithoutPacket1()
+		}
 		return nil, nil
 	}
 	t.log.Error("atem: in-order delivery resync", "cursor", t.deliverNext, "seq", seq, "parked_dropped", len(t.parked))
@@ -1512,6 +1530,38 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 	t.gapDue = time.Time{}
 	t.deliverNext = (seq + 1) & seqMask
 	return []packet{p}, nil
+}
+
+// startWithoutPacket1 is _start_without_packet_1: packet 1 has not come
+// in firstPacketWait, so delivery starts from the first parked packet, as
+// it did before bmdwire#13's known start, and the ACK moves up to it.
+func (t *transport) startWithoutPacket1() ([]packet, error) {
+	t.firstDue = time.Time{}
+	first, best := t.deliverNext, -1
+	for q := range t.parked {
+		if d := int((q - t.deliverNext) & seqMask); best < 0 || d < best {
+			first, best = q, d
+		}
+	}
+	t.log.Warn("atem: the session's first packet has not come in time; starting from the first that did, as the switcher's first",
+		"wait", firstPacketWait, "seq", first)
+	t.firstRX = first
+	t.deliverNext = first
+	t.ackNumber = (first - 1) & seqMask
+	var out []packet
+	for {
+		q, ok := t.parked[t.deliverNext]
+		if !ok {
+			break
+		}
+		delete(t.parked, t.deliverNext)
+		out = append(out, q)
+		t.deliverNext = (t.deliverNext + 1) & seqMask
+	}
+	for t.received.contains((t.ackNumber + 1) & seqMask) {
+		t.ackNumber = (t.ackNumber + 1) & seqMask
+	}
+	return out, t.ackOwed(false)
 }
 
 // checkGap is _check_gap (bmdwire#100, 9824cab): once the open gap in
@@ -1691,6 +1741,21 @@ func (t *transport) handshake(p packet) error {
 	}
 	if p.data[0] == helloAccepted {
 		t.state = stateEstablished
+		// The switcher numbers a new session's reliable packets from 1
+		// (the first reliable packet after the handshake was seq 1 on 10
+		// of 10 connects to two Constellation HD units; bmdwire 1.14.7,
+		// 79b847f). So the ACK and the delivery cursor start there,
+		// instead of at whatever arrives first: a lost packet 1 stalls the
+		// ACK at 0 and is sent again, like any other. Taking the first
+		// arrival as the start acknowledged a lost packet 1 for good, and
+		// its fields (VidM, the video mode) never came (bmdwire#13). The
+		// re-handshake on a dump without a video mode stays as the
+		// fallback (firstPacketWait).
+		t.ackNumber = 0
+		t.rxEstablished = true
+		t.deliverNext, t.deliverKnown = 1, true
+		t.firstRX = 1
+		t.firstDue = t.now().Add(firstPacketWait)
 	}
 	return t.sendLow(&packet{flags: flagACK, handshake: true})
 }

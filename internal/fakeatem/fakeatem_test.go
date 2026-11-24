@@ -120,7 +120,7 @@ func TestLostDumpPacketIsRecovered(t *testing.T) {
 }
 
 // Losing the dump's first packet, which here carries the video mode, is in
-// atem/fake_test.go (TestLosingTheFirstDumpPacketFailsDialFast).
+// atem/fake_test.go (TestLosingTheFirstDumpPacketIsSentAgain).
 
 // A command lost on the way to the switcher is recovered when the next
 // one reveals the gap: the switcher asks for a retransmission and the
