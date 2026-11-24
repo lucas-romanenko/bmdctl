@@ -12,9 +12,19 @@ permissions:
 
 jobs:
   test:
-    name: build, vet, test
-    runs-on: ubuntu-latest
+    name: build, vet, test (${{ matrix.os }})
+    strategy:
+      # One failing system shouldn't hide whether the other passes.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
+      # Windows runners check out with CRLF line endings, which gofmt and
+      # the golden files would read as changes: keep the repository's LF.
+      - name: Keep LF line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
@@ -22,6 +32,7 @@ jobs:
           # No go.sum (no dependencies), so there is nothing to key a cache on.
           cache: false
       - name: Format
+        if: runner.os == 'Linux'
         run: |
           unformatted=$(gofmt -l .)
           if [ -n "$unformatted" ]; then
