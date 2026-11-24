@@ -7,11 +7,11 @@ package engine
 // The engine's named pipe, through kernel32 and advapi32 directly: the
 // standard library has no named pipe API.
 //
-// Both ends open the pipe for overlapped I/O, which os.NewFile hands to
-// the runtime's poller. On a handle opened for synchronous I/O Windows
-// runs one call at a time: the engine's read that watches for the caller
-// hanging up (serveConn) held up its own response's write, and every
-// request hung (found when CI first ran on Windows).
+// Both ends open the pipe for overlapped I/O (pipeConn). On a handle
+// opened for synchronous I/O Windows runs one call at a time: the
+// engine's read that watches for the caller hanging up (serveConn) held
+// up its own response's write, and every request hung (found when CI
+// first ran on Windows).
 
 import (
 	"context"
@@ -36,6 +36,8 @@ var (
 	procDisconnectNamedPipe = kernel32.NewProc("DisconnectNamedPipe")
 	procCreateEventW        = kernel32.NewProc("CreateEventW")
 	procGetOverlappedResult = kernel32.NewProc("GetOverlappedResult")
+	procReadFile            = kernel32.NewProc("ReadFile")
+	procWriteFile           = kernel32.NewProc("WriteFile")
 	procConvertStringSDToSD = advapi32.NewProc("ConvertStringSecurityDescriptorToSecurityDescriptorW")
 )
 
@@ -53,6 +55,7 @@ const (
 	errorPipeConnected = syscall.Errno(535)
 	errorNoData        = syscall.Errno(232)
 	errorNotConnected  = syscall.Errno(233)
+	errorAborted       = syscall.Errno(995)
 )
 
 type pipeListener struct {
@@ -204,7 +207,12 @@ func (l *pipeListener) accepted(h syscall.Handle, ok bool, e error) (io.ReadWrit
 		return nil, err, false
 	}
 	l.next = next
-	return &pipeConn{File: os.NewFile(uintptr(h), l.name), h: h}, nil, false
+	c, err := newPipeConn(h, l.name, true)
+	if err != nil {
+		syscall.CloseHandle(h)
+		return nil, err, false
+	}
+	return c, nil, false
 }
 
 // closeNext closes the instance waiting for a client. An instance left
@@ -241,30 +249,151 @@ func (l *pipeListener) Close() error {
 	return nil
 }
 
+// pipeConn is one end of a connected pipe opened for overlapped I/O. A
+// read and a write can be in flight at once, each waiting on its own
+// event. (os.NewFile would hand such a handle to the runtime's poller,
+// but os.File keeps a file offset its concurrent reads and writes race
+// on.) The kernel writes into the OVERLAPPED structures and buffers until
+// the call completes, so they belong to the connection, on the heap, and
+// Close waits for every call in flight before it closes the handle.
 type pipeConn struct {
-	*os.File
-	h syscall.Handle
+	h      syscall.Handle
+	name   string
+	server bool
+	rd, wr pipeOp
+
+	mu       sync.Mutex
+	closed   bool
+	inflight sync.WaitGroup
 }
 
-// Close waits for the client to read what was written, then closes the
-// instance. It does not disconnect it first: the client would then read
-// "no process is on the other end of the pipe" (ERROR_PIPE_NOT_CONNECTED)
-// rather than the end of the reply.
-func (c *pipeConn) Close() error {
-	syscall.FlushFileBuffers(c.h)
-	return c.File.Close()
+// pipeOp is one direction's call: its OVERLAPPED, its event and its
+// buffer. Reads and writes are each one at a time (mu).
+type pipeOp struct {
+	mu  sync.Mutex
+	ov  syscall.Overlapped
+	buf []byte
 }
 
-// clientConn is the client's end. A pipe its engine disconnected reads
-// as the end of the reply, as a closed one does.
-type clientConn struct{ *os.File }
-
-func (c clientConn) Read(p []byte) (int, error) {
-	n, err := c.File.Read(p)
-	if errors.Is(err, errorNotConnected) {
-		err = io.EOF
+func newPipeConn(h syscall.Handle, name string, server bool) (*pipeConn, error) {
+	c := &pipeConn{h: h, name: name, server: server}
+	for _, op := range []*pipeOp{&c.rd, &c.wr} {
+		ev, _, e := procCreateEventW.Call(0, 1, 0, 0)
+		if ev == 0 {
+			c.closeEvents()
+			return nil, e
+		}
+		op.ov.HEvent = syscall.Handle(ev)
+		op.buf = make([]byte, pipeBuffer)
 	}
-	return n, err
+	return c, nil
+}
+
+func (c *pipeConn) closeEvents() {
+	for _, op := range []*pipeOp{&c.rd, &c.wr} {
+		if op.ov.HEvent != 0 {
+			syscall.CloseHandle(op.ov.HEvent)
+		}
+	}
+}
+
+// call runs one ReadFile or WriteFile of n bytes of op's buffer and waits
+// for it.
+func (c *pipeConn) call(proc *syscall.LazyProc, op *pipeOp, n int) (int, error) {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return 0, net.ErrClosed
+	}
+	c.inflight.Add(1)
+	c.mu.Unlock()
+	defer c.inflight.Done()
+	ev := op.ov.HEvent
+	op.ov = syscall.Overlapped{HEvent: ev}
+	r, _, e := proc.Call(uintptr(c.h), uintptr(unsafe.Pointer(&op.buf[0])), uintptr(n), 0, uintptr(unsafe.Pointer(&op.ov)))
+	if r == 0 && !errors.Is(e, syscall.ERROR_IO_PENDING) {
+		return 0, e
+	}
+	var done uint32
+	if r, _, e := procGetOverlappedResult.Call(uintptr(c.h), uintptr(unsafe.Pointer(&op.ov)), uintptr(unsafe.Pointer(&done)), 1); r == 0 {
+		return int(done), e
+	}
+	return int(done), nil
+}
+
+func (c *pipeConn) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	c.rd.mu.Lock()
+	defer c.rd.mu.Unlock()
+	n, err := c.call(procReadFile, &c.rd, min(len(p), len(c.rd.buf)))
+	copy(p, c.rd.buf[:n])
+	switch {
+	case err == nil:
+		return n, nil
+	case errors.Is(err, syscall.ERROR_BROKEN_PIPE), errors.Is(err, errorNotConnected):
+		// The other end closed, or (an engine before this one)
+		// disconnected: the end of the reply.
+		return n, io.EOF
+	case errors.Is(err, errorAborted), errors.Is(err, net.ErrClosed):
+		return n, net.ErrClosed
+	}
+	return n, &os.PathError{Op: "read", Path: c.name, Err: err}
+}
+
+func (c *pipeConn) Write(p []byte) (int, error) {
+	c.wr.mu.Lock()
+	defer c.wr.mu.Unlock()
+	written := 0
+	for written < len(p) {
+		n := copy(c.wr.buf, p[written:])
+		m, err := c.call(procWriteFile, &c.wr, n)
+		written += m
+		if err != nil {
+			if errors.Is(err, errorAborted) || errors.Is(err, net.ErrClosed) {
+				return written, net.ErrClosed
+			}
+			return written, &os.PathError{Op: "write", Path: c.name, Err: err}
+		}
+		if m < n {
+			return written, io.ErrShortWrite
+		}
+	}
+	return written, nil
+}
+
+// Close ends the calls in flight and closes the handle. The engine's end
+// first waits for the client to read what was written, and does not
+// disconnect: the client would then read "no process is on the other end
+// of the pipe" (ERROR_PIPE_NOT_CONNECTED) rather than the end of the
+// reply.
+func (c *pipeConn) Close() error {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.mu.Unlock()
+	if c.server {
+		syscall.FlushFileBuffers(c.h)
+	}
+	// A call that had passed its check but not yet started when the
+	// first cancel went misses it: cancel again until none is left.
+	idle := make(chan struct{})
+	go func() { c.inflight.Wait(); close(idle) }()
+	for {
+		syscall.CancelIoEx(c.h, nil)
+		select {
+		case <-idle:
+		case <-time.After(10 * time.Millisecond):
+			continue
+		}
+		break
+	}
+	c.closeEvents()
+	return syscall.CloseHandle(c.h)
 }
 
 // Dial opens the engine's pipe, waiting while every instance is busy. It
@@ -279,7 +408,12 @@ func Dial(ctx context.Context, path string) (io.ReadWriteCloser, error) {
 		h, err := syscall.CreateFile(name, syscall.GENERIC_READ|syscall.GENERIC_WRITE, 0, nil,
 			syscall.OPEN_EXISTING, fileFlagOverlapped, 0)
 		if err == nil {
-			return clientConn{os.NewFile(uintptr(h), path)}, nil
+			c, err := newPipeConn(h, path, false)
+			if err != nil {
+				syscall.CloseHandle(h)
+				return nil, err
+			}
+			return c, nil
 		}
 		if !errors.Is(err, errorPipeBusy) {
 			return nil, &os.PathError{Op: "open", Path: path, Err: err}
