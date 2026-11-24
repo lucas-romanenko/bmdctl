@@ -16,12 +16,16 @@ import (
 
 // Progress is how far a transfer has come: Done of Total, in bytes moved
 // where Bytes says so (else in units of its own), and which of several
-// it is (Item: "still 2 of 6").
+// it is (Item: "still 2 of 6"). An upload that stalled and goes again
+// from the beginning in a new session (bmdwire#100) says which fresh
+// start it is on (Retry of Retries), and its Done starts again from 0.
 type Progress struct {
-	Done  int64  `json:"done"`
-	Total int64  `json:"total"`
-	Bytes bool   `json:"bytes,omitempty"`
-	Item  string `json:"item,omitempty"`
+	Done    int64  `json:"done"`
+	Total   int64  `json:"total"`
+	Bytes   bool   `json:"bytes,omitempty"`
+	Item    string `json:"item,omitempty"`
+	Retry   int    `json:"retry,omitempty"`
+	Retries int    `json:"retries,omitempty"`
 }
 
 // Step is one step of an operation the Steps note announced: begun (no
@@ -39,18 +43,21 @@ type Step struct {
 const progressEvery = 100 * time.Millisecond
 
 // withProgress returns ctx with its transfer's progress noted, as f
-// reads it, at most ten times a second and once at the end.
+// reads it, at most ten times a second, once at the end, and at once when
+// an upload starts again (its retry).
 func (c *call) withProgress(ctx context.Context, f func(atem.Progress) Progress) context.Context {
 	if !c.req.Notes {
 		return ctx
 	}
 	var last time.Time
+	retry := 0
 	return atem.WithProgress(ctx, func(p atem.Progress) {
-		if time.Since(last) < progressEvery && p.Done < p.Total {
+		if time.Since(last) < progressEvery && p.Done < p.Total && p.Retry == retry {
 			return
 		}
-		last = time.Now()
+		last, retry = time.Now(), p.Retry
 		pr := f(p)
+		pr.Retry, pr.Retries = p.Retry, p.Retries
 		c.note(Note{Progress: &pr})
 	})
 }

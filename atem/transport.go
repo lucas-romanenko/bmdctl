@@ -607,6 +607,16 @@ func (t *transport) timeout() error {
 	return t.connect()
 }
 
+// reconnect is UdpProtocol.reconnect (bmdwire#100, e151696): a new
+// session asked for, at once, as the silence timeout starts one. The
+// caller reports a disconnect.
+func (t *transport) reconnect(why string) error {
+	t.log.Warn("atem: a new session asked for", "addr", t.addr, "why", why)
+	t.closeSession()
+	t.state = stateClosed
+	return t.connect()
+}
+
 // sendReliable sends data in a reliable, sequenced packet (send_raw).
 func (t *transport) sendReliable(data []byte) error {
 	return t.sendLow(&packet{flags: flagReliable, data: data})

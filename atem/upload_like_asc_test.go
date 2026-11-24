@@ -203,6 +203,9 @@ func TestWithoutAnAnnouncementWeAskAfterLockQuiet(t *testing.T) {
 func TestAStoreHandedToAnotherClientWaitsWhileItWorks(t *testing.T) {
 	s, c := laneSession(t)
 	clock := moveClock(s)
+	// Longer than uploadStall: a stalled upload would go to a new session
+	// (bmdwire#100), which the Python fixture's transport cannot do.
+	s.uploadStall = time.Hour
 	firstOfTwoDone(t, s, taskUpload)
 	asked := len(packetCodes(c))
 	for range 3 {
@@ -224,6 +227,7 @@ func TestAStoreHandedToAnotherClientWaitsWhileItWorks(t *testing.T) {
 func TestAYieldMovedBySomeoneAtWorkIsTimedAgain(t *testing.T) {
 	s, c := laneSession(t)
 	clock := moveClock(s)
+	s.uploadStall = time.Hour // as above
 	firstOfTwoDone(t, s, taskUpload)
 	asked := len(packetCodes(c))
 	*clock = clock.Add(lockQuiet / 2)
@@ -232,8 +236,14 @@ func TestAYieldMovedBySomeoneAtWorkIsTimedAgain(t *testing.T) {
 	if len(packetCodes(c)) != asked {
 		t.Fatal("asked while another client worked")
 	}
-	if want := clock.Add(lockQuiet / 2); !s.lane.yieldDue.Equal(want) {
-		t.Fatalf("timer at %v, want %v", s.lane.yieldDue, want)
+	// The upload waiting is looked at every uploadLook (bmdwire#100), so
+	// the timer may come sooner than the turn's end, never later.
+	want := clock.Add(lockQuiet / 2)
+	if y := s.lane.yielding[0]; y == nil || !s.yieldDue(0, y).Equal(want) {
+		t.Fatalf("the turn ends at %v, want %v", y, want)
+	}
+	if s.lane.yieldDue.IsZero() || s.lane.yieldDue.After(want) {
+		t.Fatalf("timer at %v, want by %v", s.lane.yieldDue, want)
 	}
 	after(s, clock, lockQuiet/2)
 	if p := lastPacket(c); !slices.Equal(p, []string{"PLCK"}) {

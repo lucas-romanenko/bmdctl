@@ -1272,6 +1272,63 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   asked for is another session's and left alone. A transfer given up on
   while the switcher was answering FTDE 1, its lock granted, says "the
   switcher answered busy (try again) N times" (bmdwire#80).
+- **An upload is done only when the switcher says so** (bmdwire#100,
+  `d19c1cd`, `174840f`, `5587e15`, `e151696`). Here it already was
+  (`onTransferComplete`); what is new is that one that stops moving is
+  noticed. On the hardware bench (Constellation HD, cable out 3 s
+  mid-upload) everything was acknowledged on both sides and the switcher
+  never granted the next budget; started again in the same session, the
+  lock was asked for, acknowledged and never granted. Now the upload in
+  hand (`uploadInHand`: the one in flight, else the first queued, else
+  the first carried over) that has made no progress for `uploadStall`
+  (6 s) in the phase it is in (`progressMark`: carried over, session
+  ready, lock held, in flight, started, transfer id; once its data goes,
+  our packets acknowledged, data cut, budgets granted) goes again from
+  the beginning in a new session (`newSession`: goodbye and hello, as
+  the silence timeout, then the disconnect), under a new transfer id,
+  `uploadRetries` (2) times, then fails with `*UploadStalledError`
+  (`ErrUploadStalled`), which names the phase: atemwire's
+  `file-transfer-error` status `stalled`. While the switcher says
+  another client holds the lock the limit is `lockWaitMax` (60 s).
+  atemwire checks on the wall clock in `loop()` every 0.5 s whatever
+  arrives, since a pumped loop sees no time without a packet; here the
+  yield timer runs `serviceUploadStall` at least every `uploadLook`
+  (1 s) while an upload is in hand, armed when one is queued, asked for
+  or carried back, so the limit holds in any phase, with or without
+  packets. Like atemwire's, a stall is seen 6 to 7 s after the last
+  progress. `upload-retrying` is a `Progress` report: `Retry` of
+  `Retries` on every report from then on (a report not taken is
+  replaced, so one alone could be lost), `Done` back at 0 since the
+  upload starts again, so a bar never shows more than has moved. The
+  engine notes it at once, past its ten-a-second limit, and the CLI
+  says `retrying (k/n)` ("Terminal", Waiting). Its upload stall limit is
+  the `Dialer`'s, shortened by tests (`SetUploadStall`). One interplay
+  bmdwire's tests don't meet, as their fixture has no `reconnect`: an
+  upload queued behind our own release whose release is never announced
+  (another client handed the store) waits `lockQuiet` (10 s), and the
+  6 s limit sends it to a new session first, as bmdwire's code does with
+  a real transport; `upload_like_asc_test.go`'s two tests of that wait
+  run with a longer limit.
+- **Uploads are carried over a session change** (bmdwire#100,
+  `e151696`). Whenever a session ends or is replaced (the silence
+  timeout, a resync, a new session asked for), every upload in hand,
+  the one in flight and those queued, is taken off the lane before it is
+  reset (`carryUploadsOver`): from the beginning, its transfer id, data
+  offset and FTFD forgotten, its progress back at 0, and queued again in
+  order once the next session is ready (`requeueCarriedUploads`, from
+  `onReady`). They used to fail with `ErrDisconnected`, as atemwire's
+  were dropped without a word; downloads and clears still do. The stall
+  limit still counts for them (`waiting for a new session`); a caller
+  that gives up takes its upload off the list (`cancelTask`, not
+  `ErrLockNotGranted`), and `Close` fails them with `ErrClosed`
+  (`failCarried`), there being no next session. `resetLane` keeps the
+  list.
+- **Chunks go to the bulk queue 512 at a time** (`queuePortion`,
+  bmdwire#100, `e151696`): `queueChunks` drains the queue whenever it
+  holds that many. Chunks taken back from three budgets in flight
+  (2,304) overflowed its 1,024 and the oldest were dropped; the still
+  came out short. `e151696` also drops `5587e15`'s "budget sent again"
+  guard, so it is not ported.
 - **Default timeouts** when the context has no deadline: 30 s still
   download, 5 s clear, 10 s macro download and upload (atemwire's callers),
   90 s still upload (WebATEM's `UPLOAD_TIMEOUT`).
@@ -1329,7 +1386,8 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   straight to the socket before the goodbye (`release_locks_now`); a
   disconnect resets the lane without sending anything
   (`_reset_transfer_lane`) and fails waiting transfers with
-  `ErrDisconnected`.
+  `ErrDisconnected`, except uploads, which since bmdwire#100 are carried
+  over to the next session (above).
 - **A frame that doesn't decode is an error.** atemwire logs the exception
   `rle_decode` raises in the FTDC handler and its caller times out; here the
   download fails with it. The lock is released first either way.
@@ -2142,6 +2200,13 @@ response doesn't carry comes in note frames (Engine, "Notes":
   a profile's stills): `⠸ uploading logo.png → slot 3 █████░░░ 68%  816
   KB  0.8 s`, the bytes moved, or which of several (`still 2 of 6`). One
   of unknown size (a lock wait, a macro download) keeps the spinner.
+  An upload that stalled and goes again from the beginning in a new
+  session (bmdwire#100, "Transfers") says so on every frame from then
+  on, its bar from nothing again: `░░░░░░░░ 0%  retrying (1/2)  0 B`.
+  The bar never shows more than has moved in the attempt under way. One
+  given up on fails with exit 3 (no echo) and two lines: `the upload
+  stalled: nothing moved for 6 s, even after 2 retries`, then `last
+  phase: <where it stopped>` (`transferErr`).
 - **Steps.** An operation of several steps (profile save: setup, with
   its macros, then stills; restore: setup, then stills) announces them;
   each finishes in place under the header, `✓ setup  3 macros  1.9 s`;

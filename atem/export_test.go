@@ -10,6 +10,10 @@ import "time"
 // package atem_test.
 func SetSilence(d *Dialer, silence time.Duration) { d.silence = silence }
 
+// SetUploadStall shortens a Dialer's 6 s upload stall limit
+// (bmdwire#100), for the tests in package atem_test.
+func SetUploadStall(d *Dialer, stall time.Duration) { d.uploadStall = stall }
+
 // QueuedTransfers is how many transfers wait on s's lane to start, for
 // the tests in package atem_test: one that waits for a lock is queued
 // until it gets it.

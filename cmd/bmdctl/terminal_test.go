@@ -618,6 +618,14 @@ func TestTerminalSpinner(t *testing.T) {
 		step(550 * time.Millisecond)
 		s.progress(engine.Progress{Done: 3500, Total: 6000, Item: "still 4 of 6"})
 		step(time.Second)
+		// An upload that stalled goes again from the beginning
+		// (bmdwire#100): from nothing, and it says so.
+		s.set("uploading logo.png → slot 3")
+		step(250 * time.Millisecond)
+		s.progress(engine.Progress{Done: 0, Total: 1_200_000, Bytes: true, Retry: 1, Retries: 2})
+		step(time.Second)
+		s.progress(engine.Progress{Done: 300_000, Total: 1_200_000, Bytes: true, Retry: 1, Retries: 2})
+		step(time.Second)
 		close(s.done) // run never ran
 		s.close()
 		fmt.Fprintf(&out, "prefixed %v:\n%s\n", prefixed, strings.ReplaceAll(visible(buf.String()), "<clear><cr>", "\n<clear><cr>"))

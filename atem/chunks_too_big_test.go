@@ -402,3 +402,39 @@ func TestChunksTooBigOnALANAreStillTakenBack(t *testing.T) {
 		t.Fatalf("taken back %+v, want limit 1224", tb)
 	}
 }
+
+func TestMoreChunksTakenBackThanTheSendQueueHoldsAllGoAgain(t *testing.T) { // test_more_chunks_taken_back_than_the_send_queue_holds_all_go_again
+	// Three budgets of 768 in flight when the take-back came (a switcher
+	// granting them back to back): 2,304 chunks to send again, more than
+	// the bulk queue (bulkQueueMax, 1,024) holds. Queued at once, the
+	// oldest were dropped and the still came out short (bmdwire#100,
+	// e151696).
+	clearChunkLimits(t)
+	s, c := laneSession(t)
+	tk := uploadTask(0)
+	tk.data = make([]byte, ascChunk*2304)
+	for i := range tk.data {
+		tk.data[i] = byte(i * 7 % 251)
+	}
+	tk.dataLength, tk.size = len(tk.data), len(tk.data)
+	s.enqueueTask(tk)
+	grant(t, s, 0)
+	for range 3 {
+		feedBudget(t, s, 768)
+	}
+	first := commands(c, "FTDa")
+	if len(first) != 2304 {
+		t.Fatalf("%d chunks sent", len(first))
+	}
+	s.t.maxChunk = 1224
+	s.chunksTakenBack(&takenBack{transfer: s.lane.transfer.tid, sizes: slices.Repeat([]int{ascChunk}, 2304), limit: 1224})
+	var again []byte
+	for _, d := range commands(c, "FTDa")[2304:] {
+		again = append(again, d[4:]...)
+	}
+	// As many chunks as the budget owed, now of 1,224 bytes, in order
+	// from where the first one started; the rest with the next budget.
+	if len(again) != 2304*1224 || !bytes.Equal(again, tk.data[:len(again)]) {
+		t.Fatalf("%d bytes sent again, not the data from its start: some lost to the queue", len(again))
+	}
+}

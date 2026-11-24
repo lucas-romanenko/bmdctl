@@ -138,6 +138,8 @@ type Dialer struct {
 	AggressiveDrain bool
 
 	silence time.Duration // tests shorten the 5 s silence timeout
+	// uploadStall, if set, replaces the transfers' 6 s (tests).
+	uploadStall time.Duration
 	// Tests shorten Dial's limits; zero means ConnectStallTimeout and
 	// ConnectHelloTimeout.
 	stall, hello time.Duration
@@ -197,6 +199,9 @@ func (d *Dialer) Dial(ctx context.Context, addr string) (*Session, error) {
 	}
 	if d.AggressiveDrain {
 		s.t.setAggressiveDrain()
+	}
+	if d.uploadStall > 0 {
+		s.uploadStall = d.uploadStall
 	}
 	go s.read()
 	go s.run()
@@ -261,6 +266,8 @@ type Session struct {
 	// fieldErrorsLogged holds the codes of the fields that failed to
 	// parse and were logged at Error (onData), for the session's life.
 	fieldErrorsLogged map[string]bool
+	// uploadStall is the transfers' uploadStall; tests shorten it.
+	uploadStall time.Duration
 
 	// Shared.
 	reqs      chan func()   // closures the run goroutine executes
@@ -312,6 +319,7 @@ func newSession(conn net.PacketConn, raddr *net.UDPAddr, log *slog.Logger, silen
 		quit:              make(chan struct{}),
 		done:              make(chan struct{}),
 		dialReady:         make(chan struct{}),
+		uploadStall:       uploadStall,
 	}
 	if silence > 0 {
 		s.t.silence = silence
@@ -564,6 +572,7 @@ func (s *Session) shutdown() {
 	_ = s.conn.Close()
 	err := s.closedErr()
 	s.resetLane(err)
+	s.failCarried(err)
 	for _, ws := range s.waiters {
 		for _, w := range ws {
 			w.ch <- waitResult{err: err}
@@ -707,6 +716,9 @@ func (s *Session) onReady() {
 		close(*s.ready.Load())
 	}
 	s.publish(Change{Kind: ChangeReady})
+	// Uploads carried over from the session before go again now, from
+	// the beginning (bmdwire#100, e151696).
+	s.requeueCarriedUploads()
 }
 
 // timeRequest is a TiRq command: header only, no payload.
@@ -886,6 +898,24 @@ func (s *Session) onSilence() {
 	s.protoConnected = false
 }
 
+// newSession is transport.reconnect() (bmdwire#100, e151696): end this
+// session and start a new one, as the silence timeout does: goodbye, a
+// new hello, and the disconnect, which carries the uploads over. For an
+// upload the switcher no longer answers in this session: only a goodbye
+// frees what an abandoned transfer holds (its lock, its transfer engine);
+// asked for again in the same session, the lock got no answer (the
+// hardware bench, 2026-11-24).
+func (s *Session) newSession(why string) {
+	if err := s.t.reconnect(why); err != nil {
+		s.fatal = err
+		return
+	}
+	if s.protoConnected {
+		s.disconnected()
+	}
+	s.protoConnected = false
+}
+
 // disconnected is atemwire's "disconnected" event and what follows it:
 // the state is emptied and nothing is ready until the next dump completes.
 func (s *Session) disconnected() {
@@ -905,6 +935,11 @@ func (s *Session) disconnected() {
 	s.state.Macros.LastRun = last
 	s.initialized = false
 	s.dumpErr = nil
+	// Uploads are carried over to the next session and go again there
+	// from the beginning (uploadStall still counts for them): a session
+	// lost or replaced mid-upload used to fail them (bmdwire#100,
+	// e151696).
+	s.carryUploadsOver()
 	// A transfer in flight died with the session; the new one must not
 	// inherit its queue or locks (_reset_transfer_lane).
 	s.resetLane(ErrDisconnected)

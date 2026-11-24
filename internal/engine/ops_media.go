@@ -119,9 +119,15 @@ type TransferResult struct {
 // way is no echo, the session gone is unreachable.
 func transferErr(err error) error {
 	var te *atem.TransferError
+	var se *atem.UploadStalledError
 	switch {
 	case err == nil:
 		return nil
+	case errors.As(err, &se):
+		// bmdwire#100: given up after its fresh starts. The phase goes
+		// on a line of its own: a byte count makes it long.
+		return &Error{CodeNoEcho, fmt.Errorf("the upload stalled: nothing moved for %.0f s, even after %d retries\nlast phase: %s",
+			se.After.Seconds(), se.Retries, se.Phase)}
 	case errors.As(err, &te), errors.Is(err, atem.ErrLockNotGranted):
 		return &Error{CodeRejected, err}
 	case errors.Is(err, context.DeadlineExceeded):
