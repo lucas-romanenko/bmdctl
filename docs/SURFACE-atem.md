@@ -1,10 +1,13 @@
 <!--
-Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at v1.14.6
-(commit 75503ed). It is the specification for bmdctl's atem package.
+Copied verbatim from bmdwire's atemwire/docs/SURFACE.md at commit
+95ab667 (v1.14.8-10-g95ab667, bmdwire#100 before its merge, for 1.15.0).
+It is the specification for bmdctl's atem package.
 
 Its own header says which bmdwire it describes, and §5.4 marks the fixes
 made since; all of them are in what the port follows (docs/PORTING.md,
-"Source of truth").
+"Source of truth") except item 17's (1.14.7, a session's first packet
+taken as sequence 1, so its loss is sent again), not ported yet
+("Traps"), and item 59's, a Python log line with no counterpart.
 Do not edit below this comment: corrections and port decisions go in
 docs/PORTING.md.
 -->
@@ -587,6 +590,7 @@ in the transfer flow. At field level, the `CKDV`/`CTDv` fields are all echoed, b
   (an RLE header word is never split), then `FTFD(name, description, md5)` once the send queue
   drains. Download chunks are acked one by one with `FTUA(tid, 0)`. Since `d050c10` `FTFD` goes
   with the first budget and each budget is sent whole as it is granted (§5.4 items 22 and 23).
+  Chunks the path does not let through go again smaller (§5.4 item 58).
 - **The protocol layer has no timeouts.** A transfer ends on `FTDC`, a fatal `FTDE`, or
   `abort_transfers()`. Timeouts live in the callers below.
 - Lane control: `AtemProtocol.abort_transfers()` clears the lane and releases held locks;
@@ -777,7 +781,7 @@ Profile enum tables (`profile/_enums.py`):
 | HyperDeck bind planning | `hyperdeck.plan_binding_push(mx, deck_ip, switcher_input, *, exclude_slots=()) -> (slot\|None, needs_write)` | pure function; the write is `set_hyperdeck_settings` |
 | full snapshot | `state.build_full_state(conn)` / `ATEM.snapshot()` | §2.6 |
 | meters | `fairlight.enable_fairlight_levels`, `audio_legacy.enable_audio_levels` | opt-in streams (`FMLv`/`FDLv`, `AMLv`) at ~10 Hz; re-arm after every reconnect |
-| session count | `sessions.count_sessions(ip, *, port=9910, limit=16, answer_timeout=10.0, max_sessions=None) -> {'ip', 'free', 'full', 'stopped', 'model', 'max', 'in_use', 'session_ids', 'accepts', 'seconds'}`; command `python -m atemwire.sessions IP [--json] [--limit N] [--max N]` | how many sessions the switcher has free, by everyone. The switcher reports no client count, so it opens handshake sessions one at a time (each waits for the answer to the last, each pumped and ACKed like any client) until the hello is answered `0x03`, then sends every one the goodbye (a session whose first packet, and so its id, hasn't come yet is waited for up to `CLOSE_ID_TIMEOUT`, 5 s, so its goodbye carries the id). `stopped` is `'no room'` (`full`, `free` exact), `'limit'` (at least `free`) or `'no answer'` (nothing for `answer_timeout`; at least `free`). `in_use = max - free`, derived, only when `full` and the model's max is known (`max_sessions`, else `sessions.MAX_SESSIONS[model]`, empty until measured on an idle unit). `session_ids` and `accepts` (each 0x02 answer's payload, hex) are kept as evidence for whether the switcher numbers sessions by table slot (unverified). The report shows `free`, and `in use` only when the max is known. Sessions already open are untouched; while it holds the table full (well under a second on a good link) anyone else's hello is answered `0x03`, so it is not for use during a live show |
+| session count | `sessions.count_sessions(ip, *, port=9910, limit=16, answer_timeout=10.0, max_sessions=None) -> {'ip', 'free', 'full', 'stopped', 'model', 'max', 'in_use', 'session_ids', 'accepts', 'seconds'}`; command `python -m atemwire.sessions IP [--json] [--limit N] [--max N]` | how many sessions the switcher has free, by everyone. The switcher reports no client count, so it opens handshake sessions one at a time (each waits for the answer to the last, each pumped and ACKed like any client) until the hello is answered `0x03`, then sends every one the goodbye (a session whose first packet, and so its id, hasn't come yet is waited for up to `CLOSE_ID_TIMEOUT`, 5 s, so its goodbye carries the id). `stopped` is `'no room'` (`full`, `free` exact), `'limit'` (at least `free`) or `'no answer'` (nothing for `answer_timeout`; at least `free`). `in_use = max - free`, derived, only when `full` and the model's max is known (`max_sessions`, else `sessions.MAX_SESSIONS[model]`, measured on an idle unit: `ATEM 1 M/E Constellation HD` 5). `session_ids` and `accepts` (each 0x02 answer's payload, hex) are kept as evidence for whether the switcher numbers sessions by table slot (unverified). The report shows `free`, and `in use` only when the max is known. Sessions already open are untouched; while it holds the table full (well under a second on a good link) anyone else's hello is answered `0x03`, so it is not for use during a live show |
 | macro record by replay | `macro_start_recording` → ops → `macro_sleep` → `macro_stop_recording` | the live way to build a macro without bytecode |
 
 ## 4. Connection lifecycle
@@ -858,7 +862,8 @@ callback is logged and swallowed.
 | `upload-progress` | `(store, slot, percent, done, total)` | upload chunks; can exceed 100 |
 | `download-done` | `(store, slot, data)` | `FTDC` on a download |
 | `upload-done` | `(store, slot)` | `FTDC` on an upload |
-| `file-transfer-error` | `(FileTransferErrorField)` | fatal `FTDE` only |
+| `upload-retrying` | `(store, slot, attempt, retries)` | an upload with no progress for `UPLOAD_STALL` (6 s) starts again from the beginning in a new session, attempt `attempt` of `retries` (§5.4 item 62) |
+| `file-transfer-error` | `(FileTransferErrorField)`, or a namespace `(transfer, status='stalled', message, store, slot)` | fatal `FTDE`; since 1.15.0 also an upload given up after `UPLOAD_RETRIES` fresh starts, `message` naming the phase it stalled in (§5.4 item 62) |
 | `clear-dispatched` | `(store, slot)` | locked clear sent (local, not a switcher confirmation) |
 
 `LKOB`, `FTCD`, `FTDa`, `FTDE`, `FTDC` and `*XFC` produce **no** `change` events. `LKST`
@@ -1028,6 +1033,8 @@ after 1.14.2 and still applies to 1.11.0 through 1.14.2.
 Items 54 and 55 were fixed in 1.14.4 and still apply to 1.14.3 and earlier.
 Item 56 was fixed in 1.14.5 and still applies to 1.12.0 through 1.14.4.
 Item 57 was fixed in 1.14.6 and still applies to 1.6.0 through 1.14.5.
+Items 17, 58 and 59 were fixed in 1.14.7 and still apply to 1.14.6 and earlier.
+Item 60 was fixed in 1.14.8 and still applies to 1.14.7.
 
 1. **Profile video mode does not round-trip at fractional rates** (1.2.0). Save writes
    `get_label()` (`1080p59.94`); apply only knows `1080p5994`-style names, so it skips the mode as
@@ -1144,8 +1151,12 @@ Item 57 was fixed in 1.14.6 and still applies to 1.6.0 through 1.14.5.
     and `ATEMConnection.connect` fails after 15 s; other fields in it are silently missing.
     *Partly fixed in `2fc9375`:* a dump that ends (`InCm`) without `video-mode` raises
     `disconnected` and re-handshakes at once, up to 3 times in a row, then carries on as before.
-    Other fields lost with the first packet are still missing. The real fix, a known first
-    sequence number, waits for a trace showing what it is (bmdwire#13).
+    *Fixed in 1.14.7 (`79b847f`)* (bmdwire#13): the first reliable packet after the handshake was seq 1 on
+    10 of 10 connects to two Constellation HD units, so the ACK starts at 0 and the delivery
+    cursor at 1 once the handshake completes; a lost first packet stalls the ACK and is sent
+    again like any other. If packet 1 has not come `UdpProtocol.FIRST_PACKET_WAIT` (1 s) after
+    the handshake while later ones do, delivery starts from the first that came, as before, and
+    the re-handshake follows (`d959fe4`).
 18. **A `*XFC` on a UDP session is handled** (1.3.0). No ATEM sends it, but if one arrives (a
     non-ATEM peer, a fuzzer, a future firmware) the handler indexes `transfer_queue[store]`: with
     nothing queued that raises `KeyError`, which escapes `loop()` and loses the rest of the
@@ -1465,6 +1476,70 @@ Item 57 was fixed in 1.14.6 and still applies to 1.6.0 through 1.14.5.
     `set_audio_headphones` write it, the reader takes it when the unit sends one and says which
     with `bus`, and the first `AMHP` is logged with the other legacy-audio packets (§1.11, §2.4).
     Which models send it is still not known. Untested on a switcher.
+58. **An upload stalls for good where the path drops big datagrams** (1.0). Upload chunks are as
+    big as the `FTCD` allows (1,392 bytes of data, 1,416-byte datagrams). An ATEM Mini Pro over a
+    VPN at 80 ms got the lock request, `FTSD` and `FTFD` and not one chunk, in 90 s and some 70
+    resends; the switcher takes our packets in order only, so nothing after the first chunk
+    counted either, and the caller gave up (WebATEM #63). It asked for that chunk again the moment
+    a small packet came after it. *Fixed in 1.14.7 (`6067211`):* when the first packet the switcher has
+    not acknowledged is a data chunk, sent `UdpProtocol.TOO_BIG_AFTER` (3) times more while the
+    switcher goes on sending, it and every chunk after it are taken back and go again in chunks
+    of the next `UdpProtocol.CHUNK_STEPS` size (1,224, 952, 504 bytes), never more chunks than
+    the budget; the size is kept for that switcher's address for the process. Other packets
+    among them go again at once. Not checked against a real switcher.
+59. **Every closed session logs an ERROR** (1.0). A close says goodbye, then closes the socket,
+    which the UDP thread then meets in `select()` (EBADF; WSAENOTSOCK, 10038, on Windows): "UDP
+    thread exiting" at ERROR, once for every session WebATEM's uploader closed and every session
+    `python -m atemwire.sessions` counted, on stderr. *Fixed in 1.14.7 (`79b847f`):* after the goodbye
+    (state closed) it is logged at debug; a socket closed under a live session is still an ERROR.
+60. **A cable out for a moment mid-upload can corrupt the still** (1.14.7). Four resends of a
+    stuck chunk take 0.75 s on a LAN, under the 1 s `RESEND_MAX` that item 58's take-back took for
+    "the switcher still answering", so a cable out for 3 s had the chunks taken back as too big.
+    Their sequence numbers went again with other data while the switcher may already have had
+    them (their ACKs lost with the cable): it kept the old ones, took the new ones after them, and
+    the still arrived with chunks twice and the wrong MD5, which the switcher does not check.
+    *Fixed in 1.14.8 (`ea4452a`):* the switcher must have been heard without a gap of more than
+    `UdpProtocol.HEARD_GAP` (0.25 s; its Time packets come every 40 ms) since the chunk got stuck,
+    not only at the moment of the decision. Found offline: a fake switcher, the cable out for 3 s
+    mid-upload through a relay.
+61. **1.14.8's take-back never fires for a switcher that sends less often** (1.14.8). Item 60's
+    fix asked for the switcher heard with no gap over 0.25 s since the chunk got stuck, taking a
+    Constellation's Time packet every 40 ms for every switcher's. The switcher behind WebATEM #63
+    (an ATEM Mini Pro over a ZeroTier VPN at MTU 1,280) sends less often: the chunks never went
+    again smaller and its uploads hung as in 1.14.6, with the lock and the transfer lane held
+    meanwhile. *Fixed in 1.15.0 (`4ba9d8c`):* a resend of the stuck chunk counts towards
+    `TOO_BIG_AFTER` only if the switcher was heard between it and the one before, and the
+    switcher must have been heard within `RESEND_MAX` (as 1.14.7). With the cable out nothing
+    is heard and no resend counts (item 60 stays fixed); a switcher heard every 0.5 s gets its
+    chunks taken back as before 1.14.8. `UdpProtocol.HEARD_GAP` is gone.
+62. **An upload the switcher stops granting budgets to waits for ever** (1.0). After a dropout
+    mid-upload a Constellation HD can stop sending `FTCD` for good while acknowledging everything
+    (hardware bench, 2026-11-24); a same-session re-lock after giving the lock back mid-transfer is
+    acknowledged and never granted. Nothing timed the upload, so it never finished and never
+    failed. *Fixed in 1.15.0 (`d19c1cd`, `174840f`, `5587e15`, `e151696`):* an upload is done only on
+    the switcher's `FTDC`. `loop()` checks the wall clock every 0.5 s: `UPLOAD_STALL` (6 s) with no
+    progress in any phase (its lock, the transfer's start, budgets, chunks acknowledged) says
+    goodbye, opens a new session and starts the upload again from its lock with a new transfer id
+    (`upload-retrying`), `UPLOAD_RETRIES` (2) times at most, then gives it up with
+    `file-transfer-error` status `stalled`. While another client holds the lock it waits up to
+    `LOCK_WAIT_MAX` (60 s). Uploads in hand when a session ends or is replaced are carried over and
+    start again once the new one is ready; they used to vanish. Chunks taken back are handed to the
+    send queue `QUEUE_PORTION` (512) at a time: three budgets (2,304) overflowed its 1,024.
+63. **A UDP thread that ends strands whoever pumps** (1.0). An exception out of the UDP thread
+    (seen on macOS) ended it, and every `loop()` after that blocked for ever on the receive queue.
+    *Fixed in 1.15.0 (`61d596b`):* `loop()` returns None every 0.1 s once the thread is gone.
+64. **A packet the switcher sent and we lost is never asked for** (1.0). We only waited for its
+    timer (about 80 ms) to send it again; its own request (flag 0x08, the sequence it lacks in
+    bytes 6-7) was answered but only partly used. *Fixed in 1.15.0 (`9824cab`):* a gap in what we
+    receive is asked for after `GAP_ASK_AFTER` (0.1 s) and again every `GAP_ASK_EVERY` (0.25 s);
+    a request from the switcher for sequence N counts as an acknowledgement through N-1. On
+    hardware it asks for the first packet it lacks and keeps those after it (bench 2026-11-24).
+65. **The take-back waits on our timer while the switcher asks** (1.14.7). *Fixed in 1.15.0
+    (`e4119f7`):* the switcher asking again for a stuck chunk counts towards `TOO_BIG_AFTER`
+    (at most once per `RESEND_MIN`), so a path MTU of 1,280 is found as fast as its requests come
+    (a macro at MTU 1,280: 10 s to about 1 s offline). When a smaller packet follows the stuck
+    chunk, so that taking back would send sequence numbers again that the switcher may hold, it
+    starts a new session instead.
 
 ## Counts
 

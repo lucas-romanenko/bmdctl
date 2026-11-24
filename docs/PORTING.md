@@ -201,10 +201,19 @@ Tracks: bmdwire v1.14.6
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at v1.14.6 (`75503ed`), whose §5.4 marks
-  each fix. It is the specification for `atem/`. Its body says it describes
-  1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
-  follows, so it describes that apart from those marks.
+  header naming the version: bmdwire's at `95ab667` (bmdwire#100's
+  branch, for 1.15.0; v1.14.6, `75503ed`, until bmdwire#100's port),
+  whose §5.4 marks each fix. It is the specification for `atem/`. Its body
+  says it describes 1.2.0; every fix it marks as made after 1.2.0 (§5.4)
+  is in what the port follows, so it describes that apart from those
+  marks, except two the header names: item 17 (1.14.7, a session's first
+  packet taken as sequence 1), not ported yet ("Traps"), and item 59, a
+  log line of atemwire's UDP thread, which has no counterpart. Items 58
+  to 61 are bmdwire#95, #97 and #100's first commit; 62 to 65 the rest of
+  #100: its §2.7 `upload-retrying` event is `Progress.Retry`, and its
+  `file-transfer-error` status `stalled` an `*UploadStalledError`
+  ("Transfers"). The `Tracks:` line stays at v1.14.6 until item 17 is
+  ported.
 - `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
   bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md,
   and brought up to v1.8.0.
