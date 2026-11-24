@@ -458,6 +458,14 @@ type transport struct {
 	// resend counts towards tooBigAfter only if the switcher was heard
 	// since (bmdwire#100).
 	stuckResentAt time.Time
+
+	// What the transport asks of the session from the receive path, which
+	// returns packets only (bmdwire#100, e4119f7): chunks taken back
+	// (atemwire puts ChunksTakenBack on its receive queue), and a new
+	// session, with why (atemwire's reconnect()). The session takes both
+	// after each receive and each resend (Session.transportAsks).
+	takenBackQueue  []*takenBack
+	newSessionAsked string
 }
 
 func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *transport {
@@ -806,8 +814,8 @@ func (t *transport) resendUnacked() *takenBack {
 	}
 	t.stuckResentAt = t.now()
 	if t.stuckCount > tooBigAfter {
-		if tb := t.takeBackChunks(first); tb != nil {
-			return tb
+		if tb, ok := t.takeBackChunks(first); ok {
+			return tb // nil when a new session was asked for instead
 		}
 	}
 	waited := t.resendWait()
@@ -823,20 +831,69 @@ func (t *transport) resendUnacked() *takenBack {
 	return nil
 }
 
+// askedAgainForStuck is _asked_again_for_stuck (bmdwire#100, e4119f7):
+// the switcher asks again for the first packet it lacks, proof that it
+// hears us and still has not got that one. For a data chunk that counts
+// towards tooBigAfter as a resend it answered would, at most once per
+// resendMin, so a switcher that asks (an ATEM Mini Pro and a
+// Constellation both do) has the smaller size found as fast as its
+// requests come, not at our backed-off timer: a macro upload over a
+// 1,280 VPN took 10 s, now 1.9. True when it was handled: the chunks
+// taken back (queued for the session) or a new session asked for.
+func (t *transport) askedAgainForStuck(asked uint16) bool {
+	if t.ackedThrough < 0 || int(asked) != (t.ackedThrough+1)&seqMask {
+		return false
+	}
+	p := t.retransmitBuf[asked]
+	if p == nil {
+		return false
+	}
+	if _, _, ok := ftdaChunk(p.data); !ok {
+		return false
+	}
+	now := t.now()
+	if int(asked) != t.stuckSeq {
+		t.stuckSeq, t.stuckCount = int(asked), 1
+		t.stuckResentAt = now
+		return false
+	}
+	if now.Sub(t.stuckResentAt) < resendMin {
+		return false
+	}
+	t.stuckCount++
+	t.stuckResentAt = now
+	if t.stuckCount <= tooBigAfter {
+		return false
+	}
+	tb, ok := t.takeBackChunks(asked)
+	if tb != nil {
+		t.takenBackQueue = append(t.takenBackQueue, tb)
+	}
+	return ok
+}
+
 // takeBackChunks is _take_back_chunks (bmdwire#95): the data chunk at
 // first was sent tooBigAfter times more and never acknowledged while the
 // switcher goes on sending. It and everything after it are taken back:
 // their sequence numbers are free, as the switcher takes nothing after a
 // packet it lacks. Other packets among them go again now; the chunks
-// come back for the session. nil if this is not the case.
-func (t *transport) takeBackChunks(first uint16) *takenBack {
+// come back for the session. ok is false if this is not the case.
+//
+// Since bmdwire#100 (e4119f7) a packet after the stuck one small enough
+// to have got through means a new session instead (newSessionAsked, tb
+// nil, ok true), the size learnt kept: the switcher keeps what comes
+// after a gap (the hardware bench, 2026-11-24), so that packet may be with
+// it already, and its sequence number used again for other data would
+// put old data where the new belongs. A new session numbers afresh, and
+// the upload is carried over to it.
+func (t *transport) takeBackChunks(first uint16) (tb *takenBack, ok bool) {
 	p := t.retransmitBuf[first]
 	if p == nil {
-		return nil
+		return nil, false
 	}
 	transfer, size, ok := ftdaChunk(p.data)
 	if !ok {
-		return nil
+		return nil, false
 	}
 	limit := 0
 	for _, s := range chunkSteps {
@@ -846,13 +903,24 @@ func (t *transport) takeBackChunks(first uint16) *takenBack {
 		}
 	}
 	if limit == 0 {
-		return nil
+		return nil, false
 	}
 	if t.now().Sub(t.lastHeard) > resendMax {
 		// The switcher has gone quiet too: the link, not the size.
-		return nil
+		return nil, false
 	}
 	last := uint16(t.localSeq)
+	for seq := (first + 1) & seqMask; seq != (last+1)&seqMask; seq = (seq + 1) & seqMask {
+		if q := t.retransmitBuf[seq]; q != nil && len(q.data)+headerLen <= limit+24 {
+			t.maxChunk = limit
+			setChunkLimit(t.addr, limit)
+			t.stuckSeq, t.stuckCount = -1, 0
+			t.log.Warn("atem: no data chunk got through, and smaller packets after it may have: a new session, the upload again in smaller chunks",
+				"addr", t.addr, "size", size, "limit", limit)
+			t.newSessionAsked = fmt.Sprintf("chunks of %d bytes too big for the path", size)
+			return nil, true
+		}
+	}
 	var taken []*packet
 	for seq := first; ; seq = (seq + 1) & seqMask {
 		if q := t.retransmitBuf[seq]; q != nil {
@@ -870,7 +938,7 @@ func (t *transport) takeBackChunks(first uint16) *takenBack {
 	t.stuckSeq, t.stuckCount = -1, 0
 	t.maxChunk = limit
 	setChunkLimit(t.addr, limit)
-	tb := &takenBack{transfer: transfer, limit: limit}
+	tb = &takenBack{transfer: transfer, limit: limit}
 	for _, q := range taken {
 		if id, n, ok := ftdaChunk(q.data); ok && id == transfer {
 			tb.sizes = append(tb.sizes, n)
@@ -883,7 +951,7 @@ func (t *transport) takeBackChunks(first uint16) *takenBack {
 	}
 	t.log.Warn("atem: no data chunk got through, datagrams that big are not reaching the switcher; sending smaller chunks from now on",
 		"addr", t.addr, "size", size, "sent", tooBigAfter+1, "chunks", len(tb.sizes), "limit", limit)
-	return tb
+	return tb, true
 }
 
 // ackOwed is _ack_owed: a received packet wants acknowledging, now or at
@@ -970,6 +1038,9 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 			if ahead > 0 && ahead < t.retransmitWindow && (t.localSeq-int(have))&seqMask < t.retransmitWindow {
 				t.onACK(have, false)
 			}
+		}
+		if t.askedAgainForStuck(asked) {
+			return nil, nil // taken back, or a new session asked for
 		}
 		t.retransmitFrom(asked, false)
 	}

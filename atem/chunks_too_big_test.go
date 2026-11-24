@@ -12,6 +12,7 @@ package atem
 import (
 	"bytes"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -113,19 +114,66 @@ func TestOnlyDataChunksAreMadeSmaller(t *testing.T) {
 	}
 }
 
-func TestOtherPacketsAmongThemGoAgainNowInOrder(t *testing.T) {
+func TestASmallPacketAfterTheStuckChunksMeansANewSession(t *testing.T) { // test_a_small_packet_after_the_stuck_chunks_means_a_new_session
+	// The lock release after the chunks is small enough to have got
+	// through, and the units keep what comes after a gap (the hardware
+	// bench, 2026-11-24): its sequence number cannot be used again for
+	// other data. A new session, the size learnt kept (bmdwire#100,
+	// e4119f7). Until then the chunks were taken back and the release
+	// went again at once under the stuck chunk's number.
 	clearChunkLimits(t)
-	tr, c, now := stuckUpload(t, 3)
+	tr, _, now := stuckUpload(t, 3)
 	sendReliable(t, tr, Lock{Store: 0, State: false}.Encode())
-	c.reset()
-	tb := timerFires(tr, now, tooBigAfter+1, true)
-	if tb == nil || len(tb.sizes) != 3 {
-		t.Fatalf("taken back %+v", tb)
+	if tb := timerFires(tr, now, tooBigAfter+1, true); tb != nil {
+		t.Fatalf("taken back %+v under the same numbers", tb)
 	}
-	sent := c.sent()
-	last := sent[len(sent)-1]
-	if last.seq != 2 || string(last.data[4:8]) != "LOCK" || last.flags&flagRetransmission != 0 {
-		t.Fatalf("last sent seq %d %q flags %#x", last.seq, last.data[4:8], last.flags)
+	if !strings.Contains(tr.newSessionAsked, "too big") {
+		t.Fatalf("new session asked for: %q", tr.newSessionAsked)
+	}
+	if tr.maxChunk != 1224 || chunkLimit(switcherAddr) != 1224 {
+		t.Fatalf("maxChunk %d, kept %d", tr.maxChunk, chunkLimit(switcherAddr))
+	}
+}
+
+// request is the switcher asking for our packet seq again.
+func request(t *testing.T, tr *transport, seq uint16) {
+	t.Helper()
+	b := rawDatagram(tr.sessionID, 0, flagRequestRetransmission, nil)
+	b[6], b[7] = byte(seq>>8), byte(seq)
+	if _, err := tr.receive(b, switcherAddr); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTheSwitcherAskingAgainForTheStuckChunkFindsTheSizeFast(t *testing.T) { // test_the_switcher_asking_again_for_the_stuck_chunk_finds_the_size_fast
+	// A switcher that asks (a Mini Pro, a Constellation): its requests for
+	// the chunk it lacks count as resends it answered, without waiting
+	// for our backed-off timer (a macro upload over a 1,280 VPN: 10 s
+	// before; bmdwire#100, e4119f7).
+	clearChunkLimits(t)
+	tr, _, now := stuckUpload(t, 10)
+	start := *now
+	for range tooBigAfter + 1 {
+		*now = now.Add(100 * time.Millisecond)
+		request(t, tr, 2)
+	}
+	if len(tr.takenBackQueue) != 1 {
+		t.Fatalf("%d taken back", len(tr.takenBackQueue))
+	}
+	if tb := tr.takenBackQueue[0]; tb.limit != 1224 || len(tb.sizes) != 10 || now.Sub(start) >= time.Second {
+		t.Fatalf("taken back %+v after %v", tb, now.Sub(start))
+	}
+}
+
+func TestRequestsCloserThanResendMinCountOnce(t *testing.T) { // test_requests_closer_than_resend_min_count_once
+	clearChunkLimits(t)
+	tr, _, now := stuckUpload(t, 10)
+	for range 10 {
+		*now = now.Add(resendMin / 4)
+		request(t, tr, 2)
+	}
+	if len(tr.takenBackQueue) != 0 {
+		t.Fatalf("taken back %+v", tr.takenBackQueue)
 	}
 }
 
@@ -437,4 +485,29 @@ func TestMoreChunksTakenBackThanTheSendQueueHoldsAllGoAgain(t *testing.T) { // t
 	if len(again) != 2304*1224 || !bytes.Equal(again, tk.data[:len(again)]) {
 		t.Fatalf("%d bytes sent again, not the data from its start: some lost to the queue", len(again))
 	}
+}
+
+// The session does what the transport asks: the new session starts, the
+// upload carried over to it, to go again in the smaller chunks.
+func TestANewSessionAskedForCarriesTheUploadOver(t *testing.T) {
+	clearChunkLimits(t)
+	s, c := laneSession(t)
+	now := time.Unix(1000, 0)
+	s.t.now = func() time.Time { return now }
+	tk := uploadTask(4)
+	s.enqueueTask(tk)
+	grant(t, s, 0)
+	feedBudget(t, s, 3)
+	s.t.onACK(uint16(s.t.localSeq-3), true)                     // all but the chunks got there
+	sendReliable(t, s.t, Lock{Store: 0, State: false}.Encode()) // small, after them
+	c.reset()
+	timerFires(s.t, &now, tooBigAfter+1, true)
+	s.transportAsks()
+	if h, g := hellos(c); h != 1 || g != 1 {
+		t.Fatalf("%d hellos, %d goodbyes: no new session", h, g)
+	}
+	if len(s.lane.carried) != 1 || s.lane.carried[0] != tk || s.t.maxChunk != 1224 {
+		t.Fatalf("carried %v, maxChunk %d", s.lane.carried, s.t.maxChunk)
+	}
+	noResult(t, tk)
 }

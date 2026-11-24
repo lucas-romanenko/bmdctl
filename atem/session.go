@@ -533,6 +533,7 @@ func (s *Session) loop() error {
 			if tb := s.t.resendUnacked(); tb != nil {
 				s.chunksTakenBack(tb)
 			}
+			s.transportAsks()
 		case <-stalled.C:
 			s.checkDialStall()
 		case <-gap.C:
@@ -652,6 +653,9 @@ func (s *Session) onDatagram(d datagram) {
 	pkts, err := s.t.receive(d.b, d.from)
 	if err != nil {
 		s.fatal = err
+		return
+	}
+	if s.transportAsks(); s.fatal != nil {
 		return
 	}
 	for _, p := range pkts {
@@ -896,6 +900,21 @@ func (s *Session) onSilence() {
 		s.disconnected()
 	}
 	s.protoConnected = false
+}
+
+// transportAsks does what the transport asked for while it received or
+// resent (bmdwire#100, e4119f7): chunks it took back go again smaller, and
+// a new session asked for starts.
+func (s *Session) transportAsks() {
+	for len(s.t.takenBackQueue) > 0 {
+		tb := s.t.takenBackQueue[0]
+		s.t.takenBackQueue = s.t.takenBackQueue[1:]
+		s.chunksTakenBack(tb)
+	}
+	if why := s.t.newSessionAsked; why != "" {
+		s.t.newSessionAsked = ""
+		s.newSession(why)
+	}
 }
 
 // newSession is transport.reconnect() (bmdwire#100, e151696): end this

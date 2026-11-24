@@ -470,6 +470,26 @@ the switcher's that went missing is asked for (below).
   `ResendOnlyWhenAsked`, sends nothing again otherwise. Tests:
   `gap_asked_test.go` (`test_gap_asked_for.py`) and
   `gap_asked_fake_test.go`.
+- **The switcher asking again for a stuck chunk counts; a take-back that
+  could reuse a number it holds starts a new session** (bmdwire#100,
+  `e4119f7`). A request from the switcher for the first packet it has
+  not acknowledged, when that is a data chunk, counts towards
+  `tooBigAfter` as a resend it answered would, at most once per
+  `resendMin` (`askedAgainForStuck`): the size is found as fast as its
+  requests come (a macro over a 1,280 VPN, 10 s to 1.9 s in bmdwire's
+  bench). And when a packet after the stuck chunk is small enough to have
+  got through (its datagram within the next size and 24 bytes), the
+  chunks are not taken back: the units keep what comes after a gap, so
+  that packet may be with the switcher, and its number used again for
+  other data would put old data where the new belongs. The size is
+  learnt and a new session asked for (`newSessionAsked`), the upload
+  carried over to it ("Transfers"). The receive path returns packets
+  only, so what it asks for (chunks taken back, `takenBackQueue`, and a
+  new session) waits on the transport until the session takes it after
+  each receive and each resend (`transportAsks`), where atemwire puts
+  `ChunksTakenBack` on its receive queue and the UDP thread acts on
+  `_reconnect_asked`. Tests: `chunks_too_big_test.go`, whose test of the
+  other packets going again at once became the new session's.
 - **Logging.** `ATEMWIRE_PACKET_TRACE` is not read. The transport logs to a
   `*slog.Logger` (discarded by default): per-packet detail at debug,
   recoveries at warn, timeouts and dropped packets at error.
