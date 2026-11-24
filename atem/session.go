@@ -486,6 +486,10 @@ func (s *Session) loop() error {
 	// be sent again (resendAfter, bmdwire#36); stopped while none are.
 	resend := time.NewTimer(time.Hour)
 	resend.Stop()
+	// gap fires when a gap in the switcher's packets is due to be asked
+	// for (gapAskAfter, bmdwire#100); stopped while there is none.
+	gap := time.NewTimer(time.Hour)
+	gap.Stop()
 	for {
 		select {
 		case <-s.quit:
@@ -523,6 +527,8 @@ func (s *Session) loop() error {
 			}
 		case <-stalled.C:
 			s.checkDialStall()
+		case <-gap.C:
+			s.t.checkGap()
 		}
 		if s.fatal != nil {
 			return s.fatal
@@ -538,6 +544,11 @@ func (s *Session) loop() error {
 			resend.Stop()
 		} else {
 			resend.Reset(max(0, due.Sub(s.t.now())))
+		}
+		if due := s.t.gapDue; due.IsZero() {
+			gap.Stop()
+		} else {
+			gap.Reset(max(0, due.Sub(s.t.now())))
 		}
 	}
 }

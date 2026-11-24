@@ -190,6 +190,18 @@ const (
 	// taken back with every chunk after it and goes again smaller
 	// (chunkSteps).
 	tooBigAfter = 3
+	// gapAskAfter and gapAskEvery are GAP_ASK_AFTER and GAP_ASK_EVERY
+	// (bmdwire#100, 9824cab): a gap in the switcher's packets (one lost,
+	// later ones parked behind it) open gapAskAfter is asked for, a
+	// retransmission request from the first missing one, and again every
+	// gapAskEvery while it stays open, as the switchers ask us. Delivery
+	// used to wait for the switcher to send the lost packet again on its
+	// own; a Constellation HD did not, after a 3 s dropout with nothing
+	// of ours outstanding: the budget (FTCD) lost in it never came, and
+	// the upload sat at 47 % until the caller gave up (the hardware
+	// bench, 2026-11-24).
+	gapAskAfter = 100 * time.Millisecond
+	gapAskEvery = 250 * time.Millisecond
 	// sendRetries is SEND_RETRIES: a send the kernel refuses with ENOBUFS
 	// (macOS, a full buffer) or EAGAIN is tried again, 1 ms apart, this
 	// many times before the packet counts as lost on the wire.
@@ -272,13 +284,15 @@ func parsePacket(b []byte) (packet, error) {
 	return p, nil
 }
 
-// marshal mirrors Packet.to_bytes. Bytes 6-7 are always zero: atemwire
-// never asks the switcher to retransmit.
+// marshal mirrors Packet.to_bytes. Bytes 6-7 carry the sequence a
+// retransmission request asks for from, zero on every other packet
+// (bmdwire#100, 9824cab: until then atemwire never asked).
 func (p *packet) marshal() []byte {
 	b := make([]byte, headerLen+len(p.data))
 	binary.BigEndian.PutUint16(b[0:], uint16(len(b))+uint16(p.flags)<<11)
 	binary.BigEndian.PutUint16(b[2:], p.session)
 	binary.BigEndian.PutUint16(b[4:], p.ack)
+	binary.BigEndian.PutUint16(b[6:], p.retransmitFrom&seqMask)
 	binary.BigEndian.PutUint16(b[8:], p.remoteSeq)
 	binary.BigEndian.PutUint16(b[10:], p.seq)
 	copy(b[headerLen:], p.data)
@@ -343,6 +357,12 @@ type transport struct {
 	deliverNext  uint16 // next sequence owed to the session
 	deliverKnown bool
 	parked       map[uint16]packet
+	// gapDue is when the open gap in the switcher's packets (something
+	// parked) is next asked for (gapAskAfter), zero with no gap;
+	// gapsAsked counts the requests, for the session's life
+	// (_gap_due, gaps_asked; bmdwire#100).
+	gapDue    time.Time
+	gapsAsked int
 
 	enableACK  bool
 	hadTraffic bool
@@ -493,6 +513,7 @@ func (t *transport) connect() error {
 	t.rxEstablished = false
 	t.deliverKnown = false
 	clear(t.parked)
+	t.gapDue = time.Time{}
 	t.sessionID, t.sessionKnown = helloSession, true
 	t.enableACK = false
 	clear(t.retransmitBuf)
@@ -928,7 +949,19 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 	if p.flags&flagRequestRetransmission != 0 {
 		// The switcher missed one of ours: go back N from the sequence in
 		// header bytes 6-7.
-		t.retransmitFrom(p.retransmitFrom, false)
+		asked := p.retransmitFrom & seqMask
+		if t.ackedThrough >= 0 {
+			// It asks only for the first it lacks, so it has everything
+			// before (bmdwire#100, 9824cab). Its ACKs for those may have
+			// been lost (a dropout); taken as acknowledged, nothing it
+			// has is sent again or taken back as too big.
+			have := (asked - 1) & seqMask
+			ahead := int(have-uint16(t.ackedThrough)) & seqMask
+			if ahead > 0 && ahead < t.retransmitWindow && (t.localSeq-int(have))&seqMask < t.retransmitWindow {
+				t.onACK(have, false)
+			}
+		}
+		t.retransmitFrom(asked, false)
 	}
 	t.remoteSeq = p.seq
 	if !t.sessionKnown {
@@ -991,20 +1024,56 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 			out = append(out, q)
 			t.deliverNext = (t.deliverNext + 1) & seqMask
 		}
+		if len(t.parked) > 0 {
+			t.gapDue = t.now().Add(gapAskAfter)
+		} else {
+			t.gapDue = time.Time{}
+		}
 		return out, nil
 	case dist > seqHalf:
 		// Behind the cursor: already delivered.
 		return nil, nil
 	case int(dist) <= t.parkWindow:
-		// Ahead of a gap: hold it. The stalled ACK makes the switcher
-		// resend the missing packet, which releases this one.
+		// Ahead of a gap: hold it until the missing packet comes; asked
+		// for if it does not soon (gapAskAfter).
 		t.parked[seq] = p
+		if t.gapDue.IsZero() {
+			t.gapDue = t.now().Add(gapAskAfter)
+		}
 		return nil, nil
 	}
 	t.log.Error("atem: in-order delivery resync", "cursor", t.deliverNext, "seq", seq, "parked_dropped", len(t.parked))
 	clear(t.parked)
+	t.gapDue = time.Time{}
 	t.deliverNext = (seq + 1) & seqMask
 	return []packet{p}, nil
+}
+
+// checkGap is _check_gap (bmdwire#100, 9824cab): once the open gap in
+// the switcher's packets is due (gapAskAfter), ask for its first missing
+// packet, and again every gapAskEvery while it stays open. It returns
+// when the gap is next due, zero with none. The request is not one of
+// our reliable packets: no sequence number of its own, never buffered
+// for a resend, as an ACK.
+func (t *transport) checkGap() time.Time {
+	if t.gapDue.IsZero() {
+		return time.Time{}
+	}
+	if len(t.parked) == 0 || !t.deliverKnown || !t.sessionKnown {
+		t.gapDue = time.Time{}
+		return time.Time{}
+	}
+	now := t.now()
+	if !now.Before(t.gapDue) {
+		req := &packet{flags: flagRequestRetransmission, session: t.sessionID, retransmitFrom: t.deliverNext}
+		if err := t.write(req.marshal()); err != nil {
+			t.log.Debug("atem: asking the switcher for a lost packet failed", "seq", t.deliverNext, "err", err)
+		}
+		t.gapsAsked++
+		t.log.Debug("atem: asked the switcher again for a lost packet", "seq", t.deliverNext, "parked", len(t.parked))
+		t.gapDue = now.Add(gapAskEvery)
+	}
+	return t.gapDue
 }
 
 // stale reports a packet that belongs to no session of ours, which the

@@ -312,7 +312,8 @@ bytes 6-7, at most 128, window 4096); the goodbye (SYN, hello `0x04`, only
 when established); 15-bit sequence arithmetic throughout. No client
 keepalive, as in atemwire. Since bmdwire#36 (`d050c10`) there is a client
 retransmit timer: what the switcher hasn't acknowledged is resent on a
-timer that follows the round trip (below).
+timer that follows the round trip (below). Since bmdwire#100 a packet of
+the switcher's that went missing is asked for (below).
 
 - **No thread.** atemwire splits the transport between a UDP thread
   (`_receive_packet_low`, `_send_packet_low`) and the protocol worker
@@ -451,6 +452,24 @@ timer that follows the round trip (below).
   ZeroTier) never passed and its uploads hung. A cable out still never
   counts: nothing is heard after those resends. Tests: the last four in
   `chunks_too_big_test.go`, from `test_chunks_too_big.py`.
+- **A lost packet of the switcher's is asked for** (bmdwire#100,
+  `9824cab`). A gap in what the switcher sends (something parked behind
+  a missing packet) open `gapAskAfter` (0.1 s) is asked for with a
+  retransmission request (flag 0x08, the sequence in header bytes 6-7,
+  no sequence number of its own, never buffered), again every
+  `gapAskEvery` (0.25 s) while it stays open (`checkGap`, `gapDue`); the
+  run goroutine has a timer for it beside the resend timer, where
+  atemwire's UDP thread shortens its `select()`. A Constellation HD
+  after a 3 s dropout never sent the budget lost in it again on its own,
+  and the upload sat at 47 %. A request from the switcher for N, which it
+  sends only for the first packet it lacks, now counts as its ACK through
+  N-1 (`onACK`, not ACK-only) before the go-back-N from N, so its ACKs
+  lost in a dropout don't leave us resending what it has or taking chunks
+  back under numbers it holds. `marshal` writes bytes 6-7, zero on every
+  other packet. The fake switcher answers a request and, under
+  `ResendOnlyWhenAsked`, sends nothing again otherwise. Tests:
+  `gap_asked_test.go` (`test_gap_asked_for.py`) and
+  `gap_asked_fake_test.go`.
 - **Logging.** `ATEMWIRE_PACKET_TRACE` is not read. The transport logs to a
   `*slog.Logger` (discarded by default): per-packet detail at debug,
   recoveries at warn, timeouts and dropped packets at error.
