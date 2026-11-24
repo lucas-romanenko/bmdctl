@@ -26,13 +26,18 @@ import (
 )
 
 // Default timeouts for a transfer whose context has no deadline: those of
-// the atemwire and WebATEM callers.
+// the atemwire and WebATEM callers. A macro transfer's is time without
+// progress, with no cap on the whole (bmdwire#101, 85d2f58); the others
+// cap the whole transfer.
 const (
 	StillDownloadTimeout = 30 * time.Second // ATEMConnection.download_still
 	StillUploadTimeout   = 90 * time.Second // WebATEM uploader.py UPLOAD_TIMEOUT
 	StillClearTimeout    = 5 * time.Second  // ATEMConnection.clear_still
 	MacroTimeout         = 10 * time.Second // download_macro, upload_macro_bytecode
 )
+
+// macroTimeout is MacroTimeout, which tests shorten.
+var macroTimeout = MacroTimeout
 
 const (
 	// lockRerequest is LOCK_REREQUEST_SECONDS: a lock request with no
@@ -238,6 +243,9 @@ type transferTask struct {
 
 	done     chan transferResult // buffered 1; written once
 	finished bool
+	// queued: the task reached the lane (set before runTransfer waits;
+	// read by the caller's goroutine only).
+	queued bool
 
 	// tryAgain counts the switcher's FTDE 1 refusals of this transfer
 	// (TransferTask.try_again).
@@ -245,8 +253,10 @@ type transferTask struct {
 	// stallRetries counts an upload's fresh starts after uploadStall with
 	// no progress (stall_retries), across sessions.
 	stallRetries int
-	// heard is when a chunk of this download last arrived (UnixNano),
-	// for WithStallTimeout; the owner writes it, the caller reads it.
+	// heard is when this transfer last made progress (UnixNano): a chunk
+	// of a download arrived, or a budget, a chunk queued or an ACK of
+	// ours moved an upload on (bmdwire#101). The stall clock counts from
+	// it; the owner writes it, the caller reads it.
 	heard atomic.Int64
 
 	// size is the upload's length as sent (compressed, if it is), for
@@ -275,14 +285,18 @@ type progressKey struct{}
 
 type stallKey struct{}
 
-// WithStallTimeout returns a context under which a download gives up once
-// d passes with no data arriving (waiting for the lock counts as no data),
-// while the context's deadline, or the transfer's default timeout, caps
-// the whole download: download_still's stall_timeout (bmdwire#73,
-// 588a389, v1.11.0). A 4K still is 12 MB or more on the wire and an 8K
-// one four times that, so one fixed timeout is either too short for them
-// or far too long to notice a transfer that stopped. The error of a
-// stalled download says "stalled" and wraps context.DeadlineExceeded.
+// WithStallTimeout returns a context under which a transfer gives up once
+// d passes with no progress (waiting for the lock counts as none): for a
+// download, no data arriving; for an upload, no budget, no chunk queued
+// and none of our packets acknowledged. The context's deadline caps the
+// whole transfer; without one, a still download's default timeout does:
+// download_still's stall_timeout (bmdwire#73, 588a389, v1.11.0). A 4K
+// still is 12 MB or more on the wire and an 8K one four times that, so
+// one fixed timeout is either too short for them or far too long to
+// notice a transfer that stopped. A macro transfer's default timeout is
+// a stall timeout already (bmdwire#101); WithStallTimeout replaces it.
+// The error of a stalled transfer says "stalled" and wraps
+// context.DeadlineExceeded.
 func WithStallTimeout(ctx context.Context, d time.Duration) context.Context {
 	return context.WithValue(ctx, stallKey{}, d)
 }
@@ -663,13 +677,14 @@ func (s *Session) ClearStill(ctx context.Context, slot int) error {
 // bytecode, empty for an empty slot. The macro store takes no lock: FTSU,
 // FTDa chunks each acknowledged with FTUA, FTDC. It is atemwire's
 // ATEMConnection.download_macro; without a context deadline it gives up
-// after MacroTimeout.
+// once MacroTimeout passes with nothing arriving (bmdwire#101: it was the
+// whole download's).
 func (s *Session) DownloadMacro(ctx context.Context, slot int) ([]byte, error) {
 	if err := checkSlot("macro", slot, 0xFFFF); err != nil {
 		return nil, err
 	}
 	t := &transferTask{kind: taskDownload, store: StoreMacros, slot: uint16(slot)}
-	return s.runTransfer(ctx, t, MacroTimeout)
+	return s.runTransfer(ctx, t, macroTimeout)
 }
 
 // UploadMacro uploads bytecode to macro slot slot (0-based) with a name and
@@ -677,19 +692,86 @@ func (s *Session) DownloadMacro(ctx context.Context, slot int) ([]byte, error) {
 // FTDa chunks, FTFD with the bytecode's MD5, FTDC. Empty bytecode (FTSD
 // and FTFD together, no budget) doesn't empty the slot: the switcher keeps
 // a macro with the name and description and no ops. It is atemwire's
-// upload_macro_bytecode; without a context deadline it gives up after
-// MacroTimeout.
+// upload_macro_bytecode; without a context deadline it gives up once
+// MacroTimeout passes without progress (no budget, no chunk queued, none
+// of our packets acknowledged), however long a slow link takes in all
+// (bmdwire#101: it was the whole upload's).
+//
+// The switcher makes the slot a nameless macro as the upload starts (it
+// pre-erases, FTSD mode 0x0300). A failed upload is withdrawn, as any
+// transfer its caller gives up on is, and a slot the state showed empty
+// before is emptied again (MAct 5, MacroDelete), or "Macro N" stays
+// behind (bmdwire#101, 85d2f58). A slot that held a macro has lost it
+// either way, and the error says so.
 func (s *Session) UploadMacro(ctx context.Context, slot int, name, description string, bytecode []byte) error {
 	if err := checkSlot("macro", slot, 0xFFFF); err != nil {
 		return err
 	}
+	wasUsed := s.macroSlotUsed(uint16(slot))
 	t := &transferTask{
 		kind: taskUpload, store: StoreMacros, slot: uint16(slot),
 		data: bytecode, dataLength: len(bytecode), hash: md5.Sum(bytecode),
 		name: name, description: description,
 	}
-	_, err := s.runTransfer(ctx, t, MacroTimeout)
+	_, err := s.runTransfer(ctx, t, macroTimeout)
+	if err == nil || !t.queued {
+		return err
+	}
+	s.cleanUpFailedMacroUpload(uint16(slot), wasUsed)
+	if wasUsed == slotUsed {
+		err = fmt.Errorf("%w; slot %d held a macro, which the switcher erased as the upload started", err, slot)
+	}
 	return err
+}
+
+// slotState is what the state says of a slot before a transfer.
+type slotState uint8
+
+const (
+	slotUnknown slotState = iota // no MPrp for it yet
+	slotEmpty
+	slotUsed
+)
+
+// macroSlotUsed is _macro_slot_used: whether macro slot slot held a macro,
+// as the state shows it.
+func (s *Session) macroSlotUsed(slot uint16) slotState {
+	ch := make(chan slotState, 1)
+	if s.do(func() {
+		p := s.state.Macros.Properties[slot]
+		switch {
+		case p == nil:
+			ch <- slotUnknown
+		case p.IsUsed:
+			ch <- slotUsed
+		default:
+			ch <- slotEmpty
+		}
+	}) != nil {
+		return slotUnknown
+	}
+	return <-ch
+}
+
+// cleanUpFailedMacroUpload is _clean_up_failed_upload, after runTransfer
+// has withdrawn the task (atemwire's cancel_transfer): a slot that was
+// empty before is emptied again, on a session that is still up. A slot the
+// state didn't know is left alone.
+func (s *Session) cleanUpFailedMacroUpload(slot uint16, wasUsed slotState) {
+	if wasUsed != slotEmpty {
+		return
+	}
+	sent := make(chan struct{})
+	if s.do(func() {
+		defer close(sent)
+		if !s.initialized || s.t.state != stateEstablished {
+			return
+		}
+		s.sendCommands(MacroAction{Slot: slot, Action: MacroDelete})
+		s.log.Info("atem: macro upload failed: emptied the slot again (it was empty before)", "slot", slot)
+	}) == nil {
+		<-sent
+	}
 }
 
 // LockHolder reports who holds store's lock as far as the session can
@@ -744,10 +826,21 @@ func (s *Session) videoMode() (*VideoModeField, error) {
 // deadline, timeout applies. On cancellation t is withdrawn: dequeued if it
 // hasn't started, abandoned if it is in flight (see cancelTask).
 func (s *Session) runTransfer(ctx context.Context, t *transferTask, timeout time.Duration) ([]byte, error) {
+	// The stall clock, when asked for: the transfer gives up once it has
+	// made no progress for stall.
+	stall, _ := ctx.Value(stallKey{}).(time.Duration)
 	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
+		if t.timeoutIsStall() {
+			// The default timeout is time without progress, with no cap
+			// on the whole (bmdwire#101); WithStallTimeout replaces it.
+			if stall <= 0 {
+				stall = timeout
+			}
+		} else {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
 	}
 	t.done = make(chan transferResult, 1)
 	progress, _ := ctx.Value(progressKey{}).(func(Progress))
@@ -755,12 +848,9 @@ func (s *Session) runTransfer(ctx context.Context, t *transferTask, timeout time
 		t.progress = make(chan Progress, 1)
 	}
 	t.size = len(t.data)
-	// The stall clock, when asked for: a download gives up once nothing
-	// has arrived for stall.
-	stall, _ := ctx.Value(stallKey{}).(time.Duration)
 	var stallC <-chan time.Time // nil, and never ready, without it
-	if stall > 0 && t.kind == taskDownload {
-		t.heard.Store(time.Now().UnixNano())
+	if stall > 0 && t.kind != taskClear {
+		t.moved()
 		stallC = time.After(stall)
 	}
 	var cause error
@@ -778,6 +868,7 @@ func (s *Session) runTransfer(ctx context.Context, t *transferTask, timeout time
 	if err := <-errc; err != nil {
 		return nil, err
 	}
+	t.queued = true
 wait:
 	for {
 		select {
@@ -796,7 +887,11 @@ wait:
 		case <-stallC:
 			quiet := time.Since(time.Unix(0, t.heard.Load()))
 			if quiet >= stall {
-				cause = fmt.Errorf("stalled (no data for %v): %w", stall, context.DeadlineExceeded)
+				what := "no data"
+				if t.kind == taskUpload {
+					what = "no progress"
+				}
+				cause = fmt.Errorf("stalled (%s for %v): %w", what, stall, context.DeadlineExceeded)
 				break wait
 			}
 			stallC = time.After(stall - quiet)
@@ -821,6 +916,17 @@ wait:
 	// The task finished before the cancellation reached the lane.
 	r := <-t.done
 	return r.data, r.err
+}
+
+// timeoutIsStall reports whether t's default timeout is time without
+// progress rather than the whole transfer's: a macro's (bmdwire#101).
+func (t *transferTask) timeoutIsStall() bool {
+	return t.store == StoreMacros
+}
+
+// moved stamps t as making progress now, for the stall clock.
+func (t *transferTask) moved() {
+	t.heard.Store(time.Now().UnixNano())
 }
 
 // describe names a task in errors.
@@ -1323,6 +1429,9 @@ func (s *Session) onBudget(f FileTransferContinueDataField) {
 	}
 	s.lane.budget = &f
 	s.lane.grants++
+	if t := s.lane.transfer; t != nil && t.kind == taskUpload {
+		t.moved()
+	}
 	if t := s.lane.transfer; t != nil && t.kind == taskUpload && !t.metadataSent {
 		// FTFD with the first budget, before the data, as ATEM Software
 		// Control sends it (bmdwire#36); it used to wait for the bulk
@@ -1349,7 +1458,7 @@ func (s *Session) onChunk(f *FileTransferDataField) {
 		return
 	}
 	l.lastData = s.t.now()
-	l.transfer.heard.Store(time.Now().UnixNano())
+	l.transfer.moved()
 	l.buffer = append(l.buffer, f.Data)
 	l.bufferBytes += len(f.Data)
 	// transfer-progress: a still's, of its frame's uncompressed size.
@@ -1522,6 +1631,7 @@ func (s *Session) queueChunks() {
 			chunk, used = rest[:min(size-16, len(rest))], size-16
 		}
 		t.offset += used
+		t.moved()
 		l.budget.Count--
 		if l.budget.Count == 0 {
 			l.budget = nil
@@ -1839,6 +1949,7 @@ func (s *Session) carryUploadsOver() {
 		l.remove(q)
 		q.tid, q.offset, q.metadataSent = 0, 0, false
 		q.report(0, q.size)
+		q.moved() // its offset back at 0: bmdwire#101's progress mark moves
 		if !slices.Contains(l.carried, q) {
 			l.carried = append(l.carried, q)
 		}

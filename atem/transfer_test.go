@@ -431,6 +431,60 @@ func TestDequeueClearRemovesPendingTaskOnly(t *testing.T) { // test_dequeue_clea
 	}
 }
 
+// --- test_macro_upload_cleanup.py: AtemProtocol.cancel_transfer, ours only
+// (bmdwire#101). Here cancelTask, which a transfer whose caller gave up
+// on has always gone through: it withdraws that task alone.
+
+func macroUpload(slot uint16) *transferTask {
+	tk := task(taskUpload, StoreMacros, slot)
+	tk.data, tk.dataLength = []byte{8, 0, 2, 0, 0, 0, 5, 0}, 8
+	return tk
+}
+
+func TestAWaitingTransferIsTakenOffTheQueueAndTheRestStay(t *testing.T) { // test_a_waiting_transfer_is_taken_off_the_queue_and_the_rest_stay
+	s, _ := laneSession(t)
+	a, b, c := macroUpload(0), macroUpload(1), macroUpload(2)
+	s.enqueueTask(a)
+	s.enqueueTask(b)
+	s.enqueueTask(c)
+	if s.lane.transfer != a {
+		t.Fatal("a is not running")
+	}
+	if err := s.cancelTask(b, context.DeadlineExceeded); err == nil {
+		t.Fatal("no error for the caller")
+	}
+	if q := s.lane.queues[StoreMacros]; len(q) != 2 || q[0] != a || q[1] != c || s.lane.transfer != a {
+		t.Fatalf("queue %v, transfer %v", q, s.lane.transfer)
+	}
+}
+
+func TestTheRunningTransferIsDroppedAndTheNextGoes(t *testing.T) { // test_the_running_transfer_is_dropped_and_the_next_goes
+	s, c := laneSession(t)
+	a, b := macroUpload(0), macroUpload(1)
+	s.enqueueTask(a)
+	s.enqueueTask(b)
+	s.cancelTask(a, context.DeadlineExceeded)
+	if q := s.lane.queues[StoreMacros]; len(q) != 1 || q[0] != b || s.lane.transfer != b {
+		t.Fatalf("queue %v, transfer %v", q, s.lane.transfer)
+	}
+	if ftsd := commands(c, "FTSD"); len(ftsd) != 2 || binary.BigEndian.Uint16(ftsd[1][6:]) != 1 {
+		t.Fatalf("FTSD %x", ftsd)
+	}
+}
+
+func TestATransferGoneAlreadyIsLeft(t *testing.T) { // test_a_transfer_gone_already_is_left
+	s, _ := laneSession(t)
+	a := macroUpload(0)
+	s.enqueueTask(a)
+	feedCmd(t, s, "FTDC", append(u16be(43), 1, 2))
+	if r := result(t, a); r.err != nil {
+		t.Fatal(r.err)
+	}
+	if err := s.cancelTask(a, context.DeadlineExceeded); err != nil {
+		t.Fatalf("err %v", err)
+	}
+}
+
 // Before the state dump completes, a transfer is refused before anything
 // goes on the wire (test_dead_connection_raises_before_wire,
 // test_clear_still_dead_connection_raises_before_wire).

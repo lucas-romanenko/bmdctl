@@ -34,7 +34,8 @@ const macroDownloadTimeout = 10 * time.Second
 // atemwire first waits for the state dump to settle (wait_state_settled);
 // there is nothing to wait for here, since a Session's state is complete
 // once Dial returns. Then it reads the state once and downloads each used
-// macro slot in turn, each within MacroTimeout (10 s); a download that
+// macro slot in turn, each until MacroTimeout (10 s) passes with nothing
+// arriving; a download that
 // fails leaves that macro with its name and description only, as in
 // atemwire. Save fails only if ctx ends, which atemwire has no counterpart
 // for.
@@ -917,9 +918,9 @@ func (s *saver) macroPool(root *Element) error {
 		if err := s.ctx.Err(); err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(s.ctx, timeout)
-		raw, err := s.src.DownloadMacro(ctx, int(idx))
-		cancel()
+		// Seconds with nothing arriving, not the whole download's
+		// (bmdwire#101, 85d2f58).
+		raw, err := s.src.DownloadMacro(atem.WithStallTimeout(s.ctx, timeout), int(idx))
 		if err != nil {
 			s.log.Warn("macro download failed; saving metadata only", "slot", idx, "err", err)
 			continue

@@ -1358,9 +1358,43 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   (2,304) overflowed its 1,024 and the oldest were dropped; the still
   came out short. `e151696` also drops `5587e15`'s "budget sent again"
   guard, so it is not ported.
+- **A failed macro upload empties the slot again** (bmdwire#101,
+  `85d2f58`). The switcher makes the slot a nameless macro as a macro
+  upload starts (pre-erase, FTSD mode `0x0300`), and a failed one (timed
+  out, refused, the session lost) left "Macro N" behind. `UploadMacro`
+  reads the slot's MPrp before it queues the upload
+  (`_macro_slot_used`: used, empty, or unknown with no MPrp) and, after
+  a failure, sends MAct 5 (`MacroDelete`) for a slot that was empty, on
+  a session still established and ready; a slot that held a macro has
+  lost it either way and the error says so; an unknown one is left
+  alone. Nothing is sent for an upload refused before it was queued
+  (`ErrNotReady`), as atemwire raises before `upload` there.
+  atemwire's new `AtemProtocol.cancel_transfer`, which takes only the
+  caller's task off the queue where `abort_transfers` took everything,
+  is what `cancelTask` has done here from the start ("Cancellation
+  withdraws one task"); its three tests are ported against
+  `cancelTask` and pass on the code before. The fake switcher
+  pre-erases too, and `PaceUploads` slows its budgets. Tests:
+  `macro_upload_cleanup_test.go` and the `cancel_transfer` ones in
+  `transfer_test.go`, from `test_macro_upload_cleanup.py`.
 - **Default timeouts** when the context has no deadline: 30 s still
   download, 5 s clear, 10 s macro download and upload (atemwire's callers),
-  90 s still upload (WebATEM's `UPLOAD_TIMEOUT`).
+  90 s still upload (WebATEM's `UPLOAD_TIMEOUT`). A macro transfer's is
+  time without progress, with no cap on the whole (bmdwire#101,
+  `85d2f58`; `timeoutIsStall`): `upload_macro_bytecode`'s and
+  `download_macro_bytecode`'s `timeout` became seconds without progress
+  there, and `MacroTimeout` is their `timeout`. A deadline on the
+  context still caps the whole transfer, as a context's deadline does
+  everywhere; `WithStallTimeout` replaces the 10 s. The engine's
+  transfers set a deadline only for `--timeout`, so the CLI gets the
+  no-progress default; the profile's `MacroTimeout` (apply and save)
+  goes in as `WithStallTimeout`, where it was a deadline. Progress is
+  bmdwire's `_progress_mark`: a budget, a chunk cut, or the switcher
+  taking more of our packets while an upload is in hand (`uploadInHand`,
+  whatever its phase, as atemwire's mark reads `_acked_through` for the
+  task wherever it waits); an upload carried over to a new session
+  (bmdwire#100), its offset back at 0, has moved too, so the caller's
+  clock starts again with each fresh start.
 - **A stall timeout** (bmdwire#73, `588a389`): `download_still`'s
   `stall_timeout` is `WithStallTimeout(ctx, d)`, a context option as
   `WithProgress` is, so `DownloadStill`'s signature stays. The owner
@@ -1368,6 +1402,11 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   gives up once `d` passes without one, the wait for the lock included,
   with an error that says `stalled` and wraps `context.DeadlineExceeded`.
   The engine doesn't set it; atemwire's own callers don't either.
+  Since bmdwire#101 the clock runs for uploads too: atemwire's
+  `_wait_with_progress` watches `(send_done, offset, _acked_through)`;
+  here the owner stamps the task when a budget comes, a chunk is cut
+  (`offset`) or the switcher's ACK of our packets moves while the upload
+  is in flight (`onDatagram`). A stalled upload says "no progress".
 - **Not ready means refused.** A transfer asked for between a disconnect and
   the end of the next state dump fails with `ErrNotReady` before anything
   is sent; atemwire v1.3.0 checks only `is_connected` and queues into a

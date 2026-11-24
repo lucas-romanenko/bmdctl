@@ -90,8 +90,11 @@ type Switcher struct {
 	// downloadPace, if set, holds each refill of a download's chunks
 	// this long after the FTUA that allows it (PaceDownloads).
 	downloadPace time.Duration
-	silent       bool
-	stale        int // packets of the old session to send around the next handshake
+	// uploadPace, if set, holds each budget of an upload after its first
+	// this long (PaceUploads).
+	uploadPace time.Duration
+	silent     bool
+	stale      int // packets of the old session to send around the next handshake
 	// onlyAsked: what the session hasn't ACKed goes again only when it
 	// asks for it (ResendOnlyWhenAsked).
 	onlyAsked bool
@@ -196,8 +199,9 @@ func (sw *Switcher) DropFromClient(n int) { sw.mu.Lock(); sw.dropFromClient += n
 func (sw *Switcher) DelayACKs(d time.Duration) { sw.mu.Lock(); sw.ackDelay = d; sw.mu.Unlock() }
 
 // PaceDownloads sends a download's chunks d after the acknowledgement
-// that makes room for them, instead of at once: a long download whose
-// data keeps arriving, never more than d apart.
+// that makes room for them, instead of at once, one refill at a time: a
+// long download whose data keeps arriving, never more than d apart, at
+// most ChunkCount chunks every d.
 func (sw *Switcher) PaceDownloads(d time.Duration) { sw.mu.Lock(); sw.downloadPace = d; sw.mu.Unlock() }
 
 // QueueOther has another client ask for store with a whole-store LOCK
