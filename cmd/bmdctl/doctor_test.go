@@ -50,11 +50,15 @@ func TestDoctor(t *testing.T) {
 	b.must("hosts", "default", "studio")
 	b.must("--host", "studio", "cut") // the engine holds studio's session
 
+	socket := "ok socket " + b.env["BMDCTL_SOCKET"] + " (from $BMDCTL_SOCKET)"
+	if runtime.GOOS == "windows" {
+		socket = "ok socket named pipe " + b.env["BMDCTL_SOCKET"]
+	}
 	code, out := b.doctor()
 	for _, want := range []string{
 		"ok engine",
 		"warn engine version", // the bench's engine reports no version
-		"ok socket " + b.env["BMDCTL_SOCKET"] + " (from $BMDCTL_SOCKET)",
+		socket,
 		"ok log",
 		"5 hosts, default studio",
 		"ok last host studio",
@@ -89,25 +93,29 @@ func TestDoctor(t *testing.T) {
 	}
 
 	// Misconfigurations fail it: a default that isn't a host, a bad
-	// BMDCTL_HOST, a socket left by a dead engine.
+	// BMDCTL_HOST, a socket left by a dead engine (a named pipe goes with
+	// its engine).
 	path := filepath.Join(b.env["XDG_CONFIG_HOME"], "bmdctl", "hosts.yml")
 	os.WriteFile(path, []byte("default: gone\nhosts:\n  - name: studio\n    address: 192.0.2.10\n"), 0o644)
 	b.env[HostEnv] = "no such host!"
 	b.stopEngine()
-	l, err := net.Listen("unix", b.env["BMDCTL_SOCKET"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	l.(*net.UnixListener).SetUnlinkOnClose(false)
-	l.Close()
-	code, out = b.doctor()
-	for _, want := range []string{
+	wants := []string{
 		"warn engine not running at",
-		"is left from an engine that died",
 		"fail hosts " + path + ": the default, gone, is not a host",
 		`fail BMDCTL_HOST "no such host!" is neither a host in hosts.yml nor an address`,
 		"host studio atem 192.0.2.10: ATEM 1 M/E Constellation HD",
-	} {
+	}
+	if runtime.GOOS != "windows" {
+		l, err := net.Listen("unix", b.env["BMDCTL_SOCKET"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		l.(*net.UnixListener).SetUnlinkOnClose(false)
+		l.Close()
+		wants = append(wants, "is left from an engine that died")
+	}
+	code, out = b.doctor()
+	for _, want := range wants {
 		if !strings.Contains(out, want) {
 			t.Errorf("lacks %q:\n%s", want, out)
 		}

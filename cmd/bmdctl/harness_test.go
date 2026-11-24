@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -79,9 +80,10 @@ func newBenchConfig(t *testing.T, dump []byte, cfg engine.Config) *bench {
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	b := &bench{t: t, dir: dir, dump: dump, net: fakenet.New(), env: map[string]string{
 		"HOME":            dir,
+		"USERPROFILE":     dir, // Windows' HOME
 		"XDG_CONFIG_HOME": filepath.Join(dir, "config"),
 		"XDG_STATE_HOME":  filepath.Join(dir, "state"),
-		"BMDCTL_SOCKET":   filepath.Join(dir, "s.sock"),
+		"BMDCTL_SOCKET":   testSocket(dir),
 	}}
 	b.net.EveryATEM()
 	if err := b.startEngine(cfg); err != nil {
@@ -246,8 +248,11 @@ func runCLI(args ...string) (code int, stdout, stderr string) {
 	c.env = func(k string) string {
 		switch k {
 		case "BMDCTL_SOCKET":
+			if runtime.GOOS == "windows" {
+				return fmt.Sprintf(`\\.\pipe\bmdctl-none-%d`, os.Getpid())
+			}
 			return filepath.Join(dir, fmt.Sprintf("bmdctl-none-%d.sock", os.Getpid()))
-		case "HOME":
+		case "HOME", "USERPROFILE":
 			return dir
 		}
 		return ""
@@ -255,6 +260,16 @@ func runCLI(args ...string) (code int, stdout, stderr string) {
 	c.spawn = func(string, []string, []string) error { return errors.New("tests start no engine") }
 	code = c.run(args)
 	return code, o.String(), e.String()
+}
+
+// testSocket is where a bench's engine listens: a socket in its
+// directory, or on Windows a named pipe named after the directory, which
+// is as unique.
+func testSocket(dir string) string {
+	if runtime.GOOS == "windows" {
+		return `\\.\pipe\bmdctl-test-` + filepath.Base(dir)
+	}
+	return filepath.Join(dir, "s.sock")
 }
 
 // eventually waits up to 15 s for f: a CI runner under -race can take

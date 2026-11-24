@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -149,6 +150,9 @@ var goldenDir, _ = filepath.Abs(filepath.Join("testdata", "terminal"))
 // golden compares got with a golden file, or rewrites it with -update.
 func golden(t *testing.T, name, got string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		got = slashPaths(got)
+	}
 	path := filepath.Join(goldenDir, name)
 	if *update {
 		os.MkdirAll(filepath.Dir(path), 0o755)
@@ -163,6 +167,16 @@ func golden(t *testing.T, name, got string) {
 	if string(want) != got {
 		t.Errorf("%s is stale (go test ./cmd/bmdctl -run TestTerminal -update); got:\n%s", path, got)
 	}
+}
+
+// windowsPath is a path a transcript shows under the test's directory or
+// the home directory, as Windows writes it.
+var windowsPath = regexp.MustCompile(`(?:DIR|~)\\\S*`)
+
+// slashPaths writes the paths windowsPath finds with forward slashes, as
+// the goldens have them.
+func slashPaths(s string) string {
+	return windowsPath.ReplaceAllStringFunc(s, filepath.ToSlash)
 }
 
 // Writes: the prompt, the switcher's name bold and its address dim, the
@@ -874,5 +888,7 @@ func TestTerminalSessions(t *testing.T) {
 	tr.run()
 	cancel()
 	<-watched
-	golden(t, "sessions.golden", strings.ReplaceAll(strings.ReplaceAll(tr.out.String(), shortVersion(), "VERSION"), b.dir, "DIR"))
+	out := strings.ReplaceAll(tr.out.String(), shortVersion(), "VERSION")
+	out = strings.ReplaceAll(out, b.env["BMDCTL_SOCKET"], "DIR/s.sock") // a named pipe on Windows
+	golden(t, "sessions.golden", strings.ReplaceAll(out, b.dir, "DIR"))
 }
