@@ -92,6 +92,9 @@ type Switcher struct {
 	downloadPace time.Duration
 	silent       bool
 	stale        int // packets of the old session to send around the next handshake
+	// onlyAsked: what the session hasn't ACKed goes again only when it
+	// asks for it (ResendOnlyWhenAsked).
+	onlyAsked bool
 
 	locks      map[uint16]holder // store locks that are held
 	lockQueued map[uint16]bool   // the session's PLCK waits for another client's release
@@ -257,6 +260,13 @@ func (sw *Switcher) DropSequencesAlways(seqs ...uint16) {
 	}
 }
 
+// ResendOnlyWhenAsked stops the switcher sending again on its own what the
+// session hasn't acknowledged: it goes again only when the session asks
+// for it (a retransmission request, flag 0x08). A Constellation HD after
+// a 3 s dropout never sent again the budget lost in it (the hardware
+// bench, 2026-11-24; bmdwire#100). The switcher always answers a request.
+func (sw *Switcher) ResendOnlyWhenAsked(on bool) { sw.mu.Lock(); sw.onlyAsked = on; sw.mu.Unlock() }
+
 // SendStale makes the switcher, around the session's next handshake, send
 // n reliable packets carrying the previous session's id and its next
 // sequence numbers, both before it answers the SYN and again before the new
@@ -405,11 +415,12 @@ func parse(b []byte) (packet, bool) {
 		return packet{}, false
 	}
 	return packet{
-		flags:   b[0] >> 3,
-		session: binary.BigEndian.Uint16(b[2:]),
-		ack:     binary.BigEndian.Uint16(b[4:]),
-		seq:     binary.BigEndian.Uint16(b[10:]),
-		data:    b[12:],
+		flags:          b[0] >> 3,
+		session:        binary.BigEndian.Uint16(b[2:]),
+		ack:            binary.BigEndian.Uint16(b[4:]),
+		retransmitFrom: binary.BigEndian.Uint16(b[6:]) & 0x7FFF,
+		seq:            binary.BigEndian.Uint16(b[10:]),
+		data:           b[12:],
 	}, true
 }
 
@@ -459,6 +470,9 @@ func (sw *Switcher) receive(b []byte) {
 			}
 		}
 	}
+	if p.flags&flagRequestRetransmission != 0 {
+		sw.resendFrom(p.retransmitFrom)
+	}
 	if p.flags&flagReliable == 0 {
 		return
 	}
@@ -489,6 +503,26 @@ func (sw *Switcher) receive(b []byte) {
 	})
 	if len(echoes) > 0 {
 		sw.sendReliable(echoes)
+	}
+}
+
+// resendFrom answers the session's retransmission request: what it hasn't
+// acknowledged, from seq on, in order. sw.mu is held.
+func (sw *Switcher) resendFrom(seq uint16) {
+	var due []uint16
+	for s := range sw.unacked {
+		if (s-seq)&0x7FFF < 0x4000 {
+			due = append(due, s)
+		}
+	}
+	slices.SortFunc(due, func(a, b uint16) int { return int((a-seq)&0x7FFF) - int((b-seq)&0x7FFF) })
+	now := time.Now()
+	for _, s := range due {
+		u := sw.unacked[s]
+		b := append([]byte(nil), u.b...)
+		b[0] |= flagRetransmission << 3
+		u.at = now
+		sw.enqueue(b)
 	}
 }
 
@@ -612,7 +646,7 @@ func (sw *Switcher) tick() {
 			now := time.Now()
 			var due []uint16
 			for seq, u := range sw.unacked {
-				if now.Sub(u.at) >= ResendAfter {
+				if !sw.onlyAsked && now.Sub(u.at) >= ResendAfter {
 					due = append(due, seq)
 				}
 			}

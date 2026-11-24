@@ -10,6 +10,9 @@ prefixed false:
 <clear><cr><dim>  ⠴ uploading sponsor.png → slot 10 · 0.2 s</>
 <clear><cr><dim>  ⠦ uploading sponsor.png → slot 10 █████░░░ 68%  816 KB  0.8 s</>
 <clear><cr><dim>  ⠧ uploading sponsor.png → slot 10 █████░░░ 58%  still 4 of 6  1.8 s</>
+<clear><cr><dim>  ⠇ uploading logo.png → slot 3 · 0.2 s</>
+<clear><cr><dim>  ⠏ uploading logo.png → slot 3 ░░░░░░░░ 0%  retrying (1/2)  0 B  1.2 s</>
+<clear><cr><dim>  ⠋ uploading logo.png → sl… ██░░░░░░ 25%  retrying (1/2)  300 KB  2.2 s</>
 <clear><cr>
 prefixed true:
 line 2: 
@@ -23,4 +26,7 @@ line 2:
 <clear><cr>line 2: <dim>  ⠴ uploading sponsor.png → slot 10 · 0.2 s</>
 <clear><cr>line 2: <dim>  ⠦ uploading sponsor.png → slot 10 █████░░░ 68%  816 KB  0.8 s</>
 <clear><cr>line 2: <dim>  ⠧ uploading sponsor.png → slot 10 █████░░░ 58%  still 4 of 6  1.8 s</>
+<clear><cr>line 2: <dim>  ⠇ uploading logo.png → slot 3 · 0.2 s</>
+<clear><cr>line 2: <dim>  ⠏ uploading logo.png → slot 3 ░░░░░░░░ 0%  retrying (1/2)  0 B  1.2 s</>
+<clear><cr>line 2: <dim>  ⠋ uploading logo.png → sl… ██░░░░░░ 25%  retrying (1/2)  300 KB  2.2 s</>
 <clear><cr>

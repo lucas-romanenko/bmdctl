@@ -190,15 +190,18 @@ const (
 	// taken back with every chunk after it and goes again smaller
 	// (chunkSteps).
 	tooBigAfter = 3
-	// heardGap is HEARD_GAP (bmdwire#97): the switcher sends a Time
-	// packet every 40 ms, so a gap of more than this in what we receive
-	// means the link was down. A chunk stuck across such a gap may have got
-	// through with its ACK lost in it, and taking it back would send other
-	// data under sequence numbers the switcher already has (a cable out
-	// for 3 s mid-upload on a LAN: the still arrived with chunks twice and
-	// the wrong MD5). takeBackChunks needs the switcher heard without one
-	// since the chunk got stuck.
-	heardGap = 250 * time.Millisecond
+	// gapAskAfter and gapAskEvery are GAP_ASK_AFTER and GAP_ASK_EVERY
+	// (bmdwire#100, 9824cab): a gap in the switcher's packets (one lost,
+	// later ones parked behind it) open gapAskAfter is asked for, a
+	// retransmission request from the first missing one, and again every
+	// gapAskEvery while it stays open, as the switchers ask us. Delivery
+	// used to wait for the switcher to send the lost packet again on its
+	// own; a Constellation HD did not, after a 3 s dropout with nothing
+	// of ours outstanding: the budget (FTCD) lost in it never came, and
+	// the upload sat at 47 % until the caller gave up (the hardware
+	// bench, 2026-11-24).
+	gapAskAfter = 100 * time.Millisecond
+	gapAskEvery = 250 * time.Millisecond
 	// sendRetries is SEND_RETRIES: a send the kernel refuses with ENOBUFS
 	// (macOS, a full buffer) or EAGAIN is tried again, 1 ms apart, this
 	// many times before the packet counts as lost on the wire.
@@ -281,13 +284,15 @@ func parsePacket(b []byte) (packet, error) {
 	return p, nil
 }
 
-// marshal mirrors Packet.to_bytes. Bytes 6-7 are always zero: atemwire
-// never asks the switcher to retransmit.
+// marshal mirrors Packet.to_bytes. Bytes 6-7 carry the sequence a
+// retransmission request asks for from, zero on every other packet
+// (bmdwire#100, 9824cab: until then atemwire never asked).
 func (p *packet) marshal() []byte {
 	b := make([]byte, headerLen+len(p.data))
 	binary.BigEndian.PutUint16(b[0:], uint16(len(b))+uint16(p.flags)<<11)
 	binary.BigEndian.PutUint16(b[2:], p.session)
 	binary.BigEndian.PutUint16(b[4:], p.ack)
+	binary.BigEndian.PutUint16(b[6:], p.retransmitFrom&seqMask)
 	binary.BigEndian.PutUint16(b[8:], p.remoteSeq)
 	binary.BigEndian.PutUint16(b[10:], p.seq)
 	copy(b[headerLen:], p.data)
@@ -352,6 +357,12 @@ type transport struct {
 	deliverNext  uint16 // next sequence owed to the session
 	deliverKnown bool
 	parked       map[uint16]packet
+	// gapDue is when the open gap in the switcher's packets (something
+	// parked) is next asked for (gapAskAfter), zero with no gap;
+	// gapsAsked counts the requests, for the session's life
+	// (_gap_due, gaps_asked; bmdwire#100).
+	gapDue    time.Time
+	gapsAsked int
 
 	enableACK  bool
 	hadTraffic bool
@@ -443,12 +454,18 @@ type transport struct {
 	maxChunk   int
 	stuckSeq   int
 	stuckCount int
-	// stuckSince is when the packet at stuckSeq was last acknowledged
-	// or sent, as far as the timer knows (one wait before it first
-	// fired), and heardAgainAt when the switcher was last heard after a
-	// silence of more than heardGap (bmdwire#97).
-	stuckSince   time.Time
-	heardAgainAt time.Time
+	// stuckResentAt is when the packet at stuckSeq last went again: a
+	// resend counts towards tooBigAfter only if the switcher was heard
+	// since (bmdwire#100).
+	stuckResentAt time.Time
+
+	// What the transport asks of the session from the receive path, which
+	// returns packets only (bmdwire#100, e4119f7): chunks taken back
+	// (atemwire puts ChunksTakenBack on its receive queue), and a new
+	// session, with why (atemwire's reconnect()). The session takes both
+	// after each receive and each resend (Session.transportAsks).
+	takenBackQueue  []*takenBack
+	newSessionAsked string
 }
 
 func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *transport {
@@ -504,6 +521,7 @@ func (t *transport) connect() error {
 	t.rxEstablished = false
 	t.deliverKnown = false
 	clear(t.parked)
+	t.gapDue = time.Time{}
 	t.sessionID, t.sessionKnown = helloSession, true
 	t.enableACK = false
 	clear(t.retransmitBuf)
@@ -592,6 +610,16 @@ func (t *transport) silent() bool {
 // session (about 5 s), the new session's lock request queued behind them.
 func (t *transport) timeout() error {
 	t.log.Error("atem: timeout reading from switcher", "addr", t.addr)
+	t.closeSession()
+	t.state = stateClosed
+	return t.connect()
+}
+
+// reconnect is UdpProtocol.reconnect (bmdwire#100, e151696): a new
+// session asked for, at once, as the silence timeout starts one. The
+// caller reports a disconnect.
+func (t *transport) reconnect(why string) error {
+	t.log.Warn("atem: a new session asked for", "addr", t.addr, "why", why)
 	t.closeSession()
 	t.state = stateClosed
 	return t.connect()
@@ -778,16 +806,16 @@ func (t *transport) resendUnacked() *takenBack {
 		return nil
 	}
 	first := uint16((t.ackedThrough + 1) & seqMask)
-	if int(first) == t.stuckSeq {
-		t.stuckCount++
-	} else {
+	if int(first) != t.stuckSeq {
 		t.stuckSeq, t.stuckCount = int(first), 1
-		// Unacknowledged for one timer's length by now.
-		t.stuckSince = t.now().Add(-t.resendWait())
+	} else if t.lastHeard.After(t.stuckResentAt) {
+		// Heard since it last went: the link is up (bmdwire#100).
+		t.stuckCount++
 	}
+	t.stuckResentAt = t.now()
 	if t.stuckCount > tooBigAfter {
-		if tb := t.takeBackChunks(first); tb != nil {
-			return tb
+		if tb, ok := t.takeBackChunks(first); ok {
+			return tb // nil when a new session was asked for instead
 		}
 	}
 	waited := t.resendWait()
@@ -803,20 +831,69 @@ func (t *transport) resendUnacked() *takenBack {
 	return nil
 }
 
+// askedAgainForStuck is _asked_again_for_stuck (bmdwire#100, e4119f7):
+// the switcher asks again for the first packet it lacks, proof that it
+// hears us and still has not got that one. For a data chunk that counts
+// towards tooBigAfter as a resend it answered would, at most once per
+// resendMin, so a switcher that asks (an ATEM Mini Pro and a
+// Constellation both do) has the smaller size found as fast as its
+// requests come, not at our backed-off timer: a macro upload over a
+// 1,280 VPN took 10 s, now 1.9. True when it was handled: the chunks
+// taken back (queued for the session) or a new session asked for.
+func (t *transport) askedAgainForStuck(asked uint16) bool {
+	if t.ackedThrough < 0 || int(asked) != (t.ackedThrough+1)&seqMask {
+		return false
+	}
+	p := t.retransmitBuf[asked]
+	if p == nil {
+		return false
+	}
+	if _, _, ok := ftdaChunk(p.data); !ok {
+		return false
+	}
+	now := t.now()
+	if int(asked) != t.stuckSeq {
+		t.stuckSeq, t.stuckCount = int(asked), 1
+		t.stuckResentAt = now
+		return false
+	}
+	if now.Sub(t.stuckResentAt) < resendMin {
+		return false
+	}
+	t.stuckCount++
+	t.stuckResentAt = now
+	if t.stuckCount <= tooBigAfter {
+		return false
+	}
+	tb, ok := t.takeBackChunks(asked)
+	if tb != nil {
+		t.takenBackQueue = append(t.takenBackQueue, tb)
+	}
+	return ok
+}
+
 // takeBackChunks is _take_back_chunks (bmdwire#95): the data chunk at
 // first was sent tooBigAfter times more and never acknowledged while the
 // switcher goes on sending. It and everything after it are taken back:
 // their sequence numbers are free, as the switcher takes nothing after a
 // packet it lacks. Other packets among them go again now; the chunks
-// come back for the session. nil if this is not the case.
-func (t *transport) takeBackChunks(first uint16) *takenBack {
+// come back for the session. ok is false if this is not the case.
+//
+// Since bmdwire#100 (e4119f7) a packet after the stuck one small enough
+// to have got through means a new session instead (newSessionAsked, tb
+// nil, ok true), the size learnt kept: the switcher keeps what comes
+// after a gap (the hardware bench, 2026-11-24), so that packet may be with
+// it already, and its sequence number used again for other data would
+// put old data where the new belongs. A new session numbers afresh, and
+// the upload is carried over to it.
+func (t *transport) takeBackChunks(first uint16) (tb *takenBack, ok bool) {
 	p := t.retransmitBuf[first]
 	if p == nil {
-		return nil
+		return nil, false
 	}
 	transfer, size, ok := ftdaChunk(p.data)
 	if !ok {
-		return nil
+		return nil, false
 	}
 	limit := 0
 	for _, s := range chunkSteps {
@@ -826,14 +903,24 @@ func (t *transport) takeBackChunks(first uint16) *takenBack {
 		}
 	}
 	if limit == 0 {
-		return nil
+		return nil, false
 	}
-	if t.now().Sub(t.lastHeard) > heardGap || !t.heardAgainAt.Before(t.stuckSince) {
-		// The switcher has gone quiet too, now or since the chunk got
-		// stuck: the link, not the size (heardGap).
-		return nil
+	if t.now().Sub(t.lastHeard) > resendMax {
+		// The switcher has gone quiet too: the link, not the size.
+		return nil, false
 	}
 	last := uint16(t.localSeq)
+	for seq := (first + 1) & seqMask; seq != (last+1)&seqMask; seq = (seq + 1) & seqMask {
+		if q := t.retransmitBuf[seq]; q != nil && len(q.data)+headerLen <= limit+24 {
+			t.maxChunk = limit
+			setChunkLimit(t.addr, limit)
+			t.stuckSeq, t.stuckCount = -1, 0
+			t.log.Warn("atem: no data chunk got through, and smaller packets after it may have: a new session, the upload again in smaller chunks",
+				"addr", t.addr, "size", size, "limit", limit)
+			t.newSessionAsked = fmt.Sprintf("chunks of %d bytes too big for the path", size)
+			return nil, true
+		}
+	}
 	var taken []*packet
 	for seq := first; ; seq = (seq + 1) & seqMask {
 		if q := t.retransmitBuf[seq]; q != nil {
@@ -851,7 +938,7 @@ func (t *transport) takeBackChunks(first uint16) *takenBack {
 	t.stuckSeq, t.stuckCount = -1, 0
 	t.maxChunk = limit
 	setChunkLimit(t.addr, limit)
-	tb := &takenBack{transfer: transfer, limit: limit}
+	tb = &takenBack{transfer: transfer, limit: limit}
 	for _, q := range taken {
 		if id, n, ok := ftdaChunk(q.data); ok && id == transfer {
 			tb.sizes = append(tb.sizes, n)
@@ -864,7 +951,7 @@ func (t *transport) takeBackChunks(first uint16) *takenBack {
 	}
 	t.log.Warn("atem: no data chunk got through, datagrams that big are not reaching the switcher; sending smaller chunks from now on",
 		"addr", t.addr, "size", size, "sent", tooBigAfter+1, "chunks", len(tb.sizes), "limit", limit)
-	return tb
+	return tb, true
 }
 
 // ackOwed is _ack_owed: a received packet wants acknowledging, now or at
@@ -933,9 +1020,6 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 		return nil, nil
 	}
 	t.lastRX = t.now()
-	if t.lastRX.Sub(t.lastHeard) > heardGap {
-		t.heardAgainAt = t.lastRX
-	}
 	t.lastHeard = t.lastRX
 	if p.flags&flagACK != 0 {
 		t.onACK(p.ack, p.flags&flagReliable == 0)
@@ -943,7 +1027,22 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 	if p.flags&flagRequestRetransmission != 0 {
 		// The switcher missed one of ours: go back N from the sequence in
 		// header bytes 6-7.
-		t.retransmitFrom(p.retransmitFrom, false)
+		asked := p.retransmitFrom & seqMask
+		if t.ackedThrough >= 0 {
+			// It asks only for the first it lacks, so it has everything
+			// before (bmdwire#100, 9824cab). Its ACKs for those may have
+			// been lost (a dropout); taken as acknowledged, nothing it
+			// has is sent again or taken back as too big.
+			have := (asked - 1) & seqMask
+			ahead := int(have-uint16(t.ackedThrough)) & seqMask
+			if ahead > 0 && ahead < t.retransmitWindow && (t.localSeq-int(have))&seqMask < t.retransmitWindow {
+				t.onACK(have, false)
+			}
+		}
+		if t.askedAgainForStuck(asked) {
+			return nil, nil // taken back, or a new session asked for
+		}
+		t.retransmitFrom(asked, false)
 	}
 	t.remoteSeq = p.seq
 	if !t.sessionKnown {
@@ -1006,20 +1105,56 @@ func (t *transport) receive(b []byte, from net.Addr) ([]packet, error) {
 			out = append(out, q)
 			t.deliverNext = (t.deliverNext + 1) & seqMask
 		}
+		if len(t.parked) > 0 {
+			t.gapDue = t.now().Add(gapAskAfter)
+		} else {
+			t.gapDue = time.Time{}
+		}
 		return out, nil
 	case dist > seqHalf:
 		// Behind the cursor: already delivered.
 		return nil, nil
 	case int(dist) <= t.parkWindow:
-		// Ahead of a gap: hold it. The stalled ACK makes the switcher
-		// resend the missing packet, which releases this one.
+		// Ahead of a gap: hold it until the missing packet comes; asked
+		// for if it does not soon (gapAskAfter).
 		t.parked[seq] = p
+		if t.gapDue.IsZero() {
+			t.gapDue = t.now().Add(gapAskAfter)
+		}
 		return nil, nil
 	}
 	t.log.Error("atem: in-order delivery resync", "cursor", t.deliverNext, "seq", seq, "parked_dropped", len(t.parked))
 	clear(t.parked)
+	t.gapDue = time.Time{}
 	t.deliverNext = (seq + 1) & seqMask
 	return []packet{p}, nil
+}
+
+// checkGap is _check_gap (bmdwire#100, 9824cab): once the open gap in
+// the switcher's packets is due (gapAskAfter), ask for its first missing
+// packet, and again every gapAskEvery while it stays open. It returns
+// when the gap is next due, zero with none. The request is not one of
+// our reliable packets: no sequence number of its own, never buffered
+// for a resend, as an ACK.
+func (t *transport) checkGap() time.Time {
+	if t.gapDue.IsZero() {
+		return time.Time{}
+	}
+	if len(t.parked) == 0 || !t.deliverKnown || !t.sessionKnown {
+		t.gapDue = time.Time{}
+		return time.Time{}
+	}
+	now := t.now()
+	if !now.Before(t.gapDue) {
+		req := &packet{flags: flagRequestRetransmission, session: t.sessionID, retransmitFrom: t.deliverNext}
+		if err := t.write(req.marshal()); err != nil {
+			t.log.Debug("atem: asking the switcher for a lost packet failed", "seq", t.deliverNext, "err", err)
+		}
+		t.gapsAsked++
+		t.log.Debug("atem: asked the switcher again for a lost packet", "seq", t.deliverNext, "parked", len(t.parked))
+		t.gapDue = now.Add(gapAskEvery)
+	}
+	return t.gapDue
 }
 
 // stale reports a packet that belongs to no session of ours, which the

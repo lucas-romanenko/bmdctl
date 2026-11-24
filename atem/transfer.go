@@ -68,6 +68,35 @@ const (
 	// FTDE 1 while it lasts (bmdwire#80, v1.13.0). Another session's
 	// chunks are left alone.
 	orphanIDs = 64
+	// An upload is done only when the switcher says so (FTDC). Without
+	// that, one that has made no progress for uploadStall in any phase
+	// (its lock not granted, its transfer not started, no packet of ours
+	// newly acknowledged once its data goes, no chunk cut, no budget
+	// granted) goes again from the beginning in a new session, under a
+	// new transfer id, uploadRetries times at most, then fails with an
+	// *UploadStalledError naming the phase. While the switcher says
+	// another client holds the store's lock the limit is lockWaitMax
+	// instead (UPLOAD_STALL, UPLOAD_RETRIES, LOCK_WAIT_MAX; bmdwire#100,
+	// d19c1cd, 174840f, 5587e15, e151696). The hardware bench, 2026-11-24
+	// (Constellation HD, fw 2.30): after the cable was out for 3 s
+	// mid-upload everything was acknowledged on both sides and the
+	// switcher never granted the next budget, and the still sat at 47 %
+	// until the caller gave up; started again in the same session, the
+	// lock was asked for, acknowledged and never granted. Only a goodbye
+	// frees what an abandoned transfer holds. uploadStall is above the
+	// ~4 s a chunk too big for the path takes to be found (tooBigAfter),
+	// during which nothing moves either.
+	uploadStall   = 6 * time.Second
+	uploadRetries = 2
+	lockWaitMax   = 60 * time.Second
+	// uploadLook is how often the lane looks at an upload in hand
+	// (atemwire's _wake_at(now + 1.0)).
+	uploadLook = time.Second
+	// queuePortion is QUEUE_PORTION: queueChunks hands chunks to the
+	// transport this many at a time; its bulk queue holds bulkQueueMax.
+	// Chunks taken back from three budgets in flight (2,304) overflowed
+	// it, dropping the oldest, and the still came out short.
+	queuePortion = 512
 	// macroUploadMode is FTSD's mode for the macro store: write
 	// uncompressed and pre-erase (0x0300). The still store takes
 	// UploadWriteRLE.
@@ -105,6 +134,31 @@ type TransferError struct {
 	Transfer    uint16 // the transfer id
 	Status      uint8
 }
+
+// ErrUploadStalled is matched (errors.Is) by an *UploadStalledError.
+var ErrUploadStalled = errors.New("atem: upload stalled")
+
+// UploadStalledError is an upload given up on: no progress for After in
+// the phase it was in, after Retries fresh starts, each in a new session,
+// and the switcher never said it was done (bmdwire#100: atemwire's
+// file-transfer-error with status 'stalled').
+type UploadStalledError struct {
+	Store, Slot uint16
+	// Phase is where it stalled: "waiting for a new session", "waiting
+	// for its lock", "waiting for the switcher to start it", or how much
+	// of its data had been cut into chunks ("4000 of 10000 bytes cut").
+	Phase   string
+	After   time.Duration
+	Retries int
+	what    string
+}
+
+func (e *UploadStalledError) Error() string {
+	return fmt.Sprintf("atem: %s stalled: no progress for %v (%s) after %d fresh starts, and the switcher never said it was done",
+		e.what, e.After, e.Phase, e.Retries)
+}
+
+func (e *UploadStalledError) Is(target error) bool { return target == ErrUploadStalled }
 
 func (e *TransferError) Error() string {
 	return fmt.Sprintf("atem: the switcher rejected the transfer of store %d slot %d (transfer %d, status %s)",
@@ -188,6 +242,9 @@ type transferTask struct {
 	// tryAgain counts the switcher's FTDE 1 refusals of this transfer
 	// (TransferTask.try_again).
 	tryAgain int
+	// stallRetries counts an upload's fresh starts after uploadStall with
+	// no progress (stall_retries), across sessions.
+	stallRetries int
 	// heard is when a chunk of this download last arrived (UnixNano),
 	// for WithStallTimeout; the owner writes it, the caller reads it.
 	heard atomic.Int64
@@ -205,8 +262,13 @@ type transferTask struct {
 // transfer-progress, the bytes received of the frame's uncompressed size
 // (so it may end short of Total). A macro download reports none, as
 // atemwire's doesn't.
+//
+// An upload that stalls goes again from the beginning (bmdwire#100):
+// Retry is then its fresh start of Retries, on every report from then
+// on, and Done starts again from 0.
 type Progress struct {
-	Done, Total int
+	Done, Total    int
+	Retry, Retries int
 }
 
 type progressKey struct{}
@@ -241,6 +303,9 @@ func (t *transferTask) report(done, total int) {
 		return
 	}
 	p := Progress{Done: min(done, total), Total: total}
+	if t.stallRetries > 0 {
+		p.Retry, p.Retries = t.stallRetries, uploadRetries
+	}
 	select {
 	case <-t.progress:
 	default:
@@ -318,6 +383,29 @@ type lane struct {
 	bulkPending int
 	bulkNext    time.Time
 	bulkTimer   *time.Timer
+
+	// uploadStall: what progress of the upload in hand looked like
+	// (uploadMark, set while marked), since when; grants counts the
+	// budgets granted (_upload_mark, _upload_mark_at, _grants).
+	uploadMark   progressMark
+	marked       bool
+	uploadMarkAt time.Time
+	grants       int
+	// carried holds the uploads of a session lost or replaced, for the
+	// next one (_carried_uploads); resetLane keeps them.
+	carried []*transferTask
+}
+
+// progressMark is what counts as progress for an upload in the phase it
+// is in (_upload_progress_mark): whether it is carried over, the session
+// ready, its lock held, its transfer in flight and started, its transfer
+// id, and once its data goes, our packets acknowledged, its data cut and
+// the budgets granted.
+type progressMark struct {
+	task                                    *transferTask
+	carried, ready, held, inFlight, started bool
+	tid                                     uint16
+	acked, offset, grants                   int
 }
 
 // Another client's turn (bmdwire#38 and #40, v1.5.2). Another client's
@@ -790,6 +878,10 @@ func (s *Session) cancelTask(t *transferTask, cause error) error {
 			s.releaseThenContinue(t.store, true)
 		}
 	} else {
+		if i := slices.Index(l.carried, t); i >= 0 {
+			notGranted = false // its session, not its lock, was missing
+			l.carried = slices.Delete(l.carried, i, i+1)
+		}
 		l.remove(t)
 		s.transferTrigger(t.store, false)
 	}
@@ -827,6 +919,9 @@ func (s *Session) enqueueTask(t *transferTask) {
 	l.queues[t.store] = append(l.queues[t.store], t)
 	s.log.Info("atem: transfer queued", "task", t.describe())
 	s.transferTrigger(t.store, false)
+	if t.kind == taskUpload {
+		s.armYieldTimer(s.t.now().Add(uploadLook)) // uploadStall
+	}
 }
 
 // sendCommands is AtemProtocol.send_commands: the commands in one reliable
@@ -951,6 +1046,10 @@ func (s *Session) transferTrigger(store uint16, retry bool) {
 	}
 	l.requested = true
 	l.lastData = time.Time{}
+	if next.kind == taskUpload {
+		l.marked = false
+		s.armYieldTimer(s.t.now().Add(uploadLook))
+	}
 	if n := len(l.asked); n == 0 || l.asked[n-1] != next.tid {
 		l.asked = append(l.asked, next.tid)
 		if len(l.asked) > orphanIDs {
@@ -1035,6 +1134,7 @@ func (s *Session) serviceYields() {
 	l.yieldDue = time.Time{}
 	now := s.t.now()
 	s.serviceDrain()
+	s.serviceUploadStall()
 	if due := l.tryAgainDue; !due.IsZero() {
 		switch {
 		case l.transfer == nil:
@@ -1222,6 +1322,7 @@ func (s *Session) onBudget(f FileTransferContinueDataField) {
 		f.Size = size
 	}
 	s.lane.budget = &f
+	s.lane.grants++
 	if t := s.lane.transfer; t != nil && t.kind == taskUpload && !t.metadataSent {
 		// FTFD with the first budget, before the data, as ATEM Software
 		// Control sends it (bmdwire#36); it used to wait for the bulk
@@ -1426,6 +1527,15 @@ func (s *Session) queueChunks() {
 			l.budget = nil
 		}
 		s.t.queuePacket(TransferData{Transfer: t.tid, Data: chunk}.Encode())
+		if len(s.t.bulk) >= queuePortion {
+			// The bulk queue holds bulkQueueMax: more at once (chunks
+			// taken back from three budgets in flight, 2,304) dropped
+			// the oldest, and the still came out short (QUEUE_PORTION).
+			if err := s.t.drainQueue(); err != nil {
+				s.fatal = err
+				return
+			}
+		}
 		t.report(min(t.offset, len(t.data)), t.size) // upload-progress
 		if l.budget == nil {
 			break
@@ -1588,10 +1698,10 @@ func (s *Session) resetLane(err error) {
 	if l.transfer != nil {
 		s.finish(l.transfer, transferResult{err: err})
 	}
-	id, others := l.nextID, l.othersSeen
+	id, others, carried := l.nextID, l.othersSeen, l.carried
 	timer, ytimer := l.bulkTimer, l.yieldTimer
 	*l = newLane()
-	l.nextID, l.othersSeen = id, others
+	l.nextID, l.othersSeen, l.carried = id, others, carried
 	if timer != nil {
 		timer.Stop()
 		l.bulkTimer = timer
@@ -1600,6 +1710,202 @@ func (s *Session) resetLane(err error) {
 		ytimer.Stop()
 		l.yieldTimer = ytimer
 	}
+}
+
+// --- an upload that stops moving (bmdwire#100) --------------------------------
+
+// uploadInHand is _upload_in_hand: the upload being worked on, the
+// transfer in flight, else the first upload waiting at the head of a
+// queue (for its lock or its start), else one carried over from a session
+// lost, waiting for the next. nil with a download in flight.
+func (s *Session) uploadInHand() *transferTask {
+	l := &s.lane
+	if t := l.transfer; t != nil {
+		if t.kind == taskUpload {
+			return t
+		}
+		return nil
+	}
+	for _, st := range l.order {
+		if q := l.queues[st]; len(q) > 0 && q[0].kind == taskUpload {
+			return q[0]
+		}
+	}
+	if len(l.carried) > 0 {
+		return l.carried[0]
+	}
+	return nil
+}
+
+// uploadProgressMark is _upload_progress_mark: what counts as progress
+// for t in the phase it is in. Our own packets acknowledged count only
+// once its data is going: while it waits for a session or a lock, the
+// requests we send for them are acknowledged and answer nothing (the
+// hardware bench: a lock asked for again, acknowledged, never granted).
+func (s *Session) uploadProgressMark(t *transferTask) progressMark {
+	l := &s.lane
+	m := progressMark{
+		task:     t,
+		carried:  slices.Contains(l.carried, t),
+		ready:    s.initialized,
+		held:     l.locks[t.store],
+		inFlight: l.transfer == t,
+		tid:      t.tid,
+	}
+	m.started = m.inFlight && l.requested
+	if m.started {
+		m.acked, m.offset, m.grants = s.t.ackedThrough, t.offset, l.grants
+	}
+	return m
+}
+
+// serviceUploadStall is _service_upload_stall: an upload with no progress
+// for uploadStall in any phase, the switcher not having said it is done,
+// goes again from the beginning in a new session, uploadRetries times at
+// most, then fails. The yield timer runs it (atemwire's loop() looks every
+// 0.5 s, whatever arrives), at least every uploadLook while an upload is
+// in hand.
+func (s *Session) serviceUploadStall() {
+	l := &s.lane
+	t := s.uploadInHand()
+	if t == nil {
+		l.marked = false
+		return
+	}
+	mark := s.uploadProgressMark(t)
+	now := s.t.now()
+	if !l.marked || mark != l.uploadMark {
+		l.uploadMark, l.marked, l.uploadMarkAt = mark, true, now
+	}
+	limit := s.uploadStall
+	if !l.locks[t.store] && l.foreignHeld[t.store] {
+		// Another client's turn, the switcher says: longer, not for ever.
+		limit = lockWaitMax
+	}
+	if now.Sub(l.uploadMarkAt) < limit {
+		s.armYieldTimer(minTime(l.uploadMarkAt.Add(limit), now.Add(uploadLook)))
+		return
+	}
+	l.marked = false
+	var phase string
+	switch {
+	case mark.carried:
+		phase = "waiting for a new session"
+	case !l.locks[t.store] && l.transfer != t:
+		phase = "waiting for its lock"
+	case !l.requested:
+		phase = "waiting for the switcher to start it"
+	default:
+		phase = fmt.Sprintf("%d of %d bytes cut", min(t.offset, len(t.data)), len(t.data))
+	}
+	attempt := t.stallRetries + 1
+	if attempt > uploadRetries {
+		s.log.Error("atem: upload failed: no progress after its fresh starts, and the switcher never said it was done",
+			"task", t.describe(), "for", limit, "phase", phase, "fresh_starts", uploadRetries)
+		s.giveUpUpload(t, &UploadStalledError{Store: t.store, Slot: t.slot, Phase: phase, After: limit, Retries: uploadRetries, what: t.describe()})
+		return
+	}
+	t.stallRetries = attempt
+	s.log.Warn("atem: upload not moving and not confirmed: starting it again from the beginning in a new session",
+		"task", t.describe(), "for", limit, "phase", phase, "retry", attempt, "of", uploadRetries)
+	// upload-retrying: from the beginning, so its progress goes back to
+	// nothing, the retry on it.
+	t.report(0, t.size)
+	// Only a goodbye frees what the abandoned transfer holds; the upload
+	// is carried over to the new session (disconnected).
+	s.newSession(fmt.Sprintf("%s stalled (%s)", t.describe(), phase))
+	s.armYieldTimer(s.t.now().Add(uploadLook))
+}
+
+// carryUploadsOver is _carry_uploads_over, before the lane is reset for a
+// new session: every upload, the one in flight and those queued, is kept
+// for the next session, to go again from the beginning. They used to fail
+// with ErrDisconnected, as atemwire's were dropped without a word.
+func (s *Session) carryUploadsOver() {
+	l := &s.lane
+	var tasks []*transferTask
+	if t := l.transfer; t != nil && t.kind == taskUpload {
+		tasks = append(tasks, t)
+		l.transfer = nil
+	}
+	for _, st := range l.order {
+		for _, q := range l.queues[st] {
+			if q.kind == taskUpload && !slices.Contains(tasks, q) {
+				tasks = append(tasks, q)
+			}
+		}
+	}
+	for _, q := range tasks {
+		l.remove(q)
+		q.tid, q.offset, q.metadataSent = 0, 0, false
+		q.report(0, q.size)
+		if !slices.Contains(l.carried, q) {
+			l.carried = append(l.carried, q)
+		}
+	}
+	if len(tasks) > 0 {
+		s.log.Warn("atem: session ended with uploads not confirmed: they go again from the beginning in the next session",
+			"uploads", len(tasks))
+	}
+}
+
+// requeueCarriedUploads is _requeue_carried_uploads: a new session is
+// ready, so the uploads carried over go back in their queues, in order,
+// and are asked for.
+func (s *Session) requeueCarriedUploads() {
+	l := &s.lane
+	carried := l.carried
+	l.carried = nil
+	var stores []uint16
+	for _, q := range carried {
+		if _, ok := l.queues[q.store]; !ok {
+			l.order = append(l.order, q.store)
+		}
+		l.queues[q.store] = append(l.queues[q.store], q)
+		if !slices.Contains(stores, q.store) {
+			stores = append(stores, q.store)
+		}
+	}
+	for _, st := range stores {
+		s.transferTrigger(st, false)
+	}
+	if len(carried) > 0 {
+		l.marked = false
+		s.armYieldTimer(s.t.now().Add(uploadLook))
+	}
+}
+
+// giveUpUpload is _give_up_upload: t off its queue, its lock given back,
+// and its caller told why.
+func (s *Session) giveUpUpload(t *transferTask, err error) {
+	l := &s.lane
+	l.remove(t)
+	if i := slices.Index(l.carried, t); i >= 0 {
+		l.carried = slices.Delete(l.carried, i, i+1)
+	}
+	l.requested = false
+	l.budget = nil
+	l.buffer, l.bufferBytes = nil, 0
+	l.tryAgainDue = time.Time{}
+	delete(l.lockRequested, t.store)
+	if l.locks[t.store] {
+		s.releaseThenContinue(t.store, true)
+	} else {
+		l.transfer = nil
+		if len(l.queues[t.store]) > 0 {
+			s.transferTrigger(t.store, false)
+		}
+	}
+	s.finish(t, transferResult{err: err})
+}
+
+// failCarried fails the uploads carried over, for a session that is
+// closing: there is no next one.
+func (s *Session) failCarried(err error) {
+	for _, t := range s.lane.carried {
+		s.finish(t, transferResult{err: err})
+	}
+	s.lane.carried = nil
 }
 
 // releaseLocksNow is release_locks_now, for Close: give back every store

@@ -201,10 +201,19 @@ Tracks: bmdwire v1.14.6
   `Tracks: bmdwire <describe>`, and move it in the commit that finishes
   porting a later bmdwire.
 - `docs/SURFACE-atem.md` is atemwire's own inventory, copied verbatim with a
-  header naming the version: bmdwire's at v1.14.6 (`75503ed`), whose §5.4 marks
-  each fix. It is the specification for `atem/`. Its body says it describes
-  1.2.0; every fix it marks as made after 1.2.0 (§5.4) is in what the port
-  follows, so it describes that apart from those marks.
+  header naming the version: bmdwire's at `95ab667` (bmdwire#100's
+  branch, for 1.15.0; v1.14.6, `75503ed`, until bmdwire#100's port),
+  whose §5.4 marks each fix. It is the specification for `atem/`. Its body
+  says it describes 1.2.0; every fix it marks as made after 1.2.0 (§5.4)
+  is in what the port follows, so it describes that apart from those
+  marks, except two the header names: item 17 (1.14.7, a session's first
+  packet taken as sequence 1), not ported yet ("Traps"), and item 59, a
+  log line of atemwire's UDP thread, which has no counterpart. Items 58
+  to 61 are bmdwire#95, #97 and #100's first commit; 62 to 65 the rest of
+  #100: its §2.7 `upload-retrying` event is `Progress.Retry`, and its
+  `file-transfer-error` status `stalled` an `*UploadStalledError`
+  ("Transfers"). The `Tracks:` line stays at v1.14.6 until item 17 is
+  ported.
 - `docs/SURFACE-hyperdeck.md` is the same for `hyperdeck/`, written for
   bmdctl from hyperdeckwire's code at v1.3.0, which has no SURFACE.md,
   and brought up to v1.8.0.
@@ -312,7 +321,8 @@ bytes 6-7, at most 128, window 4096); the goodbye (SYN, hello `0x04`, only
 when established); 15-bit sequence arithmetic throughout. No client
 keepalive, as in atemwire. Since bmdwire#36 (`d050c10`) there is a client
 retransmit timer: what the switcher hasn't acknowledged is resent on a
-timer that follows the round trip (below).
+timer that follows the round trip (below). Since bmdwire#100 a packet of
+the switcher's that went missing is asked for (below).
 
 - **No thread.** atemwire splits the transport between a UDP thread
   (`_receive_packet_low`, `_send_packet_low`) and the protocol worker
@@ -441,16 +451,54 @@ timer that follows the round trip (below).
   still waiting for its UDP thread; the bulk queue here is always drained
   at once by `queueChunks`, so there is nothing to take. Tests:
   `chunks_too_big_test.go`, `test_chunks_too_big.py`'s counterparts.
-- **Only when the switcher was heard all along** (bmdwire#97, `ea4452a`).
-  `takeBackChunks` needs the switcher heard with no gap over `heardGap`
-  (250 ms; its Time packets come every 40 ms) since the chunk got stuck
-  (`stuckSince`, one timer's wait before the timer first fired for it;
-  `heardAgainAt`, set in `receive` after such a gap), not only within
-  `resendMax` of the decision. A cable out for 3 s mid-upload on a LAN
-  had the chunks taken back after 0.75 s of resends; their sequence
-  numbers went again with other data the switcher may have had, and the
-  still arrived with the wrong MD5. Tests: the three at the end of
+- **Only resends the switcher was heard after count** (bmdwire#100,
+  `4ba9d8c`; replaces bmdwire#97's rule). A resend of the stuck chunk
+  counts towards `tooBigAfter` only if `lastHeard` is after the previous
+  resend (`stuckResentAt`), and `takeBackChunks` needs the switcher heard
+  within `resendMax`. bmdwire#97 (v0.3.2) wanted no gap over 250 ms since
+  the chunk got stuck, a Constellation's every-40-ms Time packet taken for
+  every switcher's; one that sends less often (WebATEM #63's Mini Pro over
+  ZeroTier) never passed and its uploads hung. A cable out still never
+  counts: nothing is heard after those resends. Tests: the last four in
   `chunks_too_big_test.go`, from `test_chunks_too_big.py`.
+- **A lost packet of the switcher's is asked for** (bmdwire#100,
+  `9824cab`). A gap in what the switcher sends (something parked behind
+  a missing packet) open `gapAskAfter` (0.1 s) is asked for with a
+  retransmission request (flag 0x08, the sequence in header bytes 6-7,
+  no sequence number of its own, never buffered), again every
+  `gapAskEvery` (0.25 s) while it stays open (`checkGap`, `gapDue`); the
+  run goroutine has a timer for it beside the resend timer, where
+  atemwire's UDP thread shortens its `select()`. A Constellation HD
+  after a 3 s dropout never sent the budget lost in it again on its own,
+  and the upload sat at 47 %. A request from the switcher for N, which it
+  sends only for the first packet it lacks, now counts as its ACK through
+  N-1 (`onACK`, not ACK-only) before the go-back-N from N, so its ACKs
+  lost in a dropout don't leave us resending what it has or taking chunks
+  back under numbers it holds. `marshal` writes bytes 6-7, zero on every
+  other packet. The fake switcher answers a request and, under
+  `ResendOnlyWhenAsked`, sends nothing again otherwise. Tests:
+  `gap_asked_test.go` (`test_gap_asked_for.py`) and
+  `gap_asked_fake_test.go`.
+- **The switcher asking again for a stuck chunk counts; a take-back that
+  could reuse a number it holds starts a new session** (bmdwire#100,
+  `e4119f7`). A request from the switcher for the first packet it has
+  not acknowledged, when that is a data chunk, counts towards
+  `tooBigAfter` as a resend it answered would, at most once per
+  `resendMin` (`askedAgainForStuck`): the size is found as fast as its
+  requests come (a macro over a 1,280 VPN, 10 s to 1.9 s in bmdwire's
+  bench). And when a packet after the stuck chunk is small enough to have
+  got through (its datagram within the next size and 24 bytes), the
+  chunks are not taken back: the units keep what comes after a gap, so
+  that packet may be with the switcher, and its number used again for
+  other data would put old data where the new belongs. The size is
+  learnt and a new session asked for (`newSessionAsked`), the upload
+  carried over to it ("Transfers"). The receive path returns packets
+  only, so what it asks for (chunks taken back, `takenBackQueue`, and a
+  new session) waits on the transport until the session takes it after
+  each receive and each resend (`transportAsks`), where atemwire puts
+  `ChunksTakenBack` on its receive queue and the UDP thread acts on
+  `_reconnect_asked`. Tests: `chunks_too_big_test.go`, whose test of the
+  other packets going again at once became the new session's.
 - **Logging.** `ATEMWIRE_PACKET_TRACE` is not read. The transport logs to a
   `*slog.Logger` (discarded by default): per-packet detail at debug,
   recoveries at warn, timeouts and dropped packets at error.
@@ -620,6 +668,17 @@ two settings `Dial` needs a struct for.
   caller dials again. Windows' report of an ICMP port-unreachable
   (WSAECONNRESET), which ended atemwire's UDP thread until bmdwire#88,
   never reaches a read here ("Transport", Windows).
+- **A read goroutine that ends strands nobody** (bmdwire#100, `61d596b`).
+  Nothing to port. atemwire's UDP thread put one end-of-stream marker on
+  its receive queue as it ended; the first `loop()` took it and every one
+  after waited on the queue for good, a caller's deadline with it, so
+  `receive_packet` now hands back None every 0.1 s once the thread is
+  gone. Here the read goroutine ends only after handing its error to the
+  run goroutine (or once that has ended), which ends the session: a
+  transfer in flight fails with `ErrClosed` at once and every later call
+  returns it at once, since `do` selects on `done`. A panic in it ends
+  the process rather than the goroutine. `reader_gone_test.go` mirrors
+  `test_udp_thread_gone.py`.
 - **Close** gives back any store lock held (`release_locks_now`, see
   "Transfers"), says goodbye, closes the socket, fails pending waiters and
   transfers with `ErrClosed` and closes subscriber channels.
@@ -1242,6 +1301,63 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   asked for is another session's and left alone. A transfer given up on
   while the switcher was answering FTDE 1, its lock granted, says "the
   switcher answered busy (try again) N times" (bmdwire#80).
+- **An upload is done only when the switcher says so** (bmdwire#100,
+  `d19c1cd`, `174840f`, `5587e15`, `e151696`). Here it already was
+  (`onTransferComplete`); what is new is that one that stops moving is
+  noticed. On the hardware bench (Constellation HD, cable out 3 s
+  mid-upload) everything was acknowledged on both sides and the switcher
+  never granted the next budget; started again in the same session, the
+  lock was asked for, acknowledged and never granted. Now the upload in
+  hand (`uploadInHand`: the one in flight, else the first queued, else
+  the first carried over) that has made no progress for `uploadStall`
+  (6 s) in the phase it is in (`progressMark`: carried over, session
+  ready, lock held, in flight, started, transfer id; once its data goes,
+  our packets acknowledged, data cut, budgets granted) goes again from
+  the beginning in a new session (`newSession`: goodbye and hello, as
+  the silence timeout, then the disconnect), under a new transfer id,
+  `uploadRetries` (2) times, then fails with `*UploadStalledError`
+  (`ErrUploadStalled`), which names the phase: atemwire's
+  `file-transfer-error` status `stalled`. While the switcher says
+  another client holds the lock the limit is `lockWaitMax` (60 s).
+  atemwire checks on the wall clock in `loop()` every 0.5 s whatever
+  arrives, since a pumped loop sees no time without a packet; here the
+  yield timer runs `serviceUploadStall` at least every `uploadLook`
+  (1 s) while an upload is in hand, armed when one is queued, asked for
+  or carried back, so the limit holds in any phase, with or without
+  packets. Like atemwire's, a stall is seen 6 to 7 s after the last
+  progress. `upload-retrying` is a `Progress` report: `Retry` of
+  `Retries` on every report from then on (a report not taken is
+  replaced, so one alone could be lost), `Done` back at 0 since the
+  upload starts again, so a bar never shows more than has moved. The
+  engine notes it at once, past its ten-a-second limit, and the CLI
+  says `retrying (k/n)` ("Terminal", Waiting). Its upload stall limit is
+  the `Dialer`'s, shortened by tests (`SetUploadStall`). One interplay
+  bmdwire's tests don't meet, as their fixture has no `reconnect`: an
+  upload queued behind our own release whose release is never announced
+  (another client handed the store) waits `lockQuiet` (10 s), and the
+  6 s limit sends it to a new session first, as bmdwire's code does with
+  a real transport; `upload_like_asc_test.go`'s two tests of that wait
+  run with a longer limit.
+- **Uploads are carried over a session change** (bmdwire#100,
+  `e151696`). Whenever a session ends or is replaced (the silence
+  timeout, a resync, a new session asked for), every upload in hand,
+  the one in flight and those queued, is taken off the lane before it is
+  reset (`carryUploadsOver`): from the beginning, its transfer id, data
+  offset and FTFD forgotten, its progress back at 0, and queued again in
+  order once the next session is ready (`requeueCarriedUploads`, from
+  `onReady`). They used to fail with `ErrDisconnected`, as atemwire's
+  were dropped without a word; downloads and clears still do. The stall
+  limit still counts for them (`waiting for a new session`); a caller
+  that gives up takes its upload off the list (`cancelTask`, not
+  `ErrLockNotGranted`), and `Close` fails them with `ErrClosed`
+  (`failCarried`), there being no next session. `resetLane` keeps the
+  list.
+- **Chunks go to the bulk queue 512 at a time** (`queuePortion`,
+  bmdwire#100, `e151696`): `queueChunks` drains the queue whenever it
+  holds that many. Chunks taken back from three budgets in flight
+  (2,304) overflowed its 1,024 and the oldest were dropped; the still
+  came out short. `e151696` also drops `5587e15`'s "budget sent again"
+  guard, so it is not ported.
 - **Default timeouts** when the context has no deadline: 30 s still
   download, 5 s clear, 10 s macro download and upload (atemwire's callers),
   90 s still upload (WebATEM's `UPLOAD_TIMEOUT`).
@@ -1299,7 +1415,8 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   straight to the socket before the goodbye (`release_locks_now`); a
   disconnect resets the lane without sending anything
   (`_reset_transfer_lane`) and fails waiting transfers with
-  `ErrDisconnected`.
+  `ErrDisconnected`, except uploads, which since bmdwire#100 are carried
+  over to the next session (above).
 - **A frame that doesn't decode is an error.** atemwire logs the exception
   `rle_decode` raises in the FTDC handler and its caller times out; here the
   download fails with it. The lock is released first either way.
@@ -2112,6 +2229,13 @@ response doesn't carry comes in note frames (Engine, "Notes":
   a profile's stills): `⠸ uploading logo.png → slot 3 █████░░░ 68%  816
   KB  0.8 s`, the bytes moved, or which of several (`still 2 of 6`). One
   of unknown size (a lock wait, a macro download) keeps the spinner.
+  An upload that stalled and goes again from the beginning in a new
+  session (bmdwire#100, "Transfers") says so on every frame from then
+  on, its bar from nothing again: `░░░░░░░░ 0%  retrying (1/2)  0 B`.
+  The bar never shows more than has moved in the attempt under way. One
+  given up on fails with exit 3 (no echo) and two lines: `the upload
+  stalled: nothing moved for 6 s, even after 2 retries`, then `last
+  phase: <where it stopped>` (`transferErr`).
 - **Steps.** An operation of several steps (profile save: setup, with
   its macros, then stills; restore: setup, then stills) announces them;
   each finishes in place under the header, `✓ setup  3 macros  1.9 s`;

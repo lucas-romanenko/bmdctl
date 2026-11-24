@@ -28,7 +28,10 @@ STUDIO A  PGM CAM2 · PVW CAM3
   (`--premultiply off` turns that off). The slot is named after the file
   unless `--name "Main Sponsor"`. While it runs, a progress bar on stderr
   shows `uploading sponsor.png → slot 3 █████░░░ 68%  816 KB  0.8 s`,
-  and the result line replaces it.
+  and the result line replaces it. An upload the switcher stops taking
+  for 6 s starts again from the beginning in a new session, twice at
+  most: the bar goes back to 0 % and says `retrying (1/2)`. If it still
+  doesn't move, the upload fails (exit 3) saying where it stopped.
 - **Slots count from 1**, as ATEM Software Control shows them.
 - **Download** writes a PNG; without a file name it is named after the
   slot.

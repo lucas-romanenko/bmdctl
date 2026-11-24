@@ -91,6 +91,11 @@ func spinLine(glyph, label string, p *engine.Progress, d time.Duration) string {
 	}
 	f := min(1, float64(p.Done)/float64(p.Total))
 	tail := fmt.Sprintf(" %s %d%%", bar(f), int(f*100))
+	if p.Retry > 0 {
+		// An upload that stalled goes again from the beginning
+		// (bmdwire#100): the bar starts again, and says so.
+		tail += fmt.Sprintf("  retrying (%d/%d)", p.Retry, p.Retries)
+	}
 	switch {
 	case p.Item != "" && p.Bytes:
 		tail += "  " + p.Item + "  " + size(p.Done)

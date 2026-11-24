@@ -12,6 +12,7 @@ package atem
 import (
 	"bytes"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -113,19 +114,66 @@ func TestOnlyDataChunksAreMadeSmaller(t *testing.T) {
 	}
 }
 
-func TestOtherPacketsAmongThemGoAgainNowInOrder(t *testing.T) {
+func TestASmallPacketAfterTheStuckChunksMeansANewSession(t *testing.T) { // test_a_small_packet_after_the_stuck_chunks_means_a_new_session
+	// The lock release after the chunks is small enough to have got
+	// through, and the units keep what comes after a gap (the hardware
+	// bench, 2026-11-24): its sequence number cannot be used again for
+	// other data. A new session, the size learnt kept (bmdwire#100,
+	// e4119f7). Until then the chunks were taken back and the release
+	// went again at once under the stuck chunk's number.
 	clearChunkLimits(t)
-	tr, c, now := stuckUpload(t, 3)
+	tr, _, now := stuckUpload(t, 3)
 	sendReliable(t, tr, Lock{Store: 0, State: false}.Encode())
-	c.reset()
-	tb := timerFires(tr, now, tooBigAfter+1, true)
-	if tb == nil || len(tb.sizes) != 3 {
-		t.Fatalf("taken back %+v", tb)
+	if tb := timerFires(tr, now, tooBigAfter+1, true); tb != nil {
+		t.Fatalf("taken back %+v under the same numbers", tb)
 	}
-	sent := c.sent()
-	last := sent[len(sent)-1]
-	if last.seq != 2 || string(last.data[4:8]) != "LOCK" || last.flags&flagRetransmission != 0 {
-		t.Fatalf("last sent seq %d %q flags %#x", last.seq, last.data[4:8], last.flags)
+	if !strings.Contains(tr.newSessionAsked, "too big") {
+		t.Fatalf("new session asked for: %q", tr.newSessionAsked)
+	}
+	if tr.maxChunk != 1224 || chunkLimit(switcherAddr) != 1224 {
+		t.Fatalf("maxChunk %d, kept %d", tr.maxChunk, chunkLimit(switcherAddr))
+	}
+}
+
+// request is the switcher asking for our packet seq again.
+func request(t *testing.T, tr *transport, seq uint16) {
+	t.Helper()
+	b := rawDatagram(tr.sessionID, 0, flagRequestRetransmission, nil)
+	b[6], b[7] = byte(seq>>8), byte(seq)
+	if _, err := tr.receive(b, switcherAddr); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTheSwitcherAskingAgainForTheStuckChunkFindsTheSizeFast(t *testing.T) { // test_the_switcher_asking_again_for_the_stuck_chunk_finds_the_size_fast
+	// A switcher that asks (a Mini Pro, a Constellation): its requests for
+	// the chunk it lacks count as resends it answered, without waiting
+	// for our backed-off timer (a macro upload over a 1,280 VPN: 10 s
+	// before; bmdwire#100, e4119f7).
+	clearChunkLimits(t)
+	tr, _, now := stuckUpload(t, 10)
+	start := *now
+	for range tooBigAfter + 1 {
+		*now = now.Add(100 * time.Millisecond)
+		request(t, tr, 2)
+	}
+	if len(tr.takenBackQueue) != 1 {
+		t.Fatalf("%d taken back", len(tr.takenBackQueue))
+	}
+	if tb := tr.takenBackQueue[0]; tb.limit != 1224 || len(tb.sizes) != 10 || now.Sub(start) >= time.Second {
+		t.Fatalf("taken back %+v after %v", tb, now.Sub(start))
+	}
+}
+
+func TestRequestsCloserThanResendMinCountOnce(t *testing.T) { // test_requests_closer_than_resend_min_count_once
+	clearChunkLimits(t)
+	tr, _, now := stuckUpload(t, 10)
+	for range 10 {
+		*now = now.Add(resendMin / 4)
+		request(t, tr, 2)
+	}
+	if len(tr.takenBackQueue) != 0 {
+		t.Fatalf("taken back %+v", tr.takenBackQueue)
 	}
 }
 
@@ -341,31 +389,57 @@ func TestChunksStuckWhileTheCableIsOutAreNotTakenBack(t *testing.T) {
 	clearChunkLimits(t)
 	tr, now := stuckUploadOnALAN(t, 10)
 	out := *now
-	if tb := timerFiresHeard(t, tr, now, tooBigAfter+1, false); tb != nil {
-		t.Fatalf("taken back %+v with the cable out", tb)
+	if tb := timerFiresHeard(t, tr, now, tooBigAfter+3, false); tb != nil {
+		t.Fatalf("taken back %+v with the cable out: resends nobody answered do not count", tb)
 	}
-	if now.Sub(out) >= resendMax {
+	if now.Sub(out) >= 3*time.Second {
 		t.Fatalf("%v: not the case v0.3.1 got wrong", now.Sub(out))
 	}
-	// The cable back in: heard again at once, and the chunks stuck across
-	// the silence are resent, not taken back.
+	// The cable back in: heard again, and the next resend reaches the
+	// switcher, which acknowledges it.
 	heardUntil(t, tr, now, out.Add(3*time.Second))
-	if tb := timerFiresHeard(t, tr, now, tooBigAfter+2, true); tb != nil {
+	if tb := timerFiresHeard(t, tr, now, 1, true); tb != nil {
 		t.Fatalf("taken back %+v after the cable came back", tb)
 	}
+	tr.onACK(11, true)
 	if tr.maxChunk != 0 || tr.localSeq != 11 {
 		t.Fatalf("maxChunk %d, localSeq %d: no sequence number used twice", tr.maxChunk, tr.localSeq)
 	}
 }
 
-func TestAShortGapInWhatTheSwitcherSendsIsALinkDown(t *testing.T) {
+func TestResendsIntoSilenceDoNotCountTowardsTooBig(t *testing.T) {
 	clearChunkLimits(t)
 	tr, now := stuckUploadOnALAN(t, 10)
-	timerFiresHeard(t, tr, now, 1, true)
-	*now = now.Add(heardGap + 50*time.Millisecond) // quiet, then heard again
-	timePacket(t, tr)
-	if tb := timerFiresHeard(t, tr, now, tooBigAfter+1, true); tb != nil {
-		t.Fatalf("taken back %+v across a gap", tb)
+	timerFiresHeard(t, tr, now, 6, false)
+	if tb := timerFiresHeard(t, tr, now, tooBigAfter-1, true); tb != nil {
+		t.Fatalf("taken back %+v counting resends into silence", tb)
+	}
+	if tb := timerFiresHeard(t, tr, now, 1, true); tb == nil || tb.limit != 1224 {
+		t.Fatalf("taken back %+v, want limit 1224", tb)
+	}
+}
+
+func TestASwitcherThatSendsEveryHalfSecondIsHeard(t *testing.T) {
+	// WebATEM #63 on v0.3.2's rule (bmdwire 1.14.8): a switcher that sends
+	// less often than a Constellation's every 40 ms never passed "no gap
+	// over 250 ms", and its uploads hung (bmdwire#100).
+	clearChunkLimits(t)
+	tr, _, now := stuckUpload(t, 10)
+	var tb *takenBack
+	for range tooBigAfter + 1 {
+		due := tr.resendDue
+		for !now.Add(500 * time.Millisecond).After(due) {
+			*now = now.Add(500 * time.Millisecond)
+			timePacket(t, tr)
+		}
+		*now = due.Add(500 * time.Millisecond) // heard just after each resend
+		timePacket(t, tr)
+		if got := tr.resendUnacked(); got != nil {
+			tb = got
+		}
+	}
+	if tb == nil || tb.limit != 1224 {
+		t.Fatalf("taken back %+v, want limit 1224", tb)
 	}
 }
 
@@ -375,4 +449,65 @@ func TestChunksTooBigOnALANAreStillTakenBack(t *testing.T) {
 	if tb := timerFiresHeard(t, tr, now, tooBigAfter+1, true); tb == nil || tb.limit != 1224 {
 		t.Fatalf("taken back %+v, want limit 1224", tb)
 	}
+}
+
+func TestMoreChunksTakenBackThanTheSendQueueHoldsAllGoAgain(t *testing.T) { // test_more_chunks_taken_back_than_the_send_queue_holds_all_go_again
+	// Three budgets of 768 in flight when the take-back came (a switcher
+	// granting them back to back): 2,304 chunks to send again, more than
+	// the bulk queue (bulkQueueMax, 1,024) holds. Queued at once, the
+	// oldest were dropped and the still came out short (bmdwire#100,
+	// e151696).
+	clearChunkLimits(t)
+	s, c := laneSession(t)
+	tk := uploadTask(0)
+	tk.data = make([]byte, ascChunk*2304)
+	for i := range tk.data {
+		tk.data[i] = byte(i * 7 % 251)
+	}
+	tk.dataLength, tk.size = len(tk.data), len(tk.data)
+	s.enqueueTask(tk)
+	grant(t, s, 0)
+	for range 3 {
+		feedBudget(t, s, 768)
+	}
+	first := commands(c, "FTDa")
+	if len(first) != 2304 {
+		t.Fatalf("%d chunks sent", len(first))
+	}
+	s.t.maxChunk = 1224
+	s.chunksTakenBack(&takenBack{transfer: s.lane.transfer.tid, sizes: slices.Repeat([]int{ascChunk}, 2304), limit: 1224})
+	var again []byte
+	for _, d := range commands(c, "FTDa")[2304:] {
+		again = append(again, d[4:]...)
+	}
+	// As many chunks as the budget owed, now of 1,224 bytes, in order
+	// from where the first one started; the rest with the next budget.
+	if len(again) != 2304*1224 || !bytes.Equal(again, tk.data[:len(again)]) {
+		t.Fatalf("%d bytes sent again, not the data from its start: some lost to the queue", len(again))
+	}
+}
+
+// The session does what the transport asks: the new session starts, the
+// upload carried over to it, to go again in the smaller chunks.
+func TestANewSessionAskedForCarriesTheUploadOver(t *testing.T) {
+	clearChunkLimits(t)
+	s, c := laneSession(t)
+	now := time.Unix(1000, 0)
+	s.t.now = func() time.Time { return now }
+	tk := uploadTask(4)
+	s.enqueueTask(tk)
+	grant(t, s, 0)
+	feedBudget(t, s, 3)
+	s.t.onACK(uint16(s.t.localSeq-3), true)                     // all but the chunks got there
+	sendReliable(t, s.t, Lock{Store: 0, State: false}.Encode()) // small, after them
+	c.reset()
+	timerFires(s.t, &now, tooBigAfter+1, true)
+	s.transportAsks()
+	if h, g := hellos(c); h != 1 || g != 1 {
+		t.Fatalf("%d hellos, %d goodbyes: no new session", h, g)
+	}
+	if len(s.lane.carried) != 1 || s.lane.carried[0] != tk || s.t.maxChunk != 1224 {
+		t.Fatalf("carried %v, maxChunk %d", s.lane.carried, s.t.maxChunk)
+	}
+	noResult(t, tk)
 }
