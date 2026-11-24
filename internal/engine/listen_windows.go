@@ -6,6 +6,12 @@ package engine
 
 // The engine's named pipe, through kernel32 and advapi32 directly: the
 // standard library has no named pipe API.
+//
+// Both ends open the pipe for overlapped I/O, which os.NewFile hands to
+// the runtime's poller. On a handle opened for synchronous I/O Windows
+// runs one call at a time: the engine's read that watches for the caller
+// hanging up (serveConn) held up its own response's write, and every
+// request hung (found when CI first ran on Windows).
 
 import (
 	"context"
@@ -28,11 +34,14 @@ var (
 	procCreateNamedPipeW    = kernel32.NewProc("CreateNamedPipeW")
 	procConnectNamedPipe    = kernel32.NewProc("ConnectNamedPipe")
 	procDisconnectNamedPipe = kernel32.NewProc("DisconnectNamedPipe")
+	procCreateEventW        = kernel32.NewProc("CreateEventW")
+	procGetOverlappedResult = kernel32.NewProc("GetOverlappedResult")
 	procConvertStringSDToSD = advapi32.NewProc("ConvertStringSecurityDescriptorToSecurityDescriptorW")
 )
 
 const (
 	pipeAccessDuplex          = 0x00000003
+	fileFlagOverlapped        = syscall.FILE_FLAG_OVERLAPPED
 	fileFlagFirstPipeInstance = 0x00080000
 	pipeRejectRemoteClients   = 0x00000008 // PIPE_TYPE_BYTE, PIPE_READMODE_BYTE and PIPE_WAIT are 0
 	pipeUnlimitedInstances    = 255
@@ -109,7 +118,7 @@ func (l *pipeListener) create(first bool) (syscall.Handle, error) {
 	if err != nil {
 		return syscall.InvalidHandle, err
 	}
-	mode := uintptr(pipeAccessDuplex)
+	mode := uintptr(pipeAccessDuplex | fileFlagOverlapped)
 	if first {
 		mode |= fileFlagFirstPipeInstance
 	}
@@ -131,12 +140,39 @@ func (l *pipeListener) Accept() (io.ReadWriteCloser, error) {
 		if closed {
 			return nil, net.ErrClosed
 		}
-		r, _, e := procConnectNamedPipe.Call(uintptr(h), 0)
-		c, err, retry := l.accepted(h, r != 0 || errors.Is(e, errorPipeConnected), e)
+		ok, e := connectPipe(h)
+		c, err, retry := l.accepted(h, ok, e)
 		if !retry {
 			return c, err
 		}
 	}
+}
+
+// connectPipe waits for a client on the instance h, which is open for
+// overlapped I/O, so ConnectNamedPipe returns at once and the wait is on
+// an event. ok is set once a client is connected, e otherwise says why.
+func connectPipe(h syscall.Handle) (ok bool, e error) {
+	ev, _, e := procCreateEventW.Call(0, 1, 0, 0)
+	if ev == 0 {
+		return false, e
+	}
+	defer syscall.CloseHandle(syscall.Handle(ev))
+	ov := &syscall.Overlapped{HEvent: syscall.Handle(ev)}
+	r, _, e := procConnectNamedPipe.Call(uintptr(h), uintptr(unsafe.Pointer(ov)))
+	switch {
+	case r != 0, errors.Is(e, errorPipeConnected):
+		return true, nil
+	case !errors.Is(e, syscall.ERROR_IO_PENDING):
+		return false, e
+	}
+	if _, err := syscall.WaitForSingleObject(syscall.Handle(ev), syscall.INFINITE); err != nil {
+		return false, err
+	}
+	var n uint32
+	if r, _, e := procGetOverlappedResult.Call(uintptr(h), uintptr(unsafe.Pointer(ov)), uintptr(unsafe.Pointer(&n)), 0); r == 0 {
+		return false, e
+	}
+	return true, nil
 }
 
 // accepted finishes an Accept: the connected instance h becomes a
@@ -194,15 +230,22 @@ func (c *pipeConn) Close() error {
 	return c.File.Close()
 }
 
-// Dial opens the engine's pipe, waiting while every instance is busy.
+// Dial opens the engine's pipe, waiting while every instance is busy. It
+// is opened for overlapped I/O, so closing it (Call does when ctx ends)
+// ends a read in flight.
 func Dial(ctx context.Context, path string) (io.ReadWriteCloser, error) {
+	name, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, err
+	}
 	for {
-		f, err := os.OpenFile(path, os.O_RDWR, 0)
+		h, err := syscall.CreateFile(name, syscall.GENERIC_READ|syscall.GENERIC_WRITE, 0, nil,
+			syscall.OPEN_EXISTING, fileFlagOverlapped, 0)
 		if err == nil {
-			return f, nil
+			return os.NewFile(uintptr(h), path), nil
 		}
 		if !errors.Is(err, errorPipeBusy) {
-			return nil, err
+			return nil, &os.PathError{Op: "open", Path: path, Err: err}
 		}
 		select {
 		case <-ctx.Done():
