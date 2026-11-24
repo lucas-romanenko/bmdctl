@@ -52,15 +52,17 @@ const (
 	errorPipeBusy      = syscall.Errno(231)
 	errorPipeConnected = syscall.Errno(535)
 	errorNoData        = syscall.Errno(232)
+	errorNotConnected  = syscall.Errno(233)
 )
 
 type pipeListener struct {
 	name string
 	sa   *syscall.SecurityAttributes
 
-	mu     sync.Mutex
-	next   syscall.Handle // the instance the next client connects to
-	closed bool
+	mu        sync.Mutex
+	next      syscall.Handle // the instance the next client connects to
+	accepting bool           // an Accept is waiting on next
+	closed    bool
 }
 
 // Listen creates the named pipe path, which only the current user (and
@@ -135,11 +137,14 @@ func (l *pipeListener) Addr() string { return l.name }
 func (l *pipeListener) Accept() (io.ReadWriteCloser, error) {
 	for {
 		l.mu.Lock()
-		h, closed := l.next, l.closed
-		l.mu.Unlock()
-		if closed {
+		if l.closed {
+			l.closeNext()
+			l.mu.Unlock()
 			return nil, net.ErrClosed
 		}
+		h := l.next
+		l.accepting = true
+		l.mu.Unlock()
 		ok, e := connectPipe(h)
 		c, err, retry := l.accepted(h, ok, e)
 		if !retry {
@@ -181,8 +186,9 @@ func connectPipe(h syscall.Handle) (ok bool, e error) {
 func (l *pipeListener) accepted(h syscall.Handle, ok bool, e error) (io.ReadWriteCloser, error, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.accepting = false
 	if l.closed {
-		syscall.CloseHandle(h)
+		l.closeNext()
 		return nil, net.ErrClosed, false
 	}
 	if !ok {
@@ -201,8 +207,19 @@ func (l *pipeListener) accepted(h syscall.Handle, ok bool, e error) (io.ReadWrit
 	return &pipeConn{File: os.NewFile(uintptr(h), l.name), h: h}, nil, false
 }
 
-// Close stops listening. ConnectNamedPipe can't be interrupted, so Close
-// connects to the pipe itself to wake a waiting Accept.
+// closeNext closes the instance waiting for a client. An instance left
+// open after the engine stops listening answers every client "busy", and
+// the next bmdctl waited on it for ever. l.mu is held.
+func (l *pipeListener) closeNext() {
+	if l.next != syscall.InvalidHandle {
+		syscall.CloseHandle(l.next)
+		l.next = syscall.InvalidHandle
+	}
+}
+
+// Close stops listening. With no Accept waiting it closes the instance
+// at once; otherwise it cancels the wait, and connects to the pipe itself
+// in case the wait had not begun, and Accept closes the instance.
 func (l *pipeListener) Close() error {
 	l.mu.Lock()
 	if l.closed {
@@ -210,7 +227,14 @@ func (l *pipeListener) Close() error {
 		return nil
 	}
 	l.closed = true
+	if !l.accepting {
+		l.closeNext()
+		l.mu.Unlock()
+		return nil
+	}
+	h := l.next
 	l.mu.Unlock()
+	syscall.CancelIoEx(h, nil)
 	if f, err := os.OpenFile(l.name, os.O_RDWR, 0); err == nil {
 		f.Close()
 	}
@@ -222,12 +246,25 @@ type pipeConn struct {
 	h syscall.Handle
 }
 
-// Close waits for the client to read what was written (closing a pipe
-// discards unread data), then disconnects.
+// Close waits for the client to read what was written, then closes the
+// instance. It does not disconnect it first: the client would then read
+// "no process is on the other end of the pipe" (ERROR_PIPE_NOT_CONNECTED)
+// rather than the end of the reply.
 func (c *pipeConn) Close() error {
 	syscall.FlushFileBuffers(c.h)
-	procDisconnectNamedPipe.Call(uintptr(c.h))
 	return c.File.Close()
+}
+
+// clientConn is the client's end. A pipe its engine disconnected reads
+// as the end of the reply, as a closed one does.
+type clientConn struct{ *os.File }
+
+func (c clientConn) Read(p []byte) (int, error) {
+	n, err := c.File.Read(p)
+	if errors.Is(err, errorNotConnected) {
+		err = io.EOF
+	}
+	return n, err
 }
 
 // Dial opens the engine's pipe, waiting while every instance is busy. It
@@ -242,7 +279,7 @@ func Dial(ctx context.Context, path string) (io.ReadWriteCloser, error) {
 		h, err := syscall.CreateFile(name, syscall.GENERIC_READ|syscall.GENERIC_WRITE, 0, nil,
 			syscall.OPEN_EXISTING, fileFlagOverlapped, 0)
 		if err == nil {
-			return os.NewFile(uintptr(h), path), nil
+			return clientConn{os.NewFile(uintptr(h), path)}, nil
 		}
 		if !errors.Is(err, errorPipeBusy) {
 			return nil, &os.PathError{Op: "open", Path: path, Err: err}
