@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,6 +44,9 @@ func newRig(t *testing.T, cfg Config) *rig {
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	r := &rig{t: t, sock: filepath.Join(dir, "s.sock")}
+	if runtime.GOOS == "windows" {
+		r.sock = `\\.\pipe\bmdctl-test-` + filepath.Base(dir)
+	}
 	dump := fixtures.Bytes(t, "dump/initial-dump.bin")
 	reg, err := NewRegistry()
 	if err != nil {
@@ -268,6 +272,9 @@ func TestListenTwice(t *testing.T) {
 	if _, err := Listen(r.sock); err != ErrRunning {
 		t.Fatalf("second listen: %v", err)
 	}
+	if runtime.GOOS == "windows" {
+		return // a named pipe goes with its engine: none is left
+	}
 	dir := t.TempDir()
 	stale := filepath.Join(dir, "x.sock")
 	os.WriteFile(stale, nil, 0o600)
@@ -280,6 +287,9 @@ func TestListenTwice(t *testing.T) {
 
 // The socket is the owner's alone.
 func TestSocketMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a named pipe: its security descriptor is the owner's (listen_windows.go)")
+	}
 	r := newRig(t, Config{})
 	fi, err := os.Stat(r.sock)
 	if err != nil {
