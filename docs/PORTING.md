@@ -620,6 +620,17 @@ two settings `Dial` needs a struct for.
   caller dials again. Windows' report of an ICMP port-unreachable
   (WSAECONNRESET), which ended atemwire's UDP thread until bmdwire#88,
   never reaches a read here ("Transport", Windows).
+- **A read goroutine that ends strands nobody** (bmdwire#100, `61d596b`).
+  Nothing to port. atemwire's UDP thread put one end-of-stream marker on
+  its receive queue as it ended; the first `loop()` took it and every one
+  after waited on the queue for good, a caller's deadline with it, so
+  `receive_packet` now hands back None every 0.1 s once the thread is
+  gone. Here the read goroutine ends only after handing its error to the
+  run goroutine (or once that has ended), which ends the session: a
+  transfer in flight fails with `ErrClosed` at once and every later call
+  returns it at once, since `do` selects on `done`. A panic in it ends
+  the process rather than the goroutine. `reader_gone_test.go` mirrors
+  `test_udp_thread_gone.py`.
 - **Close** gives back any store lock held (`release_locks_now`, see
   "Transfers"), says goodbye, closes the socket, fails pending waiters and
   transfers with `ErrClosed` and closes subscriber channels.
