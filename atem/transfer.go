@@ -26,9 +26,10 @@ import (
 )
 
 // Default timeouts for a transfer whose context has no deadline: those of
-// the atemwire and WebATEM callers. A macro transfer's is time without
-// progress, with no cap on the whole (bmdwire#101, 85d2f58); the others
-// cap the whole transfer.
+// the atemwire and WebATEM callers. A macro transfer's and a still
+// download's is time without progress, with no cap on the whole
+// (bmdwire#101, 85d2f58; bmdwire#104, 48f87ef); a still upload's and a
+// clear's cap the whole transfer.
 const (
 	StillDownloadTimeout = 30 * time.Second // ATEMConnection.download_still
 	StillUploadTimeout   = 90 * time.Second // WebATEM uploader.py UPLOAD_TIMEOUT
@@ -36,8 +37,12 @@ const (
 	MacroTimeout         = 10 * time.Second // download_macro, upload_macro_bytecode
 )
 
-// macroTimeout is MacroTimeout, which tests shorten.
-var macroTimeout = MacroTimeout
+// macroTimeout and stillDownloadTimeout are MacroTimeout and
+// StillDownloadTimeout, which tests shorten.
+var (
+	macroTimeout         = MacroTimeout
+	stillDownloadTimeout = StillDownloadTimeout
+)
 
 const (
 	// lockRerequest is LOCK_REREQUEST_SECONDS: a lock request with no
@@ -289,8 +294,9 @@ type stallKey struct{}
 // d passes with no progress (waiting for the lock counts as none): for a
 // download, no data arriving; for an upload, no budget, no chunk queued
 // and none of our packets acknowledged. The context's deadline caps the
-// whole transfer; without one, a still download's default timeout does:
-// download_still's stall_timeout (bmdwire#73, 588a389, v1.11.0). A 4K
+// whole transfer; without one, a still transfer's default timeout does:
+// download_still's stall_timeout with its timeout (bmdwire#73, 588a389,
+// v1.11.0; still so since bmdwire#104). A 4K
 // still is 12 MB or more on the wire and an 8K one four times that, so
 // one fixed timeout is either too short for them or far too long to
 // notice a transfer that stopped. A macro transfer's default timeout is
@@ -555,7 +561,12 @@ func (l *lane) popHead(t *transferTask) {
 // for the current video mode (YCbCrAToRGBA converts it). It is atemwire's
 // ATEMConnection.download_still: PLCK, LKOB, FTSU, FTDa chunks each
 // acknowledged with FTUA, FTDC, then the lock released. Without a context
-// deadline it gives up after StillDownloadTimeout. A transfer the switcher
+// deadline it gives up once StillDownloadTimeout passes with nothing
+// arriving (waiting for the lock counts as nothing), however long a slow
+// link takes in all (bmdwire#104, 48f87ef: it was the whole download's,
+// and a 1080p still over 1 Mbit/s, 130 s, never made it); under
+// WithStallTimeout, StillDownloadTimeout caps the whole as before. A
+// transfer the switcher
 // refuses fails with a *TransferError; one that times out without the lock
 // ever being granted wraps ErrLockNotGranted.
 func (s *Session) DownloadStill(ctx context.Context, slot int) ([]byte, error) {
@@ -563,7 +574,7 @@ func (s *Session) DownloadStill(ctx context.Context, slot int) ([]byte, error) {
 		return nil, err
 	}
 	t := &transferTask{kind: taskDownload, store: StoreStills, slot: uint16(slot)}
-	return s.runTransfer(ctx, t, StillDownloadTimeout)
+	return s.runTransfer(ctx, t, stillDownloadTimeout)
 }
 
 // StillOptions are UploadStill's options.
@@ -830,9 +841,11 @@ func (s *Session) runTransfer(ctx context.Context, t *transferTask, timeout time
 	// made no progress for stall.
 	stall, _ := ctx.Value(stallKey{}).(time.Duration)
 	if _, ok := ctx.Deadline(); !ok {
-		if t.timeoutIsStall() {
+		if t.timeoutIsStall() && (stall <= 0 || t.store == StoreMacros) {
 			// The default timeout is time without progress, with no cap
-			// on the whole (bmdwire#101); WithStallTimeout replaces it.
+			// on the whole (bmdwire#101, #104); WithStallTimeout replaces
+			// a macro's. A still download under WithStallTimeout keeps
+			// its default as the cap, as download_still with both does.
 			if stall <= 0 {
 				stall = timeout
 			}
@@ -919,9 +932,10 @@ wait:
 }
 
 // timeoutIsStall reports whether t's default timeout is time without
-// progress rather than the whole transfer's: a macro's (bmdwire#101).
+// progress rather than the whole transfer's: a macro's (bmdwire#101) and
+// any download's (bmdwire#104, 48f87ef).
 func (t *transferTask) timeoutIsStall() bool {
-	return t.store == StoreMacros
+	return t.store == StoreMacros || t.kind == taskDownload
 }
 
 // moved stamps t as making progress now, for the stall clock.

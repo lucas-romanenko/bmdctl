@@ -566,3 +566,47 @@ func TestASwitcherAnsweringBusyIsNamed(t *testing.T) { // test_a_switcher_answer
 		t.Fatalf("err %v", err)
 	}
 }
+
+// --- timeout alone is no-progress too (bmdwire#104, test_download_stall.py)
+
+// bmdwire 1.14.8: the default timeout capped the whole download (30 s),
+// and a 1080p still over 1 Mbit/s (130 s) or a slow site (45 s) never made
+// it. A download that keeps moving now takes as long as the link needs.
+func TestTimeoutAloneIsTimeWithoutDataNotTheWholeDownload(t *testing.T) { // test_timeout_alone_is_time_without_data_not_the_whole_download
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	const timeout = 150 * time.Millisecond
+	atem.SetStillDownloadTimeout(t, timeout)
+	frame := make([]byte, 160*fakeatem.ChunkSize)
+	for i := range frame {
+		frame[i] = byte(i*7 + i>>9) // no runs: every word goes on the wire
+	}
+	rle, _ := atem.RLEEncode(frame)
+	sw.PutStill(1, rle, "x", [16]byte{})
+	sw.PaceDownloads(50 * time.Millisecond) // ten refills, never 150 ms apart
+	start := time.Now()
+	got, err := s.DownloadStill(context.Background(), 1)
+	if err != nil || len(got) != len(frame) {
+		t.Fatalf("%d bytes, %v", len(got), err)
+	}
+	if took := time.Since(start); took <= timeout {
+		t.Fatalf("took %v: not long enough to outlive the timeout", took)
+	}
+}
+
+func TestTimeoutAloneStillGivesUpWhenNothingArrives(t *testing.T) { // test_timeout_alone_still_gives_up_when_nothing_arrives
+	sw := newFake(t)
+	s := dialFake(t, sw, 0)
+	atem.SetStillDownloadTimeout(t, 300*time.Millisecond)
+	rle, _ := atem.RLEEncode(make([]byte, 4096))
+	sw.PutStill(1, rle, "x", [16]byte{})
+	sw.Unanswered("FTSU") // the lock is granted; no data ever comes
+	start := time.Now()
+	_, err := s.DownloadStill(context.Background(), 1)
+	if err == nil || !strings.Contains(err.Error(), "stalled (no data for 300ms)") || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err %v", err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("gave up after %v", took)
+	}
+}

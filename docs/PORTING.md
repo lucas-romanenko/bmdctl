@@ -1473,7 +1473,25 @@ atemwire's `upload` takes RLE data with `compressed=True`),
   everywhere; `WithStallTimeout` replaces the 10 s. The engine's
   transfers set a deadline only for `--timeout`, so the CLI gets the
   no-progress default; the profile's `MacroTimeout` (apply and save)
-  goes in as `WithStallTimeout`, where it was a deadline. Progress is
+  goes in as `WithStallTimeout`, where it was a deadline. A still
+  download's (`StillDownloadTimeout`, 30 s) is time without data too
+  since bmdwire#104 (`48f87ef`): `download_still` with `timeout` alone
+  gives up after that long with nothing arriving, the wait for the lock
+  counting as nothing, with no cap; with `stall_timeout` as well, that is
+  the no-data limit and `timeout` the cap, as before. Here: no deadline
+  and no `WithStallTimeout`, the 30 s is the stall clock; under
+  `WithStallTimeout` without a deadline the 30 s caps the whole, as
+  before. A 1080p still over 1 Mbit/s takes about 120 s and a slow
+  site's about 45 s, and never made 30 s. The engine's still download
+  and its profile save's media capture (`timeout_per_slot`'s
+  counterpart) pass no deadline without `--timeout`, so both get it.
+  `download_macro`'s half of bmdwire#104 is bmdwire#101's here:
+  `DownloadMacro` is both of atemwire's macro downloads. A still
+  upload's 90 s and a clear's 5 s stay caps; bmdwire changes neither.
+  Tests: `TestTimeoutAloneIsTimeWithoutDataNotTheWholeDownload` and
+  `TestTimeoutAloneStillGivesUpWhenNothingArrives` in
+  `transfer_fake_test.go`, and `TestAMacroDownloadIsNoProgressToo`
+  (bmdwire#101's port), from `test_download_stall.py`. A macro upload's progress is
   bmdwire's `_progress_mark`: a budget, a chunk cut, or the switcher
   taking more of our packets while an upload is in hand (`uploadInHand`,
   whatever its phase, as atemwire's mark reads `_acked_through` for the

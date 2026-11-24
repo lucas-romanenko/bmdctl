@@ -41,3 +41,11 @@ func SetMacroTimeout(t testing.TB, d time.Duration) {
 	macroTimeout = d
 	t.Cleanup(func() { macroTimeout = old })
 }
+
+// SetStillDownloadTimeout shortens StillDownloadTimeout, DownloadStill's
+// default timeout, for one test.
+func SetStillDownloadTimeout(t testing.TB, d time.Duration) {
+	old := stillDownloadTimeout
+	stillDownloadTimeout = d
+	t.Cleanup(func() { stillDownloadTimeout = old })
+}
