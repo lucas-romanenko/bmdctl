@@ -758,12 +758,12 @@ func TestTransportDropsStaleSessionPackets(t *testing.T) {
 		return got
 	}
 	accept := []byte{helloAccepted, 0, 0, 0, 0, 0, 0, 0}
-	// Session 0x8001, sequences 100-102.
+	// Session 0x8001, sequences 1-3 (a session's dump starts at 1).
 	feed(helloSession, 0, flagSYN, accept)
-	for seq := uint16(100); seq <= 102; seq++ {
+	for seq := uint16(1); seq <= 3; seq++ {
 		feed(0x8001, seq, flagReliable, []byte("data"))
 	}
-	if tr.sessionID != 0x8001 || tr.ackNumber != 102 {
+	if tr.sessionID != 0x8001 || tr.ackNumber != 3 {
 		t.Fatalf("session %#x ack %d", tr.sessionID, tr.ackNumber)
 	}
 	// Silence: re-SYN.
@@ -775,7 +775,7 @@ func TestTransportDropsStaleSessionPackets(t *testing.T) {
 	now = now.Add(time.Second)
 	c.reset()
 	// A stale packet while the SYN is out: dropped, nothing touched.
-	if got := feed(0x8001, 103, flagReliable|flagRetransmission, []byte("stale")); got != nil {
+	if got := feed(0x8001, 4, flagReliable|flagRetransmission, []byte("stale")); got != nil {
 		t.Fatalf("delivered %+v", got)
 	}
 	// So is anything else that isn't the SYN reply.
@@ -792,7 +792,7 @@ func TestTransportDropsStaleSessionPackets(t *testing.T) {
 	if tr.state != stateEstablished || tr.sessionKnown {
 		t.Fatalf("state %v known %v", tr.state, tr.sessionKnown)
 	}
-	if got := feed(0x8001, 104, flagReliable|flagRetransmission, []byte("stale")); got != nil || tr.sessionKnown {
+	if got := feed(0x8001, 5, flagReliable|flagRetransmission, []byte("stale")); got != nil || tr.sessionKnown {
 		t.Fatalf("stale packet delivered %+v or adopted (%#x)", got, tr.sessionID)
 	}
 	// The new session's packets come through in order, from 1.
@@ -806,7 +806,7 @@ func TestTransportDropsStaleSessionPackets(t *testing.T) {
 		t.Fatalf("delivered %v, session %#x, ack %d", seqs, tr.sessionID, tr.ackNumber)
 	}
 	// And the old session stays dropped.
-	if got := feed(0x8001, 105, flagReliable, []byte("stale")); got != nil {
+	if got := feed(0x8001, 6, flagReliable, []byte("stale")); got != nil {
 		t.Fatalf("delivered %+v", got)
 	}
 }

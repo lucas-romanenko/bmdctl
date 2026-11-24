@@ -253,9 +253,10 @@ func (sw *Switcher) DropSequences(seqs ...uint16) {
 	}
 }
 
-// DropSequencesAlways is DropSequences for every session: each new
+// DropSequencesAlways drops every sending of the reliable packets with
+// these sequence numbers, resends too, in every session: each new
 // session numbers its packets from 1 again, so DropSequencesAlways(1)
-// loses the first packet of every state dump.
+// loses the first packet of every state dump for good.
 func (sw *Switcher) DropSequencesAlways(seqs ...uint16) {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
@@ -526,7 +527,9 @@ func (sw *Switcher) resendFrom(seq uint16) {
 		b := append([]byte(nil), u.b...)
 		b[0] |= flagRetransmission << 3
 		u.at = now
-		sw.enqueue(b)
+		if !sw.dropAlways[s] {
+			sw.enqueue(b)
+		}
 	}
 }
 
@@ -663,7 +666,9 @@ func (sw *Switcher) tick() {
 				b := append([]byte(nil), u.b...)
 				b[0] |= flagRetransmission << 3
 				u.at = now
-				sw.enqueue(b)
+				if !sw.dropAlways[seq] {
+					sw.enqueue(b)
+				}
 			}
 			if now.Sub(sw.lastPing) >= PingInterval {
 				sw.sendReliable(nil)

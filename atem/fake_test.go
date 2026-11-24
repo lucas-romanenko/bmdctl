@@ -154,10 +154,13 @@ func TestStalePacketsDuringARehandshake(t *testing.T) {
 	}
 }
 
-// bmdwire#13 (bmdwire#27): a state dump that ends without its video mode
-// lost its first packet for good, so the session handshakes again for a
-// fresh dump at once, and Dial returns a session that has one.
-func TestLosingTheFirstDumpPacketRehandshakes(t *testing.T) {
+// bmdwire#13 (bmdwire 1.14.7): a new session's packets are numbered from
+// 1, so a lost first dump packet stalls the ACK at 0 and the switcher
+// sends it again, like any other; Dial gets the whole dump, video mode
+// included, in one handshake. Before, the second packet set the receive
+// baseline, its ACK covered the lost one for good, and the session had to
+// handshake again for a fresh dump (bmdwire#27's fallback).
+func TestLosingTheFirstDumpPacketIsSentAgain(t *testing.T) {
 	sw := newFake(t)
 	sw.DropSequences(1)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -171,21 +174,24 @@ func TestLosingTheFirstDumpPacketRehandshakes(t *testing.T) {
 	if s.State().VideoMode.Mode == nil {
 		t.Error("no video mode")
 	}
-	if n := sw.Handshakes(); n != 2 {
-		t.Errorf("%d handshakes, want 2", n)
+	if n := sw.Handshakes(); n != 1 {
+		t.Errorf("%d handshakes, want 1: the lost packet was not sent again", n)
 	}
-	if d := time.Since(start); d > 2*time.Second {
+	if d := time.Since(start); d > time.Second {
 		t.Errorf("Dial took %v", d)
 	}
 }
 
-// After incompleteDumpRetries fresh dumps that lost their first packet
+// A packet 1 that never gets through is not waited for for ever: after
+// firstPacketWait delivery starts from the first that came (bmdwire
+// 1.14.7, d959fe4), the dump ends without its video mode and the session
+// handshakes again; after incompleteDumpRetries fresh dumps that lost it
 // too, Dial fails, saying which sequence number came first, rather than
 // handshaking for ever (atemwire then carries on without a video mode).
 func TestAFirstDumpPacketAlwaysLostFailsDial(t *testing.T) {
 	sw := newFake(t)
 	sw.DropSequencesAlways(1)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	start := time.Now()
 	_, err := (&atem.Dialer{Conn: sw}).Dial(ctx, fakeatem.Address)
@@ -195,7 +201,9 @@ func TestAFirstDumpPacketAlwaysLostFailsDial(t *testing.T) {
 	if n := sw.Handshakes(); n != 4 {
 		t.Errorf("%d handshakes, want 4 (the first and three more)", n)
 	}
-	if d := time.Since(start); d > 3*time.Second {
+	// Each dump waits firstPacketWait for packet 1, and the next packet
+	// after it (the switcher's ping) starts delivery without it.
+	if d := time.Since(start); d > 10*time.Second {
 		t.Errorf("Dial took %v to fail", d)
 	}
 }

@@ -1,8 +1,8 @@
 # bmdctl: notes for future sessions
 
 bmdctl is a Go port of bmdwire (`../bmdwire`), written against v1.3.0
-(tag `v1.3.0`, commit `e5e336c`) and following v1.14.6 (tag `v1.14.6`,
-commit `75503ed`), as
+(tag `v1.3.0`, commit `e5e336c`) and following v1.15.0 (tag `v1.15.0`,
+commit `8158c72`), as
 `docs/PORTING.md` ("Source of truth") says, plus one CLI binary. Read `docs/PORTING.md`
 before changing anything in `atem/`: it records every decision already
 made, so you follow it instead of re-deriving it. Add to it whenever you
