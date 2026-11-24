@@ -2028,7 +2028,7 @@ func (s *Session) releaseLocksNow() {
 			continue
 		}
 		s.log.Info("atem: releasing store lock (teardown)", "store", st)
-		if err := s.t.sendReliable(Lock{Store: st}.Encode()); err != nil {
+		if err := s.t.sendReliableNow(Lock{Store: st}.Encode()); err != nil {
 			s.log.Debug("atem: teardown lock release failed", "store", st, "err", err)
 		}
 		l.locks[st] = false
