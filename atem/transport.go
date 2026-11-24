@@ -59,6 +59,23 @@ const (
 	// ACK walk reaches them (bmdwire#80, 1.13.0; 1024 before).
 	receivedHistory = 2 * defaultDeliveryParkWindow
 
+	// helloRetry and helloRetryMax are HELLO_RETRY and HELLO_RETRY_MAX
+	// (bmdwire#103, 32b8393): our hello goes again helloRetry after it
+	// went with no answer, then every helloRetryMax, until the switcher
+	// answers or the silence timeout starts the handshake over. It went
+	// only on that timeout, every 5 s: a hello or its answer lost on a
+	// lossy link cost 5 s, two in a row failed the connect, and after a
+	// pulled cable or a reboot the session came back up to 5 s after the
+	// switcher could answer. 1 s is above any round trip a switcher is
+	// used over, so the answer to the first is in before the second goes.
+	helloRetry    = time.Second
+	helloRetryMax = 2 * time.Second
+	// goodbyes is GOODBYES (bmdwire#103): the goodbye goes this many
+	// times. One lost on a lossy link left the session on the switcher
+	// until it reaped it, which takes one of its few client slots; the
+	// switcher ignores a goodbye for a session it has ended.
+	goodbyes = 3
+
 	// silenceTimeout is the select() timeout of atemwire's UDP thread:
 	// this long without a datagram accepted from the switcher, and the
 	// transport re-handshakes (see lastRX).
@@ -571,6 +588,11 @@ type transport struct {
 	sentThrough    int
 	recover        int
 	minRTT         time.Duration
+
+	// helloDue is when our hello goes again if still unanswered (zero:
+	// never), and hellosAgain how many times it has (bmdwire#103).
+	helloDue    time.Time
+	hellosAgain int
 }
 
 func newTransport(conn net.PacketConn, addr *net.UDPAddr, log *slog.Logger) *transport {
@@ -646,12 +668,43 @@ func (t *transport) connect() error {
 	t.refused = false
 	// markNextConnected is not reset, as in atemwire.
 
-	syn := &packet{flags: flagSYN, data: []byte{helloConnect, 0, 0, 0, 0, 0, 0, 0}}
-	if err := t.sendLow(syn); err != nil {
+	t.helloDue = t.now().Add(helloRetry)
+	if err := t.sendLow(hello()); err != nil {
 		return err
 	}
 	t.state = stateSYNSent
 	return nil
+}
+
+// hello is _hello: the SYN that asks for a session.
+func hello() *packet {
+	return &packet{flags: flagSYN, data: []byte{helloConnect, 0, 0, 0, 0, 0, 0, 0}}
+}
+
+// checkHello is _check_hello: while our hello is unanswered, send it again
+// when due (helloRetry). It returns how long until the next, and false
+// when none is due.
+func (t *transport) checkHello() (time.Duration, bool) {
+	if t.state != stateSYNSent || t.helloDue.IsZero() {
+		return 0, false
+	}
+	if !t.now().Before(t.helloDue) {
+		t.helloAgain()
+	}
+	return max(0, t.helloDue.Sub(t.now())), true
+}
+
+// helloAgain is _hello_again: the hello went helloRetry ago (or
+// helloRetryMax, after the first retry) with no answer, so it goes again,
+// as it was. Not a new handshake: the silence window and the session
+// state stay.
+func (t *transport) helloAgain() {
+	t.log.Debug("atem: no answer to our hello: sending it again")
+	if err := t.sendLow(hello()); err != nil {
+		t.log.Debug("atem: hello again failed", "err", err)
+	}
+	t.hellosAgain++
+	t.helloDue = t.now().Add(helloRetryMax)
 }
 
 // queuePacket is queue_packet: queue reliable packet data for queueTrigger.
@@ -1642,15 +1695,18 @@ func (t *transport) handshake(p packet) error {
 	return t.sendLow(&packet{flags: flagACK, handshake: true})
 }
 
-// closeSession is the goodbye: one SYN with hello 0x04, fire and forget,
-// only on an established session. It releases every lock the session holds.
+// closeSession is the goodbye: a SYN with hello 0x04, goodbyes times
+// (bmdwire#103; once before), fire and forget, only on an established
+// session. It releases every lock the session holds.
 func (t *transport) closeSession() {
 	if t.state != stateEstablished {
 		return
 	}
-	bye := &packet{flags: flagSYN, data: []byte{helloClosing, 0, 0, 0, 0, 0, 0, 0}}
-	if err := t.sendLow(bye); err != nil {
-		t.log.Debug("atem: goodbye not sent", "err", err)
+	for range goodbyes {
+		bye := &packet{flags: flagSYN, data: []byte{helloClosing, 0, 0, 0, 0, 0, 0, 0}}
+		if err := t.sendLow(bye); err != nil {
+			t.log.Debug("atem: goodbye not sent", "err", err)
+		}
 	}
 	t.state = stateClosed
 }

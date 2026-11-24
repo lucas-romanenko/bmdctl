@@ -398,6 +398,24 @@ the switcher's that went missing is asked for (below).
   silence timer; nothing follows the last chunk of an upload budget, so
   without it that chunk's loss stalled the upload until the caller's
   timeout.
+- **The hello again, three goodbyes** (bmdwire#103, `32b8393`). An
+  unanswered hello goes again `helloRetry` (1 s) after it went, then
+  every `helloRetryMax` (2 s), until the switcher answers or the silence
+  timeout starts the handshake over (`checkHello`, `helloAgain`; the run
+  goroutine has a timer for it beside the resend timer, armed at
+  `connect`). It is the same hello, sequence 1 under `0x1337`; the
+  silence window (`lastRX`) and the state don't move. It went only on
+  that timeout, every 5 s: a lost hello or answer cost 5 s on a lossy
+  link, and after a pulled cable or a reboot the session came back up to
+  5 s after the switcher could. As in atemwire it goes on after a "no
+  room" answer too. The goodbye goes `goodbyes` (3) times: one lost left
+  the session on the switcher until it reaped it. `atem.Probe` ("Device
+  probe") does both too, as atemwire's `probe()` gets them from its full
+  connect. Tests: `hello_again_test.go`, from `test_hello_again.py`; the
+  goodbye counts of `TestCloseSession*`, the timeout's goodbye before
+  the hello and `TestProbeFindsTheSwitcher` follow `goodbyes`, as
+  bmdwire's own tests follow `GOODBYES`; `TestALostHelloGoesAgainAfterASecond`
+  (`fake_test.go`) dials the fake switcher with the first hello lost.
 - **"No room"** (bmdwire#75, 1.12.0). A hello answered `0x03` sets
   `refused` and is not ACKed (atemwire ACKed it). Dial then fails at
   once with `ErrNoFreeConnection` ("Session"). A session already dialled
@@ -612,7 +630,8 @@ two settings `Dial` needs a struct for.
   `ConnectionReady`) and the video mode has arrived. Since bmdwire#75 and
   #77 (1.12.0, 1.12.1) it waits as long as the switcher keeps sending,
   and gives up after `ConnectStallTimeout` (5 s) with nothing from it
-  (`ErrStalled`), `ConnectHelloTimeout` (10 s, two hellos) before its
+  (`ErrStalled`), `ConnectHelloTimeout` (10 s; two hellos
+  before bmdwire#103, one every second or two since) before its
   first answer (`ErrNoAnswer`), and at once on "no room"
   (`ErrNoFreeConnection`). Without a context deadline `ConnectMax`
   (60 s) caps it; `ConnectTimeout` (15 s) now bounds only the engine's
@@ -2697,7 +2716,9 @@ there instead of taking every address for an ATEM.
   acceptance (hello 0x02) it completes the handshake with Dial's ACK,
   takes the session id from the switcher's first packet (the dump's
   start) and says goodbye under it (SYN, hello 0x04), as Close does; a
-  refusal opens nothing. A handshake left half done (as the first form
+  refusal opens nothing. Since bmdwire#103 its hello goes again after
+  1 s, then every 2 s, and its goodbye three times, as Dial's and
+  Close's do. A handshake left half done (as the first form
   of the probe left it, never ACKing the reply) would hold one of a
   switcher's few client slots until it timed out. Handing the completed
   handshake to the session connect opens next was the alternative; the

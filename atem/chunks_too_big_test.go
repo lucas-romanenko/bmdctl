@@ -503,7 +503,7 @@ func TestANewSessionAskedForCarriesTheUploadOver(t *testing.T) {
 	c.reset()
 	timerFires(s.t, &now, tooBigAfter+1, true)
 	s.transportAsks()
-	if h, g := hellos(c); h != 1 || g != 1 {
+	if h, g := hellos(c); h != 1 || g != goodbyes {
 		t.Fatalf("%d hellos, %d goodbyes: no new session", h, g)
 	}
 	if len(s.lane.carried) != 1 || s.lane.carried[0] != tk || s.t.maxChunk != 1224 {

@@ -73,7 +73,7 @@ func TestNoProgressForUploadStallStartsItAgainInANewSession(t *testing.T) { // t
 	}
 	*clock = clock.Add(10 * time.Millisecond)
 	s.serviceYields()
-	if h, g := hellos(c); h != 1 || g != 1 {
+	if h, g := hellos(c); h != 1 || g != goodbyes {
 		t.Fatalf("%d hellos, %d goodbyes: a new session", h, g)
 	}
 	if !strings.Contains(logs.String(), "5568 of 13920 bytes cut") {

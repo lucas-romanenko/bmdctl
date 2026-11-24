@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 )
 
 // ErrNoSwitcher: nothing answered the handshake.
@@ -90,9 +91,26 @@ func (d *Dialer) Probe(ctx context.Context, addr string) error {
 			return packet{}, fmt.Errorf("%w at %s: %w", ErrNoSwitcher, addr, ctx.Err())
 		}
 	}
-	// The switcher's answer to the SYN.
+	// The switcher's answer to the SYN, which goes again after helloRetry,
+	// then every helloRetryMax, while unanswered, as Dial's does
+	// (bmdwire#103).
+	again := time.NewTimer(helloRetry)
+	defer again.Stop()
 	for {
-		p, err := next()
+		var p packet
+		var err error
+		select {
+		case <-again.C:
+			if _, err := conn.WriteTo(syn.marshal(), raddr); err != nil {
+				return fmt.Errorf("atem: probe %s: %w", addr, err)
+			}
+			again.Reset(helloRetryMax)
+			continue
+		case r := <-replies:
+			p, err = r.p, r.err
+		case <-ctx.Done():
+			p, err = next()
+		}
 		if err != nil {
 			if errors.Is(err, ErrNoSwitcher) {
 				return err
@@ -122,9 +140,12 @@ func (d *Dialer) Probe(ctx context.Context, addr string) error {
 		if p.session == helloSession {
 			continue // a resent SYN reply
 		}
+		// goodbyes times, as Close says it (bmdwire#103).
 		bye := &packet{flags: flagSYN, session: p.session, seq: 1, data: []byte{helloClosing, 0, 0, 0, 0, 0, 0, 0}}
-		if _, err := conn.WriteTo(bye.marshal(), raddr); err != nil {
-			return fmt.Errorf("atem: probe %s: goodbye: %w", addr, err)
+		for range goodbyes {
+			if _, err := conn.WriteTo(bye.marshal(), raddr); err != nil {
+				return fmt.Errorf("atem: probe %s: goodbye: %w", addr, err)
+			}
 		}
 		return nil
 	}

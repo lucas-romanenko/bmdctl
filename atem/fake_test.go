@@ -221,3 +221,18 @@ func TestAnotherClientsLockIsVisible(t *testing.T) {
 	sw.ReleaseLock(0)
 	waitState(t, s, 2*time.Second, func(st atem.State) bool { return !st.Locks[0].State })
 }
+
+// A lost hello costs a second, not the 5 s silence timeout (bmdwire#103):
+// the hello goes again after helloRetry.
+func TestALostHelloGoesAgainAfterASecond(t *testing.T) {
+	sw := newFake(t)
+	sw.DropFromClient(1) // the first hello
+	start := time.Now()
+	dialFake(t, sw, 0)
+	if took := time.Since(start); took < 900*time.Millisecond || took > 3*time.Second {
+		t.Fatalf("connected after %v", took)
+	}
+	if n := sw.Handshakes(); n != 1 {
+		t.Fatalf("%d handshakes", n)
+	}
+}

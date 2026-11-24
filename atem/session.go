@@ -498,6 +498,9 @@ func (s *Session) loop() error {
 	// for (gapAskAfter, bmdwire#100); stopped while there is none.
 	gap := time.NewTimer(time.Hour)
 	gap.Stop()
+	// hello fires when our unanswered hello is due to go again
+	// (helloRetry, bmdwire#103); stopped while none is.
+	hello := time.NewTimer(helloRetry)
 	for {
 		select {
 		case <-s.quit:
@@ -538,6 +541,8 @@ func (s *Session) loop() error {
 			s.checkDialStall()
 		case <-gap.C:
 			s.t.checkGap()
+		case <-hello.C:
+			// checkHello below sends it.
 		}
 		if s.fatal != nil {
 			return s.fatal
@@ -558,6 +563,11 @@ func (s *Session) loop() error {
 			gap.Stop()
 		} else {
 			gap.Reset(max(0, due.Sub(s.t.now())))
+		}
+		if wait, ok := s.t.checkHello(); ok {
+			hello.Reset(wait)
+		} else {
+			hello.Stop()
 		}
 	}
 }

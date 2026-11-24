@@ -476,7 +476,9 @@ func TestCloseSessionSendsGoodbyeAndClosesState(t *testing.T) { // test_close_se
 	tr.state = stateEstablished
 	tr.closeSession()
 	sent := c.sent()
-	if len(sent) != 1 {
+	// goodbyes copies, so one lost on a lossy link does not leave the
+	// session behind (bmdwire#103).
+	if len(sent) != goodbyes {
 		t.Fatalf("%d packets", len(sent))
 	}
 	p := sent[0]
@@ -500,7 +502,7 @@ func TestCloseSessionNoopUnlessEstablished(t *testing.T) { // test_close_session
 	tr.state = stateEstablished
 	tr.closeSession()
 	tr.closeSession()
-	if len(c.sent()) != 1 {
+	if len(c.sent()) != goodbyes {
 		t.Fatalf("%d goodbyes", len(c.sent()))
 	}
 }
@@ -711,11 +713,18 @@ func TestSilenceTimeoutReconnects(t *testing.T) {
 	}
 	// The session being replaced is said goodbye first (bmdwire#80,
 	// test_the_replaced_session_is_said_goodbye_first), then the hello.
+	// goodbyes of them since bmdwire#103.
 	sent := c.sent()
-	if tr.state != stateSYNSent || len(sent) != 2 ||
-		sent[0].flags != flagSYN || sent[0].data[0] != helloClosing || sent[0].session != 0x8001 ||
-		sent[1].flags != flagSYN || sent[1].data[0] != helloConnect {
+	if tr.state != stateSYNSent || len(sent) != goodbyes+1 {
 		t.Fatalf("state %v sent %+v", tr.state, sent)
+	}
+	for _, p := range sent[:goodbyes] {
+		if p.flags != flagSYN || p.data[0] != helloClosing || p.session != 0x8001 {
+			t.Fatalf("sent %+v", sent)
+		}
+	}
+	if p := sent[goodbyes]; p.flags != flagSYN || p.data[0] != helloConnect {
+		t.Fatalf("sent %+v", sent)
 	}
 	if tr.silent() {
 		t.Fatal("the re-SYN did not get a fresh window")
